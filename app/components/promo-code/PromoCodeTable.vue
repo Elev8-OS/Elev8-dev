@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PromoCode } from './data/promo-codes'
 import { computed } from 'vue'
+import { Switch } from '~/components/ui/switch'
 import { usePromoCodes } from '~/composables/usePromoCodes'
 import { formatPromoDiscount, formatPromoWindowCompact, getPromoCodeTypeLabel } from './data/promo-codes'
 
@@ -47,7 +48,7 @@ function stayWindowRows(windows: { from: string | null, until: string | null }[]
 function statusColor(code: PromoCode) {
   const s = status(code)
   if (s === 'active')
-    return 'text-green-600'
+    return 'text-green-700'
   if (s === 'expired')
     return 'text-gray-500'
   return 'text-gray-500'
@@ -102,7 +103,7 @@ const decoratedCodes = computed(() => codes.map((code) => {
           </TableCell>
           <TableCell>
             <span v-if="code.isFreeUpsell" class="inline-flex items-center gap-1 text-sm font-medium">
-              <Icon name="lucide:sparkles" class="size-3.5 text-primary" />
+              <Icon name="lucide:sparkles" class="size-3.5 text-primary-foreground" />
               {{ formatPromoDiscount(code) }}
             </span>
             <template v-else>
@@ -165,41 +166,35 @@ const decoratedCodes = computed(() => codes.map((code) => {
           </TableCell>
           <TableCell>
             <Badge :variant="statusBadgeVariant(code)" class="gap-1 capitalize">
-              <Icon name="lucide:circle" class="size-2" :class="statusColor(code)" />
+              <Icon name="lucide:circle" class="size-2" :class="statusColor(code)" aria-hidden="true" />
               {{ statusLabel(code) }}
             </Badge>
           </TableCell>
           <TableCell>
-            <button
-              type="button"
-              class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              :class="code.active ? 'bg-primary' : 'bg-input'"
-              @click="emit('toggleActive', code.id)"
-            >
-              <span
-                class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 transition-transform"
-                :class="code.active ? 'translate-x-4' : 'translate-x-0'"
-              />
-            </button>
+            <Switch
+              :model-value="code.active"
+              :aria-label="`Activate ${code.code}`"
+              @update:model-value="() => emit('toggleActive', code.id)"
+            />
           </TableCell>
           <TableCell>
             <DropdownMenu>
               <DropdownMenuTrigger as-child>
-                <Button variant="ghost" size="icon-sm" class="size-8">
-                  <Icon name="lucide:more-horizontal" class="size-4" />
+                <Button variant="ghost" size="icon-sm" class="size-8" :aria-label="`Row actions for ${code.code}`">
+                  <Icon name="lucide:more-horizontal" class="size-4" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem @click="emit('view', code)">
-                  <Icon name="lucide:eye" class="mr-2 size-4" />
+                  <Icon name="lucide:eye" class="mr-2 size-4" aria-hidden="true" />
                   View details
                 </DropdownMenuItem>
                 <DropdownMenuItem @click="emit('edit', code)">
-                  <Icon name="lucide:pencil" class="mr-2 size-4" />
+                  <Icon name="lucide:pencil" class="mr-2 size-4" aria-hidden="true" />
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem @click="emit('duplicate', code.id)">
-                  <Icon name="lucide:copy-plus" class="mr-2 size-4" />
+                  <Icon name="lucide:copy-plus" class="mr-2 size-4" aria-hidden="true" />
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -207,7 +202,7 @@ const decoratedCodes = computed(() => codes.map((code) => {
                   class="text-destructive focus:text-destructive"
                   @click="emit('delete', code.id)"
                 >
-                  <Icon name="lucide:trash-2" class="mr-2 size-4" />
+                  <Icon name="lucide:trash-2" class="mr-2 size-4" aria-hidden="true" />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>

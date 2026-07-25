@@ -27,6 +27,8 @@ const editOpen = ref(false)
 const detailOpen = ref(false)
 const editTarget = ref<PromoCode | null>(null)
 const detailTarget = ref<PromoCode | null>(null)
+const deleteTarget = ref<PromoCode | null>(null)
+const deleteOpen = ref(false)
 
 function onView(code: PromoCode) {
   detailTarget.value = code
@@ -44,14 +46,21 @@ function onDuplicate(id: string) {
     toast.success(`Duplicated as ${created.code}`)
 }
 
-function onDelete(id: string) {
+function requestDelete(id: string) {
   const code = filteredCodes.value.find(c => c.id === id)
   if (!code)
     return
-  if (!window.confirm(`Delete code ${code.code}? This cannot be undone.`))
+  deleteTarget.value = code
+  deleteOpen.value = true
+}
+
+function confirmDelete() {
+  const code = deleteTarget.value
+  if (!code)
     return
-  deletePromoCode(id)
+  deletePromoCode(code.id)
   toast.success(`Code ${code.code} deleted`)
+  deleteTarget.value = null
 }
 
 const hasActiveFilters = computed(() => {
@@ -63,20 +72,20 @@ const hasActiveFilters = computed(() => {
   <div class="w-full flex flex-col gap-6">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="text-2xl font-bold tracking-tight">
+        <h1 class="text-2xl font-bold tracking-tight">
           Promo Codes
-        </h2>
+        </h1>
         <p class="text-sm text-muted-foreground">
           {{ activeCount }} active · {{ expiredCount }} expired · {{ totalRedemptions }} total redemptions
         </p>
       </div>
       <div class="flex items-center gap-2">
-        <Button variant="outline" size="sm" disabled>
-          <Icon name="lucide:download" class="size-4 mr-1.5" />
+        <Button variant="outline" size="sm" disabled aria-label="Export (coming soon)">
+          <Icon name="lucide:download" class="size-4 mr-1.5" aria-hidden="true" />
           Export
         </Button>
         <Button @click="createOpen = true">
-          <Icon name="i-lucide-plus" class="size-4 mr-1.5" />
+          <Icon name="i-lucide-plus" class="size-4 mr-1.5" aria-hidden="true" />
           Create Code
         </Button>
       </div>
@@ -94,7 +103,7 @@ const hasActiveFilters = computed(() => {
                 {{ activeCount }}
               </p>
             </div>
-            <div class="flex size-9 items-center justify-center rounded-full bg-green-500/15 text-green-600">
+            <div class="flex size-9 items-center justify-center rounded-full bg-green-500/15 text-green-700" aria-hidden="true">
               <Icon name="lucide:ticket-percent" class="size-4" />
             </div>
           </div>
@@ -111,7 +120,7 @@ const hasActiveFilters = computed(() => {
                 {{ expiredCount }}
               </p>
             </div>
-            <div class="flex size-9 items-center justify-center rounded-full bg-gray-500/15 text-gray-600">
+            <div class="flex size-9 items-center justify-center rounded-full bg-gray-500/15 text-gray-600" aria-hidden="true">
               <Icon name="lucide:clock" class="size-4" />
             </div>
           </div>
@@ -128,7 +137,7 @@ const hasActiveFilters = computed(() => {
                 {{ totalRedemptions }}
               </p>
             </div>
-            <div class="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+            <div class="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary-foreground" aria-hidden="true">
               <Icon name="lucide:check-circle" class="size-4" />
             </div>
           </div>
@@ -138,10 +147,16 @@ const hasActiveFilters = computed(() => {
 
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex-1 min-w-[200px] max-w-xs">
-        <Input v-model="filters.search" placeholder="Search codes..." class="h-9" />
+        <Label for="promo-search" class="sr-only">Search promo codes</Label>
+        <Input
+          id="promo-search"
+          v-model="filters.search"
+          placeholder="Search codes..."
+          class="h-9"
+        />
       </div>
       <Select v-model="filters.status">
-        <SelectTrigger class="h-9 w-[140px]">
+        <SelectTrigger class="h-9 w-[140px]" aria-label="Filter by status">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
@@ -160,7 +175,7 @@ const hasActiveFilters = computed(() => {
         </SelectContent>
       </Select>
       <Select v-model="filters.sortBy">
-        <SelectTrigger class="h-9 w-[160px]">
+        <SelectTrigger class="h-9 w-[160px]" aria-label="Sort by">
           <SelectValue placeholder="Sort" />
         </SelectTrigger>
         <SelectContent>
@@ -176,7 +191,7 @@ const hasActiveFilters = computed(() => {
         </SelectContent>
       </Select>
       <Button v-if="hasActiveFilters" variant="ghost" size="sm" @click="clearFilters">
-        <Icon name="lucide:x" class="size-3.5 mr-1" />
+        <Icon name="lucide:x" class="size-3.5 mr-1" aria-hidden="true" />
         Clear filters
       </Button>
     </div>
@@ -186,14 +201,14 @@ const hasActiveFilters = computed(() => {
       @view="onView"
       @edit="onEdit"
       @duplicate="onDuplicate"
-      @delete="onDelete"
+      @delete="requestDelete"
       @toggle-active="toggleActive"
     />
 
     <Empty v-if="filteredCodes.length === 0" class="rounded-lg border py-10">
       <EmptyHeader>
         <EmptyMedia variant="icon">
-          <Icon name="lucide:ticket-percent" class="size-5" />
+          <Icon name="lucide:ticket-percent" class="size-5" aria-hidden="true" />
         </EmptyMedia>
         <EmptyTitle>No promo codes yet</EmptyTitle>
         <EmptyDescription>
@@ -202,7 +217,7 @@ const hasActiveFilters = computed(() => {
       </EmptyHeader>
       <EmptyContent>
         <Button @click="createOpen = true">
-          <Icon name="i-lucide-plus" class="size-4 mr-1.5" />
+          <Icon name="i-lucide-plus" class="size-4 mr-1.5" aria-hidden="true" />
           Create Your First Code
         </Button>
       </EmptyContent>
@@ -216,5 +231,25 @@ const hasActiveFilters = computed(() => {
       @edit="(c) => { detailOpen = false; onEdit(c) }"
       @duplicate="(id) => { detailOpen = false; onDuplicate(id) }"
     />
+
+    <AlertDialog v-model:open="deleteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete {{ deleteTarget?.code }}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This action cannot be undone. The code will be removed and any future redemptions will fail.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            @click="confirmDelete"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>

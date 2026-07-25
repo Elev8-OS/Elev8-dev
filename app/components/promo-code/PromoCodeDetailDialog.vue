@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { PromoCode } from './data/promo-codes'
 import { computed } from 'vue'
-import { toast } from 'vue-sonner'
 import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import { listings as allListings } from '~/components/listings/data/listings'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
@@ -15,12 +14,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [code: PromoCode]
   duplicate: [id: string]
-  deleted: [id: string]
+  requestDelete: [code: PromoCode]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
 
-const { getUsagesByCode, deletePromoCode } = usePromoCodes()
+const { getUsagesByCode } = usePromoCodes()
 
 const usages = computed(() => {
   if (!props.promoCode)
@@ -83,14 +82,10 @@ function statusVariant() {
   return 'outline'
 }
 
-function onDelete() {
+function onRequestDelete() {
   if (!props.promoCode)
     return
-  if (!window.confirm(`Delete code ${props.promoCode.code}? This cannot be undone.`))
-    return
-  deletePromoCode(props.promoCode.id)
-  toast.success(`Code ${props.promoCode.code} deleted`)
-  emit('deleted', props.promoCode.id)
+  emit('requestDelete', props.promoCode)
   open.value = false
 }
 </script>
@@ -132,12 +127,14 @@ function onDelete() {
               <p class="text-muted-foreground text-xs">
                 Free upsell services
               </p>
-              <div v-if="freeUpsellServices.length > 0" class="mt-1 flex flex-wrap gap-1.5">
-                <Badge v-for="service in freeUpsellServices" :key="service.id" variant="secondary" class="gap-1">
-                  <Icon name="lucide:sparkles" class="size-3 text-primary" />
-                  {{ service.name }}
-                </Badge>
-              </div>
+              <ul v-if="freeUpsellServices.length > 0" class="mt-1 flex flex-wrap gap-1.5" role="list" aria-label="Free upsell services">
+                <li v-for="service in freeUpsellServices" :key="service.id">
+                  <Badge variant="secondary" class="gap-1">
+                    <Icon name="lucide:sparkles" class="size-3 text-primary" aria-hidden="true" />
+                    {{ service.name }}
+                  </Badge>
+                </li>
+              </ul>
               <p v-else class="text-sm text-muted-foreground italic">
                 No upsells selected
               </p>
@@ -149,16 +146,18 @@ function onDelete() {
               <p class="font-medium">
                 {{ listingScopeLabel }}
               </p>
-              <div v-if="assignedListings.length > 0" class="mt-1 flex flex-wrap gap-1.5">
-                <Badge v-for="listing in assignedListings" :key="listing.id" variant="outline" class="gap-1">
-                  <Icon name="lucide:home" class="size-3" />
-                  <span class="truncate max-w-[200px]">{{ listing.name }}</span>
-                </Badge>
-              </div>
+              <ul v-if="assignedListings.length > 0" class="mt-1 flex flex-wrap gap-1.5" role="list" aria-label="Assigned listings">
+                <li v-for="listing in assignedListings" :key="listing.id">
+                  <Badge variant="outline" class="gap-1">
+                    <Icon name="lucide:home" class="size-3" aria-hidden="true" />
+                    <span class="truncate max-w-[200px]">{{ listing.name }}</span>
+                  </Badge>
+                </li>
+              </ul>
             </div>
             <div>
               <p class="text-muted-foreground text-xs flex items-center gap-1">
-                <Icon name="lucide:calendar-clock" class="size-3" />
+                <Icon name="lucide:calendar-clock" class="size-3" aria-hidden="true" />
                 Booking window
               </p>
               <p v-if="bookingWindows.length === 0" class="font-medium">
@@ -172,7 +171,7 @@ function onDelete() {
             </div>
             <div>
               <p class="text-muted-foreground text-xs flex items-center gap-1">
-                <Icon name="lucide:bed" class="size-3" />
+                <Icon name="lucide:bed" class="size-3" aria-hidden="true" />
                 Stay window
               </p>
               <p v-if="stayWindows.length === 0" class="font-medium">
@@ -210,10 +209,10 @@ function onDelete() {
           <div v-if="usagesWithLabel.length === 0" class="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
             Not linked to any widget or site yet.
           </div>
-          <ul v-else class="space-y-2">
+          <ul v-else class="space-y-2" role="list">
             <li v-for="link in usagesWithLabel" :key="`${link.source}-${link.sourceId}`" class="flex items-center justify-between gap-3 rounded-md border p-3">
               <div class="flex items-center gap-2">
-                <Icon :name="link.source === 'widget' ? 'lucide:code-2' : 'lucide:globe'" class="size-4 text-muted-foreground" />
+                <Icon :name="link.source === 'widget' ? 'lucide:code-2' : 'lucide:globe'" class="size-4 text-muted-foreground" aria-hidden="true" />
                 <div>
                   <p class="text-sm font-medium">
                     {{ link.label }}
@@ -230,16 +229,16 @@ function onDelete() {
       </div>
 
       <DialogFooter class="gap-2">
-        <Button variant="outline" @click="onDelete">
-          <Icon name="lucide:trash-2" class="size-4 mr-1.5" />
+        <Button variant="outline" @click="onRequestDelete">
+          <Icon name="lucide:trash-2" class="size-4 mr-1.5" aria-hidden="true" />
           Delete
         </Button>
         <Button variant="outline" @click="emit('duplicate', promoCode?.id ?? '')">
-          <Icon name="lucide:copy-plus" class="size-4 mr-1.5" />
+          <Icon name="lucide:copy-plus" class="size-4 mr-1.5" aria-hidden="true" />
           Duplicate
         </Button>
         <Button @click="emit('edit', promoCode as PromoCode)">
-          <Icon name="lucide:pencil" class="size-4 mr-1.5" />
+          <Icon name="lucide:pencil" class="size-4 mr-1.5" aria-hidden="true" />
           Edit
         </Button>
       </DialogFooter>

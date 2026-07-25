@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { PromoCodeDiscountType, PromoCodeWindow } from './data/promo-codes'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings as allListings, allTags } from '~/components/listings/data/listings'
+import { Switch } from '~/components/ui/switch'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { usePromoCodes } from '~/composables/usePromoCodes'
 
@@ -33,6 +34,9 @@ const listingSearch = ref('')
 
 const codeError = ref('')
 const freeUpsellError = ref('')
+
+const codeInputRef = ref<HTMLInputElement | null>(null)
+const upsellTriggerRef = ref<HTMLButtonElement | null>(null)
 
 const currencyOptions = ['USD', 'EUR', 'GBP', 'IDR', 'CHF', 'AUD', 'JPY']
 
@@ -130,6 +134,29 @@ const filteredTags = computed(() => {
 const filteredListings = computed(() => {
   const query = listingSearch.value.trim().toLowerCase()
   let result = allListings.value
+
+  // When this is a Free Upsell code with at least one selected upsell
+  // service, restrict to listings that are assigned to ALL selected
+  // services (intersection). Assigned listings are matched by name since
+  // UpsellService.assignedListings uses names, not IDs.
+  if (isFreeUpsell.value && freeUpsellServiceIds.value.length > 0) {
+    const selectedServices = mockUpsellServices.filter(s => freeUpsellServiceIds.value.includes(s.id))
+    const allowedNames = selectedServices.reduce<Set<string> | null>((acc, service) => {
+      const names = new Set(service.assignedListings)
+      if (acc === null)
+        return names
+      const next = new Set<string>()
+      for (const n of acc) {
+        if (names.has(n))
+          next.add(n)
+      }
+      return next
+    }, null)
+    if (allowedNames && allowedNames.size > 0) {
+      result = result.filter(l => allowedNames.has(l.name))
+    }
+  }
+
   if (listingTagsFilter.value.length > 0) {
     // AND logic: listing must contain every selected tag
     result = result.filter(l => listingTagsFilter.value.every(t => l.tags.includes(t)))
@@ -142,6 +169,10 @@ const filteredListings = computed(() => {
   }
   return result
 })
+
+const listingsFilteredByUpsell = computed(() =>
+  isFreeUpsell.value && freeUpsellServiceIds.value.length > 0,
+)
 
 function toggleListing(id: string) {
   listingIds.value = listingIds.value.includes(id)
@@ -214,14 +245,17 @@ function submit() {
   const trimmed = code.value.trim()
   if (!trimmed) {
     codeError.value = 'Code is required'
+    nextTick(() => codeInputRef.value?.focus())
     return
   }
   if (isCodeTaken(trimmed)) {
     codeError.value = 'A code with this value already exists'
+    nextTick(() => codeInputRef.value?.focus())
     return
   }
   if (isFreeUpsell.value && freeUpsellServiceIds.value.length === 0) {
     freeUpsellError.value = 'Select at least one upsell service for a Free Upsell code'
+    nextTick(() => upsellTriggerRef.value?.focus())
     return
   }
   if (!isFreeUpsell.value && (!value.value || value.value <= 0)) {
@@ -259,29 +293,40 @@ function submit() {
 
       <form class="space-y-4" @submit.prevent="submit">
         <div class="space-y-2">
-          <Label>Code</Label>
+          <Label for="promo-create-code">Code</Label>
           <Input
+            id="promo-create-code"
+            ref="codeInputRef"
             :model-value="code"
             placeholder="WELCOME10"
             class="font-mono uppercase"
             :class="codeError ? 'border-destructive' : ''"
+            :aria-invalid="codeError ? 'true' : 'false'"
+            aria-describedby="promo-create-code-error"
             @input="onCodeInput"
           />
-          <p v-if="codeError" class="text-xs text-destructive">
+          <p
+            v-if="codeError"
+            id="promo-create-code-error"
+            role="alert"
+            class="text-xs text-destructive"
+          >
             {{ codeError }}
           </p>
         </div>
 
         <div class="space-y-2">
-          <Label>Description <span class="text-muted-foreground font-normal">(optional)</span></Label>
-          <Textarea v-model="description" placeholder="What is this code for?" rows="2" />
+          <Label for="promo-create-description">
+            Description <span class="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <Textarea id="promo-create-description" v-model="description" placeholder="What is this code for?" rows="2" />
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-2">
-            <Label>Type</Label>
+            <Label for="promo-create-type">Type</Label>
             <Select v-model="discountType">
-              <SelectTrigger>
+              <SelectTrigger id="promo-create-type" aria-label="Discount type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -298,19 +343,19 @@ function submit() {
             </Select>
           </div>
           <div v-if="!isFreeUpsell" class="space-y-2">
-            <Label>Value</Label>
+            <Label for="promo-create-value">Value</Label>
             <div class="flex items-center gap-2">
-              <span v-if="discountType === 'fixed'" class="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">{{ currency }}</span>
-              <span v-else class="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">%</span>
-              <Input v-model.number="value" type="number" min="1" class="flex-1" />
+              <span v-if="discountType === 'fixed'" aria-hidden="true" class="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-foreground">{{ currency }}</span>
+              <span v-else aria-hidden="true" class="rounded-md border bg-muted px-2 py-1 text-xs font-medium text-foreground">%</span>
+              <Input id="promo-create-value" v-model.number="value" type="number" min="1" class="flex-1" />
             </div>
           </div>
         </div>
 
         <div v-if="discountType === 'fixed'" class="space-y-2">
-          <Label>Currency</Label>
+          <Label for="promo-create-currency">Currency</Label>
           <Select v-model="currency">
-            <SelectTrigger>
+            <SelectTrigger id="promo-create-currency" aria-label="Currency">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -323,25 +368,32 @@ function submit() {
 
         <!-- Free Upsell services picker -->
         <div v-if="isFreeUpsell" class="space-y-2">
-          <Label>
+          <Label for="promo-create-upsell-trigger">
             Free upsell services
             <span class="text-muted-foreground font-normal">(required)</span>
           </Label>
           <Popover v-model:open="freeUpsellOpen">
             <PopoverTrigger as-child>
-              <Button variant="outline" class="w-full justify-between">
+              <Button
+                id="promo-create-upsell-trigger"
+                ref="upsellTriggerRef"
+                variant="outline"
+                class="w-full justify-between"
+                :aria-invalid="freeUpsellError ? 'true' : 'false'"
+                :aria-describedby="freeUpsellError ? 'promo-create-upsell-error' : undefined"
+              >
                 <span class="truncate">{{ upsellTriggerLabel() }}</span>
                 <div class="flex items-center gap-2">
-                  <Badge v-if="freeUpsellServiceIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]">
+                  <Badge v-if="freeUpsellServiceIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]" :aria-label="`${freeUpsellServiceIds.length} selected`">
                     {{ freeUpsellServiceIds.length }}
                   </Badge>
-                  <Icon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted-foreground" />
+                  <Icon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 </div>
               </Button>
             </PopoverTrigger>
             <PopoverContent class="w-[420px] p-0" align="start" :side-offset="4">
               <div class="p-2 border-b">
-                <Input v-model="freeUpsellSearch" placeholder="Search upsell services..." class="h-8 text-sm" />
+                <Input v-model="freeUpsellSearch" placeholder="Search upsell services..." class="h-8 text-sm" aria-label="Search upsell services" />
               </div>
               <Command>
                 <CommandList>
@@ -354,8 +406,14 @@ function submit() {
                       class="cursor-pointer"
                       @select="() => toggleUpsellService(service.id)"
                     >
-                      <div class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border" :class="freeUpsellServiceIds.includes(service.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'">
-                        <Icon v-if="freeUpsellServiceIds.includes(service.id)" name="lucide:check" class="size-3" />
+                      <div
+                        class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                        :class="freeUpsellServiceIds.includes(service.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                        role="checkbox"
+                        :aria-checked="freeUpsellServiceIds.includes(service.id) ? 'true' : 'false'"
+                        :aria-label="`Toggle ${service.name}`"
+                      >
+                        <Icon v-if="freeUpsellServiceIds.includes(service.id)" name="lucide:check" class="size-3" aria-hidden="true" />
                       </div>
                       <div class="flex-1 min-w-0">
                         <p class="text-sm font-medium truncate">
@@ -370,66 +428,97 @@ function submit() {
                 </CommandList>
               </Command>
               <div class="flex items-center justify-between gap-2 border-t p-2">
-                <Button v-if="freeUpsellServiceIds.length > 0" variant="ghost" size="sm" class="h-6 text-xs" @click="clearUpsellServices">
+                <Button v-if="freeUpsellServiceIds.length > 0" type="button" variant="ghost" size="sm" class="h-6 text-xs" @click="clearUpsellServices">
                   Clear
                 </Button>
-                <span v-else class="text-xs text-muted-foreground">{{ freeUpsellServiceIds.length }} selected</span>
-                <Button size="sm" class="h-7" @click="freeUpsellOpen = false">
+                <span v-else class="text-xs text-muted-foreground" aria-live="polite">{{ freeUpsellServiceIds.length }} selected</span>
+                <Button type="button" size="sm" class="h-7" @click="freeUpsellOpen = false">
                   Done
                 </Button>
               </div>
             </PopoverContent>
           </Popover>
 
-          <div v-if="selectedUpsellServices.length > 0" class="flex flex-wrap gap-1.5">
-            <Badge v-for="service in selectedUpsellServices" :key="service.id" variant="secondary" class="gap-1 pr-1">
-              <Icon name="lucide:sparkles" class="size-3 text-primary" />
-              <span class="text-xs">{{ service.name }}</span>
-              <button type="button" class="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5" @click="toggleUpsellService(service.id)">
-                <Icon name="lucide:x" class="size-3" />
-              </button>
-            </Badge>
-          </div>
-          <p v-if="freeUpsellError" class="text-xs text-destructive">
+          <ul v-if="selectedUpsellServices.length > 0" class="flex flex-wrap gap-1.5" role="list" aria-label="Selected upsell services">
+            <li v-for="service in selectedUpsellServices" :key="service.id">
+              <Badge variant="secondary" class="gap-1 pr-1">
+                <Icon name="lucide:sparkles" class="size-3 text-primary-foreground" aria-hidden="true" />
+                <span class="text-xs">{{ service.name }}</span>
+                <button
+                  type="button"
+                  class="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
+                  :aria-label="`Remove ${service.name}`"
+                  @click="toggleUpsellService(service.id)"
+                >
+                  <Icon name="lucide:x" class="size-3 text-primary-foreground" aria-hidden="true" />
+                </button>
+              </Badge>
+            </li>
+          </ul>
+          <p
+            v-if="freeUpsellError"
+            id="promo-create-upsell-error"
+            role="alert"
+            class="text-xs text-destructive"
+          >
             {{ freeUpsellError }}
           </p>
         </div>
 
         <!-- Assigned listings picker -->
         <div class="space-y-2">
-          <Label>
+          <Label for="promo-create-listings-trigger">
             Assigned listings
             <span class="text-muted-foreground font-normal">(optional)</span>
           </Label>
           <Popover v-model:open="listingOpen">
             <PopoverTrigger as-child>
-              <Button variant="outline" class="w-full justify-between">
+              <Button
+                id="promo-create-listings-trigger"
+                variant="outline"
+                class="w-full justify-between"
+              >
                 <span class="truncate">{{ listingTriggerLabel() }}</span>
                 <div class="flex items-center gap-2">
-                  <Badge v-if="listingIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]">
+                  <Badge
+                    v-if="listingsFilteredByUpsell"
+                    variant="outline"
+                    class="h-5 gap-1 border-primary/40 bg-primary/10 px-1.5 text-[10px] text-primary-foreground"
+                    aria-label="Filtered by selected upsell services"
+                  >
+                    <Icon name="lucide:sparkles" class="size-2.5 text-primary-foreground" aria-hidden="true" />
+                    upsell scope
+                  </Badge>
+                  <Badge v-if="listingIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]" :aria-label="`${listingIds.length} selected`">
                     {{ listingIds.length }}
                   </Badge>
-                  <Icon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted-foreground" />
+                  <Icon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 </div>
               </Button>
             </PopoverTrigger>
             <PopoverContent class="w-[420px] p-0" align="start" :side-offset="4">
+              <div v-if="listingsFilteredByUpsell" class="flex items-center gap-1.5 border-b bg-primary/5 px-3 py-1.5 text-[11px] text-primary-foreground">
+                <Icon name="lucide:sparkles" class="size-3" aria-hidden="true" />
+                <span>Filtered to listings assigned to every selected upsell service.</span>
+              </div>
               <div class="flex items-center gap-1.5 border-b p-2">
                 <div class="relative flex-1">
-                  <Icon name="lucide:search" class="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input v-model="listingSearch" placeholder="Search listings..." class="h-8 pl-7 text-sm" />
+                  <Icon name="lucide:search" class="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input v-model="listingSearch" placeholder="Search listings..." class="h-8 pl-7 text-sm" aria-label="Search listings" />
                 </div>
                 <Popover v-model:open="tagPopoverOpen">
                   <PopoverTrigger as-child>
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       class="h-8 shrink-0"
-                      :class="listingTagsFilter.length > 0 ? 'border-primary text-primary' : ''"
+                      :class="listingTagsFilter.length > 0 ? 'border-primary bg-primary/5 text-primary-foreground' : ''"
+                      aria-label="Filter listings by tag"
                     >
-                      <Icon name="lucide:tag" class="size-3.5" />
+                      <Icon name="lucide:tag" class="size-3.5" aria-hidden="true" />
                       Tags
-                      <span v-if="listingTagsFilter.length > 0" class="ml-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">
+                      <span v-if="listingTagsFilter.length > 0" class="ml-1 rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground" aria-hidden="true">
                         {{ listingTagsFilter.length }}
                       </span>
                     </Button>
@@ -439,18 +528,22 @@ function submit() {
                       Filter by tag
                     </div>
                     <div class="p-2">
-                      <Input v-model="tagSearch" placeholder="Search tags..." class="mb-2 h-8 text-xs" />
+                      <Input v-model="tagSearch" placeholder="Search tags..." class="mb-2 h-8 text-xs" aria-label="Search tags" />
                       <div class="max-h-48 overflow-y-auto">
                         <button
                           v-for="tag in filteredTags"
                           :key="tag"
                           type="button"
                           class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                          role="checkbox"
+                          :aria-checked="listingTagsFilter.includes(tag) ? 'true' : 'false'"
+                          :aria-label="`${tag} tag filter`"
                           @click="toggleListingTag(tag)"
                         >
                           <span
                             class="inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] border shadow-xs transition-colors"
                             :class="listingTagsFilter.includes(tag) ? 'bg-primary border-primary text-primary-foreground' : 'border-input bg-transparent'"
+                            aria-hidden="true"
                           >
                             <Icon v-if="listingTagsFilter.includes(tag)" name="lucide:check" class="size-3.5" />
                           </span>
@@ -462,6 +555,7 @@ function submit() {
                       </div>
                       <Button
                         v-if="listingTagsFilter.length"
+                        type="button"
                         variant="ghost"
                         size="sm"
                         class="mt-2 h-7 w-full text-xs text-muted-foreground"
@@ -484,8 +578,14 @@ function submit() {
                       class="cursor-pointer"
                       @select="() => toggleListing(listing.id)"
                     >
-                      <div class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border" :class="listingIds.includes(listing.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'">
-                        <Icon v-if="listingIds.includes(listing.id)" name="lucide:check" class="size-3" />
+                      <div
+                        class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                        :class="listingIds.includes(listing.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                        role="checkbox"
+                        :aria-checked="listingIds.includes(listing.id) ? 'true' : 'false'"
+                        :aria-label="`Toggle ${listing.name}`"
+                      >
+                        <Icon v-if="listingIds.includes(listing.id)" name="lucide:check" class="size-3" aria-hidden="true" />
                       </div>
                       <div class="flex-1 min-w-0">
                         <p class="text-sm font-medium truncate">
@@ -500,11 +600,11 @@ function submit() {
                 </CommandList>
               </Command>
               <div class="flex items-center justify-between gap-2 border-t p-2">
-                <Button v-if="listingIds.length > 0" variant="ghost" size="sm" class="h-6 text-xs" @click="clearListings">
+                <Button v-if="listingIds.length > 0" type="button" variant="ghost" size="sm" class="h-6 text-xs" @click="clearListings">
                   Clear
                 </Button>
-                <span v-else class="text-xs text-muted-foreground">No listings = applies to all</span>
-                <Button size="sm" class="h-7" @click="listingOpen = false">
+                <span v-else class="text-xs text-muted-foreground" aria-live="polite">No listings = applies to all</span>
+                <Button type="button" size="sm" class="h-7" @click="listingOpen = false">
                   Done
                 </Button>
               </div>
@@ -525,11 +625,11 @@ function submit() {
           <div class="space-y-2">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-1.5">
-                <Icon name="lucide:calendar-clock" class="size-3.5 text-muted-foreground" />
+                <Icon name="lucide:calendar-clock" class="size-3.5 text-muted-foreground" aria-hidden="true" />
                 <Label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Booking windows</Label>
               </div>
               <Button type="button" variant="ghost" size="sm" class="h-7 text-xs" @click="addBookingWindow">
-                <Icon name="lucide:plus" class="size-3.5 mr-1" />
+                <Icon name="lucide:plus" class="size-3.5 mr-1" aria-hidden="true" />
                 Add window
               </Button>
             </div>
@@ -537,18 +637,33 @@ function submit() {
               No booking window — code is bookable any time.
             </div>
             <div v-else class="space-y-2">
-              <div
+              <fieldset
                 v-for="(window, idx) in bookingWindows"
                 :key="`bw-${idx}`"
                 class="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-md border bg-muted/30 p-2"
               >
+                <legend class="sr-only">
+                  Booking window {{ idx + 1 }}
+                </legend>
                 <div class="space-y-1">
-                  <Label class="text-xs">From</Label>
-                  <Input :model-value="window.from ?? ''" type="date" @input="(e: Event) => updateBookingWindow(idx, 'from', (e.target as HTMLInputElement).value)" />
+                  <Label :for="`promo-create-bw-from-${idx}`" class="text-xs">From</Label>
+                  <Input
+                    :id="`promo-create-bw-from-${idx}`"
+                    :model-value="window.from ?? ''"
+                    type="date"
+                    :aria-label="`Booking window ${idx + 1} start date`"
+                    @input="(e: Event) => updateBookingWindow(idx, 'from', (e.target as HTMLInputElement).value)"
+                  />
                 </div>
                 <div class="space-y-1">
-                  <Label class="text-xs">Until</Label>
-                  <Input :model-value="window.until ?? ''" type="date" @input="(e: Event) => updateBookingWindow(idx, 'until', (e.target as HTMLInputElement).value)" />
+                  <Label :for="`promo-create-bw-until-${idx}`" class="text-xs">Until</Label>
+                  <Input
+                    :id="`promo-create-bw-until-${idx}`"
+                    :model-value="window.until ?? ''"
+                    type="date"
+                    :aria-label="`Booking window ${idx + 1} end date`"
+                    @input="(e: Event) => updateBookingWindow(idx, 'until', (e.target as HTMLInputElement).value)"
+                  />
                 </div>
                 <Button
                   type="button"
@@ -558,20 +673,20 @@ function submit() {
                   :aria-label="`Remove booking window ${idx + 1}`"
                   @click="removeBookingWindow(idx)"
                 >
-                  <Icon name="lucide:trash-2" class="size-3.5" />
+                  <Icon name="lucide:trash-2" class="size-3.5" aria-hidden="true" />
                 </Button>
-              </div>
+              </fieldset>
             </div>
           </div>
 
           <div class="space-y-2">
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-1.5">
-                <Icon name="lucide:bed" class="size-3.5 text-muted-foreground" />
+                <Icon name="lucide:bed" class="size-3.5 text-muted-foreground" aria-hidden="true" />
                 <Label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Stay windows</Label>
               </div>
               <Button type="button" variant="ghost" size="sm" class="h-7 text-xs" @click="addStayWindow">
-                <Icon name="lucide:plus" class="size-3.5 mr-1" />
+                <Icon name="lucide:plus" class="size-3.5 mr-1" aria-hidden="true" />
                 Add window
               </Button>
             </div>
@@ -579,18 +694,33 @@ function submit() {
               No stay window — code applies to any check-in date.
             </div>
             <div v-else class="space-y-2">
-              <div
+              <fieldset
                 v-for="(window, idx) in stayWindows"
                 :key="`sw-${idx}`"
                 class="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-md border bg-muted/30 p-2"
               >
+                <legend class="sr-only">
+                  Stay window {{ idx + 1 }}
+                </legend>
                 <div class="space-y-1">
-                  <Label class="text-xs">From</Label>
-                  <Input :model-value="window.from ?? ''" type="date" @input="(e: Event) => updateStayWindow(idx, 'from', (e.target as HTMLInputElement).value)" />
+                  <Label :for="`promo-create-sw-from-${idx}`" class="text-xs">From</Label>
+                  <Input
+                    :id="`promo-create-sw-from-${idx}`"
+                    :model-value="window.from ?? ''"
+                    type="date"
+                    :aria-label="`Stay window ${idx + 1} check-in start date`"
+                    @input="(e: Event) => updateStayWindow(idx, 'from', (e.target as HTMLInputElement).value)"
+                  />
                 </div>
                 <div class="space-y-1">
-                  <Label class="text-xs">Until</Label>
-                  <Input :model-value="window.until ?? ''" type="date" @input="(e: Event) => updateStayWindow(idx, 'until', (e.target as HTMLInputElement).value)" />
+                  <Label :for="`promo-create-sw-until-${idx}`" class="text-xs">Until</Label>
+                  <Input
+                    :id="`promo-create-sw-until-${idx}`"
+                    :model-value="window.until ?? ''"
+                    type="date"
+                    :aria-label="`Stay window ${idx + 1} check-in end date`"
+                    @input="(e: Event) => updateStayWindow(idx, 'until', (e.target as HTMLInputElement).value)"
+                  />
                 </div>
                 <Button
                   type="button"
@@ -600,44 +730,44 @@ function submit() {
                   :aria-label="`Remove stay window ${idx + 1}`"
                   @click="removeStayWindow(idx)"
                 >
-                  <Icon name="lucide:trash-2" class="size-3.5" />
+                  <Icon name="lucide:trash-2" class="size-3.5" aria-hidden="true" />
                 </Button>
-              </div>
+              </fieldset>
             </div>
           </div>
         </div>
 
         <div class="space-y-2">
-          <Label>Usage limit <span class="text-muted-foreground font-normal">(optional)</span></Label>
+          <Label for="promo-create-usage-limit">
+            Usage limit <span class="text-muted-foreground font-normal">(optional)</span>
+          </Label>
           <Input
+            id="promo-create-usage-limit"
             :model-value="usageLimit === null ? '' : String(usageLimit)"
             type="number"
             min="1"
             placeholder="Unlimited"
+            aria-describedby="promo-create-usage-limit-help"
             @input="(e: Event) => { const v = (e.target as HTMLInputElement).value; usageLimit = v === '' ? null : Number(v) }"
           />
+          <p id="promo-create-usage-limit-help" class="text-xs text-muted-foreground">
+            Leave blank for unlimited redemptions.
+          </p>
         </div>
 
         <div class="flex items-center justify-between gap-3 rounded-md border p-3">
           <div>
-            <p class="text-sm font-medium">
-              Active
-            </p>
-            <p class="text-xs text-muted-foreground">
+            <Label for="promo-create-active" class="text-sm font-medium">Active</Label>
+            <p id="promo-create-active-help" class="text-xs text-muted-foreground">
               Inactive codes cannot be redeemed.
             </p>
           </div>
-          <button
-            type="button"
-            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            :class="active ? 'bg-primary' : 'bg-input'"
-            @click="active = !active"
-          >
-            <span
-              class="pointer-events-none block size-4 rounded-full bg-background shadow-lg ring-0 transition-transform"
-              :class="active ? 'translate-x-4' : 'translate-x-0'"
-            />
-          </button>
+          <Switch
+            id="promo-create-active"
+            :model-value="active"
+            aria-describedby="promo-create-active-help"
+            @update:model-value="(v) => active = v"
+          />
         </div>
       </form>
 
