@@ -1,8 +1,15 @@
 import { ref } from 'vue'
 
-export type PromoCodeDiscountType = '%' | 'fixed'
+export type PromoCodeDiscountType = '%' | 'fixed' | 'free_upsell'
 
 export type PromoCodeStatus = 'active' | 'inactive' | 'expired'
+
+// A single date range — both ends are nullable so users can specify
+// only a start, only an end, both, or neither (always open).
+export interface PromoCodeWindow {
+  from: string | null
+  until: string | null
+}
 
 export interface PromoCode {
   id: string
@@ -12,8 +19,14 @@ export interface PromoCode {
   value: number
   currency?: string | null
   active: boolean
-  validFrom?: string | null
-  validUntil?: string | null
+  // Booking windows — date ranges during which a guest may CREATE a
+  // reservation that uses this code. Empty array = no booking-time
+  // constraint. The code is bookable when NOW falls inside ANY window.
+  bookingWindows?: PromoCodeWindow[]
+  // Stay windows — check-in date ranges that this code applies to.
+  // Empty array = no stay-date constraint. The code applies to stays
+  // whose check-in date falls inside ANY window.
+  stayWindows?: PromoCodeWindow[]
   usageLimit?: number | null
   redemptionCount: number
   createdAt: string
@@ -21,6 +34,11 @@ export interface PromoCode {
   // Present when this promo code backs a Platform Console pricing override.
   // Joins the code to its PricingOverride record.
   internalOverrideId?: string
+  // Free Upsell discount type — IDs of UpsellService records that the guest
+  // gets at no charge when redeeming this code. `value` is unused in this mode.
+  freeUpsellServiceIds?: string[]
+  // Listings the promo code applies to. Empty = applies to all listings.
+  listingIds?: string[]
 }
 
 // Analytics scaffold — per-usage-site counter.
@@ -43,12 +61,33 @@ export const promoCodes = ref<PromoCode[]>([
     value: 10,
     currency: null,
     active: true,
-    validFrom: null,
-    validUntil: null,
+    bookingWindows: [],
+    stayWindows: [],
     usageLimit: null,
     redemptionCount: 3,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'promo-freespa',
+    code: 'FREESPA',
+    description: 'Free in-villa spa treatment for direct bookings',
+    discountType: 'free_upsell',
+    value: 0,
+    currency: null,
+    active: true,
+    bookingWindows: [
+      { from: '2026-02-10T00:00:00Z', until: '2026-12-31T00:00:00Z' },
+    ],
+    stayWindows: [
+      { from: '2026-06-01T00:00:00Z', until: '2026-09-30T00:00:00Z' },
+    ],
+    usageLimit: 50,
+    redemptionCount: 0,
+    createdAt: '2026-02-10T00:00:00Z',
+    updatedAt: '2026-02-10T00:00:00Z',
+    freeUpsellServiceIds: ['svc-003'],
+    listingIds: ['lst-1', 'lst-4'],
   },
 ])
 
@@ -66,16 +105,48 @@ export function generatePromoId(): string {
   return `promo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-export function isPromoCodeExpired(code: PromoCode, now: Date = new Date()): boolean {
-  if (!code.validUntil)
+// True when `now` falls inside the window. A window with both ends null
+// is treated as "always open" (matches an unbounded window).
+function isWindowOpenAt(window: PromoCodeWindow, now: Date): boolean {
+  if (window.from && new Date(window.from).getTime() > now.getTime())
     return false
-  return new Date(code.validUntil).getTime() < now.getTime()
+  if (window.until && new Date(window.until).getTime() < now.getTime())
+    return false
+  return true
+}
+
+// True when ANY window in the list is currently open. Empty list = no
+// constraint (treat as "any time is OK").
+function isAnyWindowOpen(windows: PromoCodeWindow[] | undefined, now: Date): boolean {
+  if (!windows || windows.length === 0)
+    return true
+  return windows.some(w => isWindowOpenAt(w, now))
+}
+
+// True when EVERY window has already ended (i.e. ALL untils are in the past).
+// Empty list = not expired.
+function areAllWindowsExpired(windows: PromoCodeWindow[] | undefined, now: Date): boolean {
+  if (!windows || windows.length === 0)
+    return false
+  return windows.every((w) => {
+    if (!w.until)
+      return false
+    return new Date(w.until).getTime() < now.getTime()
+  })
+}
+
+// Back-compat aliases — kept so callers that import the old names still work.
+export function isPromoCodeExpired(code: PromoCode, now: Date = new Date()): boolean {
+  return areAllWindowsExpired(code.bookingWindows, now)
+    && areAllWindowsExpired(code.stayWindows, now)
 }
 
 export function isPromoCodeStarted(code: PromoCode, now: Date = new Date()): boolean {
-  if (!code.validFrom)
-    return true
-  return new Date(code.validFrom).getTime() <= now.getTime()
+  // Started = at least one booking window is open AND at least one stay
+  // window is open (either may be empty = no constraint).
+  const bookingOpen = isAnyWindowOpen(code.bookingWindows, now)
+  const stayOpen = isAnyWindowOpen(code.stayWindows, now)
+  return bookingOpen && stayOpen
 }
 
 export function getPromoCodeStatus(code: PromoCode, now: Date = new Date()): PromoCodeStatus {
@@ -91,5 +162,48 @@ export function getPromoCodeStatus(code: PromoCode, now: Date = new Date()): Pro
 export function formatPromoDiscount(code: PromoCode): string {
   if (code.discountType === '%')
     return `${code.value}%`
+  if (code.discountType === 'free_upsell')
+    return 'Free Upsell'
   return `${code.value}`
+}
+
+export function getPromoCodeTypeLabel(code: PromoCode): string {
+  if (code.discountType === '%')
+    return 'Percentage'
+  if (code.discountType === 'fixed')
+    return 'Fixed amount'
+  return 'Free Upsell'
+}
+
+function fmt(iso: string | null | undefined): string {
+  if (!iso)
+    return '—'
+  return new Date(iso).toLocaleDateString()
+}
+
+// Format a single window for display. Used by Detail + Table cells.
+export function formatPromoWindow(window: PromoCodeWindow): string {
+  const from = window.from
+  const until = window.until
+  if (from && until)
+    return `${fmt(from)} → ${fmt(until)}`
+  if (from)
+    return `From ${fmt(from)}`
+  if (until)
+    return `Until ${fmt(until)}`
+  return 'Always'
+}
+
+// Compact per-window prefix used inside the Table (e.g. "Book 6/1 → 8/31").
+// Returns null if neither end is set (window is fully unbounded).
+export function formatPromoWindowCompact(window: PromoCodeWindow): string | null {
+  const f = window.from ? new Date(window.from).toLocaleDateString() : null
+  const u = window.until ? new Date(window.until).toLocaleDateString() : null
+  if (f && u)
+    return `${f} → ${u}`
+  if (f)
+    return `from ${f}`
+  if (u)
+    return `until ${u}`
+  return null
 }

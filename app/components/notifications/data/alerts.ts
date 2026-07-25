@@ -37,6 +37,12 @@ export type AlertType
     | 'GUEST_GUIDE_OPENED'
     | 'GUEST_GUIDE_SUBMITTED'
     | 'KEY_NOT_RETURNED'
+    | 'OWNER_STATEMENT_DRAFT_READY'
+    | 'OWNER_STATEMENT_PUBLISHED'
+    | 'OWNER_STAY_CONFIRMED'
+    | 'OWNER_STAY_CONFLICT'
+    | 'OWNER_ISSUE_RAISED'
+    | 'OWNER_USE_CAP_EXCEEDED'
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -93,6 +99,12 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   GUEST_GUIDE_OPENED: 'Guest Guide - Opened',
   GUEST_GUIDE_SUBMITTED: 'Guest Guide - Form Submitted',
   KEY_NOT_RETURNED: 'Key - Not Returned',
+  OWNER_STATEMENT_DRAFT_READY: 'Owner Statement Draft Ready',
+  OWNER_STATEMENT_PUBLISHED: 'Owner Statement Published',
+  OWNER_STAY_CONFIRMED: 'Owner Stay Confirmed',
+  OWNER_STAY_CONFLICT: 'Owner Stay Conflict',
+  OWNER_ISSUE_RAISED: 'Owner Statement Issue Raised',
+  OWNER_USE_CAP_EXCEEDED: 'Owner Use Cap Exceeded',
 }
 
 export const alertIcons: Record<AlertType, string> = {
@@ -134,6 +146,12 @@ export const alertIcons: Record<AlertType, string> = {
   GUEST_GUIDE_OPENED: 'i-lucide-book-open-check',
   GUEST_GUIDE_SUBMITTED: 'i-lucide-book-open-check',
   KEY_NOT_RETURNED: 'i-lucide-key-round',
+  OWNER_STATEMENT_DRAFT_READY: 'i-lucide-file-text',
+  OWNER_STATEMENT_PUBLISHED: 'i-lucide-file-check',
+  OWNER_STAY_CONFIRMED: 'i-lucide-calendar-check',
+  OWNER_STAY_CONFLICT: 'i-lucide-calendar-x',
+  OWNER_ISSUE_RAISED: 'i-lucide-message-square-warning',
+  OWNER_USE_CAP_EXCEEDED: 'i-lucide-triangle-alert',
 }
 
 export const alertRouteMap: Partial<Record<AlertType, string>> = {
@@ -175,6 +193,12 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   GUEST_GUIDE_OPENED: '/guest-guides',
   GUEST_GUIDE_SUBMITTED: '/guest-guides',
   KEY_NOT_RETURNED: '/key-management',
+  OWNER_STATEMENT_DRAFT_READY: '/owner-statements',
+  OWNER_STATEMENT_PUBLISHED: '/owner-portal/statements',
+  OWNER_STAY_CONFIRMED: '/owner-portal/stays',
+  OWNER_STAY_CONFLICT: '/owner-portal/stays',
+  OWNER_ISSUE_RAISED: '/owner-statements',
+  OWNER_USE_CAP_EXCEEDED: '/owners',
 }
 
 export function getDescription(type: AlertType, context: Record<string, any>): string {
@@ -243,6 +267,18 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.guestName || 'Guest'} left a ${context.rating ? `${context.rating}-star ` : ''}review for ${context.listingName || 'property'}.`
     case 'REVIEW_HOST_DUE':
       return `Host review for ${context.guestName || 'guest'} at ${context.listingName || 'property'} is due in ${context.daysRemaining || '?'} days.`
+    case 'OWNER_STATEMENT_DRAFT_READY':
+      return `Owner statement for ${context.period || 'the selected period'} is ready for review.`
+    case 'OWNER_STATEMENT_PUBLISHED':
+      return `Owner statement for ${context.period || 'the selected period'} is now available.`
+    case 'OWNER_STAY_CONFIRMED':
+      return `Owner stay${context.modified ? ' updated' : ' confirmed'}${context.checkIn && context.checkOut ? ` for ${context.checkIn} to ${context.checkOut}` : ''}.`
+    case 'OWNER_STAY_CONFLICT':
+      return `Owner stay request conflicts with ${context.conflicts?.length || 0} existing calendar item(s).`
+    case 'OWNER_ISSUE_RAISED':
+      return `An issue was raised on owner statement ${context.statementId || 'statement'}.`
+    case 'OWNER_USE_CAP_EXCEEDED':
+      return `Owner use is projected at ${context.projectedNights ?? 0} nights, above the ${context.cap ?? 0}-night annual cap.`
     case 'KEY_NOT_RETURNED':
       return `${context.key_label || 'Key'} at ${context.listing_name || 'property'} held by ${context.staff_name || 'staff'} is ${context.overdue_hours ?? '?'}h overdue.`
     default:

@@ -1,11 +1,11 @@
 import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
 import type { Booking } from '~/components/listings/data/listings'
-import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
+import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import { cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
 import { mockUpsellOrders } from '~/components/upsells/data/upsell-orders'
 
-export type CalendarEventType = 'guest_stay' | 'cleaning' | 'task' | 'upsell'
+export type CalendarEventType = 'guest_stay' | 'owner_stay' | 'cleaning' | 'task' | 'upsell'
 
 export interface CalendarEvent {
   id: string
@@ -36,6 +36,7 @@ export const TIME_SLOT_INTERVAL = 2 // 2-hour labels keep the grid light
 
 export const eventTypeLabels: Record<CalendarEventType, string> = {
   guest_stay: 'Guest stay',
+  owner_stay: 'Owner stay',
   cleaning: 'Cleaning',
   task: 'Task',
   upsell: 'Upsell',
@@ -43,6 +44,7 @@ export const eventTypeLabels: Record<CalendarEventType, string> = {
 
 export const eventTypeTones: Record<CalendarEventType, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   guest_stay: 'default',
+  owner_stay: 'secondary',
   cleaning: 'default',
   task: 'outline',
   upsell: 'secondary',
@@ -83,6 +85,28 @@ export function getCalendarListings(): CalendarListing[] {
   }))
 }
 
+export function getMonthGrid(anchorDate = new Date()) {
+  const start = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1)
+  // Snap to Monday.
+  const dayOfWeek = start.getDay()
+  const offset = (dayOfWeek + 6) % 7
+  start.setDate(start.getDate() - offset)
+  start.setHours(0, 0, 0, 0)
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    const month = date.getMonth()
+    return {
+      key: formatLocalDateKey(date),
+      label: date.toLocaleDateString('en-US', { day: 'numeric' }),
+      weekday: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      date,
+      inMonth: month === anchorDate.getMonth(),
+    }
+  })
+}
+
 export function getWeekDays(anchorDate = new Date()) {
   const start = new Date(anchorDate)
   const day = start.getDay()
@@ -94,7 +118,7 @@ export function getWeekDays(anchorDate = new Date()) {
     const date = new Date(start)
     date.setDate(start.getDate() + index)
     return {
-      key: date.toISOString().slice(0, 10),
+      key: formatLocalDateKey(date),
       label: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
       date,
     }
@@ -168,6 +192,25 @@ export function buildGuestStayEvents(booking: Booking, listing: CalendarListing,
   }
 
   return events
+}
+
+export function buildOwnerStayEvents(stays: OwnerStay[]): CalendarEvent[] {
+  return stays
+    .filter(stay => stay.status === 'active')
+    .map(stay => ({
+      id: `owner-stay-${stay.id}`,
+      listingId: stay.listingId,
+      listingName: getListingName(stay.listingId),
+      type: 'owner_stay',
+      title: stay.guestName,
+      start: toLocalDateTime(stay.checkIn, '00:00'),
+      end: toLocalDateTime(stay.checkOut, '00:00'),
+      guestName: stay.guestName,
+      status: stay.status,
+      notes: stay.notes,
+      source: 'owner',
+      colorIndex: getListingColorIndex(stay.listingId),
+    }))
 }
 
 export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, jobs?: CleaningJob[]) {
@@ -257,7 +300,7 @@ export function buildUpsellEvents(calendarListings: CalendarListing[]): Calendar
 
   return mockUpsellOrders
     .filter(order => order.serviceDate)
-    .map((order) => {
+    .map((order): CalendarEvent | null => {
       const listing = listingByName.get(order.listing)
       if (!listing)
         return null

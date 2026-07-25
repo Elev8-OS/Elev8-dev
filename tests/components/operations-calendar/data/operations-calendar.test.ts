@@ -13,7 +13,7 @@ describe('operations-calendar data', () => {
 
   it('produces correct guest stay night count', () => {
     const events = buildAllEvents()
-    const stayEvents = events.filter(e => e.type === 'guest_stay')
+    const stayEvents = events.filter(e => e.type === 'guest_stay' && e.listingId === 'lst-1')
 
     // lst-1 has 3 bookings: 4 + 3 + 5 nights = 12 stay blocks
     expect(stayEvents.length).toBe(12)

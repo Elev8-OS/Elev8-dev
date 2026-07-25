@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import type { PromoCode } from './data/promo-codes'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
-import type { PromoCode } from './data/promo-codes'
-import { formatPromoDiscount, getPromoCodeStatus } from './data/promo-codes'
 import { bookingWidgets } from '~/components/booking-widget/data/widgets'
+import { listings as allListings } from '~/components/listings/data/listings'
+import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { usePromoCodes } from '~/composables/usePromoCodes'
-
-const open = defineModel<boolean>('open', { default: false })
+import { formatPromoDiscount, formatPromoWindow, getPromoCodeStatus, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const props = defineProps<{
   promoCode: PromoCode | null
@@ -18,10 +18,13 @@ const emit = defineEmits<{
   deleted: [id: string]
 }>()
 
+const open = defineModel<boolean>('open', { default: false })
+
 const { getUsagesByCode, deletePromoCode } = usePromoCodes()
 
 const usages = computed(() => {
-  if (!props.promoCode) return []
+  if (!props.promoCode)
+    return []
   return getUsagesByCode(props.promoCode.id)
 })
 
@@ -35,24 +38,54 @@ const usagesWithLabel = computed(() => usages.value.map((link) => {
 
 const status = computed(() => props.promoCode ? getPromoCodeStatus(props.promoCode) : 'inactive')
 
-function formatDate(iso: string | null | undefined) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString()
-}
+const isFreeUpsell = computed(() => props.promoCode?.discountType === 'free_upsell')
+
+const freeUpsellServices = computed(() => {
+  if (!props.promoCode?.freeUpsellServiceIds)
+    return []
+  return props.promoCode.freeUpsellServiceIds
+    .map(id => mockUpsellServices.find(s => s.id === id))
+    .filter((s): s is NonNullable<typeof s> => s !== undefined)
+})
+
+const assignedListings = computed(() => {
+  if (!props.promoCode?.listingIds || props.promoCode.listingIds.length === 0)
+    return []
+  return props.promoCode.listingIds
+    .map(id => allListings.value.find(l => l.id === id))
+    .filter((l): l is NonNullable<typeof l> => l !== undefined)
+})
+
+const bookingWindows = computed(() => props.promoCode?.bookingWindows ?? [])
+const stayWindows = computed(() => props.promoCode?.stayWindows ?? [])
+
+const listingScopeLabel = computed(() => {
+  if (!props.promoCode)
+    return '—'
+  if (!props.promoCode.listingIds || props.promoCode.listingIds.length === 0)
+    return 'All listings'
+  if (assignedListings.value.length === 0)
+    return `${props.promoCode.listingIds.length} listing(s) — not found`
+  return `${assignedListings.value.length} listing${assignedListings.value.length === 1 ? '' : 's'}`
+})
 
 function formatDateTime(iso: string | null | undefined) {
-  if (!iso) return '—'
+  if (!iso)
+    return '—'
   return new Date(iso).toLocaleString()
 }
 
 function statusVariant() {
-  if (status.value === 'active') return 'default'
-  if (status.value === 'expired') return 'secondary'
+  if (status.value === 'active')
+    return 'default'
+  if (status.value === 'expired')
+    return 'secondary'
   return 'outline'
 }
 
 function onDelete() {
-  if (!props.promoCode) return
+  if (!props.promoCode)
+    return
   if (!window.confirm(`Delete code ${props.promoCode.code}? This cannot be undone.`))
     return
   deletePromoCode(props.promoCode.id)
@@ -64,7 +97,7 @@ function onDelete() {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent class="sm:max-w-lg">
+    <DialogContent class="sm:max-w-lg max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Promo code details</DialogTitle>
         <DialogDescription>{{ promoCode?.description || 'No description' }}</DialogDescription>
@@ -81,35 +114,75 @@ function onDelete() {
           <div class="grid grid-cols-2 gap-3 text-sm">
             <div>
               <p class="text-muted-foreground text-xs">
+                Type
+              </p>
+              <p class="font-medium">
+                {{ getPromoCodeTypeLabel(promoCode) }}
+              </p>
+            </div>
+            <div v-if="!isFreeUpsell">
+              <p class="text-muted-foreground text-xs">
                 Discount
               </p>
               <p class="font-medium">
                 {{ formatPromoDiscount(promoCode) }}<span v-if="promoCode.discountType === 'fixed' && promoCode.currency"> {{ promoCode.currency }}</span>
               </p>
             </div>
-            <div>
+            <div v-if="isFreeUpsell" class="col-span-2">
               <p class="text-muted-foreground text-xs">
-                Type
+                Free upsell services
               </p>
-              <p class="font-medium capitalize">
-                {{ promoCode.discountType === '%' ? 'Percentage' : 'Fixed amount' }}
+              <div v-if="freeUpsellServices.length > 0" class="mt-1 flex flex-wrap gap-1.5">
+                <Badge v-for="service in freeUpsellServices" :key="service.id" variant="secondary" class="gap-1">
+                  <Icon name="lucide:sparkles" class="size-3 text-primary" />
+                  {{ service.name }}
+                </Badge>
+              </div>
+              <p v-else class="text-sm text-muted-foreground italic">
+                No upsells selected
               </p>
             </div>
-            <div>
+            <div class="col-span-2">
               <p class="text-muted-foreground text-xs">
-                Valid from
+                Assigned listings
               </p>
               <p class="font-medium">
-                {{ formatDate(promoCode.validFrom) }}
+                {{ listingScopeLabel }}
               </p>
+              <div v-if="assignedListings.length > 0" class="mt-1 flex flex-wrap gap-1.5">
+                <Badge v-for="listing in assignedListings" :key="listing.id" variant="outline" class="gap-1">
+                  <Icon name="lucide:home" class="size-3" />
+                  <span class="truncate max-w-[200px]">{{ listing.name }}</span>
+                </Badge>
+              </div>
             </div>
             <div>
-              <p class="text-muted-foreground text-xs">
-                Valid until
+              <p class="text-muted-foreground text-xs flex items-center gap-1">
+                <Icon name="lucide:calendar-clock" class="size-3" />
+                Booking window
               </p>
-              <p class="font-medium">
-                {{ formatDate(promoCode.validUntil) }}
+              <p v-if="bookingWindows.length === 0" class="font-medium">
+                Any time
               </p>
+              <ul v-else class="mt-1 space-y-0.5">
+                <li v-for="(window, idx) in bookingWindows" :key="`bw-${idx}`" class="font-medium text-sm">
+                  {{ formatPromoWindow(window) }}
+                </li>
+              </ul>
+            </div>
+            <div>
+              <p class="text-muted-foreground text-xs flex items-center gap-1">
+                <Icon name="lucide:bed" class="size-3" />
+                Stay window
+              </p>
+              <p v-if="stayWindows.length === 0" class="font-medium">
+                Any check-in
+              </p>
+              <ul v-else class="mt-1 space-y-0.5">
+                <li v-for="(window, idx) in stayWindows" :key="`sw-${idx}`" class="font-medium text-sm">
+                  {{ formatPromoWindow(window) }}
+                </li>
+              </ul>
             </div>
             <div>
               <p class="text-muted-foreground text-xs">

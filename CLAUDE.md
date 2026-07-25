@@ -29,6 +29,7 @@
 - **Promo Codes** — Standalone promo code library (`/promo-codes`) reusable by booking widgets (and later the website builder) with per-source analytics scaffold
 - **Branding Settings** — Tenant-level mock branding at `/settings/branding` (primary logo + favicon + invoice logo, plus Guest Guide primary/background/text colors). Dashboard sidebar logo + dashboard favicon + Guest Guide logo/favicon/CSS variables; invoice renderer is out of scope
 - **Components Gallery** — All shadcn-vue component demos
+- **Owner Portal (Phase 1)** — Dedicated, white-labeled external portal for property owners. Tenant staff manage owners at `/owners` and `/owner-statements`; the brand-aware portal lives under `/owner-portal` with a mock email magic-link login, owner dashboard, published-statement archive, issue flag, and owner self-stay create/modify/cancel with conflict detection, optional annual cap warnings, and three mock sync states.
 
 ---
 

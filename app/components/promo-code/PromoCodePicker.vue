@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { formatPromoDiscount, getPromoCodeStatus } from './data/promo-codes'
 import { usePromoCodes } from '~/composables/usePromoCodes'
+import { formatPromoDiscount } from './data/promo-codes'
 
 const modelValue = defineModel<string[]>({ default: () => [] })
 
@@ -43,8 +43,10 @@ function isSelected(id: string) {
 
 const triggerLabel = computed(() => {
   const n = modelValue.value.length
-  if (n === 0) return 'Select promo codes'
-  if (n === 1) return '1 code selected'
+  if (n === 0)
+    return 'Select promo codes'
+  if (n === 1)
+    return '1 code selected'
   return `${n} codes selected`
 })
 

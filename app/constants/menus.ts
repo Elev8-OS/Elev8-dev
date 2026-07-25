@@ -73,9 +73,27 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
+        title: 'Owners',
+        icon: 'i-lucide-building-2',
+        link: '/owners',
+        new: true,
+      },
+      {
+        title: 'Owner Statements',
+        icon: 'i-lucide-file-chart-column',
+        link: '/owner-statements',
+        new: true,
+      },
+      {
         title: 'Review Hub',
         icon: 'i-lucide-message-square-text',
         link: '/reviews',
+        new: true,
+      },
+      {
+        title: 'Owner Portal (Demo)',
+        icon: 'i-lucide-external-link',
+        link: '/owner-portal/login',
         new: true,
       },
     ],

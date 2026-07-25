@@ -1,13 +1,13 @@
 import type { PromoCode, PromoCodeStatus, WidgetPromoCodeLink } from '~/components/promo-code/data/promo-codes'
+import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import {
   formatPromoDiscount,
   generatePromoId,
   getPromoCodeStatus,
   isPromoCodeExpired,
-  promoCodes as seedPromoCodes,
   widgetPromoCodeLinks as seedLinks,
+  promoCodes as seedPromoCodes,
 } from '~/components/promo-code/data/promo-codes'
-import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 
 export type PromoCodeDraft = Omit<PromoCode, 'id' | 'createdAt' | 'updatedAt' | 'redemptionCount'> & {
   redemptionCount?: number
@@ -77,15 +77,17 @@ export function usePromoCodes() {
       code: draft.code.trim().toUpperCase(),
       description: draft.description,
       discountType: draft.discountType,
-      value: draft.value,
-      currency: draft.currency ?? null,
+      value: draft.discountType === 'free_upsell' ? 0 : draft.value,
+      currency: draft.discountType === 'fixed' ? (draft.currency ?? null) : null,
       active: draft.active,
-      validFrom: draft.validFrom ?? null,
-      validUntil: draft.validUntil ?? null,
+      bookingWindows: (draft.bookingWindows ?? []).map(w => ({ from: w.from ?? null, until: w.until ?? null })),
+      stayWindows: (draft.stayWindows ?? []).map(w => ({ from: w.from ?? null, until: w.until ?? null })),
       usageLimit: draft.usageLimit ?? null,
       redemptionCount: draft.redemptionCount ?? 0,
       createdAt: now,
       updatedAt: now,
+      freeUpsellServiceIds: draft.discountType === 'free_upsell' ? (draft.freeUpsellServiceIds ?? []) : undefined,
+      listingIds: draft.listingIds ?? [],
     }
     codes.value = [code, ...codes.value]
     return code
@@ -96,14 +98,27 @@ export function usePromoCodes() {
     codes.value = codes.value.map((c) => {
       if (c.id !== id)
         return c
+      const nextType = patch.discountType ?? c.discountType
+      const nextValue = nextType === 'free_upsell' ? 0 : (patch.value ?? c.value)
+      const nextCurrency = nextType === 'fixed' ? (patch.currency ?? c.currency ?? null) : null
+      const nextBooking = patch.bookingWindows
+        ? patch.bookingWindows.map(w => ({ from: w.from ?? null, until: w.until ?? null }))
+        : (c.bookingWindows ?? [])
+      const nextStay = patch.stayWindows
+        ? patch.stayWindows.map(w => ({ from: w.from ?? null, until: w.until ?? null }))
+        : (c.stayWindows ?? [])
       updated = {
         ...c,
         ...patch,
         code: (patch.code ?? c.code).trim().toUpperCase(),
-        currency: patch.currency ?? c.currency ?? null,
-        validFrom: patch.validFrom ?? c.validFrom ?? null,
-        validUntil: patch.validUntil ?? c.validUntil ?? null,
+        discountType: nextType,
+        value: nextValue,
+        currency: nextCurrency,
+        bookingWindows: nextBooking,
+        stayWindows: nextStay,
         usageLimit: patch.usageLimit ?? c.usageLimit ?? null,
+        freeUpsellServiceIds: nextType === 'free_upsell' ? (patch.freeUpsellServiceIds ?? c.freeUpsellServiceIds ?? []) : undefined,
+        listingIds: patch.listingIds ?? c.listingIds ?? [],
         updatedAt: nowIso(),
       }
       return updated
@@ -125,6 +140,8 @@ export function usePromoCodes() {
       code: `${original.code} (Copy)`,
       active: false,
       redemptionCount: 0,
+      freeUpsellServiceIds: original.freeUpsellServiceIds ? [...original.freeUpsellServiceIds] : [],
+      listingIds: original.listingIds ? [...original.listingIds] : [],
     })
   }
 

@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import type { PromoCode } from '~/components/promo-code/data/promo-codes'
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
-import type { PromoCode } from '~/components/promo-code/data/promo-codes'
-import { usePromoCodes } from '~/composables/usePromoCodes'
-import PromoCodeTable from '~/components/promo-code/PromoCodeTable.vue'
 import PromoCodeCreateDialog from '~/components/promo-code/PromoCodeCreateDialog.vue'
-import PromoCodeEditDialog from '~/components/promo-code/PromoCodeEditDialog.vue'
 import PromoCodeDetailDialog from '~/components/promo-code/PromoCodeDetailDialog.vue'
+import PromoCodeEditDialog from '~/components/promo-code/PromoCodeEditDialog.vue'
+import PromoCodeTable from '~/components/promo-code/PromoCodeTable.vue'
+import { usePromoCodes } from '~/composables/usePromoCodes'
 
 definePageMeta({ layout: 'default' })
 
@@ -46,7 +46,8 @@ function onDuplicate(id: string) {
 
 function onDelete(id: string) {
   const code = filteredCodes.value.find(c => c.id === id)
-  if (!code) return
+  if (!code)
+    return
   if (!window.confirm(`Delete code ${code.code}? This cannot be undone.`))
     return
   deletePromoCode(id)
