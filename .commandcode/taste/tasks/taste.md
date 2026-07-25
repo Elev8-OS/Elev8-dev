@@ -1,0 +1,7 @@
+# tasks
+- For multi-task implementation plans, maintain a running progress ledger file (e.g. `.superpowers/sdd/progress.md`) with bullet points per task — status, commit hash, summary, concerns. Append after each task, never overwrite. Confidence: 0.80
+- For each task, write a `task-N-report.md` file with the same content as the in-conversation report (status, files changed, test results, commit hash, concerns). This preserves the trail even if the conversation is lost. Confidence: 0.75
+- Subagent reports should be terse: under 15 lines, with a leading `**Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT` followed by a one-line test summary, commit hash, report path, and any concerns. Confidence: 0.80
+- When a subagent's report file is missing or from a previous task, overwrite the report file with the correct task content before the next task starts. Confidence: 0.70
+- For complex multi-step tasks, maintain a `todo_write` list of all 20+ sub-tasks with status (pending/in-progress/completed) and update it as work progresses. Confidence: 0.75
+- When a subagent gets stuck or makes partial progress, recover by reading the report file, verifying what was actually done in the main checkout, finishing the work, and committing under the same commit hash expectation. Confidence: 0.75

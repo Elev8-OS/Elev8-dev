@@ -1,0 +1,16 @@
+# workflow
+- Push to GitHub after completing each feature chunk. Confidence: 0.88
+- Update CLAUDE.md alongside pushes to keep project context current. Confidence: 0.92
+- Commit first, then push (`git commit` → `git push`). Confidence: 0.70
+- Check git status (uncommitted/untracked) before pushing. Confidence: 0.65
+- Brainstorm and discuss design before implementation. Confidence: 0.75
+- Use the subagent-driven-development skill for multi-task plan execution: generate task briefs, dispatch implementer subagents with full context, verify with TDD (RED→GREEN), then run a reviewer/independent verification. Track progress in `.superpowers/sdd/progress.md` and commit task-by-task. Confidence: 0.85
+- Record the base commit hash (`git rev-parse HEAD`) before starting any multi-task plan so the final diff is unambiguous. Confidence: 0.80
+- After dispatching a subagent, verify its work independently by reading the report file, re-running the tests from the main checkout, and confirming only the listed files changed. Confidence: 0.80
+- When subagents time out or skip commits, manually verify the work in the main checkout (git status, run tests, commit if state is good). Confidence: 0.75
+- Distinguish pre-existing test failures from new ones by stashing changes and re-running - don't claim a regression is "not my fault" without actually verifying. Confidence: 0.85
+- Prefers configuring local MCP integrations via explicit JSON server configuration, including a named server and HTTP URL when the desktop application exposes an HTTP endpoint. Confidence: 0.80
+- For local desktop MCP servers, expects the desktop application to be running and the coding client to be restarted after adding the configuration. Confidence: 0.75
+- When implementing designs fetched from Figma Desktop MCP, target the Vue/Nuxt + TypeScript stack (specify `clientLanguages: "typescript,vue"` and `clientFrameworks: "nuxt,vue"` when calling the Figma MCP). Confidence: 0.80
+- When committing, only stage files touched by the current task — explicitly leave pre-existing modifications to unrelated files (e.g. taste/, other features, settings.json) out of the commit. Pre-existing changes are not part of the task's scope. Confidence: 0.85
+- Before writing the first commit in a session, run `git log --oneline -5` to match the repo's existing commit message style and prefix conventions. Confidence: 0.75
