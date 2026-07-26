@@ -14,6 +14,16 @@ const ALLOWED_NOTIFICATION_CHANNELS = new Set(
 )
 
 function normalizeNotifications(value: unknown, roleId: RoleId): Role['notifications'] {
+  // Run the canonical normalizer first so a fully valid payload (or a
+  // missing/invalid payload) lands on the role's defaults. Then, if the
+  // caller supplied a non-empty `channels` array that survived the
+  // strict sanitizer, preserve that channel override on top of the
+  // canonical defaults. This handles the brief's "empty alert types +
+  // email channel" save case: `normalizeRoleNotifications` would fall back
+  // to role defaults because the alert list is empty, but the role editor
+  // still needs to persist the user's chosen channel. Roles whose owner
+  // defaults are intentionally empty (e.g. `role-owner`) keep their empty
+  // alert list because the canonical defaults supply it.
   const normalized = normalizeRoleNotifications(value, roleId)
   if (!value || typeof value !== 'object')
     return normalized

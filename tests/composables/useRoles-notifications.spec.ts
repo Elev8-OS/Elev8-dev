@@ -60,7 +60,8 @@ describe('role notification persistence', () => {
   })
 
   it('migrates a stored role that predates notification settings', () => {
-    const legacyRole = JSON.parse(JSON.stringify(defaultRoles[0]))
+    const defaultAdmin = defaultRoles.find(role => role.id === 'role-admin')!
+    const legacyRole = JSON.parse(JSON.stringify(defaultAdmin))
     delete legacyRole.notifications
     const expectedWorkingHours = structuredClone(legacyRole.workingHours)
     const expectedPermissions = structuredClone(legacyRole.defaultPermissions)
