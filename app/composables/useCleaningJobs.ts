@@ -1,6 +1,7 @@
 import type { CleaningFilters, CleaningJob, CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
 import { cleanerOptions, cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
+import { useNotifications } from '~/composables/useNotifications'
 
 export function useCleaningJobs() {
   const jobs = useState<CleaningJob[]>('cleaning-jobs', () => cleaningJobs.value)
@@ -46,9 +47,10 @@ export function useCleaningJobs() {
     jobs.value = jobs.value.map(job => (job.id === id ? { ...job, ...patch } : job))
   }
 
-  function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string }) {
+  function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string, guestName?: string }) {
+    const { createGuestActivityAlert } = useNotifications()
     const scheduledAt = `${reservation.checkOut}T11:00:00+08:00`
-    return createJob({
+    const job = createJob({
       listingId: reservation.listingId,
       listingName: reservation.listingName,
       scheduledAt,
@@ -63,6 +65,16 @@ export function useCleaningJobs() {
       reservationId: reservation.id,
       recurrence: null,
     })
+
+    createGuestActivityAlert('GUEST_CHECKED_OUT', {
+      listing_id: reservation.listingId,
+      listing_name: reservation.listingName,
+      guest_name: reservation.guestName ?? 'Guest',
+      checkout_at: scheduledAt,
+      reservation_id: reservation.id,
+    })
+
+    return job
   }
 
   function resolveCleanerName(cleanerId: string | null) {
