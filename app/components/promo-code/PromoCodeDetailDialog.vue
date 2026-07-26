@@ -39,13 +39,31 @@ const status = computed(() => props.promoCode ? getPromoCodeStatus(props.promoCo
 
 const isFreeUpsell = computed(() => props.promoCode?.discountType === 'free_upsell')
 
-const freeUpsellServices = computed(() => {
-  if (!props.promoCode?.freeUpsellServiceIds)
+// Resolve selected item IDs back to their parent service + item, then
+// group by service so the detail view shows "Spa > Balinese Massage 60min"
+// style context instead of a flat list of item names.
+const freeUpsellGroups = computed(() => {
+  if (!props.promoCode?.freeUpsellItemIds)
     return []
-  return props.promoCode.freeUpsellServiceIds
-    .map(id => mockUpsellServices.find(s => s.id === id))
-    .filter((s): s is NonNullable<typeof s> => s !== undefined)
+  const groups: { service: typeof mockUpsellServices[number], items: typeof mockUpsellServices[number]['items'] }[] = []
+  for (const itemId of props.promoCode.freeUpsellItemIds) {
+    for (const service of mockUpsellServices) {
+      const item = service.items.find(i => i.id === itemId)
+      if (item) {
+        let group = groups.find(g => g.service.id === service.id)
+        if (!group) {
+          group = { service, items: [] }
+          groups.push(group)
+        }
+        group.items.push(item)
+        break
+      }
+    }
+  }
+  return groups
 })
+
+const freeUpsellTotal = computed(() => props.promoCode?.freeUpsellItemIds?.length ?? 0)
 
 const assignedListings = computed(() => {
   if (!props.promoCode?.listingIds || props.promoCode.listingIds.length === 0)
@@ -125,18 +143,31 @@ function onRequestDelete() {
             </div>
             <div v-if="isFreeUpsell" class="col-span-2">
               <p class="text-muted-foreground text-xs">
-                Free upsell services
+                Free upsell items
+                <span v-if="freeUpsellTotal > 0" class="text-foreground/70">({{ freeUpsellTotal }})</span>
               </p>
-              <ul v-if="freeUpsellServices.length > 0" class="mt-1 flex flex-wrap gap-1.5" role="list" aria-label="Free upsell services">
-                <li v-for="service in freeUpsellServices" :key="service.id">
-                  <Badge variant="secondary" class="gap-1">
-                    <Icon name="lucide:sparkles" class="size-3 text-primary" aria-hidden="true" />
-                    {{ service.name }}
-                  </Badge>
-                </li>
-              </ul>
-              <p v-else class="text-sm text-muted-foreground italic">
-                No upsells selected
+              <div v-if="freeUpsellGroups.length > 0" class="mt-1 space-y-2" role="list" aria-label="Free upsell items">
+                <div
+                  v-for="group in freeUpsellGroups"
+                  :key="group.service.id"
+                  class="rounded-md border bg-muted/30 p-2"
+                  role="listitem"
+                >
+                  <p class="text-xs font-medium text-muted-foreground">
+                    {{ group.service.name }}
+                  </p>
+                  <ul class="mt-1 flex flex-wrap gap-1.5">
+                    <li v-for="item in group.items" :key="item.id">
+                      <Badge variant="secondary" class="gap-1">
+                        <Icon name="lucide:sparkles" class="size-3 text-primary" aria-hidden="true" />
+                        {{ item.name }}
+                      </Badge>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <p v-else class="text-sm text-muted-foreground italic mt-1">
+                No upsell items selected
               </p>
             </div>
             <div class="col-span-2">

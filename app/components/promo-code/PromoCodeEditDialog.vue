@@ -28,12 +28,13 @@ const bookingWindows = ref<PromoCodeWindow[]>([])
 const stayWindows = ref<PromoCodeWindow[]>([])
 const usageLimit = ref<number | null>(null)
 const active = ref(true)
-const freeUpsellServiceIds = ref<string[]>([])
+const freeUpsellItemIds = ref<string[]>([])
 const listingIds = ref<string[]>([])
 
 // Search-state refs must be declared before hydrate() because that
 // function clears them on entry.
 const freeUpsellSearch = ref('')
+const expandedServiceIds = ref<string[]>([])
 const listingSearch = ref('')
 
 const codeError = ref('')
@@ -59,7 +60,7 @@ function hydrate() {
   stayWindows.value = (c.stayWindows ?? []).map(w => ({ from: w.from ?? null, until: w.until ?? null }))
   usageLimit.value = c.usageLimit ?? null
   active.value = c.active
-  freeUpsellServiceIds.value = c.freeUpsellServiceIds ? [...c.freeUpsellServiceIds] : []
+  freeUpsellItemIds.value = c.freeUpsellItemIds ? [...c.freeUpsellItemIds] : []
   listingIds.value = c.listingIds ? [...c.listingIds] : []
   codeError.value = ''
   freeUpsellError.value = ''
@@ -68,8 +69,19 @@ function hydrate() {
 }
 
 watch(open, (isOpen) => {
-  if (isOpen)
+  if (isOpen) {
     hydrate()
+    // Auto-expand any service that already has at least one selected
+    // item so the user can see what's currently configured.
+    const expanded = new Set<string>()
+    for (const id of freeUpsellItemIds.value) {
+      for (const service of mockUpsellServices) {
+        if (service.items.some(item => item.id === id))
+          expanded.add(service.id)
+      }
+    }
+    expandedServiceIds.value = [...expanded]
+  }
 })
 
 watch(() => props.promoCode, () => {
@@ -85,43 +97,91 @@ function onCodeInput(event: Event) {
   codeError.value = ''
 }
 
-// ─── Free Upsell services picker ────────────────────────────────────────────
+// ─── Free Upsell items picker ──────────────────────────────────────────────
+// Selection is by UpsellItem (the unit the guest actually redeems). Items
+// are nested under their parent UpsellService in the picker so the user can
+// see context (e.g. "Spa > Balinese Massage 60min"). The picker shows
+// services as collapsible rows; clicking a service reveals its items.
 const freeUpsellOpen = ref(false)
-// freeUpsellSearch declared above (before hydrate)
+// freeUpsellSearch + expandedServiceIds declared above (before hydrate)
+
+const upsellItemIndex = computed(() => {
+  const map = new Map<string, { service: typeof mockUpsellServices[number], item: typeof mockUpsellServices[number]['items'][number] }>()
+  for (const service of mockUpsellServices) {
+    for (const item of service.items) {
+      map.set(item.id, { service, item })
+    }
+  }
+  return map
+})
 
 const filteredUpsellServices = computed(() => {
   const query = freeUpsellSearch.value.trim().toLowerCase()
   if (!query)
     return mockUpsellServices
   return mockUpsellServices.filter((s) => {
-    const haystack = `${s.name} ${s.category}`.toLowerCase()
-    return haystack.includes(query)
+    const serviceHaystack = `${s.name} ${s.category}`.toLowerCase()
+    if (serviceHaystack.includes(query))
+      return true
+    return s.items.some(item => `${item.name} ${item.description ?? ''}`.toLowerCase().includes(query))
   })
 })
 
-const selectedUpsellServices = computed(() =>
-  mockUpsellServices.filter(s => freeUpsellServiceIds.value.includes(s.id)),
+const selectedUpsellItems = computed(() =>
+  freeUpsellItemIds.value
+    .map(id => upsellItemIndex.value.get(id))
+    .filter((entry): entry is { service: typeof mockUpsellServices[number], item: typeof mockUpsellServices[number]['items'][number] } => entry !== undefined),
 )
 
-function toggleUpsellService(id: string) {
-  freeUpsellServiceIds.value = freeUpsellServiceIds.value.includes(id)
-    ? freeUpsellServiceIds.value.filter(x => x !== id)
-    : [...freeUpsellServiceIds.value, id]
+function toggleUpsellItem(id: string) {
+  freeUpsellItemIds.value = freeUpsellItemIds.value.includes(id)
+    ? freeUpsellItemIds.value.filter(x => x !== id)
+    : [...freeUpsellItemIds.value, id]
   freeUpsellError.value = ''
 }
 
-function clearUpsellServices() {
-  freeUpsellServiceIds.value = []
+function isServicePartiallySelected(service: typeof mockUpsellServices[number]) {
+  const hits = service.items.filter(item => freeUpsellItemIds.value.includes(item.id)).length
+  return hits > 0 && hits < service.items.length
+}
+
+function isServiceFullySelected(service: typeof mockUpsellServices[number]) {
+  return service.items.length > 0 && service.items.every(item => freeUpsellItemIds.value.includes(item.id))
+}
+
+function toggleService(service: typeof mockUpsellServices[number]) {
+  const ids = service.items.map(item => item.id)
+  if (isServiceFullySelected(service)) {
+    freeUpsellItemIds.value = freeUpsellItemIds.value.filter(id => !ids.includes(id))
+  }
+  else {
+    const set = new Set(freeUpsellItemIds.value)
+    for (const id of ids)
+      set.add(id)
+    freeUpsellItemIds.value = [...set]
+  }
+  freeUpsellError.value = ''
+}
+
+function toggleServiceExpand(serviceId: string) {
+  expandedServiceIds.value = expandedServiceIds.value.includes(serviceId)
+    ? expandedServiceIds.value.filter(x => x !== serviceId)
+    : [...expandedServiceIds.value, serviceId]
+}
+
+function clearUpsellItems() {
+  freeUpsellItemIds.value = []
+  expandedServiceIds.value = []
   freeUpsellError.value = ''
 }
 
 function upsellTriggerLabel() {
-  const n = freeUpsellServiceIds.value.length
+  const n = freeUpsellItemIds.value.length
   if (n === 0)
-    return 'Select upsell services'
+    return 'Select upsell items'
   if (n === 1)
-    return '1 service selected'
-  return `${n} services selected`
+    return '1 item selected'
+  return `${n} items selected`
 }
 
 watch(freeUpsellOpen, (open) => {
@@ -148,11 +208,18 @@ const filteredListings = computed(() => {
   let result = allListings.value
 
   // When this is a Free Upsell code with at least one selected upsell
-  // service, restrict to listings that are assigned to ALL selected
-  // services (intersection). Assigned listings are matched by name since
-  // UpsellService.assignedListings uses names, not IDs.
-  if (isFreeUpsell.value && freeUpsellServiceIds.value.length > 0) {
-    const selectedServices = mockUpsellServices.filter(s => freeUpsellServiceIds.value.includes(s.id))
+  // item, derive the parent services from those items and restrict to
+  // listings assigned to ALL parent services (intersection). Assigned
+  // listings are matched by name since UpsellService.assignedListings uses
+  // names, not IDs.
+  if (isFreeUpsell.value && freeUpsellItemIds.value.length > 0) {
+    const parentServiceIds = new Set<string>()
+    for (const id of freeUpsellItemIds.value) {
+      const entry = upsellItemIndex.value.get(id)
+      if (entry)
+        parentServiceIds.add(entry.service.id)
+    }
+    const selectedServices = mockUpsellServices.filter(s => parentServiceIds.has(s.id))
     const allowedNames = selectedServices.reduce<Set<string> | null>((acc, service) => {
       const names = new Set(service.assignedListings)
       if (acc === null)
@@ -183,7 +250,7 @@ const filteredListings = computed(() => {
 })
 
 const listingsFilteredByUpsell = computed(() =>
-  isFreeUpsell.value && freeUpsellServiceIds.value.length > 0,
+  isFreeUpsell.value && freeUpsellItemIds.value.length > 0,
 )
 
 function toggleListing(id: string) {
@@ -268,8 +335,8 @@ function submit() {
     nextTick(() => codeInputRef.value?.focus())
     return
   }
-  if (isFreeUpsell.value && freeUpsellServiceIds.value.length === 0) {
-    freeUpsellError.value = 'Select at least one upsell service for a Free Upsell code'
+  if (isFreeUpsell.value && freeUpsellItemIds.value.length === 0) {
+    freeUpsellError.value = 'Select at least one upsell item for a Free Upsell code'
     nextTick(() => upsellTriggerRef.value?.focus())
     return
   }
@@ -288,7 +355,7 @@ function submit() {
     bookingWindows: bookingWindows.value.map(w => ({ from: w.from || null, until: w.until || null })),
     stayWindows: stayWindows.value.map(w => ({ from: w.from || null, until: w.until || null })),
     usageLimit: usageLimit.value,
-    freeUpsellServiceIds: isFreeUpsell.value ? freeUpsellServiceIds.value : [],
+    freeUpsellItemIds: isFreeUpsell.value ? freeUpsellItemIds.value : [],
     listingIds: listingIds.value,
   })
 
@@ -381,10 +448,10 @@ function submit() {
           </Select>
         </div>
 
-        <!-- Free Upsell services picker -->
+        <!-- Free Upsell items picker -->
         <div v-if="isFreeUpsell" class="space-y-2">
           <Label for="promo-edit-upsell-trigger">
-            Free upsell services
+            Free upsell items
             <span class="text-muted-foreground font-normal">(required)</span>
           </Label>
           <Popover v-model:open="freeUpsellOpen">
@@ -399,8 +466,8 @@ function submit() {
               >
                 <span class="truncate">{{ upsellTriggerLabel() }}</span>
                 <div class="flex items-center gap-2">
-                  <Badge v-if="freeUpsellServiceIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]" :aria-label="`${freeUpsellServiceIds.length} selected`">
-                    {{ freeUpsellServiceIds.length }}
+                  <Badge v-if="freeUpsellItemIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]" :aria-label="`${freeUpsellItemIds.length} selected`">
+                    {{ freeUpsellItemIds.length }}
                   </Badge>
                   <Icon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 </div>
@@ -408,45 +475,91 @@ function submit() {
             </PopoverTrigger>
             <PopoverContent class="w-[420px] p-0" align="start" :side-offset="4">
               <div class="p-2 border-b">
-                <Input v-model="freeUpsellSearch" placeholder="Search upsell services..." class="h-8 text-sm" aria-label="Search upsell services" />
+                <Input v-model="freeUpsellSearch" placeholder="Search upsell services or items..." class="h-8 text-sm" aria-label="Search upsell services or items" />
               </div>
-              <Command>
-                <CommandList>
-                  <CommandEmpty>No upsell services found.</CommandEmpty>
-                  <CommandGroup>
-                    <CommandItem
-                      v-for="service in filteredUpsellServices"
-                      :key="service.id"
-                      :value="service.id"
-                      class="cursor-pointer"
-                      @select="() => toggleUpsellService(service.id)"
+              <div class="max-h-80 overflow-y-auto">
+                <p v-if="filteredUpsellServices.length === 0" class="px-3 py-6 text-center text-xs text-muted-foreground">
+                  No upsell services found.
+                </p>
+                <div
+                  v-for="service in filteredUpsellServices"
+                  :key="service.id"
+                  class="border-b last:border-b-0"
+                >
+                  <div class="flex w-full items-center gap-2 px-2 py-2">
+                    <button
+                      type="button"
+                      class="flex flex-1 items-center gap-2 text-left"
+                      :aria-label="`Toggle ${service.name}`"
+                      :aria-expanded="expandedServiceIds.includes(service.id) ? 'true' : 'false'"
+                      @click="toggleServiceExpand(service.id)"
                     >
-                      <div
-                        class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
-                        :class="freeUpsellServiceIds.includes(service.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
-                        role="checkbox"
-                        :aria-checked="freeUpsellServiceIds.includes(service.id) ? 'true' : 'false'"
-                        :aria-label="`Toggle ${service.name}`"
-                      >
-                        <Icon v-if="freeUpsellServiceIds.includes(service.id)" name="lucide:check" class="size-3" aria-hidden="true" />
-                      </div>
+                      <Icon
+                        name="lucide:chevron-right"
+                        class="size-3.5 shrink-0 text-muted-foreground transition-transform"
+                        :class="expandedServiceIds.includes(service.id) ? 'rotate-90' : ''"
+                        aria-hidden="true"
+                      />
                       <div class="flex-1 min-w-0">
                         <p class="text-sm font-medium truncate">
                           {{ service.name }}
                         </p>
                         <p class="text-xs text-muted-foreground truncate">
-                          {{ service.category }}
+                          {{ service.category }} · {{ service.items.length }} item{{ service.items.length === 1 ? '' : 's' }}
                         </p>
                       </div>
-                    </CommandItem>
-                  </CommandGroup>
-                </CommandList>
-              </Command>
+                    </button>
+                    <button
+                      type="button"
+                      class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                      :class="isServiceFullySelected(service) ? 'border-primary bg-primary text-primary-foreground' : isServicePartiallySelected(service) ? 'border-primary bg-primary/20 text-primary' : 'border-input'"
+                      role="checkbox"
+                      :aria-checked="isServiceFullySelected(service) ? 'true' : isServicePartiallySelected(service) ? 'mixed' : 'false'"
+                      :aria-label="`Select all items in ${service.name}`"
+                      @click="toggleService(service)"
+                    >
+                      <Icon v-if="isServiceFullySelected(service)" name="lucide:check" class="size-3" aria-hidden="true" />
+                      <span v-else-if="isServicePartiallySelected(service)" class="text-[10px] leading-none font-bold" aria-hidden="true">−</span>
+                    </button>
+                  </div>
+                  <ul v-if="expandedServiceIds.includes(service.id)" class="pb-1">
+                    <li
+                      v-for="item in service.items"
+                      :key="item.id"
+                      class="flex items-start gap-2 px-2 py-1.5 pl-9 hover:bg-muted/50"
+                    >
+                      <button
+                        type="button"
+                        class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                        :class="freeUpsellItemIds.includes(item.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                        role="checkbox"
+                        :aria-checked="freeUpsellItemIds.includes(item.id) ? 'true' : 'false'"
+                        :aria-label="`Toggle ${item.name}`"
+                        @click="toggleUpsellItem(item.id)"
+                      >
+                        <Icon v-if="freeUpsellItemIds.includes(item.id)" name="lucide:check" class="size-3" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        class="flex-1 min-w-0 text-left"
+                        @click="toggleUpsellItem(item.id)"
+                      >
+                        <p class="text-sm truncate">
+                          {{ item.name }}
+                        </p>
+                        <p v-if="item.description" class="text-xs text-muted-foreground line-clamp-2">
+                          {{ item.description }}
+                        </p>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
               <div class="flex items-center justify-between gap-2 border-t p-2">
-                <Button v-if="freeUpsellServiceIds.length > 0" type="button" variant="ghost" size="sm" class="h-6 text-xs" @click="clearUpsellServices">
+                <Button v-if="freeUpsellItemIds.length > 0" type="button" variant="ghost" size="sm" class="h-6 text-xs" @click="clearUpsellItems">
                   Clear
                 </Button>
-                <span v-else class="text-xs text-muted-foreground" aria-live="polite">{{ freeUpsellServiceIds.length }} selected</span>
+                <span v-else class="text-xs text-muted-foreground" aria-live="polite">No items selected</span>
                 <Button type="button" size="sm" class="h-7" @click="freeUpsellOpen = false">
                   Done
                 </Button>
@@ -454,16 +567,16 @@ function submit() {
             </PopoverContent>
           </Popover>
 
-          <ul v-if="selectedUpsellServices.length > 0" class="flex flex-wrap gap-1.5" role="list" aria-label="Selected upsell services">
-            <li v-for="service in selectedUpsellServices" :key="service.id">
+          <ul v-if="selectedUpsellItems.length > 0" class="flex flex-wrap gap-1.5" role="list" aria-label="Selected upsell items">
+            <li v-for="entry in selectedUpsellItems" :key="entry.item.id">
               <Badge variant="secondary" class="gap-1 pr-1">
                 <Icon name="lucide:sparkles" class="size-3 text-primary-foreground" aria-hidden="true" />
-                <span class="text-xs">{{ service.name }}</span>
+                <span class="text-xs">{{ entry.item.name }}</span>
                 <button
                   type="button"
                   class="ml-0.5 rounded-sm hover:bg-muted-foreground/20 p-0.5"
-                  :aria-label="`Remove ${service.name}`"
-                  @click="toggleUpsellService(service.id)"
+                  :aria-label="`Remove ${entry.item.name}`"
+                  @click="toggleUpsellItem(entry.item.id)"
                 >
                   <Icon name="lucide:x" class="size-3 text-primary-foreground" aria-hidden="true" />
                 </button>

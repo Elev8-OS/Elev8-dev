@@ -86,7 +86,7 @@ export function usePromoCodes() {
       redemptionCount: draft.redemptionCount ?? 0,
       createdAt: now,
       updatedAt: now,
-      freeUpsellServiceIds: draft.discountType === 'free_upsell' ? (draft.freeUpsellServiceIds ?? []) : undefined,
+      freeUpsellItemIds: draft.discountType === 'free_upsell' ? (draft.freeUpsellItemIds ?? []) : undefined,
       listingIds: draft.listingIds ?? [],
     }
     codes.value = [code, ...codes.value]
@@ -117,7 +117,7 @@ export function usePromoCodes() {
         bookingWindows: nextBooking,
         stayWindows: nextStay,
         usageLimit: patch.usageLimit ?? c.usageLimit ?? null,
-        freeUpsellServiceIds: nextType === 'free_upsell' ? (patch.freeUpsellServiceIds ?? c.freeUpsellServiceIds ?? []) : undefined,
+        freeUpsellItemIds: nextType === 'free_upsell' ? (patch.freeUpsellItemIds ?? c.freeUpsellItemIds ?? []) : undefined,
         listingIds: patch.listingIds ?? c.listingIds ?? [],
         updatedAt: nowIso(),
       }
@@ -140,7 +140,7 @@ export function usePromoCodes() {
       code: `${original.code} (Copy)`,
       active: false,
       redemptionCount: 0,
-      freeUpsellServiceIds: original.freeUpsellServiceIds ? [...original.freeUpsellServiceIds] : [],
+      freeUpsellItemIds: original.freeUpsellItemIds ? [...original.freeUpsellItemIds] : [],
       listingIds: original.listingIds ? [...original.listingIds] : [],
     })
   }
