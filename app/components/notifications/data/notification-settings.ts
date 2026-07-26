@@ -100,6 +100,21 @@ const SYSTEM_TYPES: AlertType[] = [
   'CALL_COMPLETED',
 ]
 
+// Subsets of SYSTEM_TYPES re-used by roles that should NOT receive every
+// system alert — e.g. Guest Experience Manager only needs calls + guest
+// guide signals, not channel/bridge/key/double-booking infrastructure alerts.
+const CALL_TYPES: AlertType[] = [
+  'CALL_INCOMING',
+  'CALL_MISSED',
+  'CALL_COMPLETED',
+]
+
+const GUEST_GUIDE_TYPES: AlertType[] = [
+  'GUEST_GUIDE_NOT_SENT',
+  'GUEST_GUIDE_OPENED',
+  'GUEST_GUIDE_SUBMITTED',
+]
+
 export const notificationCategories: NotificationCategoryDefinition[] = [
   {
     id: 'guest_activity',
@@ -194,11 +209,11 @@ const ROLE_DEFAULTS: Record<RoleId, RoleNotifications> = {
     ['in_app', 'email'],
   ),
   'role-guest-experience-manager': buildPolicy(
-    [...GUEST_ACTIVITY_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...SYSTEM_TYPES],
+    [...GUEST_ACTIVITY_TYPES, ...CALL_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...GUEST_GUIDE_TYPES],
     ['in_app', 'email'],
   ),
   'role-quality-manager': buildPolicy(
-    [...CLEANING_TYPES, ...TASK_TYPES, ...REVIEW_TYPES],
+    [...TASK_TYPES, ...REVIEW_TYPES],
     ['in_app', 'email'],
   ),
   'role-back-office': buildPolicy(
@@ -302,6 +317,11 @@ const ALERT_TYPE_CATEGORY_MAP: Map<AlertType, NotificationCategoryId> = (() => {
 })()
 
 export function getNotificationCategoryId(type: AlertType): NotificationCategoryId {
+  // OWNER_* types are intentionally absent from `notificationCategories` (owner
+  // activity lives in the owner portal), and any unknown/future AlertType will
+  // also miss the map. In both cases we fall back to 'system' — the role
+  // editor never surfaces these types anyway because they aren't in the
+  // category list, so this fallback is a safe default for routing/labels.
   return ALERT_TYPE_CATEGORY_MAP.get(type) ?? 'system'
 }
 
