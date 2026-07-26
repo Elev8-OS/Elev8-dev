@@ -4,43 +4,54 @@ import { getDefaultRoleNotifications } from '~/components/notifications/data/not
 import NotificationSettings from '~/components/users/NotificationSettings.vue'
 
 describe('notificationSettings', () => {
-  it('renders channels and excludes owner activity', () => {
+  it('renders one toggle per category and excludes owner activity', () => {
     const wrapper = mount(NotificationSettings, {
       props: {
         modelValue: getDefaultRoleNotifications('role-housekeeping'),
       },
     })
 
-    expect(wrapper.get('[data-testid="notification-channel-in_app"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="notification-alert-GUEST_CHECKED_OUT"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="notification-alert-OWNER_STAY_CONFIRMED"]').exists()).toBe(false)
+    // Housekeeping defaults include guest_activity, so the toggle is on.
+    expect(wrapper.get('[data-testid="notification-category-toggle-guest_activity"]').exists()).toBe(true)
+    // Owner Activity is intentionally absent from the role categories.
+    expect(wrapper.find('[data-testid="notification-category-toggle-owner_activity"]').exists()).toBe(false)
   })
 
-  it('emits an updated policy when an alert is toggled', async () => {
+  it('toggles an entire category on and emits an updated enabledAlertTypes list', async () => {
     const value = getDefaultRoleNotifications('role-housekeeping')
-    const wrapper = mount(NotificationSettings, { props: { modelValue: value } })
-    const checkout = wrapper.get('[data-testid="notification-alert-GUEST_CHECKED_OUT"]')
+    // Start with guest_activity disabled so the click turns it on.
+    value.enabledAlertTypes = value.enabledAlertTypes.filter(t => t !== 'GUEST_CHECKED_OUT')
 
-    await checkout.trigger('click')
+    const wrapper = mount(NotificationSettings, { props: { modelValue: value } })
+    const toggle = wrapper.get('[data-testid="notification-category-toggle-guest_activity"]')
+
+    await toggle.trigger('click')
     await flushPromises()
 
     const emitted = wrapper.emitted('update:modelValue')
     expect(emitted).toHaveLength(1)
-    expect(emitted![0][0]).toEqual(expect.objectContaining({
-      enabledAlertTypes: expect.not.arrayContaining(['GUEST_CHECKED_OUT']),
-    }))
-    expect(value.enabledAlertTypes).toContain('GUEST_CHECKED_OUT')
+    // The patch should add every alert in the guest_activity category, not just one.
+    const next = emitted![0][0] as { enabledAlertTypes: string[] }
+    expect(next.enabledAlertTypes).toContain('GUEST_CHECKED_OUT')
+    expect(next.enabledAlertTypes).toContain('GUEST_CHECKED_IN')
+    expect(next.enabledAlertTypes).toContain('GUEST_ARRIVAL_SOON')
   })
 
-  it('emits channel changes and does not mutate the prop object', async () => {
+  it('toggles a category off and removes every alert in that category from the emitted list', async () => {
     const value = getDefaultRoleNotifications('role-housekeeping')
-    const wrapper = mount(NotificationSettings, { props: { modelValue: value } })
+    expect(value.enabledAlertTypes).toContain('GUEST_CHECKED_OUT')
 
-    await wrapper.get('[data-testid="notification-channel-email"]').trigger('click')
+    const wrapper = mount(NotificationSettings, { props: { modelValue: value } })
+    const toggle = wrapper.get('[data-testid="notification-category-toggle-guest_activity"]')
+
+    await toggle.trigger('click')
     await flushPromises()
-    expect(wrapper.emitted('update:modelValue')![0][0]).toEqual(expect.objectContaining({
-      channels: expect.arrayContaining(['email']),
-    }))
-    expect(value.channels).not.toContain('email')
+
+    const emitted = wrapper.emitted('update:modelValue')![0][0] as { enabledAlertTypes: string[] }
+    expect(emitted.enabledAlertTypes).not.toContain('GUEST_CHECKED_OUT')
+    expect(emitted.enabledAlertTypes).not.toContain('GUEST_CHECKED_IN')
+    expect(emitted.enabledAlertTypes).not.toContain('GUEST_ARRIVAL_SOON')
+    // Prop is not mutated.
+    expect(value.enabledAlertTypes).toContain('GUEST_CHECKED_OUT')
   })
 })

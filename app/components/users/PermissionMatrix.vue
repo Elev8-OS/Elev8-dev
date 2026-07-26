@@ -56,6 +56,13 @@ function isChecked(module: PermissionModule, key: keyof ModulePermissions): bool
             <Icon name="lucide:smartphone" class="mr-2 size-4" />
             Mobile
           </TabsTrigger>
+          <TabsTrigger
+            value="notifications"
+            class="flex-1 rounded-none border-b-2 border-transparent py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+          >
+            <Icon name="lucide:bell" class="mr-2 size-4" />
+            Notifications
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" class="m-0">
@@ -175,6 +182,12 @@ function isChecked(module: PermissionModule, key: keyof ModulePermissions): bool
                 </button>
               </div>
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="notifications" class="m-0 p-6">
+          <div class="space-y-2">
+            <slot name="notifications" />
           </div>
         </TabsContent>
       </Tabs>

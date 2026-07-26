@@ -12,7 +12,7 @@ import { toast } from 'vue-sonner'
 import NotificationSettings from './NotificationSettings.vue'
 import PermissionMatrix from './PermissionMatrix.vue'
 import { useRoles } from '~/composables/useRoles'
-import type { RoleNotifications } from '~/components/notifications/data/notification-settings'
+import type { AlertType } from '~/components/notifications/data/alerts'
 import type { Role, RoleId, WeekDay } from '~/components/users/data/roles'
 import { WEEK_DAYS } from '~/components/users/data/roles'
 import type { ModulePermissions, PermissionModule } from '~/components/users/data/permissions'
@@ -54,18 +54,13 @@ function setPermissions(next: Record<PermissionModule, ModulePermissions>) {
   draft.value.defaultPermissions = next
 }
 
-function setNotifications(next: RoleNotifications) {
-  if (!draft.value)
-    return
-  draft.value.notifications = next
+function setEnabledAlertTypes(next: AlertType[]) {
+  if (!draft.value) return
+  draft.value.notifications.enabledAlertTypes = next
 }
 
 function handleSave() {
   if (!draft.value) return
-  if (draft.value.notifications.channels.length === 0) {
-    toast.error('Select at least one notification channel')
-    return
-  }
   updateRole(draft.value.id, {
     name: draft.value.name,
     description: draft.value.description,
@@ -168,17 +163,18 @@ function handleReset() {
             </Button>
           </div>
 
-          <!-- Right: permission matrix + notifications -->
-          <div class="space-y-6">
-            <PermissionMatrix
-              :permissions="draft.defaultPermissions"
-              @update:permissions="setPermissions"
-            />
-            <NotificationSettings
-              :model-value="draft.notifications"
-              @update:model-value="setNotifications"
-            />
-          </div>
+          <!-- Right: permission matrix (Dashboard / Mobile / Notifications) -->
+          <PermissionMatrix
+            :permissions="draft.defaultPermissions"
+            @update:permissions="setPermissions"
+          >
+            <template #notifications>
+              <NotificationSettings
+                :model-value="{ enabledAlertTypes: draft.notifications.enabledAlertTypes }"
+                @update:model-value="(next) => setEnabledAlertTypes(next.enabledAlertTypes as AlertType[])"
+              />
+            </template>
+          </PermissionMatrix>
         </div>
       </div>
 
