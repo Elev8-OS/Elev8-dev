@@ -1,11 +1,17 @@
-import { describe, expect, it } from 'vitest'
 import type { AlertType } from '~/components/notifications/data/alerts'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { alertDisplayLabels } from '~/components/notifications/data/alerts'
 import {
-  notificationCategories,
   getDefaultRoleNotifications,
   normalizeRoleNotifications,
+  notificationCategories,
 } from '~/components/notifications/data/notification-settings'
+import { defaultRoles } from '~/components/users/data/roles'
+import { useRoles } from '~/composables/useRoles'
+
+beforeEach(() => {
+  window.localStorage.clear()
+})
 
 describe('notification settings metadata', () => {
   it('defines guest checkout as a role-configurable alert', () => {
@@ -37,5 +43,85 @@ describe('notification settings metadata', () => {
       getDefaultRoleNotifications('role-housekeeping').enabledAlertTypes,
     )
     expect(normalized.channels).toEqual(['in_app', 'mobile'])
+  })
+})
+
+describe('role notification persistence', () => {
+  it('gives every default role notification channels', () => {
+    expect(defaultRoles).toHaveLength(16)
+    expect(defaultRoles.every(role => role.notifications.channels.length > 0)).toBe(true)
+  })
+
+  it('preserves the owner role intentionally empty alert-type defaults', () => {
+    const owner = defaultRoles.find(role => role.id === 'role-owner')!
+
+    expect(owner.notifications.enabledAlertTypes).toEqual([])
+    expect(owner.notifications.channels).toEqual(['in_app'])
+  })
+
+  it('migrates a stored role that predates notification settings', () => {
+    const legacyRole = JSON.parse(JSON.stringify(defaultRoles[0]))
+    delete legacyRole.notifications
+    const expectedWorkingHours = structuredClone(legacyRole.workingHours)
+    const expectedPermissions = structuredClone(legacyRole.defaultPermissions)
+    window.localStorage.setItem('elev8-tenant-roles', JSON.stringify([legacyRole]))
+
+    const { getRole } = useRoles()
+    const migrated = getRole(legacyRole.id)
+
+    expect(migrated?.notifications.channels).toContain('in_app')
+    expect(migrated?.workingHours).toEqual(expectedWorkingHours)
+    expect(migrated?.defaultPermissions).toEqual(expectedPermissions)
+  })
+
+  it('normalizes malformed stored notification settings', () => {
+    const defaultHousekeeping = defaultRoles.find(role => role.id === 'role-housekeeping')!
+    const malformedRole = JSON.parse(JSON.stringify(defaultHousekeeping))
+    malformedRole.notifications = {
+      enabledAlertTypes: ['NOT_A_REAL_ALERT'],
+      channels: ['pager'],
+    }
+    window.localStorage.setItem('elev8-tenant-roles', JSON.stringify([malformedRole]))
+
+    const { getRole } = useRoles()
+
+    expect(getRole(malformedRole.id)?.notifications).toEqual(
+      getDefaultRoleNotifications('role-housekeeping'),
+    )
+  })
+
+  it('normalizes malformed notification settings before saving a role', () => {
+    const { getRole, updateRole } = useRoles()
+    const role = getRole('role-housekeeping')!
+
+    updateRole(role.id, {
+      notifications: {
+        enabledAlertTypes: ['NOT_A_REAL_ALERT' as AlertType],
+        channels: ['pager' as never],
+      },
+    })
+
+    expect(getRole(role.id)?.notifications).toEqual(
+      getDefaultRoleNotifications('role-housekeeping'),
+    )
+    const persistedRoles = JSON.parse(window.localStorage.getItem('elev8-tenant-roles')!) as Array<{ id: string, notifications: unknown }>
+    expect(persistedRoles.find(persistedRole => persistedRole.id === role.id)?.notifications).toEqual(
+      getDefaultRoleNotifications('role-housekeeping'),
+    )
+  })
+
+  it('saves and resets notification settings with the role', () => {
+    const { getRole, updateRole, resetRoleToDefaults } = useRoles()
+    const role = getRole('role-housekeeping')!
+
+    updateRole(role.id, {
+      notifications: { enabledAlertTypes: [], channels: ['email'] },
+    })
+    expect(getRole(role.id)?.notifications.channels).toEqual(['email'])
+
+    resetRoleToDefaults(role.id)
+    expect(getRole(role.id)?.notifications.channels).toEqual(['in_app', 'mobile'])
+    expect(getRole(role.id)?.notifications.enabledAlertTypes)
+      .toContain('GUEST_CHECKED_OUT')
   })
 })

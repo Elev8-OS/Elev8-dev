@@ -1,5 +1,7 @@
 // app/components/users/data/roles.ts
+import type { RoleNotifications } from '~/components/notifications/data/notification-settings'
 import type { ModulePermissions, PermissionModule } from './permissions'
+import { getDefaultRoleNotifications } from '~/components/notifications/data/notification-settings'
 import { defaultPerms } from './permissions'
 
 export type RoleId
@@ -38,6 +40,7 @@ export interface Role {
   description: string
   workingHours: WorkingHours
   defaultPermissions: Record<PermissionModule, ModulePermissions>
+  notifications: RoleNotifications
 }
 
 type AccessLevel = 'rw' | 'r' | 'no'
@@ -205,6 +208,7 @@ export const defaultRoles: Role[] = [
     name: 'Admin',
     description: 'Tenant administrator with full access to every module, settings, and configuration.',
     workingHours: { scheduleType: 'flexible', days: ALL_DAYS },
+    notifications: getDefaultRoleNotifications('role-admin'),
     defaultPermissions: withMobile(DASHBOARD_FULL_ACCESS, MOBILE_FULL_ACCESS),
   },
   {
@@ -212,6 +216,7 @@ export const defaultRoles: Role[] = [
     name: 'General Manager',
     description: 'Oversees all daily operations of the properties. Has broad access to manage staff, financials, guest relations, and property maintenance.',
     workingHours: { scheduleType: 'flexible', days: ALL_DAYS },
+    notifications: getDefaultRoleNotifications('role-general-manager'),
     defaultPermissions: withMobile({
       dashboard: a('rw'),
       reservations: a('rw'),
@@ -239,6 +244,7 @@ export const defaultRoles: Role[] = [
     name: 'Listing Manager',
     description: 'Manages property listings on all booking platforms. Responsible for pricing, availability, and marketing content to maximize occupancy and revenue.',
     workingHours: { scheduleType: 'flexible', days: ALL_DAYS },
+    notifications: getDefaultRoleNotifications('role-listing-manager'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
       reservations: a('rw'),
@@ -266,6 +272,7 @@ export const defaultRoles: Role[] = [
     name: 'Guest Experience Manager',
     description: 'Ensures a five-star guest experience from check-in to check-out. Handles all guest communication, special requests, and resolves any issues that arise during their stay.',
     workingHours: { scheduleType: 'flexible', days: ALL_DAYS },
+    notifications: getDefaultRoleNotifications('role-guest-experience-manager'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
       reservations: a('rw'),
@@ -293,6 +300,7 @@ export const defaultRoles: Role[] = [
     name: 'Quality Manager',
     description: 'Responsible for upholding property standards. Conducts regular inspections, manages guest feedback, and coordinates with other teams to ensure consistent quality control.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-quality-manager'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
       reservations: a('r'),
@@ -320,6 +328,7 @@ export const defaultRoles: Role[] = [
     name: 'Back Office',
     description: 'Handles administrative tasks, data entry, and general support for management. Can access reports and company documents but has limited editing permissions.',
     workingHours: { scheduleType: 'fixed', startTime: '08:00', endTime: '17:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-back-office'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
       reservations: a('r'),
@@ -347,6 +356,7 @@ export const defaultRoles: Role[] = [
     name: 'Finance/HR',
     description: 'Manages payroll, invoicing, company expenses, and human resources tasks like onboarding and employee records. Has access to sensitive financial and employee data.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-finance-hr'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
       reservations: a('r'),
@@ -374,6 +384,7 @@ export const defaultRoles: Role[] = [
     name: 'Housekeeping Manager',
     description: 'Responsible for overseeing all housekeeping operations. Ensures properties are cleaned, prepared, and inspected to the highest standard before guest arrivals. Can manage cleaning schedules, assign tasks, and review reports.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-housekeeping-manager'),
     defaultPermissions: withMobile({
       dashboard: a('no'),
       reservations: a('r'),
@@ -401,6 +412,7 @@ export const defaultRoles: Role[] = [
     name: 'Housekeeping',
     description: 'Responsible for the cleaning and preparation of properties for guest arrivals. Can view cleaning schedules, report maintenance issues, and update property status.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: ALL_DAYS },
+    notifications: getDefaultRoleNotifications('role-housekeeping'),
     defaultPermissions: withMobile({}, MOBILE_HOUSEKEEPING),
   },
   {
@@ -408,6 +420,7 @@ export const defaultRoles: Role[] = [
     name: 'Gardener',
     description: 'Maintains the gardens, landscaping, and all outdoor areas of the properties. Can view work schedules and report on landscaping needs.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-gardener'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
   {
@@ -415,6 +428,7 @@ export const defaultRoles: Role[] = [
     name: 'Pool',
     description: 'Responsible for the cleaning, maintenance, and chemical balancing of all swimming pools. Can view maintenance schedules and log service reports.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-pool'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
   {
@@ -422,6 +436,7 @@ export const defaultRoles: Role[] = [
     name: 'Engineering',
     description: 'Oversees general property maintenance and repairs. Manages the maintenance team, assigns tasks, and tracks the completion of work orders.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-engineering'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
   {
@@ -429,6 +444,7 @@ export const defaultRoles: Role[] = [
     name: 'Electrician',
     description: 'Specialized role for handling all electrical installations, repairs, and safety checks. Can access and respond to electrical-specific maintenance requests.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-electrician'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
   {
@@ -436,6 +452,7 @@ export const defaultRoles: Role[] = [
     name: 'IT Team',
     description: 'Manages the company\'s technology infrastructure, including Wi-Fi, smart home devices, and software systems. Provides technical support to staff and guests.',
     workingHours: { scheduleType: 'flexible', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
+    notifications: getDefaultRoleNotifications('role-it-team'),
     defaultPermissions: withMobile({}, MOBILE_IT_TEAM),
   },
   {
@@ -443,6 +460,7 @@ export const defaultRoles: Role[] = [
     name: 'Laundry',
     description: 'Manages the collection, washing, drying, and distribution of linens and towels for all listings. Can view schedules and report on linen inventory levels.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-laundry'),
     defaultPermissions: withMobile({}, MOBILE_IT_TEAM),
   },
   {
@@ -450,6 +468,7 @@ export const defaultRoles: Role[] = [
     name: 'Owner',
     description: 'Property owner with high-level visibility into reservations and overall business performance. Can view guest reservations and stay activity, but does not manage daily operations, listings, payments, staff, or system configuration unless explicitly granted additional permissions.',
     workingHours: { scheduleType: 'flexible', days: WEEKDAY_DAYS },
+    notifications: getDefaultRoleNotifications('role-owner'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
       reservations: a('no'),
