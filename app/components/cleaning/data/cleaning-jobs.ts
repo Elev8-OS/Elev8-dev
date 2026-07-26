@@ -39,6 +39,8 @@ export interface CleaningJob {
   feedback?: CleaningFeedback | null
 }
 
+export type CleaningJobInput = Omit<CleaningJob, 'id' | 'feedback'>
+
 export interface CleaningFilters {
   listingIds: string[]
   cleanerIds: string[]
