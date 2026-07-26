@@ -9,8 +9,10 @@ import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { Input as TimeInput } from '~/components/ui/input'
 import { cn } from '@/lib/utils'
 import { toast } from 'vue-sonner'
+import NotificationSettings from './NotificationSettings.vue'
 import PermissionMatrix from './PermissionMatrix.vue'
 import { useRoles } from '~/composables/useRoles'
+import type { RoleNotifications } from '~/components/notifications/data/notification-settings'
 import type { Role, RoleId, WeekDay } from '~/components/users/data/roles'
 import { WEEK_DAYS } from '~/components/users/data/roles'
 import type { ModulePermissions, PermissionModule } from '~/components/users/data/permissions'
@@ -52,13 +54,24 @@ function setPermissions(next: Record<PermissionModule, ModulePermissions>) {
   draft.value.defaultPermissions = next
 }
 
+function setNotifications(next: RoleNotifications) {
+  if (!draft.value)
+    return
+  draft.value.notifications = next
+}
+
 function handleSave() {
   if (!draft.value) return
+  if (draft.value.notifications.channels.length === 0) {
+    toast.error('Select at least one notification channel')
+    return
+  }
   updateRole(draft.value.id, {
     name: draft.value.name,
     description: draft.value.description,
     workingHours: draft.value.workingHours,
     defaultPermissions: draft.value.defaultPermissions,
+    notifications: draft.value.notifications,
   })
   toast.success(`Role ${draft.value.name} saved`)
   emit('saved', draft.value)
@@ -81,7 +94,7 @@ function handleReset() {
       <SheetHeader class="px-6 pt-6 pb-4">
         <SheetTitle>{{ draft.name }}</SheetTitle>
         <SheetDescription>
-          Edit role metadata, working hours, and default permissions. Changes apply to new users assigned this role.
+          Edit role metadata, working hours, default permissions, and notification settings. Changes apply to new users assigned this role.
         </SheetDescription>
       </SheetHeader>
 
@@ -155,11 +168,15 @@ function handleReset() {
             </Button>
           </div>
 
-          <!-- Right: permission matrix -->
-          <div>
+          <!-- Right: permission matrix + notifications -->
+          <div class="space-y-6">
             <PermissionMatrix
               :permissions="draft.defaultPermissions"
               @update:permissions="setPermissions"
+            />
+            <NotificationSettings
+              :model-value="draft.notifications"
+              @update:model-value="setNotifications"
             />
           </div>
         </div>
