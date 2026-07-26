@@ -37,6 +37,9 @@ export type AlertType
     | 'GUEST_GUIDE_OPENED'
     | 'GUEST_GUIDE_SUBMITTED'
     | 'KEY_NOT_RETURNED'
+    | 'GUEST_CHECKED_IN'
+    | 'GUEST_CHECKED_OUT'
+    | 'GUEST_ARRIVAL_SOON'
     | 'OWNER_STATEMENT_DRAFT_READY'
     | 'OWNER_STATEMENT_PUBLISHED'
     | 'OWNER_STAY_CONFIRMED'
@@ -99,6 +102,9 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   GUEST_GUIDE_OPENED: 'Guest Guide - Opened',
   GUEST_GUIDE_SUBMITTED: 'Guest Guide - Form Submitted',
   KEY_NOT_RETURNED: 'Key - Not Returned',
+  GUEST_CHECKED_IN: 'Guest Checked In',
+  GUEST_CHECKED_OUT: 'Guest Checked Out',
+  GUEST_ARRIVAL_SOON: 'Guest Arrival Soon',
   OWNER_STATEMENT_DRAFT_READY: 'Owner Statement Draft Ready',
   OWNER_STATEMENT_PUBLISHED: 'Owner Statement Published',
   OWNER_STAY_CONFIRMED: 'Owner Stay Confirmed',
@@ -146,6 +152,9 @@ export const alertIcons: Record<AlertType, string> = {
   GUEST_GUIDE_OPENED: 'i-lucide-book-open-check',
   GUEST_GUIDE_SUBMITTED: 'i-lucide-book-open-check',
   KEY_NOT_RETURNED: 'i-lucide-key-round',
+  GUEST_CHECKED_IN: 'i-lucide-log-in',
+  GUEST_CHECKED_OUT: 'i-lucide-log-out',
+  GUEST_ARRIVAL_SOON: 'i-lucide-clock-3',
   OWNER_STATEMENT_DRAFT_READY: 'i-lucide-file-text',
   OWNER_STATEMENT_PUBLISHED: 'i-lucide-file-check',
   OWNER_STAY_CONFIRMED: 'i-lucide-calendar-check',
@@ -193,6 +202,9 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   GUEST_GUIDE_OPENED: '/guest-guides',
   GUEST_GUIDE_SUBMITTED: '/guest-guides',
   KEY_NOT_RETURNED: '/key-management',
+  GUEST_CHECKED_IN: '/inbox',
+  GUEST_CHECKED_OUT: '/inbox',
+  GUEST_ARRIVAL_SOON: '/inbox',
   OWNER_STATEMENT_DRAFT_READY: '/owner-statements',
   OWNER_STATEMENT_PUBLISHED: '/owner-portal/statements',
   OWNER_STAY_CONFIRMED: '/owner-portal/stays',
@@ -267,6 +279,12 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.guestName || 'Guest'} left a ${context.rating ? `${context.rating}-star ` : ''}review for ${context.listingName || 'property'}.`
     case 'REVIEW_HOST_DUE':
       return `Host review for ${context.guestName || 'guest'} at ${context.listingName || 'property'} is due in ${context.daysRemaining || '?'} days.`
+    case 'GUEST_CHECKED_IN':
+      return `${context.guest_name || 'Guest'} checked in at ${context.listing_name || 'property'}.`
+    case 'GUEST_CHECKED_OUT':
+      return `${context.guest_name || 'Guest'} checked out of ${context.listing_name || 'property'}. Housekeeping has been notified.`
+    case 'GUEST_ARRIVAL_SOON':
+      return `${context.guest_name || 'Guest'} arrives soon at ${context.listing_name || 'property'}.`
     case 'OWNER_STATEMENT_DRAFT_READY':
       return `Owner statement for ${context.period || 'the selected period'} is ready for review.`
     case 'OWNER_STATEMENT_PUBLISHED':

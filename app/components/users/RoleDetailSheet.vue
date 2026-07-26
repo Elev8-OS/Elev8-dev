@@ -9,8 +9,10 @@ import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { Input as TimeInput } from '~/components/ui/input'
 import { cn } from '@/lib/utils'
 import { toast } from 'vue-sonner'
+import NotificationSettings from './NotificationSettings.vue'
 import PermissionMatrix from './PermissionMatrix.vue'
 import { useRoles } from '~/composables/useRoles'
+import type { AlertType } from '~/components/notifications/data/alerts'
 import type { Role, RoleId, WeekDay } from '~/components/users/data/roles'
 import { WEEK_DAYS } from '~/components/users/data/roles'
 import type { ModulePermissions, PermissionModule } from '~/components/users/data/permissions'
@@ -52,6 +54,11 @@ function setPermissions(next: Record<PermissionModule, ModulePermissions>) {
   draft.value.defaultPermissions = next
 }
 
+function setEnabledAlertTypes(next: AlertType[]) {
+  if (!draft.value) return
+  draft.value.notifications.enabledAlertTypes = next
+}
+
 function handleSave() {
   if (!draft.value) return
   updateRole(draft.value.id, {
@@ -59,6 +66,7 @@ function handleSave() {
     description: draft.value.description,
     workingHours: draft.value.workingHours,
     defaultPermissions: draft.value.defaultPermissions,
+    notifications: draft.value.notifications,
   })
   toast.success(`Role ${draft.value.name} saved`)
   emit('saved', draft.value)
@@ -81,7 +89,7 @@ function handleReset() {
       <SheetHeader class="px-6 pt-6 pb-4">
         <SheetTitle>{{ draft.name }}</SheetTitle>
         <SheetDescription>
-          Edit role metadata, working hours, and default permissions. Changes apply to new users assigned this role.
+          Edit role metadata, working hours, default permissions, and notification settings. Changes apply to new users assigned this role.
         </SheetDescription>
       </SheetHeader>
 
@@ -155,13 +163,18 @@ function handleReset() {
             </Button>
           </div>
 
-          <!-- Right: permission matrix -->
-          <div>
-            <PermissionMatrix
-              :permissions="draft.defaultPermissions"
-              @update:permissions="setPermissions"
-            />
-          </div>
+          <!-- Right: permission matrix (Dashboard / Mobile / Notifications) -->
+          <PermissionMatrix
+            :permissions="draft.defaultPermissions"
+            @update:permissions="setPermissions"
+          >
+            <template #notifications>
+              <NotificationSettings
+                :model-value="{ enabledAlertTypes: draft.notifications.enabledAlertTypes }"
+                @update:model-value="(next) => setEnabledAlertTypes(next.enabledAlertTypes as AlertType[])"
+              />
+            </template>
+          </PermissionMatrix>
         </div>
       </div>
 

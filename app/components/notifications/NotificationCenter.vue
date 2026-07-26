@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Alert } from '~/components/notifications/data/alerts'
 import type { NotificationKindFilter, SeverityFilter } from '~/composables/useNotifications'
+import { getNotificationKind } from '~/composables/useNotifications'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,30 +31,19 @@ const tabs: { label: string, value: SeverityFilter }[] = [
   { label: 'Info', value: 'info' },
 ]
 
-const cleaningTypes = new Set(['CLEANING_NOT_STARTED_IMMINENT', 'CLEANING_NOT_DONE_CHECKIN_PASSED', 'NO_HOUSEKEEPING_ASSIGNED'])
-const callTypes = new Set(['CALL_INCOMING', 'CALL_MISSED', 'CALL_COMPLETED'])
-const reviewTypes = new Set(['AIRBNB_REVIEW_GENERATED', 'AIRBNB_REVIEW_POSTED', 'AIRBNB_REVIEW_FAILED', 'REVIEW_GUEST_LEFT', 'REVIEW_HOST_DUE'])
-
 const kindTabs: { label: string, value: NotificationKindFilter }[] = [
   { label: 'All Types', value: 'all' },
   { label: 'System', value: 'system' },
   { label: 'Cleanings', value: 'cleaning' },
   { label: 'Calls', value: 'calls' },
   { label: 'Reviews', value: 'reviews' },
+  { label: 'Guest Activity', value: 'guest_activity' },
   { label: 'Upsell', value: 'upsell' },
 ]
 
 function alertKind(alert: Alert) {
-  if (cleaningTypes.has(alert.type)) {
-    return 'Cleaning'
-  }
-  if (callTypes.has(alert.type)) {
-    return 'Call'
-  }
-  if (reviewTypes.has(alert.type)) {
-    return 'Review'
-  }
-  return alert.type.startsWith('UPSELL_') ? 'Upsell' : 'System'
+  const kind = getNotificationKind(alert.type)
+  return kind === 'guest_activity' ? 'Guest Activity' : kind === 'cleaning' ? 'Cleaning' : kind === 'calls' ? 'Call' : kind === 'reviews' ? 'Review' : kind === 'upsell' ? 'Upsell' : 'System'
 }
 
 function handleNavigate(alert: Alert) {
