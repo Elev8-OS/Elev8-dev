@@ -1,25 +1,19 @@
 <script setup lang="ts">
 import type { Journey, MarketplaceTemplate } from '~/components/journeys/data/journeys'
-import type { WhatsAppTemplate } from '~/components/journeys/data/whatsapp-templates'
 import { toast } from 'vue-sonner'
 import { buildModifiedJourney } from '~/components/journeys/data/journeys'
-import { createEmptyTemplate } from '~/components/journeys/data/whatsapp-templates'
 
 definePageMeta({ layout: 'default' })
 
-type ViewState = 'list' | 'marketplace' | 'builder-prompt' | 'builder-generating' | 'builder-review' | 'editor' | 'templates-list' | 'template-builder'
+type ViewState = 'list' | 'marketplace' | 'builder-prompt' | 'builder-generating' | 'builder-review' | 'editor'
 
 const { saveJourney } = useJourneys()
-const { saveTemplate, submitTemplate } = useWhatsAppTemplates()
 
 const currentView = ref<ViewState>('list')
 const builderPrompt = ref('')
 const generatedJourney = ref<Journey | null>(null)
 const editingJourney = ref<Journey | null>(null)
 const builderSourceJourney = ref<Journey | null>(null)
-
-const editingTemplate = ref<WhatsAppTemplate | null>(null)
-const isSubmittingTemplate = ref(false)
 
 function goTo(view: ViewState) {
   currentView.value = view
@@ -142,52 +136,13 @@ function handlePromptBack() {
 function handleRegenerate() {
   goTo('builder-prompt')
 }
-
-// --- WhatsApp Templates ---
-function handleCreateTemplate() {
-  editingTemplate.value = createEmptyTemplate()
-  goTo('template-builder')
-}
-
-function handleEditTemplate(template: WhatsAppTemplate) {
-  editingTemplate.value = { ...template }
-  goTo('template-builder')
-}
-
-function handleSaveWhatsAppTemplate(template: WhatsAppTemplate) {
-  saveTemplate(template)
-  toast.success(`"${template.name}" saved`)
-}
-
-async function handleSubmitTemplate(template: WhatsAppTemplate) {
-  saveTemplate(template)
-  isSubmittingTemplate.value = true
-  const result = await submitTemplate(template.id)
-  isSubmittingTemplate.value = false
-  if (result.success) {
-    toast.success(`"${template.name}" submitted and approved`)
-    editingTemplate.value = null
-    goTo('templates-list')
-  }
-  else {
-    toast.error(`"${template.name}" was rejected`, { description: result.error })
-    const updated = useWhatsAppTemplates().getTemplateById(template.id)
-    if (updated)
-      editingTemplate.value = { ...updated }
-  }
-}
-
-function handleTemplateCancel() {
-  editingTemplate.value = null
-  goTo('templates-list')
-}
 </script>
 
 <template>
   <div class="flex flex-col h-full">
     <!-- Tabs shown when browsing lists -->
     <div
-      v-if="currentView === 'list' || currentView === 'templates-list'"
+      v-if="currentView === 'list'"
       class="flex items-center gap-1 border-b bg-background px-6 pt-4"
     >
       <button
@@ -198,17 +153,6 @@ function handleTemplateCancel() {
         Journeys
         <span
           v-if="currentView === 'list'"
-          class="absolute inset-x-3 -bottom-px h-0.5 bg-primary"
-        />
-      </button>
-      <button
-        class="relative px-3 py-2 text-sm font-medium transition-colors"
-        :class="currentView === 'templates-list' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
-        @click="goTo('templates-list')"
-      >
-        WhatsApp Templates
-        <span
-          v-if="currentView === 'templates-list'"
           class="absolute inset-x-3 -bottom-px h-0.5 bg-primary"
         />
       </button>
@@ -256,19 +200,6 @@ function handleTemplateCancel() {
         @back="handleEditorBack"
         @build-with-ai="handleEditorBuildAI"
         @save-template="handleSaveTemplate"
-      />
-      <JourneysWhatsAppTemplatesList
-        v-else-if="currentView === 'templates-list'"
-        @create-template="handleCreateTemplate"
-        @edit-template="handleEditTemplate"
-      />
-      <JourneysWhatsAppTemplateBuilder
-        v-else-if="currentView === 'template-builder' && editingTemplate"
-        :template="editingTemplate"
-        :is-submitting="isSubmittingTemplate"
-        @save="handleSaveWhatsAppTemplate"
-        @submit="handleSubmitTemplate"
-        @cancel="handleTemplateCancel"
       />
     </Transition>
   </div>

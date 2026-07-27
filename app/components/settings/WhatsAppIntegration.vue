@@ -4,6 +4,7 @@ import { toast } from 'vue-sonner'
 import { AsYouType } from 'libphonenumber-js'
 import { listings } from '~/components/listings/data/listings'
 import type { WhatsAppAccount } from '~/composables/useWhatsApp'
+import { createEmptyTemplate, type WhatsAppTemplate } from '~/components/journeys/data/whatsapp-templates'
 
 const {
   whatsappAccounts,
@@ -14,7 +15,7 @@ const {
   bulkAssign,
 } = useWhatsApp()
 
-const activeTab = ref<'connected' | 'unassigned'>('connected')
+const activeTab = ref<'connected' | 'unassigned' | 'templates'>('connected')
 
 // --- Connect form ---
 const connectDialogOpen = ref(false)
@@ -349,6 +350,50 @@ async function sendTestMessage() {
   toast.success(`Test message sent to ${testSendPhone.value}.`)
   closeTestSendDialog()
 }
+
+// --- Templates (WhatsApp template manager) ---
+const { saveTemplate, submitTemplate } = useWhatsAppTemplates()
+
+const templateBuilderOpen = ref(false)
+const editingTemplate = ref<WhatsAppTemplate | null>(null)
+const isSubmittingTemplate = ref(false)
+
+function openCreateTemplate() {
+  editingTemplate.value = createEmptyTemplate()
+  templateBuilderOpen.value = true
+}
+
+function openEditTemplate(template: WhatsAppTemplate) {
+  editingTemplate.value = { ...template }
+  templateBuilderOpen.value = true
+}
+
+function closeTemplateBuilder() {
+  templateBuilderOpen.value = false
+  editingTemplate.value = null
+}
+
+function handleSaveTemplate(template: WhatsAppTemplate) {
+  saveTemplate(template)
+  toast.success(`"${template.name}" saved`)
+}
+
+async function handleSubmitTemplate(template: WhatsAppTemplate) {
+  saveTemplate(template)
+  isSubmittingTemplate.value = true
+  const result = await submitTemplate(template.id)
+  isSubmittingTemplate.value = false
+  if (result.success) {
+    toast.success(`"${template.name}" submitted and approved`)
+    closeTemplateBuilder()
+  }
+  else {
+    toast.error(`"${template.name}" was rejected`, { description: result.error })
+    const updated = useWhatsAppTemplates().getTemplateById(template.id)
+    if (updated)
+      editingTemplate.value = { ...updated }
+  }
+}
 </script>
 
 <template>
@@ -386,6 +431,10 @@ async function sendTestMessage() {
         <TabsTrigger value="unassigned" class="gap-2">
           Listing Unassigned
           <Badge variant="secondary" class="rounded-full px-2 py-0 text-[10px]">{{ unassignedListings.length }}</Badge>
+        </TabsTrigger>
+        <TabsTrigger value="templates" class="gap-2">
+          <Icon name="lucide:message-square-text" class="size-3.5" />
+          Templates
         </TabsTrigger>
       </TabsList>
 
@@ -521,6 +570,15 @@ async function sendTestMessage() {
             <p class="text-sm text-muted-foreground">Every listing already has a WhatsApp account.</p>
           </div>
         </Empty>
+      </TabsContent>
+
+      <!-- Templates tab -->
+      <TabsContent value="templates">
+        <JourneysWhatsAppTemplatesList
+          compact
+          @create-template="openCreateTemplate"
+          @edit-template="openEditTemplate"
+        />
       </TabsContent>
     </Tabs>
 
@@ -992,6 +1050,20 @@ async function sendTestMessage() {
           <Button variant="outline" @click="deleteDialogOpen = false">Cancel</Button>
           <Button variant="destructive" @click="confirmDelete">Yes, Disconnect</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- WhatsApp Template Builder -->
+    <Dialog v-model:open="templateBuilderOpen">
+      <DialogContent class="max-h-[90vh] w-full max-w-4xl overflow-y-auto p-0 sm:max-w-4xl">
+        <JourneysWhatsAppTemplateBuilder
+          v-if="editingTemplate"
+          :template="editingTemplate"
+          :is-submitting="isSubmittingTemplate"
+          @save="handleSaveTemplate"
+          @submit="handleSubmitTemplate"
+          @cancel="closeTemplateBuilder"
+        />
       </DialogContent>
     </Dialog>
   </div>

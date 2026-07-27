@@ -34,9 +34,12 @@ export interface PromoCode {
   // Present when this promo code backs a Platform Console pricing override.
   // Joins the code to its PricingOverride record.
   internalOverrideId?: string
-  // Free Upsell discount type — IDs of UpsellService records that the guest
-  // gets at no charge when redeeming this code. `value` is unused in this mode.
-  freeUpsellServiceIds?: string[]
+  // Free Upsell discount type — IDs of UpsellItem records (nested under an
+  // UpsellService) that the guest gets at no charge when redeeming this
+  // code. Items are the unit of redemption: a service may contain multiple
+  // items (e.g. Spa has 60min / 90min / Body Scrub) and the operator picks
+  // which items are free. `value` is unused in this mode.
+  freeUpsellItemIds?: string[]
   // Listings the promo code applies to. Empty = applies to all listings.
   listingIds?: string[]
 }
@@ -86,7 +89,7 @@ export const promoCodes = ref<PromoCode[]>([
     redemptionCount: 0,
     createdAt: '2026-02-10T00:00:00Z',
     updatedAt: '2026-02-10T00:00:00Z',
-    freeUpsellServiceIds: ['svc-003'],
+    freeUpsellItemIds: ['itm-003a', 'itm-003b'],
     listingIds: ['lst-1', 'lst-4'],
   },
 ])

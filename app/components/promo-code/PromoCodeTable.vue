@@ -56,13 +56,13 @@ function statusColor(code: PromoCode) {
 
 const decoratedCodes = computed(() => codes.map((code) => {
   const isFreeUpsell = code.discountType === 'free_upsell'
-  const freeUpsellCount = code.freeUpsellServiceIds?.length ?? 0
+  const freeUpsellItemCount = code.freeUpsellItemIds?.length ?? 0
   const listingCount = code.listingIds?.length ?? 0
   const scopeLabel = listingCount === 0 ? 'All listings' : `${listingCount} listing${listingCount === 1 ? '' : 's'}`
   return {
     ...code,
     isFreeUpsell,
-    freeUpsellCount,
+    freeUpsellItemCount,
     listingCount,
     scopeLabel,
     bookingWindows: code.bookingWindows ?? [],
@@ -117,7 +117,7 @@ const decoratedCodes = computed(() => codes.map((code) => {
                 {{ getPromoCodeTypeLabel(code) }}
               </Badge>
               <span v-if="code.isFreeUpsell" class="text-xs text-muted-foreground">
-                {{ code.freeUpsellCount }} service{{ code.freeUpsellCount === 1 ? '' : 's' }}
+                {{ code.freeUpsellItemCount }} item{{ code.freeUpsellItemCount === 1 ? '' : 's' }}
               </span>
             </div>
           </TableCell>
