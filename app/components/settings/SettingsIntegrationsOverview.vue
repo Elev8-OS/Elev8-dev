@@ -187,7 +187,7 @@ function openSheet(id: IntegrationId) {
 
     <!-- Integration config sheet (WhatsApp + 3CX) -->
     <Sheet v-model:open="sheetOpen">
-      <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-xl" side="right">
+      <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-3xl" side="right">
         <SheetHeader class="border-b px-6 py-4">
           <div class="flex items-center gap-3">
             <SheetTitle class="text-base">{{ activeSheetTitle }}</SheetTitle>
