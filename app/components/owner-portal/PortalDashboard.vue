@@ -2,8 +2,9 @@
 import { computed } from 'vue'
 import { useOwnerDashboard } from '~/composables/useOwnerDashboard'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
+import PortalAdrChart from './PortalAdrChart.vue'
 import PortalKpiCard from './PortalKpiCard.vue'
-import PortalOccupancyAdrChart from './PortalOccupancyAdrChart.vue'
+import PortalOccupancyChart from './PortalOccupancyChart.vue'
 import PortalPropertyPicker from './PortalPropertyPicker.vue'
 import PortalRatingsChart from './PortalRatingsChart.vue'
 import PortalRevenueChart from './PortalRevenueChart.vue'
@@ -87,27 +88,33 @@ const kpis = computed(() => {
     </div>
 
     <!-- Chart grid -->
-    <div v-if="current" class="grid gap-4 lg:grid-cols-2">
+    <div v-if="current" class="space-y-4">
       <PortalRevenueChart
         v-if="portal.canViewDashboardField('grossRevenue') && dashboard.monthlyRevenueSeries.value.length"
         :series="dashboard.monthlyRevenueSeries.value"
         :prior-year-series="dashboard.timeSeries.value.priorYearMonths.map(m => ({ period: m.period, grossRevenue: m.grossRevenue }))"
         :currency="currency"
       />
-      <PortalOccupancyAdrChart
-        v-if="(portal.canViewDashboardField('occupancy') || portal.canViewDashboardField('adr')) && dashboard.monthlyOccupancyAdrSeries.value.length"
-        :series="dashboard.monthlyOccupancyAdrSeries.value"
-        :currency="currency"
-      />
-      <PortalSourcesChart
-        v-if="portal.canViewDashboardField('bookingSources') && dashboard.monthlySourcesSeries.value.length"
-        :series="dashboard.monthlySourcesSeries.value"
-        :currency="currency"
-      />
-      <PortalRatingsChart
-        v-if="portal.canViewDashboardField('guestRatings') && dashboard.monthlyRatingsSeries.value.length"
-        :series="dashboard.monthlyRatingsSeries.value"
-      />
+      <div class="grid gap-4 lg:grid-cols-2">
+        <PortalOccupancyChart
+          v-if="portal.canViewDashboardField('occupancy') && dashboard.monthlyOccupancyAdrSeries.value.length"
+          :series="dashboard.monthlyOccupancyAdrSeries.value"
+        />
+        <PortalAdrChart
+          v-if="portal.canViewDashboardField('adr') && dashboard.monthlyOccupancyAdrSeries.value.length"
+          :series="dashboard.monthlyOccupancyAdrSeries.value"
+          :currency="currency"
+        />
+        <PortalSourcesChart
+          v-if="portal.canViewDashboardField('bookingSources') && dashboard.monthlySourcesSeries.value.length"
+          :series="dashboard.monthlySourcesSeries.value"
+          :currency="currency"
+        />
+        <PortalRatingsChart
+          v-if="portal.canViewDashboardField('guestRatings') && dashboard.monthlyRatingsSeries.value.length"
+          :series="dashboard.monthlyRatingsSeries.value"
+        />
+      </div>
     </div>
 
     <!-- Upcoming reservations -->
