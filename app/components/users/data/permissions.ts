@@ -3,18 +3,21 @@
 export type PermissionModule
   // Dashboard modules
   = | 'dashboard'
+    | 'analytics'
     | 'reservations'
     | 'cockpit_calendar'
     | 'journeys'
     | 'iot_automations'
     | 'listings'
     | 'inbox'
+    | 'review_hub'
     | 'task_reports'
     | 'upsells'
     | 'orders'
     | 'cleaning_reports'
     | 'housekeeping_schedule'
     | 'activity_reports'
+    | 'finance'
     | 'payment_requests'
     | 'integrations'
     | 'users'
@@ -37,18 +40,21 @@ export interface ModulePermissions {
 
 export const DASHBOARD_PERMISSION_MODULES: { id: PermissionModule, label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'analytics', label: 'Analytics' },
   { id: 'reservations', label: 'Reservations' },
   { id: 'cockpit_calendar', label: 'Cockpit (Calendar)' },
   { id: 'journeys', label: 'Journey' },
   { id: 'iot_automations', label: 'IoT and Automations' },
   { id: 'listings', label: 'Listing Content/Listing Details' },
   { id: 'inbox', label: 'Guest Inbox' },
+  { id: 'review_hub', label: 'Review Hub' },
   { id: 'task_reports', label: 'Task Reports' },
   { id: 'upsells', label: 'Upsells' },
   { id: 'orders', label: 'Orders' },
   { id: 'cleaning_reports', label: 'Cleaning Reports' },
   { id: 'housekeeping_schedule', label: 'Housekeeping Schedule' },
   { id: 'activity_reports', label: 'Activity Reports' },
+  { id: 'finance', label: 'Finance' },
   { id: 'payment_requests', label: 'Payment Requests' },
   { id: 'integrations', label: 'Integrations (API/Smart Locks)' },
   { id: 'users', label: 'Users' },
