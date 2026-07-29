@@ -42,3 +42,37 @@ describe('useMinut — connection', () => {
     expect(isConnected.value).toBe(false)
   })
 })
+
+describe('useMinut — devices', () => {
+  it('seedDevices populates 6 devices when none exist and connection is present', () => {
+    const { seedDevices, devices } = useMinut()
+    seedDevices()
+    expect(devices.value).toHaveLength(6)
+    expect(devices.value[0]).toMatchObject({
+      deviceId: expect.any(String),
+      name: expect.any(String),
+      model: expect.any(String),
+      listingId: expect.any(String),
+      batteryLevel: expect.any(Number),
+      online: expect.any(Boolean),
+      sensors: expect.any(Array),
+    })
+  })
+
+  it('syncDevices updates lastSyncAt on connection', async () => {
+    const { validateAndConnect, syncDevices, connection } = useMinut()
+    await validateAndConnect('mn_seed_sync', 'Sync')
+    expect(connection.value!.lastSyncAt).not.toBeNull() // validateAndConnect sets it
+    const before = connection.value!.lastSyncAt
+    await new Promise(r => setTimeout(r, 5))
+    syncDevices()
+    expect(connection.value!.lastSyncAt).not.toBe(before)
+  })
+
+  it('syncDevices is a no-op when disconnected', () => {
+    const { syncDevices, connection } = useMinut()
+    expect(connection.value).toBeNull()
+    syncDevices() // should not throw
+    expect(connection.value).toBeNull()
+  })
+})
