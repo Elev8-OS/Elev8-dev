@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { useMinut } from '~/composables/useMinut'
 
 describe('useMinut — connection', () => {
@@ -138,36 +138,97 @@ describe('useMinut — events', () => {
     }
   })
 
+  it('emitMockEvents can generate tamper events', () => {
+    const { emitMockEvents, seedDevices } = useMinut()
+    seedDevices()
+    vi.spyOn(Math, 'random').mockReturnValue(0.8)
+
+    try {
+      const emitted = emitMockEvents()
+      expect(emitted).toHaveLength(6)
+      expect(emitted.every(event => event.type === 'tamper')).toBe(true)
+    }
+    finally {
+      vi.restoreAllMocks()
+    }
+  })
+
   it('emitMockEvents only emits sensor types the device supports', () => {
     const { emitMockEvents, seedDevices, devices } = useMinut()
     seedDevices()
-    // Stub Math.random to always pick 'temperature' (4/6 = ~0.667 bucket; reroll until determinism)
-    // Easier: collect events and assert that any 'temperature' event came from a device that supports it
-    const events = emitMockEvents()
-    const tempEvents = events.filter(e => e.type === 'temperature')
-    for (const e of tempEvents) {
-      const device = devices.value.find(d => d.deviceId === e.deviceId)
-      expect(device?.sensors).toContain('temperature')
+    const emitted = Array.from({ length: 50 }, () => emitMockEvents()).flat()
+    const systemTypes = new Set(['battery', 'tamper', 'connectivity'])
+
+    expect(emitted.length).toBeGreaterThanOrEqual(150)
+    for (const event of emitted) {
+      if (systemTypes.has(event.type)) continue
+      const device = devices.value.find(candidate => candidate.deviceId === event.deviceId)
+      expect(device).toBeDefined()
+      expect(device!.sensors).toContain(event.type)
     }
   })
 
-  it('getEventsByListing filters by listingId', () => {
+  it('generated payload values stay within their documented bounds', () => {
+    const { emitMockEvents, seedDevices } = useMinut()
+    seedDevices()
+    const emitted = Array.from({ length: 20 }, () => emitMockEvents()).flat()
+
+    for (const event of emitted) {
+      if (event.type === 'noise') {
+        expect(event.dbLevel).toBeGreaterThanOrEqual(65)
+        expect(event.dbLevel).toBeLessThanOrEqual(105)
+      }
+      else if (event.type === 'temperature') {
+        expect(event.temperatureC).toBeGreaterThanOrEqual(5)
+        expect(event.temperatureC).toBeLessThanOrEqual(40)
+      }
+      else if (event.type === 'battery') {
+        expect(event.batteryLevel).toBeGreaterThanOrEqual(0)
+        expect(event.batteryLevel).toBeLessThanOrEqual(20)
+      }
+    }
+  })
+
+  it('caps stored events at 50', () => {
+    const { emitMockEvents, seedDevices, events } = useMinut()
+    seedDevices()
+    for (let i = 0; i < 12; i++) emitMockEvents()
+    expect(events.value.length).toBeLessThanOrEqual(50)
+  })
+
+  it('updates lastEventAt for devices that receive events', () => {
+    const { emitMockEvents, seedDevices, devices } = useMinut()
+    seedDevices()
+    const emitted = Array.from({ length: 20 }, () => emitMockEvents()).flat()
+    const deviceIds = new Set(emitted.map(event => event.deviceId))
+
+    expect(deviceIds.size).toBeGreaterThan(0)
+    for (const device of devices.value.filter(candidate => deviceIds.has(candidate.deviceId))) {
+      expect(device.lastEventAt).not.toBeNull()
+    }
+  })
+
+  it('getEventsByListing returns emitted events for the listing', () => {
     const { emitMockEvents, seedDevices, getEventsByListing } = useMinut()
     seedDevices()
-    const events = emitMockEvents()
-    const lst1Events = getEventsByListing('lst-1')
-    for (const e of lst1Events) {
-      expect(e.listingId).toBe('lst-1')
-    }
+    const emitted = emitMockEvents()
+    const listingId = emitted[0]!.listingId
+    const listingEvents = getEventsByListing(listingId)
+
+    expect(listingEvents.length).toBeGreaterThan(0)
+    expect(listingEvents.some(event => emitted.some(candidate => candidate.id === event.id))).toBe(true)
+    expect(listingEvents.every(event => event.listingId === listingId)).toBe(true)
   })
 
-  it('getEventsByType filters by type', () => {
+  it('getEventsByType returns emitted events of the requested type', () => {
     const { emitMockEvents, seedDevices, getEventsByType } = useMinut()
     seedDevices()
-    emitMockEvents()
-    const noiseEvents = getEventsByType('noise')
-    for (const e of noiseEvents) {
-      expect(e.type).toBe('noise')
-    }
+    const emitted = emitMockEvents()
+    const type = emitted[0]!.type
+    const typeEvents = getEventsByType(type)
+
+    expect(typeEvents.length).toBeGreaterThan(0)
+    expect(typeEvents.some(event => emitted.some(candidate => candidate.id === event.id))).toBe(true)
+    expect(typeEvents.every(event => event.type === type)).toBe(true)
   })
 })

@@ -139,19 +139,17 @@ export function useMinut() {
   function emitMockEvents(): MinutEvent[] {
     if (devices.value.length === 0) return []
     const count = 3 + Math.floor(Math.random() * 4) // 3-6
-    const types: MinutEventType[] = ['noise', 'noise', 'noise', 'smoke', 'temperature', 'motion', 'battery', 'connectivity']
+    const types: MinutEventType[] = ['noise', 'noise', 'noise', 'smoke', 'temperature', 'motion', 'battery', 'tamper', 'connectivity']
     const generated: MinutEvent[] = []
     for (let i = 0; i < count; i++) {
       // Pick a device, then pick a type it supports
-      const device = devices.value[Math.floor(Math.random() * devices.value.length)]
-      if (!device) continue
+      const device = devices.value[Math.floor(Math.random() * devices.value.length)]!
       // Filter types to those the device supports (or for system-level types like battery/connectivity)
       const candidates = types.filter((t) => {
         if (t === 'battery' || t === 'tamper' || t === 'connectivity') return true
         return device.sensors.includes(t as MinutSensor)
       })
-      const type = candidates[Math.floor(Math.random() * candidates.length)]
-      if (!type) continue
+      const type = candidates[Math.floor(Math.random() * candidates.length)]!
       const event: MinutEvent = {
         id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         type,
@@ -167,7 +165,7 @@ export function useMinut() {
     events.value = [...generated, ...events.value].slice(0, 50) // keep last 50
     // Update devices' lastEventAt
     devices.value = devices.value.map(d => {
-      const lastForDevice = generated.find(e => e.deviceId === d.deviceId)
+      const lastForDevice = generated.filter(e => e.deviceId === d.deviceId).at(-1)
       return lastForDevice ? { ...d, lastEventAt: lastForDevice.timestamp } : d
     })
     return generated
