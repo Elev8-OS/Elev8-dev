@@ -104,10 +104,14 @@ export function useMinut() {
 
   function seedDevices() {
     if (devices.value.length === 0) {
-      devices.value = MOCK_DEVICES.map(d => ({ ...d, lastEventAt: d.lastEventAt ?? null }))
-      if (connection.value) {
-        connection.value = { ...connection.value, deviceCount: devices.value.length, lastSyncAt: new Date().toISOString() }
-      }
+      devices.value = MOCK_DEVICES.map(d => ({
+        ...d,
+        sensors: [...d.sensors],
+        lastEventAt: d.lastEventAt ?? null,
+      }))
+    }
+    if (connection.value) {
+      connection.value = { ...connection.value, deviceCount: devices.value.length, lastSyncAt: new Date().toISOString() }
     }
   }
 

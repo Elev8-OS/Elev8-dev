@@ -59,6 +59,45 @@ describe('useMinut — devices', () => {
     })
   })
 
+  it('refreshes connection metadata when reconnecting with persisted devices', async () => {
+    const { validateAndConnect, disconnect, connection, devices } = useMinut()
+    await validateAndConnect('mn_initial_connect', 'Initial')
+    expect(devices.value).toHaveLength(6)
+
+    disconnect()
+    expect(connection.value).toBeNull()
+    expect(devices.value).toHaveLength(6)
+
+    const result = await validateAndConnect('mn_reconnect', 'Reconnected')
+    expect(result.success).toBe(true)
+    expect(connection.value!.deviceCount).toBe(6)
+    expect(connection.value!.lastSyncAt).not.toBeNull()
+  })
+
+  it('seeds the exact representative device fixtures', () => {
+    const { seedDevices, devices } = useMinut()
+    seedDevices()
+
+    expect(devices.value.find(device => device.deviceId === 'dev-001')).toMatchObject({
+      deviceId: 'dev-001',
+      listingId: 'lst-1',
+      sensors: ['noise'],
+      model: 'Minut Point',
+    })
+    expect(devices.value.find(device => device.deviceId === 'dev-003')).toMatchObject({
+      deviceId: 'dev-003',
+      listingId: 'lst-3',
+      sensors: ['noise', 'smoke'],
+      model: 'Minut Point Pro',
+    })
+    expect(devices.value.find(device => device.deviceId === 'dev-005')).toMatchObject({
+      deviceId: 'dev-005',
+      listingId: 'lst-2',
+      sensors: ['noise', 'temperature', 'smoke'],
+      model: 'Minut Point Pro',
+    })
+  })
+
   it('syncDevices updates lastSyncAt on connection', async () => {
     const { validateAndConnect, syncDevices, connection } = useMinut()
     await validateAndConnect('mn_seed_sync', 'Sync')
