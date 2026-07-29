@@ -26,6 +26,19 @@ export interface MinutDevice {
   lastEventAt: string | null
 }
 
+export type MinutEventType = 'noise' | 'smoke' | 'temperature' | 'motion' | 'battery' | 'tamper' | 'connectivity'
+
+export interface MinutEvent {
+  id: string
+  type: MinutEventType
+  deviceId: string
+  listingId: string
+  dbLevel?: number        // noise events
+  temperatureC?: number   // temperature events
+  batteryLevel?: number   // battery events
+  timestamp: string
+}
+
 const CONNECTION_KEY = 'elev8-minut-connection'
 const DEVICES_KEY = 'elev8-minut-devices'
 
@@ -65,6 +78,7 @@ function generateWebhookToken(): string {
 export function useMinut() {
   const connection = useState<MinutConnection | null>('minut-connection', () => loadFromStorage<MinutConnection | null>(CONNECTION_KEY, null))
   const devices = useState<MinutDevice[]>('minut-devices', () => loadFromStorage<MinutDevice[]>(DEVICES_KEY, []))
+  const events = useState<MinutEvent[]>('minut-events', () => loadFromStorage<MinutEvent[]>('elev8-minut-events', []))
 
   watch(connection, (val) => {
     if (val) saveToStorage(CONNECTION_KEY, val)
@@ -72,6 +86,8 @@ export function useMinut() {
   }, { deep: true })
 
   watch(devices, (val) => { saveToStorage(DEVICES_KEY, val) }, { deep: true })
+
+  watch(events, (val) => { saveToStorage('elev8-minut-events', val) }, { deep: true })
 
   const isConnected = computed(() => connection.value?.status === 'connected')
 
@@ -120,5 +136,50 @@ export function useMinut() {
     connection.value = { ...connection.value, lastSyncAt: new Date().toISOString() }
   }
 
-  return { connection, devices, isConnected, validateAndConnect, disconnect, seedDevices, syncDevices }
+  function emitMockEvents(): MinutEvent[] {
+    if (devices.value.length === 0) return []
+    const count = 3 + Math.floor(Math.random() * 4) // 3-6
+    const types: MinutEventType[] = ['noise', 'noise', 'noise', 'smoke', 'temperature', 'motion', 'battery', 'connectivity']
+    const generated: MinutEvent[] = []
+    for (let i = 0; i < count; i++) {
+      // Pick a device, then pick a type it supports
+      const device = devices.value[Math.floor(Math.random() * devices.value.length)]
+      if (!device) continue
+      // Filter types to those the device supports (or for system-level types like battery/connectivity)
+      const candidates = types.filter((t) => {
+        if (t === 'battery' || t === 'tamper' || t === 'connectivity') return true
+        return device.sensors.includes(t as MinutSensor)
+      })
+      const type = candidates[Math.floor(Math.random() * candidates.length)]
+      if (!type) continue
+      const event: MinutEvent = {
+        id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type,
+        deviceId: device.deviceId,
+        listingId: device.listingId,
+        timestamp: new Date().toISOString(),
+      }
+      if (type === 'noise') event.dbLevel = 65 + Math.floor(Math.random() * 41) // 65-105
+      else if (type === 'temperature') event.temperatureC = 5 + Math.floor(Math.random() * 36) // 5-40
+      else if (type === 'battery') event.batteryLevel = Math.floor(Math.random() * 21) // 0-20
+      generated.push(event)
+    }
+    events.value = [...generated, ...events.value].slice(0, 50) // keep last 50
+    // Update devices' lastEventAt
+    devices.value = devices.value.map(d => {
+      const lastForDevice = generated.find(e => e.deviceId === d.deviceId)
+      return lastForDevice ? { ...d, lastEventAt: lastForDevice.timestamp } : d
+    })
+    return generated
+  }
+
+  function getEventsByListing(listingId: string): MinutEvent[] {
+    return events.value.filter(e => e.listingId === listingId)
+  }
+
+  function getEventsByType(type: MinutEventType): MinutEvent[] {
+    return events.value.filter(e => e.type === type)
+  }
+
+  return { connection, devices, events, isConnected, validateAndConnect, disconnect, seedDevices, syncDevices, emitMockEvents, getEventsByListing, getEventsByType }
 }

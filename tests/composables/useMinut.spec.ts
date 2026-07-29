@@ -115,3 +115,59 @@ describe('useMinut — devices', () => {
     expect(connection.value).toBeNull()
   })
 })
+
+describe('useMinut — events', () => {
+  it('emitMockEvents returns empty array when no devices', () => {
+    const { emitMockEvents } = useMinut()
+    const events = emitMockEvents()
+    expect(events).toEqual([])
+  })
+
+  it('emitMockEvents generates 3-6 events with valid shape', () => {
+    const { emitMockEvents, seedDevices } = useMinut()
+    seedDevices()
+    const events = emitMockEvents()
+    expect(events.length).toBeGreaterThanOrEqual(3)
+    expect(events.length).toBeLessThanOrEqual(6)
+    for (const e of events) {
+      expect(e.id).toMatch(/^evt-/)
+      expect(['noise', 'smoke', 'temperature', 'motion', 'battery', 'tamper', 'connectivity']).toContain(e.type)
+      expect(e.deviceId).toMatch(/^dev-/)
+      expect(e.listingId).toMatch(/^lst-/)
+      expect(e.timestamp).toMatch(/^\d{4}-/)
+    }
+  })
+
+  it('emitMockEvents only emits sensor types the device supports', () => {
+    const { emitMockEvents, seedDevices, devices } = useMinut()
+    seedDevices()
+    // Stub Math.random to always pick 'temperature' (4/6 = ~0.667 bucket; reroll until determinism)
+    // Easier: collect events and assert that any 'temperature' event came from a device that supports it
+    const events = emitMockEvents()
+    const tempEvents = events.filter(e => e.type === 'temperature')
+    for (const e of tempEvents) {
+      const device = devices.value.find(d => d.deviceId === e.deviceId)
+      expect(device?.sensors).toContain('temperature')
+    }
+  })
+
+  it('getEventsByListing filters by listingId', () => {
+    const { emitMockEvents, seedDevices, getEventsByListing } = useMinut()
+    seedDevices()
+    const events = emitMockEvents()
+    const lst1Events = getEventsByListing('lst-1')
+    for (const e of lst1Events) {
+      expect(e.listingId).toBe('lst-1')
+    }
+  })
+
+  it('getEventsByType filters by type', () => {
+    const { emitMockEvents, seedDevices, getEventsByType } = useMinut()
+    seedDevices()
+    emitMockEvents()
+    const noiseEvents = getEventsByType('noise')
+    for (const e of noiseEvents) {
+      expect(e.type).toBe('noise')
+    }
+  })
+})
