@@ -351,19 +351,19 @@ Mock-only single-tenant connection that surfaces Minut (noise/sensor monitoring)
 - **Lookups**: `getEventsByListing(listingId)`, `getEventsByType(type)`
 
 #### Journeys integration (`app/composables/useJourneys.ts`)
-- **7 new `MinutTriggerType` keys** added to `TriggerStep['type']` union + `triggerMeta`: `minut_noise | minut_smoke | minut_temperature | minut_motion | minut_battery | minut_tamper | minut_connectivity`
-- **`onMinutEvent(event: Pick<MinutEvent, 'type' | 'deviceId' | 'listingId'>)`** — finds active journeys whose trigger type matches the event type AND whose listing scope includes the event's `listingId` (or scope = `'All Properties'`), then emits a `toast.info` per match. The function is **void** — it does NOT return the list of fired journey IDs (only fires toasts)
-- **`defaultTriggerSettings`** covers all 7 Minut keys with the standard `immediate_delay` block — NO new sidebar code, each trigger reuses the existing immediate_delay sidebar block (same copy: "Trigger as soon as the Minut event is detected, with no delay.")
+- **1 first-class Journey trigger type** (`minut_event`) that fires for any Minut sensor event — covers all 7 event subtypes (`noise | smoke | temperature | motion | battery | tamper | connectivity`) under a single trigger. `triggerMeta.minut_event.label`: "Trigger when Minut detects sensor events like noise or occupancy issues"
+- **`onMinutEvent(event: Pick<MinutEvent, 'type' | 'deviceId' | 'listingId'>)`** — finds active journeys whose trigger type is `minut_event` AND whose listing scope includes the event's `listingId` (or scope = `'All Properties'`), then emits a `toast.info` per match. The function is **void** — it does NOT return the list of fired journey IDs (only fires toasts). The event subtype is shown in the toast description (e.g. "triggered by Minut noise" / "triggered by Minut smoke") for diagnostic context
+- **`defaultTriggerSettings('minut_event')`** returns the standard `immediate_delay` block — reusing the existing sidebar form with Minut-specific copy ("Trigger as soon as a Minut sensor event is detected, with no delay.")
 
 #### Hierarchical Integration Events trigger picker (`JourneyStepSidebar.vue`)
 - Trigger Select now shows a new bottom group **"Integration Events"** after the standard ones (Booking, Guest Review, Inquiry, etc.). Contains 3 rows: **Minut / Turno / Tidy** (Turno + Tidy are stubbed rows to show the pattern)
 - Each row has a **Connected / Not connected** badge in the right column. Minut's badge wires to `useMinut().isConnected` (green when connected, gray otherwise)
-- When row is **Not connected**, clicking it is a no-op (or shows an inline "Connect at /settings/integrations" hint depending on row). When **Connected**, clicking expands **7 sensor sub-items** matching `MinutTriggerType` (uses `triggerMeta[type].label` + a sensor-specific icon)
-- Selecting a sub-item sets the journey trigger type to e.g. `minut_smoke` and the existing `immediate_delay` block appears in the right sidebar — no new sidebar code required
+- When row is **Not connected**, clicking it is a no-op (or shows an inline "Connect at /settings/integrations" hint depending on row). When **Connected**, clicking expands to **1 child item** (`minut_event`) — the picker shows a single consolidated option labeled "Trigger when Minut detects sensor events like noise or occupancy issues"
+- Selecting the sub-item sets the journey trigger type to `minut_event` and the existing `immediate_delay` block appears in the right sidebar — no new sidebar code required
 
 #### Tests (`tests/composables/useMinut.spec.ts`, `tests/composables/useJourneys-minut.spec.ts`)
 - 19 `useMinut` tests cover validateAndConnect (key prefix, errors), seedDevices (idempotent, replaces existing), syncDevices, emitMockEvents (event generation, sensor filtering, last-event-at updates), disconnect, getEventsByListing/Type, LocalStorage persistence
-- 5 `useJourneys-minut` tests cover `onMinutEvent` matching (by trigger type + listing scope), firing (only active journeys), out-of-scope filtering (`listingId` mismatch), and event distribution across multiple matching journeys
+- 6 `useJourneys-minut` tests cover `onMinutEvent` matching (by single `minut_event` trigger + listing scope), firing (only active journeys), out-of-scope filtering (`listingId` mismatch), all-properties scope, and that the trigger fires for any event subtype (noise / smoke / battery) with a single `minut_event` trigger
 
 #### NOT implemented (intentionally out of scope per user)
 - **Notification alerts** — no `MINUT_*` alert types; events flow only through Journeys

@@ -15,15 +15,6 @@ export type JourneyStatus = 'active' | 'inactive'
 
 export type TriggerCategory = 'conversation' | 'reservation' | 'calendar' | 'integration'
 
-export type MinutTriggerType =
-  | 'minut_noise'
-  | 'minut_smoke'
-  | 'minut_temperature'
-  | 'minut_motion'
-  | 'minut_battery'
-  | 'minut_tamper'
-  | 'minut_connectivity'
-
 export type TriggerType
   = // PRD 15 trigger types (excluding integration minut/turno/tidy)
     | 'conversation_content'
@@ -41,8 +32,8 @@ export type TriggerType
     | 'weekly'
     | 'monthly'
     | 'yearly'
-  // Minut sensor triggers (7)
-    | MinutTriggerType
+  // Minut sensor event (consolidated — fires for any Minut event subtype)
+    | 'minut_event'
 
 export type ChannelType = 'ota' | 'whatsapp' | 'email'
 
@@ -170,7 +161,7 @@ export function defaultTriggerSettings(type: TriggerType): TriggerSettings {
   if (
     [
       'inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled',
-      'minut_noise', 'minut_smoke', 'minut_temperature', 'minut_motion', 'minut_battery', 'minut_tamper', 'minut_connectivity',
+      'minut_event',
     ].includes(type)
   )
     return { triggerImmediately: true, delayDays: 0, delayHours: 0, delayMinutes: 0, specificTime: '' }
@@ -354,13 +345,7 @@ export const triggerMeta: Record<string, { label: string, category: TriggerCateg
   weekly: { label: 'Weekly', category: 'calendar' },
   monthly: { label: 'Monthly', category: 'calendar' },
   yearly: { label: 'Yearly', category: 'calendar' },
-  minut_noise: { label: 'Minut Noise Event', category: 'integration' },
-  minut_smoke: { label: 'Minut Smoke Alarm', category: 'integration' },
-  minut_temperature: { label: 'Minut Temperature Event', category: 'integration' },
-  minut_motion: { label: 'Minut Motion Event', category: 'integration' },
-  minut_battery: { label: 'Minut Battery Low', category: 'integration' },
-  minut_tamper: { label: 'Minut Tamper Event', category: 'integration' },
-  minut_connectivity: { label: 'Minut Device Offline', category: 'integration' },
+  minut_event: { label: 'Trigger when Minut detects sensor events like noise or occupancy issues', category: 'integration' },
 }
 
 export const bookingChannelMeta: Record<BookingChannel, string> = {

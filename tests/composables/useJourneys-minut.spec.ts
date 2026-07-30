@@ -30,28 +30,28 @@ describe('useJourneys.onMinutEvent', () => {
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
-  it('fires an active journey with matching Minut trigger and listing scope', () => {
+  it('fires an active journey with minut_event trigger and listing scope', () => {
     const { onMinutEvent, saveJourney } = useJourneys()
     saveJourney({
       id: 'j-test-1',
-      name: 'Noise Alert Villa Kastila',
+      name: 'Minut Alert Villa Kastila',
       status: 'active',
-      triggerType: 'minut_noise',
-      lastModified: '2026-07-29',
+      triggerType: 'minut_event',
+      lastModified: '2026-07-30',
       properties: ['lst-1'],
       steps: [
         {
           id: 's-test-1',
           type: 'trigger',
-          name: 'Minut Noise',
-          triggers: [{ type: 'minut_noise', settings: { triggerImmediately: true } }],
+          name: 'Minut Event',
+          triggers: [{ type: 'minut_event', settings: { triggerImmediately: true } }],
           properties: ['lst-1'],
         },
       ],
     })
     onMinutEvent({ id: 'evt-2', type: 'noise', deviceId: 'dev-001', listingId: 'lst-1', timestamp: new Date().toISOString(), dbLevel: 95 })
     expect(toastInfo).toHaveBeenCalledWith(
-      expect.stringContaining('Noise Alert Villa Kastila'),
+      expect.stringContaining('Minut Alert Villa Kastila'),
       expect.any(Object),
     )
   })
@@ -62,15 +62,15 @@ describe('useJourneys.onMinutEvent', () => {
       id: 'j-test-2',
       name: 'Inactive Journey',
       status: 'inactive',
-      triggerType: 'minut_smoke',
-      lastModified: '2026-07-29',
+      triggerType: 'minut_event',
+      lastModified: '2026-07-30',
       properties: ['All Properties'],
       steps: [
         {
           id: 's-test-2',
           type: 'trigger',
-          name: 'Smoke',
-          triggers: [{ type: 'minut_smoke', settings: { triggerImmediately: true } }],
+          name: 'Minut Event',
+          triggers: [{ type: 'minut_event', settings: { triggerImmediately: true } }],
           properties: ['All Properties'],
         },
       ],
@@ -85,15 +85,15 @@ describe('useJourneys.onMinutEvent', () => {
       id: 'j-test-3',
       name: 'Scoped Journey',
       status: 'active',
-      triggerType: 'minut_noise',
-      lastModified: '2026-07-29',
+      triggerType: 'minut_event',
+      lastModified: '2026-07-30',
       properties: ['lst-99'], // not lst-1
       steps: [
         {
           id: 's-test-3',
           type: 'trigger',
-          name: 'Noise',
-          triggers: [{ type: 'minut_noise', settings: { triggerImmediately: true } }],
+          name: 'Minut Event',
+          triggers: [{ type: 'minut_event', settings: { triggerImmediately: true } }],
           properties: ['lst-99'],
         },
       ],
@@ -106,25 +106,50 @@ describe('useJourneys.onMinutEvent', () => {
     const { onMinutEvent, saveJourney } = useJourneys()
     saveJourney({
       id: 'j-test-4',
-      name: 'All Properties Smoke',
+      name: 'All Properties Minut',
       status: 'active',
-      triggerType: 'minut_smoke',
-      lastModified: '2026-07-29',
+      triggerType: 'minut_event',
+      lastModified: '2026-07-30',
       properties: ['All Properties'],
       steps: [
         {
           id: 's-test-4',
           type: 'trigger',
-          name: 'Smoke',
-          triggers: [{ type: 'minut_smoke', settings: { triggerImmediately: true } }],
+          name: 'Minut Event',
+          triggers: [{ type: 'minut_event', settings: { triggerImmediately: true } }],
           properties: ['All Properties'],
         },
       ],
     })
     onMinutEvent({ id: 'evt-5', type: 'smoke', deviceId: 'dev-001', listingId: 'lst-7', timestamp: new Date().toISOString() })
     expect(toastInfo).toHaveBeenCalledWith(
-      expect.stringContaining('All Properties Smoke'),
+      expect.stringContaining('All Properties Minut'),
       expect.any(Object),
     )
+  })
+
+  it('fires regardless of event subtype when trigger is minut_event', () => {
+    const { onMinutEvent, saveJourney } = useJourneys()
+    saveJourney({
+      id: 'j-test-5',
+      name: 'Minute Event Any Subtype',
+      status: 'active',
+      triggerType: 'minut_event',
+      lastModified: '2026-07-30',
+      properties: ['All Properties'],
+      steps: [
+        {
+          id: 's-test-5',
+          type: 'trigger',
+          name: 'Minut Event',
+          triggers: [{ type: 'minut_event', settings: { triggerImmediately: true } }],
+          properties: ['All Properties'],
+        },
+      ],
+    })
+    onMinutEvent({ id: 'evt-6a', type: 'smoke', deviceId: 'dev-001', listingId: 'lst-1', timestamp: new Date().toISOString() })
+    onMinutEvent({ id: 'evt-6b', type: 'noise', deviceId: 'dev-002', listingId: 'lst-1', timestamp: new Date().toISOString(), dbLevel: 88 })
+    onMinutEvent({ id: 'evt-6c', type: 'battery', deviceId: 'dev-003', listingId: 'lst-1', timestamp: new Date().toISOString(), batteryLevel: 8 })
+    expect(toastInfo).toHaveBeenCalledTimes(3)
   })
 })

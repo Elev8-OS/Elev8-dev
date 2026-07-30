@@ -355,7 +355,7 @@ function triggerSettingsType(type: TriggerType) {
   if (type === 'sentiment_change')
     return 'sentiment'
   // Reservation Events with immediate checkbox + delay
-  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled'].includes(type))
+  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled', 'minut_event'].includes(type))
     return 'immediate_delay'
   // Check-in / Check-out: before/on/after toggle + delay + optional time
   if (type === 'checkin' || type === 'checkout')
@@ -652,7 +652,7 @@ const showAltTriggerPicker = ref(false)
                 </div>
               </div>
 
-              <!-- Settings: immediate_delay (inquiry, host_message, new_booking, guest_checkout, cancellation) -->
+              <!-- Settings: immediate_delay (inquiry, host_message, new_booking, guest_checkout, cancellation, minut_event) -->
               <div v-else-if="triggerSettingsType(entry.type) === 'immediate_delay'" class="mt-3 flex flex-col gap-3">
                 <label class="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/40" @click="patchTriggerSettings(i, { triggerImmediately: !entry.settings.triggerImmediately })">
                   <div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border" :class="entry.settings.triggerImmediately ? 'border-primary bg-primary text-primary-foreground' : 'border-input'">
@@ -664,14 +664,16 @@ const showAltTriggerPicker = ref(false)
                         : entry.type === 'new_message_received' ? 'Trigger when host sends message'
                           : entry.type === 'new_booking' ? 'Trigger at booking'
                             : entry.type === 'guest_checkout' ? 'Trigger at guest check-out'
-                              : 'Trigger at cancellation' }}
+                              : entry.type === 'minut_event' ? 'Trigger on Minut sensor event'
+                                : 'Trigger at cancellation' }}
                     </p>
                     <p class="mt-1 text-xs text-muted-foreground">
                       {{ entry.type === 'inquiry_received' ? 'Trigger as soon as the inquiry is received, with no delay'
                         : entry.type === 'new_message_received' ? 'Trigger as soon as the host sends a message, with no delay'
                           : entry.type === 'new_booking' ? 'Trigger as soon as the booking is confirmed, with no delay'
                             : entry.type === 'guest_checkout' ? 'Trigger as soon as the guest marks themselves as checked-out, with no delay'
-                              : 'Trigger as soon as the cancellation occurs, with no delay' }}
+                              : entry.type === 'minut_event' ? 'Trigger as soon as a Minut sensor event is detected, with no delay'
+                                : 'Trigger as soon as the cancellation occurs, with no delay' }}
                     </p>
                   </div>
                 </label>
@@ -682,7 +684,8 @@ const showAltTriggerPicker = ref(false)
                         : entry.type === 'new_message_received' ? 'Trigger after host sends message'
                           : entry.type === 'new_booking' ? 'Trigger after booking'
                             : entry.type === 'guest_checkout' ? 'Trigger after guest check-out'
-                              : 'Trigger after cancellation' }}
+                              : entry.type === 'minut_event' ? 'Trigger after Minut sensor event'
+                                : 'Trigger after cancellation' }}
                     </Label>
                     <div class="mt-2 grid grid-cols-3 gap-2">
                       <div v-for="unit in [{ key: 'delayDays', label: 'Days' }, { key: 'delayHours', label: 'Hours' }, { key: 'delayMinutes', label: 'Minutes' }]" :key="unit.key">
