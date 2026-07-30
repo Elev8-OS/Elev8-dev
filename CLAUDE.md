@@ -325,6 +325,53 @@ Single-connection (one API key per tenant), multi-lock assignment (many locks pe
 - **Auto-generate code on reservation create** — codes are auto-generated when pairing a lock, but not when a new reservation is created later
 - **Guest-facing code share** — codes are generated but not auto-messaged to the guest (future: via WhatsApp/inbox)
 
+### Minut Integration (`app/components/settings/MinutIntegration.vue` + `app/composables/useMinut.ts`)
+
+Mock-only single-tenant connection that surfaces Minut (noise/sensor monitoring) events into Journeys. Pairing is **global** (one API key per tenant — devices are imported from the Minut workspace, no per-listing pairing UI).
+
+#### Architecture
+- **Connection** — `Settings → Integrations` tile (sky `lucide:audio-waveform` icon) → opens Sheet with `MinutIntegration.vue`
+- **No pairing UI** — devices auto-seed on connect. No `useMinut().pairLock`-style flow; just `validateAndConnect` → `seedDevices` (6 mock devices, mixed sensor matrix across `lst-1`–`lst-4`)
+- **No Inbox/Notification integration** — events flow only into Journeys via `useJourneys().onMinutEvent(event)` (toast.info mock)
+
+#### Data model (`app/composables/useMinut.ts`)
+- **`MinutConnection`** — `{ id, apiKey, workspaceName, status: 'connected' | 'disconnected', webhookToken, webhookUrl, deviceCount, connectedAt, lastSyncAt }` — one per tenant, keyed by `'minut-connection'` in `useState` + LocalStorage (`elev8-minut-connection`)
+- **`MinutDevice`** — `{ deviceId, name, model, listingId, listingName, batteryLevel, online, sensors: MinutSensor[], lastEventAt }` — **6 mock devices seeded**: mixed sensor matrix (some noise-only, some multi-sensor + smoke, one with low battery + offline used for status demo), spread across `lst-1`–`lst-4`
+  - `MinutSensor = 'noise' | 'smoke' | 'temperature' | 'motion'` (device-level capability)
+- **`MinutEvent`** — `{ id, type: MinutEventType, deviceId, listingId, dbLevel?, temperatureC?, batteryLevel?, timestamp }`
+  - `MinutEventType = 'noise' | 'smoke' | 'temperature' | 'motion' | 'battery' | 'tamper' | 'connectivity'` (last 3 are system-level — generated for any device)
+  - Events stored in `useState('minut-events')` + LocalStorage (`elev8-minut-events`), capped at last 50
+- **`MinutIntegration.vue`** — Sheet content (not a separate page): connection card (API key `mn_` / `minut_` prefix validation, 1.5s mock), connected state showing 6 mock devices with battery/online/sensor badges, **Sync Devices** button (800ms mock → calls `syncDevices` then `emitMockEvents` which generates 3-6 random events), webhook URL with copy button. Mirrors `SmartLockIntegration.vue` pattern
+
+#### Composable (`useMinut.ts`)
+- **State**: `connection` (`useState`+LocalStorage), `devices` (`useState`+LocalStorage), `events` (`useState`+LocalStorage, capped at 50); `isConnected` is `connection.value?.status === 'connected'`
+- **Connection**: `validateAndConnect(apiKey, workspaceName)` — 1.5s mock, validates key prefix; auto-calls `seedDevices()`; auto-generates `webhookToken` (`whsec_*`) and `webhookUrl`
+- **Disconnect**: `disconnect()` wipes connection only (devices + events persist on tenant cleanup — gated by user confirmation dialog)
+- **Mock I/O**: `seedDevices()` (called once on first connect), `syncDevices()` (nudges `lastSyncAt`), `emitMockEvents()` (3-6 random events weighted by device sensor matrix; bumps `lastEventAt` per device)
+- **Lookups**: `getEventsByListing(listingId)`, `getEventsByType(type)`
+
+#### Journeys integration (`app/composables/useJourneys.ts`)
+- **7 new `MinutTriggerType` keys** added to `TriggerStep['type']` union + `triggerMeta`: `minut_noise | minut_smoke | minut_temperature | minut_motion | minut_battery | minut_tamper | minut_connectivity`
+- **`onMinutEvent(event: MinutEvent)`** — finds active journeys whose trigger type matches the event type AND whose listing scope includes the event's `listingId` (or scope = `'all'`), then fires them with `useJourneys().triggerJourney(id, event)` (toast.info mock). Returns the list of fired journey IDs
+- **`defaultTriggerSettings`** covers all 7 Minut keys with the standard `immediate_delay` block — NO new sidebar code, each trigger reuses the existing immediate_delay sidebar block (same copy: "Trigger as soon as the Minut event is detected, with no delay.")
+
+#### Hierarchical Integration Events trigger picker (`JourneyStepSidebar.vue`)
+- Trigger Select now shows a new bottom group **"Integration Events"** after the standard ones (Booking, Guest Review, Inquiry, etc.). Contains 3 rows: **Minut / Turno / Tidy** (Turno + Tidy are stubbed rows to show the pattern)
+- Each row has a **Connected / Not connected** badge in the right column. Minut's badge wires to `useMinut().isConnected` (green when connected, gray otherwise)
+- When row is **Not connected**, clicking it is a no-op (or shows an inline "Connect at /settings/integrations" hint depending on row). When **Connected**, clicking expands **7 sensor sub-items** matching `MinutTriggerType` (uses `triggerMeta[type].label` + a sensor-specific icon)
+- Selecting a sub-item sets the journey trigger type to e.g. `minut_smoke` and the existing `immediate_delay` block appears in the right sidebar — no new sidebar code required
+
+#### Tests (`tests/composables/useMinut.spec.ts`, `tests/composables/useJourneys-minut.spec.ts`)
+- 19 `useMinut` tests cover validateAndConnect (key prefix, errors), seedDevices (idempotent, replaces existing), syncDevices, emitMockEvents (event generation, sensor filtering, last-event-at updates), disconnect, getEventsByListing/Type, LocalStorage persistence
+- 5 `useJourneys-minut` tests cover `onMinutEvent` matching (by trigger type + listing scope), firing (only active journeys), out-of-scope filtering (`listingId` mismatch), and event distribution across multiple matching journeys
+
+#### NOT implemented (intentionally out of scope per user)
+- **Notification alerts** — no `MINUT_*` alert types; events flow only through Journeys
+- **Per-listing device pairing UI** — devices are workspace-scoped, not listing-scoped; no listing-level pair/unpair flow
+- **Per-event condition filters** — every event of a type fires all matching journeys; no `dbLevel > X` or `temperatureC > Y` filtering
+- **Real webhook receiver** — `/api/webhooks/minut` does not exist; events are simulated in-app via `emitMockEvents`
+- **Multi-workspace / multi-account** — single-connection only (mirrors SmartLock v1)
+
 ### Inbox Settings (gear icon in inbox header)
 
 A gear icon (⚙️) sits next to the "Inbox" header title in `InboxLayout.vue`. Clicking it opens a **Popover** with two options:
@@ -1361,6 +1408,7 @@ const table = useVueTable({
 | `useWhatsAppRules` | `app/composables/useWhatsAppRules.ts` | Routing rules CRUD | `rules`, `saveRule()`, `deleteRule()`, `toggleRule()` |
 | `useWhatsAppTemplates` | `app/composables/useWhatsAppTemplates.ts` | Template messages | `waTemplates`, `renderTemplate()` |
 | `useSmartLock` | `app/composables/useSmartLock.ts` | Smart lock connection + per-listing/room lock assignment + brand-shared access codes | `connection`, `isConnected`, `locks`, `codes`, `validateAndConnect(apiKey, workspaceName)`, `disconnect()`, `pairLock`, `unpairLock`, `setMainLock`, `renameLock`, `swapDevice(lockId, newProviderDeviceId)`, `generateAccessCode` (async, 700ms mock), `revokeAccessCode`, `findActiveBrandCode(reservationId, provider)`, `getLocksForListing`, `getLocksForUnit`, `getLockCount`, `getMainLock`, `syncDevices`, `emitMockAlerts`. Persisted to localStorage. |
+| `useMinut` | `app/composables/useMinut.ts` | Minut noise/sensor monitoring — events feed Journeys | `connection`, `devices`, `events`, `isConnected`, `validateAndConnect(apiKey, workspaceName)`, `disconnect()`, `seedDevices()`, `syncDevices()`, `emitMockEvents()`, `getEventsByListing(listingId)`, `getEventsByType(type)`. Persisted to localStorage. |
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
 
 ### State Management Rules
@@ -1544,7 +1592,8 @@ app/
 │   │   ├── WhatsAppRoutingRules.vue ← Routing rules (not currently used in UI)
 │   │   ├── ThreeCxIntegration.vue   ← 3CX PBX connection + extension mapping
 │   │   ├── SmartLockIntegration.vue ← Smart lock connection + webhook URL + device preview
-│   │   ├── SettingsIntegrationsOverview.vue ← Integrations hub tile grid (WhatsApp / 3CX / Smart Lock / Payout)
+│   │   ├── MinutIntegration.vue      ← Minut noise/sensor connection + sync + 6 mock devices
+│   │   ├── SettingsIntegrationsOverview.vue ← Integrations hub tile grid (WhatsApp / 3CX / Smart Lock / Payout / Minut)
 │   │   ├── PayoutGatewayPanel.vue   ← Payout gateway configuration
 │   │   └── AirbnbReviewConfig.vue   ← Review automation settings (language, tone, auto-post)
 │   └── tasks/
@@ -1582,6 +1631,7 @@ app/
 │   ├── useWhatsAppRules.ts        ← Routing rules CRUD
 │   ├── useWhatsAppTemplates.ts    ← Template messages (booking_confirmation, etc.)
 │   ├── useSmartLock.ts            ← Smart lock connection + per-listing/room lock assignment + access codes
+│   ├── useMinut.ts                ← Minut noise/sensor connection + 6 mock devices + event generation (LocalStorage)
 │   ├── useTenantBranding.ts       ← Tenant logo/favicon/Guest Guide color state (LocalStorage + sync API)
 ├── layouts/
 │   ├── blank.vue              # Auth pages
