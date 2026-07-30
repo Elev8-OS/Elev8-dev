@@ -2,15 +2,25 @@
 - Push to GitHub after completing each feature chunk. Confidence: 0.88
 - Update CLAUDE.md alongside pushes to keep project context current. Confidence: 0.92
 - Commit first, then push (`git commit` → `git push`). Confidence: 0.70
-- Check git status (uncommitted/untracked) before pushing. Confidence: 0.65
+- Check git status (uncommitted/untracked) before pushing. Confidence: 0.85
 - Brainstorm and discuss design before implementation. Confidence: 0.75
-- Use the subagent-driven-development skill for multi-task plan execution: generate task briefs, dispatch implementer subagents with full context, verify with TDD (RED→GREEN), then run a reviewer/independent verification. Track progress in `.superpowers/sdd/progress.md` and commit task-by-task. Confidence: 0.85
-- Record the base commit hash (`git rev-parse HEAD`) before starting any multi-task plan so the final diff is unambiguous. Confidence: 0.80
-- After dispatching a subagent, verify its work independently by reading the report file, re-running the tests from the main checkout, and confirming only the listed files changed. Confidence: 0.80
-- When subagents time out or skip commits, manually verify the work in the main checkout (git status, run tests, commit if state is good). Confidence: 0.75
-- Distinguish pre-existing test failures from new ones by stashing changes and re-running - don't claim a regression is "not my fault" without actually verifying. Confidence: 0.85
-- Prefers configuring local MCP integrations via explicit JSON server configuration, including a named server and HTTP URL when the desktop application exposes an HTTP endpoint. Confidence: 0.80
-- For local desktop MCP servers, expects the desktop application to be running and the coding client to be restarted after adding the configuration. Confidence: 0.75
-- When implementing designs fetched from Figma Desktop MCP, target the Vue/Nuxt + TypeScript stack (specify `clientLanguages: "typescript,vue"` and `clientFrameworks: "nuxt,vue"` when calling the Figma MCP). Confidence: 0.80
-- When committing, only stage files touched by the current task — explicitly leave pre-existing modifications to unrelated files (e.g. taste/, other features, settings.json) out of the commit. Pre-existing changes are not part of the task's scope. Confidence: 0.85
-- Before writing the first commit in a session, run `git log --oneline -5` to match the repo's existing commit message style and prefix conventions. Confidence: 0.75
+- Use test selectors such as stable `data-testid` attributes and accessibility state attributes like `aria-pressed` for interactive controls. Confidence: 0.85
+- Prefer test-driven implementation with an explicit RED → GREEN loop for feature work. Confidence: 0.85
+- During verification, separate failures caused by repository/environment baseline issues from regressions introduced by the current work, and report both clearly. Confidence: 0.88
+- Prefer scoped local test runs when the repository's full test discovery includes generated or worktree tests; still run the full suite when practical to detect regressions. Confidence: 0.82
+- Treat focused tests, typecheck diagnostics filtered to touched files, lint, and code review as acceptable manual-flow evidence when the dev server is unstable or cannot boot reliably. Confidence: 0.78
+- Review the whole branch against its base and inspect the final diff before declaring work merge-ready. Confidence: 0.82
+- Commit follow-up fixes separately with focused conventional commit messages rather than silently amending prior feature commits. Confidence: 0.75
+- Exception: when fixing CI/lint failures on a still-unmerged feature branch right before merging, prefer `git commit --amend` + `git push --force-with-lease` over a separate fix commit — keeps the PR history clean and avoids polluting main with a "fix lint" commit. Confidence: 0.82
+- When "merge" is requested on a feature branch with an open PR, check CI status first; if lint/typecheck is failing, fix the issues, amend + force-push, then merge via `gh pr merge --merge --delete-branch-remote`. Confidence: 0.85
+- Prefer scoped lint runs on only the changed files (e.g. `pnpm exec eslint <changed-files>`) over the full project lint when the full lint is too slow — then run the scoped re-lint to confirm fixes. Confidence: 0.78
+- Prefer discovering and fixing missing exports or typecheck regressions uncovered during final verification before finalizing a feature. Confidence: 0.86
+- Use `NODE_ENV=test` explicitly for local Vitest runs when the test environment otherwise alters Vue Test Utils behavior or emit capture. Confidence: 0.78
+- Model data at the granularity the end user actually selects/redeems, not at a parent/aggregate level. Example: when a "Spa" service has multiple items (1hr, 2hr, body scrub), the picker must let the operator pick specific items — picking the whole service is wrong because the unit of redemption is the item. Confidence: 0.88
+- When explaining requirements, prefers concrete real-world examples (e.g. "spa have 1 hour, 2 hours") over abstract spec terminology. Worth asking for or providing an example when intent is ambiguous. Confidence: 0.72
+- Exclude auto-managed files (e.g. taste files, untracked local scratch files) from git commits; only stage files explicitly related to the feature being shipped. Confidence: 0.85
+- Use a dedicated feature branch with conventional `feat(scope):` naming (e.g. `feat/promo-free-upsell-item-selection`) for non-trivial changes before pushing. Confidence: 0.80
+- When opening a PR, mirror the commit message structure and include a dedicated "Verification" section listing the typecheck/lint/test commands that were run. Confidence: 0.82
+- When asked to move/relocate a feature across modules, use `ask_user_question` with concrete placement options (each with a short preview) before touching code — even when the task feels straightforward, placement decisions have lasting structural impact. Confidence: 0.85
+- After first implementation of a UI move, do a follow-up visual/scope review pass and ask another clarifying question if the result needs a second iteration (e.g. layout tightening, prop additions) rather than silently refactoring. Confidence: 0.78
+- When reusing a full-page list/table component inside a smaller context (sheet tab, popover, card), prefer adding a `compact` boolean prop to the existing component over rewriting an inline version — keeps a single source of truth and lets the original use site stay unchanged when the prop defaults to `false`. Confidence: 0.85

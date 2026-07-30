@@ -242,14 +242,30 @@ function eventStyle(event: CalendarEvent, dayKey: string) {
 }
 
 function eventClasses(event: CalendarEvent) {
-  const base = 'absolute inset-x-1 rounded-md border px-2 py-1 text-[11px] leading-tight shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow'
+  const base = 'absolute inset-x-1 flex flex-col gap-0.5 rounded-md border-l-4 px-2 py-1 text-[11px] leading-tight shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow'
   if (event.type === 'guest_stay') {
-    return `${base} ${listingLightColors[event.colorIndex] ?? listingLightColors[0]}`
+    return `${base} border-l-primary/60 ${listingLightColors[event.colorIndex] ?? listingLightColors[0]}`
   }
   if (event.type === 'task') {
-    return `${base} bg-amber-500/10 border-amber-500/20 text-foreground`
+    if (isOverdueTask(event)) {
+      return `${base} border-l-destructive bg-destructive/10 border-destructive/50 text-foreground ring-1 ring-destructive/40`
+    }
+    return `${base} border-l-amber-500 bg-amber-500/10 border-amber-500/30 text-foreground`
   }
-  return `${base} bg-card border-border text-foreground`
+  if (event.type === 'cleaning') {
+    return `${base} border-l-sky-500 bg-sky-500/10 border-sky-500/30 text-foreground`
+  }
+  return `${base} border-l-muted bg-card border-border text-foreground`
+}
+
+function isOverdueTask(event: CalendarEvent) {
+  if (event.type !== 'task' || !event.start)
+    return false
+  const dueDate = event.start.slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+  if (dueDate >= today)
+    return false
+  return event.status !== 'done' && event.status !== 'canceled'
 }
 
 function weeklyEventCount(listingId: string) {
@@ -541,11 +557,77 @@ function onCellClick(listingId: string, dayKey: string) {
             :style="eventStyle(event, selectedDayKey)"
             @click.stop="emit('eventClick', event)"
           >
-            <p class="truncate font-semibold">
-              {{ event.title }}
-            </p>
-            <p v-if="event.type !== 'guest_stay'" class="truncate text-[10px] text-muted-foreground">
+            <div class="flex min-w-0 items-start justify-between gap-1">
+              <p class="flex min-w-0 items-center gap-1.5 truncate font-semibold">
+                <Icon
+                  v-if="event.type === 'cleaning'"
+                  name="lucide:brush"
+                  class="h-3 w-3 shrink-0 text-sky-600"
+                />
+                <Icon
+                  v-else-if="event.type === 'task'"
+                  name="lucide:clipboard-list"
+                  class="h-3 w-3 shrink-0 text-amber-600"
+                />
+                <Icon
+                  v-else-if="event.type === 'upsell'"
+                  name="lucide:sparkles"
+                  class="h-3 w-3 shrink-0 text-violet-600"
+                />
+                <Icon
+                  v-else-if="event.type === 'guest_stay'"
+                  name="lucide:bed"
+                  class="h-3 w-3 shrink-0 text-primary"
+                />
+                <span class="min-w-0 truncate">{{ event.title }}</span>
+              </p>
+              <Badge
+                v-if="event.type === 'cleaning' && event.priority === 'high'"
+                variant="destructive"
+                class="shrink-0 bg-destructive/90 px-1 py-0 text-[9px] font-medium text-white"
+                data-testid="event-priority-badge"
+              >
+                <Icon name="lucide:flag" class="mr-0.5 h-2.5 w-2.5" />
+                High
+              </Badge>
+              <Badge
+                v-if="isOverdueTask(event)"
+                variant="destructive"
+                class="shrink-0 bg-destructive/90 px-1 py-0 text-[9px] font-medium text-white"
+                data-testid="event-overdue-badge"
+              >
+                <Icon name="lucide:alert-triangle" class="mr-0.5 h-2.5 w-2.5" />
+                Overdue
+              </Badge>
+              <Badge
+                v-if="event.type === 'task' && (event.priority === 'high' || event.priority === 'urgent')"
+                variant="destructive"
+                class="shrink-0 bg-destructive/90 px-1 py-0 text-[9px] font-medium text-white"
+                data-testid="event-priority-badge"
+              >
+                <Icon name="lucide:flag" class="mr-0.5 h-2.5 w-2.5" />
+                {{ event.priority === 'urgent' ? 'Urgent' : 'High' }}
+              </Badge>
+            </div>
+            <p v-if="event.type !== 'guest_stay'" class="min-w-0 truncate text-[10px] text-muted-foreground">
               {{ formatTime(event.start) }} - {{ formatTime(event.end) }}
+            </p>
+            <p
+              v-if="event.type === 'task'"
+              class="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground"
+            >
+              <Icon
+                :name="event.assigneeType === 'person' ? 'lucide:user' : 'lucide:users-round'"
+                class="h-2.5 w-2.5 shrink-0"
+              />
+              <span class="min-w-0 flex-1 truncate">
+                <template v-if="event.assigneeLabel">
+                  {{ event.assigneeLabel }}<span v-if="event.assigneeRoleLabel" class="text-muted-foreground/70"> · {{ event.assigneeRoleLabel }}</span>
+                </template>
+                <template v-else>
+                  Unassigned
+                </template>
+              </span>
             </p>
           </div>
         </div>

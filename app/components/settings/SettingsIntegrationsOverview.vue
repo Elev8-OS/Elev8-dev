@@ -3,17 +3,19 @@ import { computed, ref } from 'vue'
 import SettingsWhatsAppIntegration from './WhatsAppIntegration.vue'
 import SettingsThreeCxIntegration from './ThreeCxIntegration.vue'
 import SettingsSmartLockIntegration from './SmartLockIntegration.vue'
+import SettingsMinutIntegration from './MinutIntegration.vue'
 import { payoutAccounts } from './data/payouts'
 
 const { isConnected: whatsappConnected, whatsappAccounts } = useWhatsApp()
 const { isConnected: threeCxConnected, activeAccount: threeCxAccount } = useThreeCX()
 const smartLock = useSmartLock()
+const { isConnected: minutConnected, devices: minutDevices } = useMinut()
 
-type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout'
+type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut'
 
 const openIntegration = ref<IntegrationId | null>(null)
 const sheetOpen = computed({
-  get: () => openIntegration.value === 'whatsapp' || openIntegration.value === 'threecx' || openIntegration.value === 'smartlock',
+  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut'].includes(openIntegration.value ?? ''),
   set: (val) => {
     if (!val)
       openIntegration.value = null
@@ -24,6 +26,7 @@ const activeComponent = computed(() => {
   if (openIntegration.value === 'whatsapp') return SettingsWhatsAppIntegration
   if (openIntegration.value === 'threecx') return SettingsThreeCxIntegration
   if (openIntegration.value === 'smartlock') return SettingsSmartLockIntegration
+  if (openIntegration.value === 'minut') return SettingsMinutIntegration
   return null
 })
 
@@ -31,6 +34,7 @@ const activeSheetTitle = computed(() => {
   if (openIntegration.value === 'whatsapp') return 'WhatsApp Business'
   if (openIntegration.value === 'threecx') return '3CX Telephony'
   if (openIntegration.value === 'smartlock') return 'Smart Lock (Seam)'
+  if (openIntegration.value === 'minut') return 'Minut (Noise & Sensor Monitoring)'
   return ''
 })
 
@@ -54,6 +58,15 @@ const smartLockPill = computed(() => {
   const count = smartLock.locks.value.length
   return {
     label: count > 0 ? `Connected · ${count} lock${count !== 1 ? 's' : ''}` : 'Connected',
+    tone: 'connected' as const,
+  }
+})
+
+const minutPill = computed(() => {
+  if (!minutConnected.value) return { label: 'Not connected', tone: 'idle' as const }
+  const count = minutDevices.value.length
+  return {
+    label: count > 0 ? `Connected · ${count} device${count !== 1 ? 's' : ''}` : 'Connected',
     tone: 'connected' as const,
   }
 })
@@ -181,6 +194,31 @@ function openSheet(id: IntegrationId) {
           <NuxtLink to="/settings/payouts">
             {{ payoutPill.tone === 'connected' ? 'Manage' : 'Connect' }}
           </NuxtLink>
+        </Button>
+      </div>
+
+      <!-- Minut (Noise & Sensor Monitoring) -->
+      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+        <div class="mb-3 flex items-start justify-between">
+          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-sky-500/10">
+            <Icon name="lucide:audio-waveform" class="size-5 text-sky-600" />
+          </div>
+          <span
+            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+            :class="statusToneClass[minutPill.tone]"
+          >
+            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[minutPill.tone]" />
+            {{ minutPill.label }}
+          </span>
+        </div>
+        <p class="mb-1 text-sm font-medium">
+          Minut (Noise & Sensor Monitoring)
+        </p>
+        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+          Receive noise, smoke, motion, and sensor events from Minut devices and trigger Journeys on them.
+        </p>
+        <Button variant="outline" size="sm" class="self-start" @click="openSheet('minut')">
+          {{ minutConnected ? 'Manage' : 'Connect' }}
         </Button>
       </div>
     </div>

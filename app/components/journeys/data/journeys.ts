@@ -13,7 +13,7 @@ export type StepType
 
 export type JourneyStatus = 'active' | 'inactive'
 
-export type TriggerCategory = 'conversation' | 'reservation' | 'calendar'
+export type TriggerCategory = 'conversation' | 'reservation' | 'calendar' | 'integration'
 
 export type TriggerType
   = // PRD 15 trigger types (excluding integration minut/turno/tidy)
@@ -32,6 +32,8 @@ export type TriggerType
     | 'weekly'
     | 'monthly'
     | 'yearly'
+  // Minut sensor event (consolidated — fires for any Minut event subtype)
+    | 'minut_event'
 
 export type ChannelType = 'ota' | 'whatsapp' | 'email'
 
@@ -156,7 +158,12 @@ export function defaultTriggerSettings(type: TriggerType): TriggerSettings {
   if (type === 'sentiment_change')
     return { targetSentiments: ['negative'], triggerImmediately: true, delayDays: 0, delayHours: 0, delayMinutes: 0, specificTime: '' }
   // Conversation-Based & Reservation Events with immediate checkbox + delay
-  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled'].includes(type))
+  if (
+    [
+      'inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled',
+      'minut_event',
+    ].includes(type)
+  )
     return { triggerImmediately: true, delayDays: 0, delayHours: 0, delayMinutes: 0, specificTime: '' }
   // Check-in / Check-out: before/on/after toggle + delay + optional time
   if (type === 'checkin' || type === 'checkout')
@@ -338,6 +345,7 @@ export const triggerMeta: Record<string, { label: string, category: TriggerCateg
   weekly: { label: 'Weekly', category: 'calendar' },
   monthly: { label: 'Monthly', category: 'calendar' },
   yearly: { label: 'Yearly', category: 'calendar' },
+  minut_event: { label: 'Trigger when Minut detects sensor events like noise or occupancy issues', category: 'integration' },
 }
 
 export const bookingChannelMeta: Record<BookingChannel, string> = {

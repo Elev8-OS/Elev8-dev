@@ -8,3 +8,11 @@
 - Consolidate all table filters (listing search with inline tags button, date range) into a single Filters popover button rather than separate filter buttons. Confidence: 0.65
 - Prefer modals (Dialog) over sheets/drawers (Sheet) for item detail/viewer panels; reserve sheets for forms and multi-step workflows. Confidence: 0.80
 - Keep modal/detail popups open after submitting a form instead of auto-closing them on submit. Confidence: 0.65
+- Avoid `text-primary` on `bg-primary/10` backgrounds and on plain white — it fails contrast/legibility. Use `text-primary-foreground` (or another high-contrast color) instead. Confidence: 0.90
+- Don't use `text-zinc-*` for text on light backgrounds — it's too low-contrast. Match the text color to the button/surface treatment (e.g. `text-primary-foreground` on primary surfaces). Confidence: 0.85
+- In select/search dropdowns with an inline tags button, do NOT display selected items as chips underneath the field — selections live inside the popover only. Confidence: 0.75
+- Prefers simpler interaction models (e.g. plain toggles) over more "robust" but complex UIs (e.g. collapsible sections + separate channel selection). Default to the minimum viable control set when designing settings/preferences UIs. Confidence: 0.55
+- Prefers Select dropdowns over chip/pill buttons for single-select status filters in list views (counts/badges belong inside the option labels, e.g. "Approved (3)"). Confidence: 0.85
+- Prefers the shadcn-style pagination footer pattern for list/table views: rows-per-page Select + "Page X of N" counter + first/prev/next/last icon buttons (chevrons-left / chevron-left / chevron-right / chevrons-right). Auto-reset pageIndex to 0 when filter, search, or page size changes. Confidence: 0.80
+- Page-size options standard set: 10, 20, 30, 50. Confidence: 0.70
+- Filter/search row layout: filter control on the left, search input + primary action button grouped together on the right (search and action share the same flex container). Confidence: 0.72

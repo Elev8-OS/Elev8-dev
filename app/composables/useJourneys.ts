@@ -1,5 +1,7 @@
-import type { Journey, JourneyGroup, JourneyStatus } from '~/components/journeys/data/journeys'
+import type { Journey, JourneyGroup, JourneyStatus, TriggerEntry, TriggerStep } from '~/components/journeys/data/journeys'
+import { toast } from 'vue-sonner'
 import { mockGroups, mockJourneys } from '~/components/journeys/data/journeys'
+import type { MinutEvent } from '~/composables/useMinut'
 
 export function useJourneys() {
   const journeys = useState<Journey[]>('journeys', () => mockJourneys)
@@ -99,6 +101,26 @@ export function useJourneys() {
     )
   }
 
+  function onMinutEvent(event: Pick<MinutEvent, 'type' | 'deviceId' | 'listingId'>) {
+    for (const journey of journeys.value) {
+      if (journey.status !== 'active')
+        continue
+      const triggerStep = journey.steps.find((s): s is TriggerStep => s.type === 'trigger')
+      if (!triggerStep)
+        continue
+      const matches = triggerStep.triggers.some((t: TriggerEntry) => t.type === 'minut_event')
+      if (!matches)
+        continue
+      const inScope = triggerStep.properties.includes('All Properties')
+        || triggerStep.properties.includes(event.listingId)
+      if (!inScope)
+        continue
+      toast.info(`Journey "${journey.name}" triggered by Minut ${event.type}`, {
+        description: `Device ${event.deviceId} at listing ${event.listingId}`,
+      })
+    }
+  }
+
   return {
     journeys,
     toggleStatus,
@@ -112,5 +134,6 @@ export function useJourneys() {
     toggleGroupCollapse,
     moveJourneyToGroup,
     addJourneysToGroup,
+    onMinutEvent,
   }
 }

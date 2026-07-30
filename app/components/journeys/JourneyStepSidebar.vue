@@ -119,6 +119,7 @@ const allTriggerOptions = Object.entries(triggerMeta).map(([value, meta]) => ({ 
 const conversationTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'conversation'))
 const reservationTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'reservation'))
 const calendarTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'calendar'))
+const { isConnected: minutConnected } = useMinut()
 
 const triggerEntries = computed(() => (triggerStep.value?.triggers ?? []) as TriggerEntry[])
 
@@ -331,7 +332,7 @@ function triggerSettingsType(type: TriggerType) {
   if (type === 'sentiment_change')
     return 'sentiment'
   // Reservation Events with immediate checkbox + delay
-  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled'].includes(type))
+  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled', 'minut_event'].includes(type))
     return 'immediate_delay'
   // Check-in / Check-out: before/on/after toggle + delay + optional time
   if (type === 'checkin' || type === 'checkout')
@@ -417,6 +418,54 @@ const showAltTriggerPicker = ref(false)
                       <SelectLabel>Calendar-Based</SelectLabel>
                       <SelectItem v-for="t in calendarTriggers" :key="t.value" :value="t.value">
                         {{ t.label }}
+                      </SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Integration Events</SelectLabel>
+                      <!-- Minut (direct trigger) -->
+                      <SelectItem
+                        value="minut_event"
+                        :disabled="!minutConnected"
+                      >
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2">
+                            <Icon name="i-lucide-audio-waveform" class="h-3.5 w-3.5" />
+                            Minut Sensor Event
+                          </span>
+                          <span
+                            class="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[9px] font-medium"
+                            :class="minutConnected ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'"
+                          >
+                            <span class="h-1 w-1 rounded-full" :class="minutConnected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
+                            {{ minutConnected ? 'Connected' : 'Not connected' }}
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <!-- Turno (placeholder, not connected) -->
+                      <SelectItem value="__placeholder_turno__" :disabled="true">
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2 text-muted-foreground">
+                            <Icon name="i-lucide-calendar-clock" class="h-3.5 w-3.5" />
+                            Turno
+                          </span>
+                          <span class="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground">
+                            <span class="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                            Not connected
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <!-- Tidy (placeholder, not connected) -->
+                      <SelectItem value="__placeholder_tidy__" :disabled="true">
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2 text-muted-foreground">
+                            <Icon name="i-lucide-sparkles" class="h-3.5 w-3.5" />
+                            Tidy
+                          </span>
+                          <span class="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground">
+                            <span class="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                            Not connected
+                          </span>
+                        </div>
                       </SelectItem>
                     </SelectGroup>
                   </SelectContent>
@@ -593,7 +642,7 @@ const showAltTriggerPicker = ref(false)
                 </div>
               </div>
 
-              <!-- Settings: immediate_delay (inquiry, host_message, new_booking, guest_checkout, cancellation) -->
+              <!-- Settings: immediate_delay (inquiry, host_message, new_booking, guest_checkout, cancellation, minut_event) -->
               <div v-else-if="triggerSettingsType(entry.type) === 'immediate_delay'" class="mt-3 flex flex-col gap-3">
                 <label class="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/40" @click="patchTriggerSettings(i, { triggerImmediately: !entry.settings.triggerImmediately })">
                   <div class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border" :class="entry.settings.triggerImmediately ? 'border-primary bg-primary text-primary-foreground' : 'border-input'">
@@ -605,14 +654,16 @@ const showAltTriggerPicker = ref(false)
                         : entry.type === 'new_message_received' ? 'Trigger when host sends message'
                           : entry.type === 'new_booking' ? 'Trigger at booking'
                             : entry.type === 'guest_checkout' ? 'Trigger at guest check-out'
-                              : 'Trigger at cancellation' }}
+                              : entry.type === 'minut_event' ? 'Trigger on Minut sensor event'
+                                : 'Trigger at cancellation' }}
                     </p>
                     <p class="mt-1 text-xs text-muted-foreground">
                       {{ entry.type === 'inquiry_received' ? 'Trigger as soon as the inquiry is received, with no delay'
                         : entry.type === 'new_message_received' ? 'Trigger as soon as the host sends a message, with no delay'
                           : entry.type === 'new_booking' ? 'Trigger as soon as the booking is confirmed, with no delay'
                             : entry.type === 'guest_checkout' ? 'Trigger as soon as the guest marks themselves as checked-out, with no delay'
-                              : 'Trigger as soon as the cancellation occurs, with no delay' }}
+                              : entry.type === 'minut_event' ? 'Trigger as soon as a Minut sensor event is detected, with no delay'
+                                : 'Trigger as soon as the cancellation occurs, with no delay' }}
                     </p>
                   </div>
                 </label>
@@ -623,7 +674,8 @@ const showAltTriggerPicker = ref(false)
                         : entry.type === 'new_message_received' ? 'Trigger after host sends message'
                           : entry.type === 'new_booking' ? 'Trigger after booking'
                             : entry.type === 'guest_checkout' ? 'Trigger after guest check-out'
-                              : 'Trigger after cancellation' }}
+                              : entry.type === 'minut_event' ? 'Trigger after Minut sensor event'
+                                : 'Trigger after cancellation' }}
                     </Label>
                     <div class="mt-2 grid grid-cols-3 gap-2">
                       <div v-for="unit in [{ key: 'delayDays', label: 'Days' }, { key: 'delayHours', label: 'Hours' }, { key: 'delayMinutes', label: 'Minutes' }]" :key="unit.key">

@@ -1,5 +1,6 @@
 import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
 import type { Booking } from '~/components/listings/data/listings'
+import type { CleaningJobPriority } from '~/components/cleaning/data/cleaning-jobs'
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import { cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
@@ -17,7 +18,12 @@ export interface CalendarEvent {
   end: string // ISO datetime
   guestName?: string
   status?: string
+  priority?: CleaningJobPriority
   assignedTo?: string[]
+  assignee?: string
+  assigneeType?: 'role' | 'person'
+  assigneeLabel?: string
+  assigneeRoleLabel?: string
   notes?: string
   source?: string
   colorIndex: number
@@ -60,6 +66,20 @@ export interface CalendarListing {
   isSingleUnit: boolean
   tags: string[]
   bookings: Booking[]
+}
+
+/** Format a `Date` as `YYYY-MM-DD` using the *local* date components.
+ *
+ * `Date#toISOString` always returns UTC, which is one calendar day behind
+ * the user's intent for any time zone east of UTC (e.g. Bali is UTC+8 —
+ * midnight local is 16:00 the previous day in UTC). Calendar keys must be
+ * anchored to the user's local day, so we format from the local getters.
+ */
+export function formatLocalDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 export function getListingColorIndex(listingId: string) {
@@ -231,8 +251,9 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
       title: `Cleaning${guestSuffix}`,
       start: job.scheduledAt,
       end: new Date(new Date(job.scheduledAt).getTime() + job.durationMinutes * 60000).toISOString(),
-      assignedTo: job.cleanerName ? job.cleanerName.split(',').map(s => s.trim()) : [],
+      assignedTo: job.cleanerNames ?? [],
       status: job.status,
+      priority: job.priority,
       notes: job.notes,
       source: job.source,
       colorIndex: listing?.colorIndex ?? getListingColorIndex(job.listingId),
@@ -263,6 +284,7 @@ export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>
         start,
         end: new Date(new Date(start).getTime() + 120 * 60000).toISOString(),
         guestName: booking.guestName,
+        priority: 'high',
         source: booking.source,
         colorIndex: listingMap?.get(listing.id)?.colorIndex ?? listing.colorIndex,
       })

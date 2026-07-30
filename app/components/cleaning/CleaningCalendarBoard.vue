@@ -99,7 +99,7 @@ function dropJob(listingId: string, dayKey: string) {
             {{ formatTime(job.scheduledAt) }} · {{ job.listingName }}
           </p>
           <p class="text-xs text-muted-foreground">
-            {{ job.cleanerName || 'Unassigned' }} · {{ job.teamName || 'Housekeeping' }}
+            {{ job.cleanerNames?.length ? job.cleanerNames.join(', ') : 'Unassigned' }} · {{ job.teamName || 'Housekeeping' }}
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-1.5">
@@ -168,7 +168,7 @@ function dropJob(listingId: string, dayKey: string) {
                       </p>
                     </div>
                     <p class="truncate text-xs text-muted-foreground">
-                      {{ job.cleanerName || 'Unassigned' }} · {{ job.teamName || 'Housekeeping' }}
+                      {{ job.cleanerNames?.length ? job.cleanerNames.join(', ') : 'Unassigned' }} · {{ job.teamName || 'Housekeeping' }}
                     </p>
                   </div>
                   <Button variant="ghost" size="icon" class="size-7 shrink-0" @click="emit('edit', job.id)">

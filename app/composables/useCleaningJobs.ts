@@ -24,7 +24,7 @@ export function useCleaningJobs() {
     return syncedJobs.value.filter((job) => {
       if (filters.listingIds.length && !filters.listingIds.includes(job.listingId))
         return false
-      if (filters.cleanerIds.length && (!job.cleanerId || !filters.cleanerIds.includes(job.cleanerId)))
+      if (filters.cleanerIds.length && !job.cleanerIds.some(id => filters.cleanerIds.includes(id)))
         return false
       if (filters.statuses.length && !filters.statuses.includes(job.status))
         return false
@@ -54,8 +54,8 @@ export function useCleaningJobs() {
       listingId: reservation.listingId,
       listingName: reservation.listingName,
       scheduledAt,
-      cleanerId: null,
-      cleanerName: null,
+      cleanerIds: [],
+      cleanerNames: [],
       teamName: 'Housekeeping',
       status: 'draft',
       priority: 'high',
@@ -77,10 +77,14 @@ export function useCleaningJobs() {
     return job
   }
 
-  function resolveCleanerName(cleanerId: string | null) {
-    if (!cleanerId)
-      return null
-    return cleanerOptions.find(option => option.id === cleanerId)?.name ?? null
+  function resolveCleanerNames(cleanerIds: string[]) {
+    return cleanerIds
+      .map(id => cleanerOptions.find(option => option.id === id)?.name)
+      .filter((name): name is string => Boolean(name))
+  }
+
+  function joinCleanerNames(cleanerIds: string[]) {
+    return resolveCleanerNames(cleanerIds).join(', ')
   }
 
   function resolveListingName(listingId: string) {
@@ -95,7 +99,8 @@ export function useCleaningJobs() {
     createJob,
     updateJob,
     createFromCheckout,
-    resolveCleanerName,
+    resolveCleanerNames,
+    joinCleanerNames,
     resolveListingName,
   }
 }
