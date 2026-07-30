@@ -39,15 +39,15 @@ async function handleConnect() {
     resetConnect()
     isConnecting.value = false
   }
-  catch (e: any) {
-    connectError.value = e?.message ?? 'Failed to connect to Minut.'
+  catch (e: unknown) {
+    connectError.value = e instanceof Error ? e.message : 'Failed to connect to Minut.'
     isConnecting.value = false
   }
 }
 
 function handleDisconnect() {
   minut.disconnect()
-  toast.info('Minut disconnected. All paired devices and event history have been cleared.')
+  toast.info('Minut disconnected. Paired devices and event history have been preserved.')
   disconnectDialogOpen.value = false
 }
 
@@ -246,7 +246,7 @@ async function handleSync() {
         <DialogHeader>
           <DialogTitle>Disconnect Minut?</DialogTitle>
           <DialogDescription>
-            New webhook events will stop. All paired device data and event history will be removed. Journeys with Minut triggers will silently stop firing until Minut is reconnected.
+            New webhook events will stop. Paired devices and event history will be preserved for the next time you connect, but won't sync until Minut is reconnected.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

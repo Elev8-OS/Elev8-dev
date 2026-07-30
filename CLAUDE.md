@@ -352,7 +352,7 @@ Mock-only single-tenant connection that surfaces Minut (noise/sensor monitoring)
 
 #### Journeys integration (`app/composables/useJourneys.ts`)
 - **7 new `MinutTriggerType` keys** added to `TriggerStep['type']` union + `triggerMeta`: `minut_noise | minut_smoke | minut_temperature | minut_motion | minut_battery | minut_tamper | minut_connectivity`
-- **`onMinutEvent(event: MinutEvent)`** — finds active journeys whose trigger type matches the event type AND whose listing scope includes the event's `listingId` (or scope = `'all'`), then fires them with `useJourneys().triggerJourney(id, event)` (toast.info mock). Returns the list of fired journey IDs
+- **`onMinutEvent(event: Pick<MinutEvent, 'type' | 'deviceId' | 'listingId'>)`** — finds active journeys whose trigger type matches the event type AND whose listing scope includes the event's `listingId` (or scope = `'All Properties'`), then emits a `toast.info` per match. The function is **void** — it does NOT return the list of fired journey IDs (only fires toasts)
 - **`defaultTriggerSettings`** covers all 7 Minut keys with the standard `immediate_delay` block — NO new sidebar code, each trigger reuses the existing immediate_delay sidebar block (same copy: "Trigger as soon as the Minut event is detected, with no delay.")
 
 #### Hierarchical Integration Events trigger picker (`JourneyStepSidebar.vue`)

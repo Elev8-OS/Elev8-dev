@@ -1,6 +1,7 @@
-import type { Journey, JourneyGroup, JourneyStatus } from '~/components/journeys/data/journeys'
+import type { Journey, JourneyGroup, JourneyStatus, MinutTriggerType, TriggerEntry, TriggerStep } from '~/components/journeys/data/journeys'
 import { toast } from 'vue-sonner'
 import { mockGroups, mockJourneys } from '~/components/journeys/data/journeys'
+import type { MinutEvent } from '~/composables/useMinut'
 
 export function useJourneys() {
   const journeys = useState<Journey[]>('journeys', () => mockJourneys)
@@ -100,19 +101,19 @@ export function useJourneys() {
     )
   }
 
-  function onMinutEvent(event: { type: string, deviceId: string, listingId: string }) {
-    const minutType = `minut_${event.type}` as const
+  function onMinutEvent(event: Pick<MinutEvent, 'type' | 'deviceId' | 'listingId'>) {
+    const minutType = `minut_${event.type}` as MinutTriggerType
     for (const journey of journeys.value) {
       if (journey.status !== 'active')
         continue
-      const triggerStep = journey.steps.find(s => s.type === 'trigger') as any
+      const triggerStep = journey.steps.find((s): s is TriggerStep => s.type === 'trigger')
       if (!triggerStep)
         continue
-      const matches = (triggerStep.triggers ?? []).some((t: any) => t.type === minutType)
+      const matches = triggerStep.triggers.some((t: TriggerEntry) => t.type === minutType)
       if (!matches)
         continue
-      const inScope = triggerStep.properties?.includes('All Properties')
-        || triggerStep.properties?.includes(event.listingId)
+      const inScope = triggerStep.properties.includes('All Properties')
+        || triggerStep.properties.includes(event.listingId)
       if (!inScope)
         continue
       toast.info(`Journey "${journey.name}" triggered by Minut ${event.type}`, {
