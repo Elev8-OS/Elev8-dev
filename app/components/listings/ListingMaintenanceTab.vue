@@ -10,7 +10,7 @@ const emit = defineEmits<{ update: [listing: Listing] }>()
 const showAddDialog = ref(false)
 const showCleaningDialog = ref(false)
 const newTask = ref({ title: '', assignedTo: '', type: 'cleaning' as MaintenanceTask['type'] })
-const { createJob, jobsForListing, resolveCleanerName } = useCleaningJobs()
+const { createJob, jobsForListing, resolveCleanerNames } = useCleaningJobs()
 
 const statusColors: Record<string, string> = {
   pending: 'secondary',
@@ -57,7 +57,7 @@ function handleSaveCleaningJob(jobInput: Parameters<typeof createJob>[0]) {
     ...jobInput,
     listingId: props.listing.id,
     listingName: props.listing.name,
-    cleanerName: jobInput.cleanerId ? resolveCleanerName(jobInput.cleanerId) : null,
+    cleanerNames: resolveCleanerNames(jobInput.cleanerIds ?? []),
   })
   showCleaningDialog.value = false
 }
@@ -134,7 +134,7 @@ function handleSaveCleaningJob(jobInput: Parameters<typeof createJob>[0]) {
                 {{ job.scheduledAt.slice(0, 10) }}
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ job.cleanerName || 'Unassigned' }} · {{ job.teamName || 'Unassigned' }}
+                {{ job.cleanerNames?.length ? job.cleanerNames.join(', ') : 'Unassigned' }} · {{ job.teamName || 'Unassigned' }}
               </p>
               <p class="text-xs text-muted-foreground">
                 {{ job.notes }}

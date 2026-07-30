@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { toast } from 'vue-sonner'
 import OperationsCalendarCreateDialog from '~/components/operations-calendar/OperationsCalendarCreateDialog.vue'
+import CalendarEventDetailDialog from '~/components/operations-calendar/CalendarEventDetailDialog.vue'
+import TaskEventDetailSheet from '~/components/operations-calendar/TaskEventDetailSheet.vue'
 import { useOperationsCalendar } from '~/composables/useOperationsCalendar'
 
 const {
@@ -24,8 +27,18 @@ const createOpen = ref(false)
 const createListingId = ref<string>()
 const createDayKey = ref<string>()
 
-function handleEventClick(_event: any) {
-  // TODO: open event detail dialog
+const detailOpen = ref(false)
+const detailEvent = ref<CalendarEvent | null>(null)
+const taskSheetOpen = ref(false)
+
+function handleEventClick(event: CalendarEvent) {
+  detailEvent.value = event
+  if (event.type === 'task') {
+    taskSheetOpen.value = true
+  }
+  else {
+    detailOpen.value = true
+  }
 }
 
 function handleCreate(payload: { listingId: string, dayKey: string }) {
@@ -82,6 +95,18 @@ function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: 
         :listing-id="createListingId"
         :day-key="createDayKey"
         @update:open="createOpen = $event"
+      />
+
+      <CalendarEventDetailDialog
+        :open="detailOpen"
+        :event="detailEvent"
+        @update:open="detailOpen = $event"
+      />
+
+      <TaskEventDetailSheet
+        :open="taskSheetOpen"
+        :event="detailEvent"
+        @update:open="taskSheetOpen = $event"
       />
 
       <template #fallback>

@@ -13,25 +13,14 @@
 - Header currency must dynamically reflect the tenant account's currency setting (currently CHF). Confidence: 0.70
 
 # workflow
-- Push to GitHub after completing each feature chunk. Confidence: 0.88
-- Update CLAUDE.md alongside pushes to keep project context current. Confidence: 0.92
-- Commit first, then push (`git commit` → `git push`). Confidence: 0.70
-- Check git status (uncommitted/untracked) before pushing. Confidence: 0.65
-- Brainstorm and discuss design before implementation. Confidence: 0.75
-
-# ui-patterns
-See [ui-patterns/taste.md](ui-patterns/taste.md)
+See [workflow/taste.md](workflow/taste.md)
 # vue-nuxt
-- Reka UI SwitchRoot ignores external `:checked` prop changes — use `:key` force re-mount as workaround. Confidence: 0.85
-- Reka UI CheckboxRoot `:key` force-remount workaround doesn't fix visual state — replace with plain `<span>` + Tailwind classes instead. Confidence: 0.85
-- shadcn-vue Input/Textarea require `:model-value` + `@update:model-value` bindings, NOT `:value` + `@input`. Confidence: 0.85
-- Nuxt auto-imports components with directory prefix: `components/inventory/FooDrawer.vue` → `<InventoryFooDrawer>`. Confidence: 0.80
-- Use `useState<T>()` with spread syntax for shared reactive state in composables. Confidence: 0.80
-
+See [vue-nuxt/taste.md](vue-nuxt/taste.md)
 # finance
 See [finance/taste.md](finance/taste.md)
 # workflow
 - Prefer `pnpm dev` over `pnpm build` during development to avoid browser crash from heavy builds. Confidence: 0.65
+- When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. Confidence: 0.88
 
 # 3cx
 - For mock 3CX integration: skip the OAuth redirect page/callback flow and go directly to "connected" state. Confidence: 0.65

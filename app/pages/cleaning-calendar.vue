@@ -6,7 +6,7 @@ import CleaningFilters from '~/components/cleaning/CleaningFilters.vue'
 import CleaningJobForm from '~/components/cleaning/CleaningJobForm.vue'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 
-const { jobs, jobsForFilters, createJob, updateJob, resolveCleanerName, resolveListingName } = useCleaningJobs()
+const { jobs, jobsForFilters, createJob, updateJob, resolveCleanerNames, resolveListingName } = useCleaningJobs()
 
 const view = ref<'week' | 'agenda'>('week')
 const weekAnchor = ref(new Date())
@@ -30,7 +30,7 @@ const editingJob = computed(() => jobs.value.find(job => job.id === editingId.va
 function handleCreate(input: Parameters<typeof createJob>[0]) {
   createJob({
     ...input,
-    cleanerName: input.cleanerId ? resolveCleanerName(input.cleanerId) : null,
+    cleanerNames: resolveCleanerNames(input.cleanerIds ?? []),
     listingName: input.listingId ? resolveListingName(input.listingId) : input.listingName,
   })
   createOpen.value = false
@@ -42,7 +42,7 @@ function handleUpdate(input: Parameters<typeof createJob>[0]) {
     return
   updateJob(editingJob.value.id, {
     ...input,
-    cleanerName: input.cleanerId ? resolveCleanerName(input.cleanerId) : null,
+    cleanerNames: resolveCleanerNames(input.cleanerIds ?? []),
     listingName: input.listingId ? resolveListingName(input.listingId) : input.listingName,
   })
   editOpen.value = false

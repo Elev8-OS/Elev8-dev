@@ -3,6 +3,7 @@ import type { CalendarEvent, CalendarEventType, CalendarListing, OperationsFilte
 import { useTaskStore } from '@/composables/useTaskStore'
 import { buildAllEvents, eventsForDay, getCalendarListings, getWeekDays, groupEventsByListingAndDay } from '~/components/operations-calendar/data/operations-calendar'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
 
 export function useOperationsCalendar() {
   const { tasks } = useTaskStore()
@@ -29,6 +30,15 @@ export function useOperationsCalendar() {
         const listing = listingByName.get(task.listing!)
         if (!listing)
           return null
+
+        const assigneeMatch = task.assignee
+          ? assigneeOptions.find(o => o.value === task.assignee)
+          : null
+        const assigneeLabel = assigneeMatch?.label ?? task.assignee
+        const assigneeRoleLabel = task.assigneeType === 'person' && task.assignee
+          ? assigneeRoles.find(r => r.value === staffMembers.find(s => s.value === task.assignee)?.role)?.label ?? ''
+          : ''
+
         return {
           id: `task-${task.id}`,
           listingId: listing.id,
@@ -37,6 +47,12 @@ export function useOperationsCalendar() {
           title: task.title,
           start: `${task.dueDate}T09:00:00+08:00`,
           end: `${task.dueDate}T10:00:00+08:00`,
+          status: task.status,
+          priority: task.priority,
+          assignee: task.assignee,
+          assigneeType: task.assigneeType,
+          assigneeLabel,
+          assigneeRoleLabel,
           colorIndex: listing.colorIndex,
         }
       })

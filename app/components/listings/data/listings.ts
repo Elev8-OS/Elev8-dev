@@ -56,6 +56,7 @@ export interface Booking {
   status: 'confirmed' | 'pending' | 'cancelled'
   revenue: number
   source: string
+  hasPet?: boolean
 }
 
 export interface Review {
@@ -364,9 +365,9 @@ export const listings = ref<Listing[]>([
       ],
     },
     bookings: [
-      { id: 'bk-1', guestName: 'Sarah Mitchell', checkIn: '2026-06-05', checkOut: '2026-06-09', nights: 4, status: 'confirmed', revenue: 740, source: 'Airbnb' },
+      { id: 'bk-1', guestName: 'Sarah Mitchell', checkIn: '2026-06-05', checkOut: '2026-06-09', nights: 4, status: 'confirmed', revenue: 740, source: 'Airbnb', hasPet: true },
       { id: 'bk-2', guestName: 'James Kim', checkIn: '2026-06-12', checkOut: '2026-06-15', nights: 3, status: 'confirmed', revenue: 555, source: 'Booking.com' },
-      { id: 'bk-3', guestName: 'Emma Wilson', checkIn: '2026-06-20', checkOut: '2026-06-25', nights: 5, status: 'pending', revenue: 925, source: 'Airbnb' },
+      { id: 'bk-3', guestName: 'Emma Wilson', checkIn: '2026-06-20', checkOut: '2026-06-25', nights: 5, status: 'pending', revenue: 925, source: 'Airbnb', hasPet: true },
     ],
     blockedDates: ['2026-06-10', '2026-06-11'],
     reviews: [
@@ -537,7 +538,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-6', guestName: 'Nina Schwarz', checkIn: '2026-06-23', checkOut: '2026-06-26', nights: 3, status: 'confirmed', revenue: 450, source: 'Booking.com' },
+      { id: 'bk-6', guestName: 'Nina Schwarz', checkIn: '2026-06-23', checkOut: '2026-06-26', nights: 3, status: 'confirmed', revenue: 450, source: 'Booking.com', hasPet: true },
     ],
     blockedDates: [],
     reviews: [],
