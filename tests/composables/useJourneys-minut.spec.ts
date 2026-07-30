@@ -21,7 +21,7 @@ describe('useJourneys.onMinutEvent', () => {
     toastInfo.mockClear()
   })
 
-  it('does nothing when no journeys match the event type', () => {
+  it('does nothing when no journeys have the minut_event trigger', () => {
     const { onMinutEvent, journeys } = useJourneys()
     // Default mock journeys have no Minut triggers
     const before = journeys.value.length

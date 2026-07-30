@@ -1,6 +1,7 @@
 # Minut × Journeys Integration — Design Spec
 
 > **Status:** Draft
+> **Superseded note:** The 7 Minut trigger types (`minut_noise | minut_smoke | minut_temperature | minut_motion | minut_battery | minut_tamper | minut_connectivity`) described in this spec were collapsed into a single `minut_event` trigger type after user feedback. The composable (`useMinut()`), settings card, and Sheet content remain unchanged — only the Journeys trigger picker wiring was simplified. The historical design is preserved here for traceability.
 > **Date:** 2026-07-29
 > **Author:** Claude (brainstorming + design)
 > **Scope:** Settings card + Journey triggers only (no notification alerts, no per-listing device pairing UI)

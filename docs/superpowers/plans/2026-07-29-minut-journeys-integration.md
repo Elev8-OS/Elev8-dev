@@ -1,6 +1,7 @@
 # Minut × Journeys Integration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Superseded note:** This plan was executed and shipped, then refactored. The 7 Minut trigger types designed in Tasks 4-6 were collapsed into a single `minut_event` trigger after user feedback. The composable, settings card, and Sheet content (Tasks 1-3, 7-9) shipped unchanged. The historical task design is preserved here for traceability.
 
 **Goal:** Wire Minut (noise & sensor monitoring) as a first-class event source for Journeys so staff can build journeys that fire on noise, smoke, temperature, motion, battery, tamper, and connectivity events from any Minut device in their workspace.
 
