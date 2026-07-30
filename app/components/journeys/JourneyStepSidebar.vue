@@ -119,30 +119,7 @@ const allTriggerOptions = Object.entries(triggerMeta).map(([value, meta]) => ({ 
 const conversationTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'conversation'))
 const reservationTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'reservation'))
 const calendarTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'calendar'))
-const integrationTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'integration'))
 const { isConnected: minutConnected } = useMinut()
-
-const integrationProviders = [
-  { id: 'minut', label: 'Minut', icon: 'i-lucide-audio-waveform', connected: minutConnected },
-  { id: 'turno', label: 'Turno', icon: 'i-lucide-calendar-clock', connected: false },
-  { id: 'tidy', label: 'Tidy', icon: 'i-lucide-sparkles', connected: false },
-]
-const expandedProvider = ref<string | null>(null)
-
-function pickIntegrationTrigger(providerId: string, triggerType: TriggerType) {
-  if (providerId !== 'minut' || !minutConnected.value)
-    return
-  const entries = [...triggerEntries.value]
-  const first = entries[0]
-  if (entries.length === 1 && first && first.type === 'new_booking') {
-    entries[0] = { type: triggerType, settings: defaultTriggerSettings(triggerType) }
-  }
-  else {
-    entries.push({ type: triggerType, settings: defaultTriggerSettings(triggerType) })
-  }
-  patchTriggers(entries)
-  expandedProvider.value = null
-}
 
 const triggerEntries = computed(() => (triggerStep.value?.triggers ?? []) as TriggerEntry[])
 
@@ -445,38 +422,51 @@ const showAltTriggerPicker = ref(false)
                     </SelectGroup>
                     <SelectGroup>
                       <SelectLabel>Integration Events</SelectLabel>
-                      <template v-for="provider in integrationProviders" :key="provider.id">
-                        <SelectItem
-                          :value="`__provider__${provider.id}`"
-                          :disabled="!provider.connected"
-                          @select="(e) => { e.preventDefault(); expandedProvider = provider.id }"
-                        >
-                          <div class="flex w-full items-center justify-between">
-                            <span class="flex items-center gap-2">
-                              <Icon :name="provider.icon" class="h-3.5 w-3.5" />
-                              {{ provider.label }}
-                            </span>
-                            <span
-                              class="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[9px] font-medium"
-                              :class="provider.connected ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'"
-                            >
-                              <span class="h-1 w-1 rounded-full" :class="provider.connected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
-                              {{ provider.connected ? 'Connected' : 'Not connected' }}
-                            </span>
-                          </div>
-                        </SelectItem>
-                        <template v-if="expandedProvider === provider.id && provider.connected && provider.id === 'minut'">
-                          <SelectItem
-                            v-for="t in integrationTriggers"
-                            :key="t.value"
-                            :value="t.value"
-                            class="pl-8"
-                            @select="(e) => { e.preventDefault(); pickIntegrationTrigger(provider.id, t.value as TriggerType) }"
+                      <!-- Minut (direct trigger) -->
+                      <SelectItem
+                        value="minut_event"
+                        :disabled="!minutConnected"
+                      >
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2">
+                            <Icon name="i-lucide-audio-waveform" class="h-3.5 w-3.5" />
+                            Minut Sensor Event
+                          </span>
+                          <span
+                            class="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[9px] font-medium"
+                            :class="minutConnected ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'"
                           >
-                            {{ t.label }}
-                          </SelectItem>
-                        </template>
-                      </template>
+                            <span class="h-1 w-1 rounded-full" :class="minutConnected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
+                            {{ minutConnected ? 'Connected' : 'Not connected' }}
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <!-- Turno (placeholder, not connected) -->
+                      <SelectItem value="__placeholder_turno__" :disabled="true">
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2 text-muted-foreground">
+                            <Icon name="i-lucide-calendar-clock" class="h-3.5 w-3.5" />
+                            Turno
+                          </span>
+                          <span class="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground">
+                            <span class="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                            Not connected
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <!-- Tidy (placeholder, not connected) -->
+                      <SelectItem value="__placeholder_tidy__" :disabled="true">
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2 text-muted-foreground">
+                            <Icon name="i-lucide-sparkles" class="h-3.5 w-3.5" />
+                            Tidy
+                          </span>
+                          <span class="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground">
+                            <span class="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                            Not connected
+                          </span>
+                        </div>
+                      </SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
