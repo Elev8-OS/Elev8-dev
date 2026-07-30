@@ -523,7 +523,7 @@ git commit -m "feat(minut): emitMockEvents generates sensor events + lookup help
 
 - [ ] **Step 1: Add MinutTriggerType union**
 
-In `app/components/journeys/data/journeys.ts`, after the `BookingChannel` type definition (around line 49), add:
+In `app/components/journeys/data/journeys.ts`, **before** the `TriggerType` declaration (currently at line 18, immediately after the `TriggerCategory` type at line 16), add:
 
 ```ts
 export type MinutTriggerType =
