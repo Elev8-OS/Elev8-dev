@@ -55,7 +55,7 @@ const displayTitle = computed(() => {
 })
 
 const timeRange = computed(() => {
-  if (props.event.type === 'guest_stay')
+  if (props.event.type === 'guest_stay' || props.event.type === 'task')
     return ''
   return `${formatTime(props.event.start)} - ${formatTime(props.event.end)}`
 })

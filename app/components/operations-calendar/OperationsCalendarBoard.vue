@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import type { CalendarEvent, CalendarListing, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
-import {
-  DAY_END_HOUR,
-  DAY_START_HOUR,
-  formatTime,
-  getCalendarListings,
-  HOUR_HEIGHT,
-  isDayOccupied,
-} from '~/components/operations-calendar/data/operations-calendar'
+import { getCalendarListings } from '~/components/operations-calendar/data/operations-calendar'
 
 interface WeekDay {
   key: string
@@ -21,16 +14,10 @@ const props = defineProps<{
   eventsByDayAndListing: Map<string, CalendarEvent[]>
   eventsByListingAndDay: Map<string, Map<string, CalendarEvent[]>>
   weekDays: WeekDay[]
-  view: 'week' | 'day'
-  selectedDay?: string
-  showAllListings?: boolean
   filters: OperationsFilters
 }>()
 
 const emit = defineEmits<{
-  'update:selectedDay': [dayKey: string]
-  'update:showAllListings': [value: boolean]
-  'update:view': [view: 'week' | 'day']
   'eventClick': [event: CalendarEvent]
   'moveEvent': [payload: { id: string, listingId: string, scheduledAt: string, originalEvent: CalendarEvent }]
   'create': [payload: { listingId: string, dayKey: string }]
@@ -40,9 +27,6 @@ const emit = defineEmits<{
   'nextWeek': []
   'goToToday': []
 }>()
-
-const totalHours = DAY_END_HOUR - DAY_START_HOUR
-const totalHeight = totalHours * HOUR_HEIGHT
 
 const allListings = getCalendarListings()
 const visibleListingIds = computed(() => new Set(props.eventsByListingAndDay.keys()))
@@ -190,25 +174,7 @@ function getStayBars(listing: CalendarListing): StayBar[] {
     })
 }
 
-const selectedDayKey = computed(() => props.selectedDay ?? props.weekDays[0]?.key ?? '')
-
-const dayListings = computed(() => {
-  if (props.showAllListings)
-    return visibleListings.value
-  const activeIds = Array.from(props.eventsByDayAndListing.keys())
-  return visibleListings.value.filter(listing => activeIds.includes(listing.id))
-})
-
-const timeLabels = computed(() => {
-  const labels = []
-  for (let hour = DAY_START_HOUR; hour <= DAY_END_HOUR; hour += 2) {
-    labels.push({
-      hour,
-      label: new Date(0, 0, 0, hour).toLocaleTimeString('en-US', { hour: 'numeric' }),
-    })
-  }
-  return labels
-})
+const todayKey = new Date().toISOString().slice(0, 10)
 
 const listingColors = [
   'bg-sky-500',
@@ -217,56 +183,6 @@ const listingColors = [
   'bg-rose-500',
   'bg-slate-500',
 ]
-
-const listingLightColors = [
-  'bg-sky-500/10 border-sky-500/20',
-  'bg-emerald-500/10 border-emerald-500/20',
-  'bg-amber-500/10 border-amber-500/20',
-  'bg-rose-500/10 border-rose-500/20',
-  'bg-slate-500/10 border-slate-500/20',
-]
-
-function eventStyle(event: CalendarEvent, dayKey: string) {
-  const dayStart = new Date(`${dayKey}T00:00:00+08:00`).getTime()
-  const slotStart = new Date(`${dayKey}T${String(DAY_START_HOUR).padStart(2, '0')}:00:00+08:00`).getTime()
-  const startMs = Math.max(new Date(event.start).getTime(), dayStart)
-  const endMs = Math.min(new Date(event.end).getTime(), dayStart + 24 * 60 * 60 * 1000)
-
-  const offsetMinutes = (startMs - slotStart) / 60000
-  const durationMinutes = Math.max((endMs - startMs) / 60000, 15)
-
-  return {
-    top: `${(offsetMinutes / 60) * HOUR_HEIGHT}px`,
-    height: `${(durationMinutes / 60) * HOUR_HEIGHT}px`,
-  }
-}
-
-function eventClasses(event: CalendarEvent) {
-  const base = 'absolute inset-x-1 flex flex-col gap-0.5 rounded-md border-l-4 px-2 py-1 text-[11px] leading-tight shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow'
-  if (event.type === 'guest_stay') {
-    return `${base} border-l-primary/60 ${listingLightColors[event.colorIndex] ?? listingLightColors[0]}`
-  }
-  if (event.type === 'task') {
-    if (isOverdueTask(event)) {
-      return `${base} border-l-destructive bg-destructive/10 border-destructive/50 text-foreground ring-1 ring-destructive/40`
-    }
-    return `${base} border-l-amber-500 bg-amber-500/10 border-amber-500/30 text-foreground`
-  }
-  if (event.type === 'cleaning') {
-    return `${base} border-l-sky-500 bg-sky-500/10 border-sky-500/30 text-foreground`
-  }
-  return `${base} border-l-muted bg-card border-border text-foreground`
-}
-
-function isOverdueTask(event: CalendarEvent) {
-  if (event.type !== 'task' || !event.start)
-    return false
-  const dueDate = event.start.slice(0, 10)
-  const today = new Date().toISOString().slice(0, 10)
-  if (dueDate >= today)
-    return false
-  return event.status !== 'done' && event.status !== 'canceled'
-}
 
 function weeklyEventCount(listingId: string) {
   const listingMap = props.eventsByListingAndDay.get(listingId)
@@ -327,16 +243,6 @@ function onCellClick(listingId: string, dayKey: string) {
         @clear="emit('clear')"
       />
       <div class="flex items-center gap-2">
-        <Tabs :model-value="view" @update:model-value="emit('update:view', $event as 'week' | 'day')">
-          <TabsList>
-            <TabsTrigger value="week">
-              Week
-            </TabsTrigger>
-            <TabsTrigger value="day">
-              Day
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
         <Button variant="outline" size="sm" @click="emit('previousWeek')">
           <Icon name="lucide:chevron-left" class="h-4 w-4" />
         </Button>
@@ -349,7 +255,7 @@ function onCellClick(listingId: string, dayKey: string) {
       </div>
     </div>
     <!-- Week view -->
-    <div v-if="view === 'week'" class="overflow-auto">
+    <div class="overflow-auto">
       <div class="min-w-[1100px]">
         <!-- Header -->
         <div class="sticky top-0 z-20 flex border-b bg-background">
@@ -369,7 +275,7 @@ function onCellClick(listingId: string, dayKey: string) {
               v-for="day in weekDays"
               :key="day.key"
               class="border-l bg-background px-4 py-3"
-              :class="selectedDay === day.key && 'bg-muted/30'"
+              :class="day.key === todayKey && 'bg-muted/30'"
             >
               <p class="text-xs font-semibold text-muted-foreground">
                 {{ day.label.slice(0, 3) }}
@@ -458,7 +364,7 @@ function onCellClick(listingId: string, dayKey: string) {
                   v-for="(day, index) in weekDays"
                   :key="`${node.id}-${day.key}`"
                   class="group relative min-h-[132px] cursor-pointer border-l bg-background/70 p-2 transition-colors hover:bg-muted/40"
-                  :class="selectedDay === day.key && 'bg-muted/30'"
+                  :class="day.key === todayKey && 'bg-muted/30'"
                   :style="{ gridColumn: `${index + 1} / ${index + 2}`, gridRow: '2 / 3' }"
                   @dragover.prevent
                   @drop.prevent="onDrop(node.listing?.id ?? '', day.key)"
@@ -479,157 +385,6 @@ function onCellClick(listingId: string, dayKey: string) {
               </div>
             </div>
           </template>
-        </div>
-      </div>
-    </div>
-
-    <!-- Day view -->
-    <div v-else class="overflow-auto">
-      <div class="grid min-w-[900px]" :style="{ gridTemplateColumns: `64px repeat(${dayListings.length}, minmax(180px, 1fr))` }">
-        <!-- Header -->
-        <div class="sticky left-0 z-20 border-b bg-background px-2 py-3">
-          <Button
-            v-if="eventsByDayAndListing.size < visibleListings.length"
-            variant="ghost"
-            size="sm"
-            class="h-auto px-0 text-xs text-muted-foreground"
-            @click="emit('update:showAllListings', !showAllListings)"
-          >
-            {{ showAllListings ? 'Show active' : 'Show all' }}
-          </Button>
-        </div>
-        <div
-          v-for="listing in dayListings"
-          :key="listing.id"
-          class="border-b border-l bg-background px-3 py-3"
-        >
-          <div class="flex items-start gap-2">
-            <div class="min-w-0">
-              <template v-if="listing.isSingleUnit">
-                <p class="truncate text-sm font-semibold">
-                  {{ listing.roomLabel }}
-                </p>
-              </template>
-              <template v-else>
-                <p class="truncate text-[10px] text-muted-foreground">
-                  {{ listing.property }}
-                </p>
-                <p class="truncate text-xs font-medium text-foreground">
-                  {{ listing.unitTypeLabel }}
-                </p>
-                <p class="truncate text-sm font-semibold">
-                  {{ listing.roomLabel }}
-                </p>
-              </template>
-            </div>
-          </div>
-          <Badge
-            :variant="isDayOccupied(eventsByDayAndListing.get(listing.id) ?? [], selectedDayKey) ? 'default' : 'outline'"
-            class="mt-1.5 text-[10px]"
-          >
-            {{ isDayOccupied(eventsByDayAndListing.get(listing.id) ?? [], selectedDayKey) ? 'Occupied' : 'Empty' }}
-          </Badge>
-        </div>
-
-        <!-- Time labels -->
-        <div class="sticky left-0 z-10 border-r bg-background">
-          <div
-            v-for="slot in timeLabels"
-            :key="slot.hour"
-            class="flex items-start justify-end border-b pr-2 text-[10px] text-muted-foreground"
-            :style="{ height: `${HOUR_HEIGHT * 2}px` }"
-          >
-            {{ slot.label }}
-          </div>
-        </div>
-
-        <!-- Listing columns -->
-        <div
-          v-for="listing in dayListings"
-          :key="listing.id"
-          class="relative border-l"
-          :style="{ height: `${totalHeight}px` }"
-        >
-          <div
-            v-for="event in eventsByDayAndListing.get(listing.id) ?? []"
-            :key="`${listing.id}-${event.id}`"
-            :class="eventClasses(event)"
-            :style="eventStyle(event, selectedDayKey)"
-            @click.stop="emit('eventClick', event)"
-          >
-            <div class="flex min-w-0 items-start justify-between gap-1">
-              <p class="flex min-w-0 items-center gap-1.5 truncate font-semibold">
-                <Icon
-                  v-if="event.type === 'cleaning'"
-                  name="lucide:brush"
-                  class="h-3 w-3 shrink-0 text-sky-600"
-                />
-                <Icon
-                  v-else-if="event.type === 'task'"
-                  name="lucide:clipboard-list"
-                  class="h-3 w-3 shrink-0 text-amber-600"
-                />
-                <Icon
-                  v-else-if="event.type === 'upsell'"
-                  name="lucide:sparkles"
-                  class="h-3 w-3 shrink-0 text-violet-600"
-                />
-                <Icon
-                  v-else-if="event.type === 'guest_stay'"
-                  name="lucide:bed"
-                  class="h-3 w-3 shrink-0 text-primary"
-                />
-                <span class="min-w-0 truncate">{{ event.title }}</span>
-              </p>
-              <Badge
-                v-if="event.type === 'cleaning' && event.priority === 'high'"
-                variant="destructive"
-                class="shrink-0 bg-destructive/90 px-1 py-0 text-[9px] font-medium text-white"
-                data-testid="event-priority-badge"
-              >
-                <Icon name="lucide:flag" class="mr-0.5 h-2.5 w-2.5" />
-                High
-              </Badge>
-              <Badge
-                v-if="isOverdueTask(event)"
-                variant="destructive"
-                class="shrink-0 bg-destructive/90 px-1 py-0 text-[9px] font-medium text-white"
-                data-testid="event-overdue-badge"
-              >
-                <Icon name="lucide:alert-triangle" class="mr-0.5 h-2.5 w-2.5" />
-                Overdue
-              </Badge>
-              <Badge
-                v-if="event.type === 'task' && (event.priority === 'high' || event.priority === 'urgent')"
-                variant="destructive"
-                class="shrink-0 bg-destructive/90 px-1 py-0 text-[9px] font-medium text-white"
-                data-testid="event-priority-badge"
-              >
-                <Icon name="lucide:flag" class="mr-0.5 h-2.5 w-2.5" />
-                {{ event.priority === 'urgent' ? 'Urgent' : 'High' }}
-              </Badge>
-            </div>
-            <p v-if="event.type !== 'guest_stay'" class="min-w-0 truncate text-[10px] text-muted-foreground">
-              {{ formatTime(event.start) }} - {{ formatTime(event.end) }}
-            </p>
-            <p
-              v-if="event.type === 'task'"
-              class="flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground"
-            >
-              <Icon
-                :name="event.assigneeType === 'person' ? 'lucide:user' : 'lucide:users-round'"
-                class="h-2.5 w-2.5 shrink-0"
-              />
-              <span class="min-w-0 flex-1 truncate">
-                <template v-if="event.assigneeLabel">
-                  {{ event.assigneeLabel }}<span v-if="event.assigneeRoleLabel" class="text-muted-foreground/70"> · {{ event.assigneeRoleLabel }}</span>
-                </template>
-                <template v-else>
-                  Unassigned
-                </template>
-              </span>
-            </p>
-          </div>
         </div>
       </div>
     </div>

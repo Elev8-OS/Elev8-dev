@@ -9,10 +9,7 @@ export function useOperationsCalendar() {
   const { tasks } = useTaskStore()
   const { jobs: cleaningJobs, updateJob: updateCleaningJob, resolveListingName } = useCleaningJobs()
 
-  const view = ref<'week' | 'day'>('week')
   const weekAnchor = ref(new Date())
-  const selectedDay = ref<string>(new Date().toISOString().slice(0, 10))
-  const showAllListingsInDay = ref(false)
 
   const filters = ref<OperationsFilters>({
     listingSearch: '',
@@ -119,7 +116,8 @@ export function useOperationsCalendar() {
   })
 
   const eventsByDayAndListing = computed(() => {
-    const dayKey = selectedDay.value || weekDays.value[0]?.key || ''
+    const today = new Date().toISOString().slice(0, 10)
+    const dayKey = weekDays.value.find(d => d.key === today)?.key ?? weekDays.value[0]?.key ?? ''
     const dayEvents = eventsByDay.value.get(dayKey) ?? []
     const map = new Map<string, CalendarEvent[]>()
     for (const event of dayEvents) {
@@ -156,7 +154,6 @@ export function useOperationsCalendar() {
 
   function goToToday() {
     weekAnchor.value = new Date()
-    selectedDay.value = new Date().toISOString().slice(0, 10)
   }
 
   function toggleEventType(type: CalendarEventType) {
@@ -179,10 +176,7 @@ export function useOperationsCalendar() {
 
   return {
     events,
-    view,
     weekAnchor,
-    selectedDay,
-    showAllListingsInDay,
     filters,
     weekDays,
     filteredEvents,

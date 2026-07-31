@@ -7,9 +7,6 @@ import TaskEventDetailSheet from '~/components/operations-calendar/TaskEventDeta
 import { useOperationsCalendar } from '~/composables/useOperationsCalendar'
 
 const {
-  view,
-  selectedDay,
-  showAllListingsInDay,
   filters,
   weekDays,
   filteredEvents,
@@ -73,15 +70,9 @@ function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: 
         :events-by-day-and-listing="eventsByDayAndListing"
         :events-by-listing-and-day="eventsByListingAndDay"
         :week-days="weekDays"
-        :view="view"
-        :selected-day="selectedDay"
-        :show-all-listings="showAllListingsInDay"
         :filters="filters"
         @update:filters="filters = $event"
         @clear="clearFilters"
-        @update:selected-day="selectedDay = $event"
-        @update:show-all-listings="showAllListingsInDay = $event"
-        @update:view="view = $event"
         @previous-week="previousWeek"
         @next-week="nextWeek"
         @go-to-today="goToToday"
