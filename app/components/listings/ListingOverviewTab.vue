@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Listing, Unit } from '~/components/listings/data/listings'
-import { getUnitTypeForUnit } from '~/components/listings/data/listings'
+import { bookingStatusMeta, getUnitTypeForUnit } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listing: Listing, activeUnit?: Unit | null }>()
 const emit = defineEmits<{ switchTab: [tab: string] }>()
@@ -75,8 +75,11 @@ function renderStars(rating: number) {
               <span class="text-sm font-medium">{{ formatDateRange(booking.checkIn, booking.checkOut) }}</span>
               <span class="text-xs text-muted-foreground">{{ booking.guestName }} · {{ booking.nights }} nights</span>
             </div>
-            <Badge :variant="booking.status === 'confirmed' ? 'default' : 'secondary'" class="text-xs capitalize">
-              {{ booking.status }}
+            <Badge
+              :variant="(bookingStatusMeta[booking.status]?.variant ?? 'secondary') as any"
+              :class="['text-xs capitalize', bookingStatusMeta[booking.status]?.badgeClass]"
+            >
+              {{ bookingStatusMeta[booking.status]?.label ?? booking.status }}
             </Badge>
           </div>
           <p v-if="upcomingBookings.length === 0" class="text-sm text-muted-foreground text-center py-4">

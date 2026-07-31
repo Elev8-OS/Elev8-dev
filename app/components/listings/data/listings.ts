@@ -47,13 +47,26 @@ export interface ListingPricing {
   seasonalRates: Array<{ startDate: string, endDate: string, rate: number, label: string }>
 }
 
+export type BookingType = 'reservation' | 'block'
+
+export type BookingStatus
+  = 'unverified'
+    | 'verified'
+    | 'checked_in'
+    | 'checked_out'
+    | 'cancelled'
+    | 'inquiry'
+
 export interface Booking {
   id: string
+  type?: BookingType
   guestName: string
   checkIn: string
   checkOut: string
   nights: number
-  status: 'confirmed' | 'pending' | 'cancelled'
+  status: BookingStatus
+  /** For type=block — the reason staff entered when blocking the calendar. */
+  blockReason?: string
   revenue: number
   source: string
   hasPet?: boolean
@@ -365,10 +378,11 @@ export const listings = ref<Listing[]>([
       ],
     },
     bookings: [
-      { id: 'bk-1', guestName: 'Sarah Mitchell', checkIn: '2026-06-05', checkOut: '2026-06-09', nights: 4, status: 'confirmed', revenue: 740, source: 'Airbnb', hasPet: true },
-      { id: 'bk-2', guestName: 'James Kim', checkIn: '2026-06-12', checkOut: '2026-06-15', nights: 3, status: 'confirmed', revenue: 555, source: 'Booking.com' },
-      { id: 'bk-3', guestName: 'Emma Wilson', checkIn: '2026-06-20', checkOut: '2026-06-25', nights: 5, status: 'pending', revenue: 925, source: 'Airbnb', hasPet: true },
-    ],
+      { id: 'bk-1', guestName: 'Sarah Mitchell', checkIn: '2026-06-05', checkOut: '2026-06-09', nights: 4, status: 'checked_out', revenue: 740, source: 'Airbnb', hasPet: true },
+      { id: 'bk-2', guestName: 'James Kim', checkIn: '2026-06-12', checkOut: '2026-06-15', nights: 3, status: 'checked_out', revenue: 555, source: 'Booking.com' },
+      { id: 'bk-3', guestName: 'Emma Wilson', checkIn: '2026-06-20', checkOut: '2026-06-25', nights: 5, status: 'inquiry', revenue: 925, source: 'Airbnb', hasPet: true },
+    
+      { id: 'bk-1c', guestName: 'Isabella Romano', checkIn: '2026-07-30', checkOut: '2026-08-04', nights: 5, status: 'checked_in', revenue: 1850, source: 'Airbnb' },],
     blockedDates: ['2026-06-10', '2026-06-11'],
     reviews: [
       { id: 'rv-1', guestName: 'Sarah Mitchell', date: '2026-05-20', rating: 5, text: 'Amazing villa! The pool was perfect and staff was incredibly helpful. Would definitely come back.', categories: { cleanliness: 5, communication: 5, location: 4, value: 5 } },
@@ -427,7 +441,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-2a', guestName: 'Olivia Tan', checkIn: '2026-07-12', checkOut: '2026-07-16', nights: 4, status: 'checked_out', revenue: 480, source: 'Airbnb' },
+      { id: 'bk-2b', guestName: 'Marco Rossi', checkIn: '2026-07-22', checkOut: '2026-07-26', nights: 4, status: 'checked_out', revenue: 480, source: 'Booking.com', hasPet: true },
+      { id: 'bk-2c', guestName: 'Hannah Lee', checkIn: '2026-08-08', checkOut: '2026-08-13', nights: 5, status: 'verified', revenue: 600, source: 'Direct' },
+      { id: 'bk-2d', guestName: 'Diana Park', checkIn: '2026-08-20', checkOut: '2026-08-25', nights: 5, status: 'inquiry', revenue: 600, source: 'Airbnb' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -454,7 +473,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-3b', guestName: 'Reto Wyss', checkIn: '2026-06-22', checkOut: '2026-06-25', nights: 3, status: 'confirmed', revenue: 360, source: 'Direct' },
+      { id: 'bk-3b', guestName: 'Reto Wyss', checkIn: '2026-06-22', checkOut: '2026-06-25', nights: 3, status: 'verified', revenue: 360, source: 'Direct' },
     ],
     blockedDates: [],
     reviews: [],
@@ -482,7 +501,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-4', guestName: 'Thomas Wikes', checkIn: '2026-06-21', checkOut: '2026-06-24', nights: 3, status: 'confirmed', revenue: 360, source: 'Direct' },
+      { id: 'bk-4', guestName: 'Thomas Wikes', checkIn: '2026-06-21', checkOut: '2026-06-24', nights: 3, status: 'checked_in', revenue: 360, source: 'Direct' },
     ],
     blockedDates: [],
     reviews: [],
@@ -510,7 +529,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-5', guestName: 'Mate Bezdek', checkIn: '2026-06-22', checkOut: '2026-06-25', nights: 3, status: 'confirmed', revenue: 390, source: 'Airbnb' },
+      { id: 'bk-5', guestName: 'Mate Bezdek', checkIn: '2026-06-22', checkOut: '2026-06-25', nights: 3, status: 'unverified', revenue: 390, source: 'Airbnb' },
     ],
     blockedDates: [],
     reviews: [],
@@ -538,7 +557,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-6', guestName: 'Nina Schwarz', checkIn: '2026-06-23', checkOut: '2026-06-26', nights: 3, status: 'confirmed', revenue: 450, source: 'Booking.com', hasPet: true },
+      { id: 'bk-6', guestName: 'Nina Schwarz', checkIn: '2026-06-23', checkOut: '2026-06-26', nights: 3, status: 'verified', revenue: 450, source: 'Booking.com', hasPet: true },
     ],
     blockedDates: [],
     reviews: [],
@@ -565,7 +584,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-7a', guestName: 'Sophie Mueller', checkIn: '2026-07-05', checkOut: '2026-07-09', nights: 4, status: 'checked_out', revenue: 560, source: 'Direct' },
+      { id: 'bk-7b', guestName: 'Liam O. Brien', checkIn: '2026-07-15', checkOut: '2026-07-19', nights: 4, status: 'verified', revenue: 560, source: 'Airbnb', hasPet: true },
+      { id: 'bk-7c', guestName: 'Yuki Sato', checkIn: '2026-08-01', checkOut: '2026-08-05', nights: 4, status: 'verified', revenue: 560, source: 'Booking.com' },
+      { id: 'blk-7a', type: 'block', guestName: 'Owner stay', checkIn: '2026-08-15', checkOut: '2026-08-19', nights: 4, status: 'verified', revenue: 0, source: 'Manual', blockReason: 'Owner personal visit' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -592,7 +616,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-8', guestName: 'Cameron Skillcorn', checkIn: '2026-06-22', checkOut: '2026-06-25', nights: 3, status: 'confirmed', revenue: 420, source: 'Direct' },
+      { id: 'bk-8', guestName: 'Cameron Skillcorn', checkIn: '2026-06-22', checkOut: '2026-06-25', nights: 3, status: 'cancelled', revenue: 420, source: 'Direct' },
     ],
     blockedDates: [],
     reviews: [],
@@ -619,7 +643,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-9a', guestName: 'Aiden Wright', checkIn: '2026-07-08', checkOut: '2026-07-11', nights: 3, status: 'checked_out', revenue: 480, source: 'Airbnb' },
+      { id: 'bk-9b', guestName: 'Chloe Wang', checkIn: '2026-07-25', checkOut: '2026-07-30', nights: 5, status: 'unverified', revenue: 800, source: 'Booking.com' },
+      { id: 'bk-9c', guestName: 'Felix Schmidt', checkIn: '2026-08-10', checkOut: '2026-08-15', nights: 5, status: 'verified', revenue: 800, source: 'Direct' },
+      { id: 'bk-9d', guestName: 'Anika Patel', checkIn: '2026-08-22', checkOut: '2026-08-28', nights: 6, status: 'inquiry', revenue: 960, source: 'Airbnb' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -646,7 +675,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-10', guestName: 'Robert Chen', checkIn: '2026-06-24', checkOut: '2026-06-27', nights: 3, status: 'confirmed', revenue: 285, source: 'Booking.com' },
+      { id: 'bk-10', guestName: 'Robert Chen', checkIn: '2026-06-24', checkOut: '2026-06-27', nights: 3, status: 'verified', revenue: 285, source: 'Booking.com' },
     ],
     blockedDates: [],
     reviews: [],
@@ -673,7 +702,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-11a', guestName: 'George Hartley', checkIn: '2026-07-10', checkOut: '2026-07-15', nights: 5, status: 'checked_out', revenue: 1250, source: 'Direct' },
+      { id: 'bk-11b', guestName: 'Yuna Park', checkIn: '2026-07-20', checkOut: '2026-07-25', nights: 5, status: 'checked_in', revenue: 1250, source: 'Airbnb' },
+      { id: 'bk-11c', guestName: 'Beatriz Costa', checkIn: '2026-08-05', checkOut: '2026-08-10', nights: 5, status: 'verified', revenue: 1250, source: 'Booking.com', hasPet: true },
+      { id: 'bk-11d', guestName: 'Theo Andersen', checkIn: '2026-08-18', checkOut: '2026-08-24', nights: 6, status: 'verified', revenue: 1500, source: 'Direct' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -700,7 +734,7 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-12', guestName: 'Marco Silva', checkIn: '2026-06-25', checkOut: '2026-06-28', nights: 3, status: 'confirmed', revenue: 225, source: 'Booking.com' },
+      { id: 'bk-12', guestName: 'Marco Silva', checkIn: '2026-06-25', checkOut: '2026-06-28', nights: 3, status: 'verified', revenue: 225, source: 'Booking.com' },
     ],
     blockedDates: [],
     reviews: [],
@@ -728,7 +762,8 @@ export const listings = ref<Listing[]>([
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
-      { id: 'bk-13', guestName: 'Reto Wyss', checkIn: '2026-06-26', checkOut: '2026-06-29', nights: 3, status: 'confirmed', revenue: 255, source: 'Airbnb' },
+      { id: 'bk-13', guestName: 'Reto Wyss', checkIn: '2026-06-26', checkOut: '2026-06-29', nights: 3, status: 'verified', revenue: 255, source: 'Airbnb' },
+      { id: 'blk-1', type: 'block', guestName: 'Maintenance window', checkIn: '2026-06-22', checkOut: '2026-06-23', nights: 1, status: 'verified', revenue: 0, source: 'Manual', blockReason: 'Pool deck resurfacing' },
     ],
     blockedDates: [],
     reviews: [],
@@ -755,7 +790,11 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-14a', guestName: 'Mira Holmberg', checkIn: '2026-07-14', checkOut: '2026-07-18', nights: 4, status: 'checked_out', revenue: 960, source: 'Direct' },
+      { id: 'bk-14b', guestName: 'Ravi Sharma', checkIn: '2026-08-02', checkOut: '2026-08-06', nights: 4, status: 'verified', revenue: 960, source: 'Airbnb' },
+      { id: 'bk-14c', guestName: 'Elise Laurent', checkIn: '2026-08-20', checkOut: '2026-08-25', nights: 5, status: 'inquiry', revenue: 1200, source: 'Booking.com' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -807,7 +846,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-16a', guestName: 'Akira Tanaka', checkIn: '2026-07-06', checkOut: '2026-07-10', nights: 4, status: 'checked_out', revenue: 600, source: 'Booking.com' },
+      { id: 'bk-16b', guestName: 'Lucia Romero', checkIn: '2026-07-24', checkOut: '2026-07-30', nights: 6, status: 'verified', revenue: 900, source: 'Direct' },
+      { id: 'bk-16c', guestName: 'Henrik Olsen', checkIn: '2026-08-12', checkOut: '2026-08-17', nights: 5, status: 'unverified', revenue: 750, source: 'Airbnb' },
+      { id: 'bk-16d', guestName: 'Sienna Cooper', checkIn: '2026-08-26', checkOut: '2026-08-31', nights: 5, status: 'verified', revenue: 750, source: 'Booking.com' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -830,7 +874,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 1800, revenueTrend: 3, occupancyRate: 55, occupancyTrend: 1, avgRating: 4.3, totalReviews: 6 },
     pricing: { nightlyRate: 95, cleaningFee: 25, serviceFee: 15, weeklyDiscount: 5, monthlyDiscount: 10, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-17a', guestName: 'Aisha Khan', checkIn: '2026-07-09', checkOut: '2026-07-13', nights: 4, status: 'checked_out', revenue: 400, source: 'Booking.com' },
+      { id: 'bk-17b', guestName: 'Lukas Becker', checkIn: '2026-07-23', checkOut: '2026-07-28', nights: 5, status: 'verified', revenue: 500, source: 'Airbnb' },
+      { id: 'bk-17c', guestName: 'Carmen Diaz', checkIn: '2026-08-05', checkOut: '2026-08-09', nights: 4, status: 'inquiry', revenue: 400, source: 'Direct' },
+      { id: 'bk-17d', guestName: 'Henrik Berg', checkIn: '2026-08-22', checkOut: '2026-08-27', nights: 5, status: 'verified', revenue: 500, source: 'Booking.com' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -852,7 +901,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 1600, revenueTrend: 2, occupancyRate: 48, occupancyTrend: -1, avgRating: 4.1, totalReviews: 4 },
     pricing: { nightlyRate: 85, cleaningFee: 25, serviceFee: 15, weeklyDiscount: 5, monthlyDiscount: 10, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-18a', guestName: 'Tariq Hassan', checkIn: '2026-07-11', checkOut: '2026-07-15', nights: 4, status: 'verified', revenue: 400, source: 'Airbnb' },
+      { id: 'bk-18b', guestName: 'Greta Lindqvist', checkIn: '2026-07-26', checkOut: '2026-07-30', nights: 4, status: 'unverified', revenue: 400, source: 'Booking.com' },
+      { id: 'bk-18c', guestName: 'Daniel Park', checkIn: '2026-08-07', checkOut: '2026-08-11', nights: 4, status: 'verified', revenue: 400, source: 'Direct' },
+      { id: 'bk-18d', guestName: 'Layla Saeed', checkIn: '2026-08-24', checkOut: '2026-08-29', nights: 5, status: 'inquiry', revenue: 500, source: 'Airbnb' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -874,7 +928,12 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 1200, revenueTrend: 8, occupancyRate: 60, occupancyTrend: 4, avgRating: 4.4, totalReviews: 8 },
     pricing: { nightlyRate: 75, cleaningFee: 20, serviceFee: 10, weeklyDiscount: 5, monthlyDiscount: 10, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-19a', guestName: 'Tyler Brooks', checkIn: '2026-07-04', checkOut: '2026-07-08', nights: 4, status: 'checked_out', revenue: 320, source: 'Direct' },
+      { id: 'bk-19b', guestName: 'Maya Iversen', checkIn: '2026-07-26', checkOut: '2026-07-31', nights: 5, status: 'verified', revenue: 400, source: 'Airbnb' },
+      { id: 'bk-19c', guestName: 'Joao Mendes', checkIn: '2026-08-08', checkOut: '2026-08-12', nights: 4, status: 'inquiry', revenue: 320, source: 'Booking.com' },
+      { id: 'bk-19d', guestName: 'Priya Iyer', checkIn: '2026-08-22', checkOut: '2026-08-26', nights: 4, status: 'verified', revenue: 320, source: 'Direct' },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -900,4 +959,81 @@ export const aiStatusLabels: Record<string, string> = {
   active: 'Active',
   paused: 'Paused',
   not_set: 'Not Set',
+}
+
+export interface BookingStatusMeta {
+  status: BookingStatus
+  label: string
+  variant: 'default' | 'secondary' | 'destructive' | 'outline'
+  badgeClass: string
+  cardClass: string
+  icon: string
+  isStrikethrough: boolean
+}
+
+export const bookingStatusMeta: Record<BookingStatus, BookingStatusMeta> = {
+  unverified: {
+    status: 'unverified',
+    label: 'Unverified',
+    variant: 'secondary',
+    badgeClass: 'bg-zinc-500/15 text-zinc-700 border-zinc-500/30',
+    cardClass: 'border-zinc-300/60 bg-zinc-50 dark:bg-zinc-900/30',
+    icon: 'lucide:user-round-x',
+    isStrikethrough: false,
+  },
+  verified: {
+    status: 'verified',
+    label: 'Verified',
+    variant: 'default',
+    badgeClass: 'bg-green-500/15 text-green-700 border-green-500/30',
+    cardClass: 'border-green-300/60 bg-green-50 dark:bg-green-900/20',
+    icon: 'lucide:badge-check',
+    isStrikethrough: false,
+  },
+  checked_in: {
+    status: 'checked_in',
+    label: 'Checked-in',
+    variant: 'default',
+    badgeClass: 'bg-orange-500/15 text-orange-700 border-orange-500/30',
+    cardClass: 'border-orange-300/60 bg-orange-50 dark:bg-orange-900/20',
+    icon: 'lucide:log-in',
+    isStrikethrough: false,
+  },
+  checked_out: {
+    status: 'checked_out',
+    label: 'Checked-out',
+    variant: 'default',
+    badgeClass: 'bg-blue-500/15 text-blue-700 border-blue-500/30',
+    cardClass: 'border-blue-300/60 bg-blue-50 dark:bg-blue-900/20',
+    icon: 'lucide:log-out',
+    isStrikethrough: false,
+  },
+  cancelled: {
+    status: 'cancelled',
+    label: 'Cancelled',
+    variant: 'secondary',
+    badgeClass: 'bg-zinc-500/15 text-zinc-500 border-zinc-500/30',
+    cardClass: 'border-zinc-300/60 bg-zinc-50 dark:bg-zinc-900/30',
+    icon: 'lucide:ban',
+    isStrikethrough: true,
+  },
+  inquiry: {
+    status: 'inquiry',
+    label: 'Inquiry',
+    variant: 'default',
+    badgeClass: 'bg-yellow-500/15 text-yellow-700 border-yellow-500/30',
+    cardClass: 'border-yellow-300/60 bg-yellow-50 dark:bg-yellow-900/20',
+    icon: 'lucide:help-circle',
+    isStrikethrough: false,
+  },
+}
+
+export const blockStatusMeta: BookingStatusMeta = {
+  status: 'verified',
+  label: 'Manual block',
+  variant: 'outline',
+  badgeClass: 'bg-zinc-900 text-white border-zinc-900',
+  cardClass: 'border-zinc-900 bg-zinc-900 text-white',
+  icon: 'lucide:ban',
+  isStrikethrough: false,
 }
