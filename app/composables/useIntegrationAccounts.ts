@@ -82,12 +82,31 @@ const initialDefaults: Record<MappingIntegration, DefaultAccounts> = {
       taxRemitted: 'ba-2200',
     },
   },
+  lexware: {
+    bookingRevenue: {
+      accommodation: { debit: 'la-1200', credit: 'la-8210' },
+      platformFee: { debit: 'la-4500', credit: 'la-1200' },
+      fee: { debit: 'la-4600', credit: 'la-1200' },
+      tax: { debit: 'la-1200', credit: 'la-3810' },
+    },
+    upsellRevenue: {
+      default: { debit: 'la-1200', credit: 'la-8400' },
+    },
+    costs: {
+      default: { debit: 'la-4200', credit: 'la-1200' },
+    },
+    cityTax: {
+      collectionMode: 'elev8',
+      taxCollected: 'la-2200',
+      taxRemitted: 'la-2200',
+    },
+  },
 }
 
 // ── Tab definitions for UI ─────────────────────────────────────────────────
 export type MappingTab = 'booking' | 'upsell' | 'costs' | 'tax'
 
-export const mappingTabs: { key: MappingTab; label: string; icon: string }[] = [
+export const mappingTabs: { key: MappingTab, label: string, icon: string }[] = [
   { key: 'booking', label: 'Booking Revenue', icon: 'i-lucide-calendar-check' },
   { key: 'upsell', label: 'Upsell Revenue', icon: 'i-lucide-plus-circle' },
   { key: 'costs', label: 'Costs', icon: 'i-lucide-receipt' },
@@ -101,10 +120,10 @@ export function isValidAccountType(accountCode: string, requiredPrefix: string):
 
 export function getAccountTypeLabel(prefix: string): string {
   const labels: Record<string, string> = {
-    '1': 'Asset (1-xxx)',
-    '2': 'Liability (2-xxx)',
-    '4': 'Revenue (4-xxx)',
-    '5': 'Expense (5-xxx)',
+    1: 'Asset (1-xxx)',
+    2: 'Liability (2-xxx)',
+    4: 'Revenue (4-xxx)',
+    5: 'Expense (5-xxx)',
   }
   return labels[prefix] || 'Unknown'
 }

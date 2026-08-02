@@ -18,15 +18,15 @@ export interface ReservationEntry {
 }
 
 export const revenueStats = {
-  totalRevenue: 80524.04,
-  totalReservations: 102,
-  totalNights: 707,
+  totalRevenue: 105524.04,
+  totalReservations: 118,
+  totalNights: 781,
   adr: 145.12,
   adrLast30Days: 158.22,
   avgLengthOfStay: 6.9,
   avgGuestsPerBooking: 2.5,
   occupancyPct: 36.2,
-  totalListings: 81,
+  totalListings: 86,
   currency: 'CHF',
 }
 
@@ -98,9 +98,24 @@ export const revenueByListing = [
   { listing: 'The R Apartment Engelberg, Gym, Balkon, Parking', city: 'Solothurn', revenue: 881.55, reservations: 2, nights: 5, adr: 175.04 },
   { listing: 'The R Hasenberg Suite', city: 'Widen', revenue: 702.97, reservations: 2, nights: 6, adr: 117.16 },
   { listing: 'The R Apartment Passwang, Gym, Balkon, Parking', city: 'Solothurn', revenue: 612.30, reservations: 1, nights: 5, adr: 122.46 },
+  // ── EUR-denominated DACH listings (Lexware-eligible) ─────────────────────
+  { listing: 'Villa Luwa – Hügellage Brandenburg', city: 'Potsdam', revenue: 5030.00, reservations: 4, nights: 20, adr: 251.50 },
+  { listing: 'Villa Sehnsucht – Seegrundstück Mecklenburg', city: 'Waren (Müritz)', revenue: 6340.00, reservations: 3, nights: 19, adr: 333.68 },
+  { listing: 'Villa Bergfried – Schwarzwald', city: 'Freiburg', revenue: 3720.00, reservations: 3, nights: 12, adr: 310.00 },
+  { listing: 'Villa Zeitreise – Weinregion Pfalz', city: 'Neustadt', revenue: 4990.00, reservations: 3, nights: 13, adr: 383.85 },
+  { listing: 'Villa Kunstpause – Kulturhaupstadt Weimar', city: 'Weimar', revenue: 3420.00, reservations: 3, nights: 10, adr: 342.00 },
 ]
 
 export const recentReservations: ReservationEntry[] = [
+  // ── EUR DACH check-ins (July 2026 — Lexware-eligible) ─────────────────────
+  { id: 'lex-res-001', guest: 'Erik Hoffmann', listing: 'Villa Luwa – Hügellage Brandenburg', channel: 'Airbnb', checkIn: '2026-07-21', checkOut: '2026-07-26', nights: 5, guests: 2, amount: 1280.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0042', synced: true, syncedAt: '2026-07-27T10:00:00Z' },
+  { id: 'lex-res-002', guest: 'Anna Brunner', listing: 'Villa Sehnsucht – Seegrundstück Mecklenburg', channel: 'Airbnb', checkIn: '2026-07-22', checkOut: '2026-07-29', nights: 7, guests: 2, amount: 2460.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0043', synced: false },
+  { id: 'lex-res-003', guest: 'Lukas Vogel', listing: 'Villa Bergfried – Schwarzwald', channel: 'Airbnb', checkIn: '2026-07-18', checkOut: '2026-07-21', nights: 3, guests: 2, amount: 980.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0040', synced: true, syncedAt: '2026-07-25T14:00:00Z' },
+  { id: 'lex-res-004', guest: 'Markus Steiner', listing: 'Villa Zeitreise – Weinregion Pfalz', channel: 'Airbnb', checkIn: '2026-07-12', checkOut: '2026-07-16', nights: 4, guests: 2, amount: 1640.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0038', synced: true, syncedAt: '2026-07-29T13:30:00Z' },
+  { id: 'lex-res-005', guest: 'Sophia Maier', listing: 'Villa Kunstpause – Kulturhaupstadt Weimar', channel: 'Airbnb', checkIn: '2026-07-28', checkOut: '2026-07-30', nights: 2, guests: 2, amount: 720.00, currency: 'EUR', status: 'Checked-out', invoice: 'pending', synced: false },
+  { id: 'lex-res-006', guest: 'Christina Wolf', listing: 'Villa Luwa – Hügellage Brandenburg', channel: 'Booking.com', checkIn: '2026-07-28', checkOut: '2026-08-02', nights: 5, guests: 2, amount: 1450.00, currency: 'EUR', status: 'Checked-out', invoice: 'pending', synced: false },
+  { id: 'lex-res-007', guest: 'Julia Wagner', listing: 'Villa Zeitreise – Weinregion Pfalz', channel: 'Booking.com', checkIn: '2026-07-26', checkOut: '2026-07-30', nights: 4, guests: 2, amount: 1500.00, currency: 'EUR', status: 'Checked-out', invoice: 'pending', synced: false },
+  { id: 'lex-res-008', guest: 'Marta Kowalski', listing: 'Villa Luwa – Hügellage Brandenburg', channel: 'Direct', checkIn: '2026-08-08', checkOut: '2026-08-13', nights: 5, guests: 3, amount: 1200.00, currency: 'EUR', status: 'Verified', invoice: 'pending', synced: false },
   // ── May 1 check-ins ──────────────────────────────────────────────────────
   { id: '86109494', guest: 'Thomas Wikes', listing: 'TAMBORA - The R Tambora: Stylish 3BR Tropical Escape', channel: 'Direct', checkIn: '2026-05-01', checkOut: '2026-05-04', nights: 3, guests: 2, amount: 367.00, currency: 'CHF', status: 'Checked-out', invoice: 'inv_86109494_wikes.pdf', synced: true, syncedAt: '2026-05-01T10:00:00Z' },
   { id: '85356478', guest: 'Christine Scherrer', listing: 'The R Apartment Hemmental', channel: 'Booking.com', checkIn: '2026-05-01', checkOut: '2026-05-03', nights: 2, guests: 2, amount: 341.58, currency: 'CHF', status: 'Checked-out', invoice: 'inv_85356478_scherrer.pdf', synced: true, syncedAt: '2026-05-01T10:00:00Z' },

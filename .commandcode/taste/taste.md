@@ -3,7 +3,7 @@
 [cmd]: https://commandcode.ai/
 
 # communication
-- Always respond in English, even when the user writes in Indonesian. Confidence: 0.85
+- Always respond in English, even when the user writes in Indonesian. Confidence: 0.90
 
 # finance
 - For Booking Revenue double-entry tables: each line item must have separate Debit and Credit account columns/selectors, not a single account with a pre-assigned debit/credit indicator. Confidence: 0.65
@@ -53,7 +53,9 @@ See [review-hub/taste.md](review-hub/taste.md)
 - Don't mention third-party integration provider brand names (e.g., Seam) anywhere in the UI except within the integration settings/configuration page itself. Confidence: 0.75
 
 # notifications
-- Marking a notification as read should NOT remove/dismiss it from the list. Confidence: 0.75
-- Cleaning job statuses: 'scheduled' (today/future), 'in_progress' (today only), 'done' (today/past, not future), 'missed' (past only — housekeeping missed it). Confidence: 0.75
-- Each notification category should have a unique icon (e.g., cleaning = broom icon) instead of just a dot. Confidence: 0.70
-- Use a single dash (hyphen) in place of em dashes in notification text. Confidence: 0.75
+See [notifications/taste.md](notifications/taste.md)
+# owner-portal
+- Owner portal charts layout: revenue-trend chart spans full width at top; remaining metrics (ADR, occupancy, etc.) split into half-width cards beneath. ADR is always its own standalone KPI card, never bundled into another chart. Confidence: 0.85
+
+# operations-calendar
+- When selecting listing in cleaning/task/review forms, surface guest info automatically (name, stay length, has-pet) — don't require a separate lookup. Confidence: 0.80

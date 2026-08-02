@@ -29,18 +29,24 @@ function getSeededAlerts(existingAlerts: Alert[]) {
 }
 
 export function getNotificationKind(type: Alert['type']): NotificationKindFilter {
-  if (['CALL_INCOMING', 'CALL_MISSED', 'CALL_COMPLETED'].includes(type)) return 'calls'
-  if (['CLEANING_NOT_STARTED_IMMINENT', 'CLEANING_NOT_DONE_CHECKIN_PASSED', 'NO_HOUSEKEEPING_ASSIGNED'].includes(type)) return 'cleaning'
-  if (['AIRBNB_REVIEW_GENERATED', 'AIRBNB_REVIEW_POSTED', 'AIRBNB_REVIEW_FAILED', 'REVIEW_GUEST_LEFT', 'REVIEW_HOST_DUE'].includes(type)) return 'reviews'
-  if (type.startsWith('UPSELL_')) return 'upsell'
-  if (['GUEST_CHECKED_IN', 'GUEST_CHECKED_OUT', 'GUEST_ARRIVAL_SOON'].includes(type)) return 'guest_activity'
+  if (['CALL_INCOMING', 'CALL_MISSED', 'CALL_COMPLETED'].includes(type))
+    return 'calls'
+  if (['CLEANING_NOT_STARTED_IMMINENT', 'CLEANING_NOT_DONE_CHECKIN_PASSED', 'NO_HOUSEKEEPING_ASSIGNED'].includes(type))
+    return 'cleaning'
+  if (['AIRBNB_REVIEW_GENERATED', 'AIRBNB_REVIEW_POSTED', 'AIRBNB_REVIEW_FAILED', 'REVIEW_GUEST_LEFT', 'REVIEW_HOST_DUE'].includes(type))
+    return 'reviews'
+  if (type.startsWith('UPSELL_'))
+    return 'upsell'
+  if (['GUEST_CHECKED_IN', 'GUEST_CHECKED_OUT', 'GUEST_ARRIVAL_SOON'].includes(type))
+    return 'guest_activity'
   return 'system'
 }
 
 export function useNotifications() {
   const alerts = useState<Alert[]>('notifications-alerts', () => JSON.parse(JSON.stringify(mockAlerts)))
   const seededAlerts = getSeededAlerts(alerts.value)
-  if (seededAlerts.length !== alerts.value.length) alerts.value = seededAlerts
+  if (seededAlerts.length !== alerts.value.length)
+    alerts.value = seededAlerts
   const selectedSeverity = ref<SeverityFilter>('all')
   const selectedKind = ref<NotificationKindFilter>('all')
   const { currentUser } = useCurrentDashboardUser()
@@ -55,7 +61,8 @@ export function useNotifications() {
     return severityMatch && kindMatch
   }))
   function markAsRead(alertId: string) {
-    if (!visibleAlerts.value.some(a => a.alert_id === alertId)) return
+    if (!visibleAlerts.value.some(a => a.alert_id === alertId))
+      return
     alerts.value = alerts.value.map(a => a.alert_id === alertId ? { ...a, status: 'RESOLVED' as const, resolved_at: new Date().toISOString() } : a)
   }
   function markAllAsRead() {
@@ -64,7 +71,12 @@ export function useNotifications() {
     alerts.value = alerts.value.map(a => visibleIds.has(a.alert_id) ? { ...a, status: 'RESOLVED' as const, resolved_at: now } : a)
   }
   function dismiss(alertId: string) { markAsRead(alertId) }
-  function navigateToAlert(alert: Alert) { if (!visibleAlerts.value.some(a => a.alert_id === alert.alert_id)) return; markAsRead(alert.alert_id); navigateTo(alertRouteMap[alert.type] || '/') }
+  function navigateToAlert(alert: Alert) {
+    if (!visibleAlerts.value.some(a => a.alert_id === alert.alert_id))
+      return
+    markAsRead(alert.alert_id)
+    navigateTo(alertRouteMap[alert.type] || '/')
+  }
   function getTimeAgo(isoString: string) { return formatDistanceToNow(new Date(isoString), { addSuffix: true }) }
   function getDescription(type: Alert['type'], context: Record<string, any>) { return getAlertDescription(type, context) }
   function createAlert(type: Alert['type'], severity: AlertSeverity, context: Record<string, any>) {
@@ -75,7 +87,15 @@ export function useNotifications() {
     createAlert(type, type === 'UPSELL_ORDER_REQUESTED' || type === 'UPSELL_ORDER_DECLINED' ? 'WARNING' : 'INFO', context)
   }
   function createGuestActivityAlert(type: 'GUEST_CHECKED_IN' | 'GUEST_CHECKED_OUT' | 'GUEST_ARRIVAL_SOON', context: Record<string, any>) { createAlert(type, 'INFO', context) }
-  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert }
+  function createLexwareAlert(type: 'LEXWARE_DRAFT_INVOICE_READY' | 'LEXWARE_CONNECTION_NEEDS_ATTENTION' | 'LEXWARE_TAX_MAPPING_HOLD' | 'LEXWARE_CREDIT_NOTE_CREATED' | 'LEXWARE_NON_EUR_EXCLUDED', context: Record<string, any>) {
+    let severity: AlertSeverity = 'INFO'
+    if (type === 'LEXWARE_CONNECTION_NEEDS_ATTENTION')
+      severity = 'CRITICAL'
+    else if (type === 'LEXWARE_TAX_MAPPING_HOLD')
+      severity = 'WARNING'
+    createAlert(type, severity, context)
+  }
+  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createLexwareAlert }
 }
 
 export { getNotificationKind as getAlertKind }

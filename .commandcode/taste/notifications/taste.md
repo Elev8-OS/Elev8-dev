@@ -1,0 +1,8 @@
+# notifications
+- Marking a notification as read should NOT remove/dismiss it from the list. Confidence: 0.75
+- Cleaning job statuses: 'scheduled' (today/future), 'in_progress' (today only), 'done' (today/past, not future), 'missed' (past only — housekeeping missed it). Confidence: 0.75
+- Each notification category should have a unique icon (e.g., cleaning = broom icon) instead of just a dot. Confidence: 0.70
+- Use a single dash (hyphen) in place of em dashes in notification text. Confidence: 0.75
+- New integration alerts follow a fixed pattern: (1) add types to the `AlertType` union, (2) add labels, icons, routes, and `getDescription` cases in `alerts.ts`, (3) add seed `mockAlerts` entries with `auto_resolve` + `resolve_condition` fields, (4) add a `create<Name>Alert` helper to `useNotifications` with severity mapping, (5) register the types in the relevant category in `notification-settings.ts` so finance/admin roles see them. Confidence: 0.85
+- Notification permission configuration uses a simple `category header + toggle` model — ONE toggle per category to enable/disable, no expanded per-type options, no subheader descriptions, no labels beyond the header itself. Confidence: 0.82
+- Role permission configuration surfaces modules (Review Hub, Analytics, Finance, etc.) with explicit per-module Read+Write access scopes — current policy: Review Hub = admin/gm/gro (R+W), Analytics = admin/gm/finance/hr (R+W), Finance = finance only (R+W). Confidence: 0.85

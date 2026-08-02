@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { revenueByListing } from '@/components/finance/data/revenue'
 
-export type MappingIntegration = 'jurnal' | 'bexio'
+export type MappingIntegration = 'jurnal' | 'bexio' | 'lexware'
 
 export interface ListingMapping {
   integration: MappingIntegration
@@ -79,7 +79,7 @@ export function useListingMappings() {
   )
 
   const mappedByIntegration = computed(() => {
-    const counts = { jurnal: 0, bexio: 0 }
+    const counts: Record<MappingIntegration, number> = { jurnal: 0, bexio: 0, lexware: 0 }
     Object.values(mappings.value).forEach(m => counts[m.integration]++)
     return counts
   })

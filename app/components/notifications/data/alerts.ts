@@ -46,6 +46,11 @@ export type AlertType
     | 'OWNER_STAY_CONFLICT'
     | 'OWNER_ISSUE_RAISED'
     | 'OWNER_USE_CAP_EXCEEDED'
+    | 'LEXWARE_DRAFT_INVOICE_READY'
+    | 'LEXWARE_CONNECTION_NEEDS_ATTENTION'
+    | 'LEXWARE_TAX_MAPPING_HOLD'
+    | 'LEXWARE_CREDIT_NOTE_CREATED'
+    | 'LEXWARE_NON_EUR_EXCLUDED'
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -111,6 +116,11 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   OWNER_STAY_CONFLICT: 'Owner Stay Conflict',
   OWNER_ISSUE_RAISED: 'Owner Statement Issue Raised',
   OWNER_USE_CAP_EXCEEDED: 'Owner Use Cap Exceeded',
+  LEXWARE_DRAFT_INVOICE_READY: 'Lexware - Draft Invoice Ready',
+  LEXWARE_CONNECTION_NEEDS_ATTENTION: 'Lexware - Connection Needs Attention',
+  LEXWARE_TAX_MAPPING_HOLD: 'Lexware - Tax Mapping Required',
+  LEXWARE_CREDIT_NOTE_CREATED: 'Lexware - Credit Note Created',
+  LEXWARE_NON_EUR_EXCLUDED: 'Lexware - Non-EUR Booking Excluded',
 }
 
 export const alertIcons: Record<AlertType, string> = {
@@ -161,6 +171,11 @@ export const alertIcons: Record<AlertType, string> = {
   OWNER_STAY_CONFLICT: 'i-lucide-calendar-x',
   OWNER_ISSUE_RAISED: 'i-lucide-message-square-warning',
   OWNER_USE_CAP_EXCEEDED: 'i-lucide-triangle-alert',
+  LEXWARE_DRAFT_INVOICE_READY: 'i-lucide-file-text',
+  LEXWARE_CONNECTION_NEEDS_ATTENTION: 'i-lucide-unplug',
+  LEXWARE_TAX_MAPPING_HOLD: 'i-lucide-percent',
+  LEXWARE_CREDIT_NOTE_CREATED: 'i-lucide-file-minus-2',
+  LEXWARE_NON_EUR_EXCLUDED: 'i-lucide-circle-dollar-sign',
 }
 
 export const alertRouteMap: Partial<Record<AlertType, string>> = {
@@ -211,6 +226,11 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   OWNER_STAY_CONFLICT: '/owner-portal/stays',
   OWNER_ISSUE_RAISED: '/owner-statements',
   OWNER_USE_CAP_EXCEEDED: '/owners',
+  LEXWARE_DRAFT_INVOICE_READY: '/finance?tab=integrations',
+  LEXWARE_CONNECTION_NEEDS_ATTENTION: '/finance?tab=integrations',
+  LEXWARE_TAX_MAPPING_HOLD: '/finance?tab=integrations',
+  LEXWARE_CREDIT_NOTE_CREATED: '/finance?tab=integrations',
+  LEXWARE_NON_EUR_EXCLUDED: '/finance?tab=integrations',
 }
 
 export function getDescription(type: AlertType, context: Record<string, any>): string {
@@ -299,6 +319,16 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `Owner use is projected at ${context.projectedNights ?? 0} nights, above the ${context.cap ?? 0}-night annual cap.`
     case 'KEY_NOT_RETURNED':
       return `${context.key_label || 'Key'} at ${context.listing_name || 'property'} held by ${context.staff_name || 'staff'} is ${context.overdue_hours ?? '?'}h overdue.`
+    case 'LEXWARE_DRAFT_INVOICE_READY':
+      return `1 new draft invoice ready for review in Lexware (${context.listing_name || 'property'}, ${context.guest_name || 'guest'}).`
+    case 'LEXWARE_CONNECTION_NEEDS_ATTENTION':
+      return `${context.failed_reason || 'API key rejected or webhook subscription missing.'} Sync paused.`
+    case 'LEXWARE_TAX_MAPPING_HOLD':
+      return `1 invoice is waiting on a tax rate mapping decision (${context.listing_name || 'property'}, ${context.guest_name || 'guest'}).`
+    case 'LEXWARE_CREDIT_NOTE_CREATED':
+      return `A credit note was automatically created in Lexware for a cancelled booking (${context.guest_name || 'guest'}).`
+    case 'LEXWARE_NON_EUR_EXCLUDED':
+      return `${context.excluded_count || 1} non-EUR booking(s) this week weren't eligible for Lexware export.`
     default:
       return ''
   }
@@ -473,5 +503,57 @@ export const mockAlerts: Alert[] = [
     auto_resolve: true,
     resolve_condition: 'Call returned',
     context: { callerNumber: '+81 90-1234-5678' },
+  },
+  {
+    alert_id: 'alert-lexware-001',
+    type: 'LEXWARE_DRAFT_INVOICE_READY',
+    severity: 'INFO',
+    status: 'ACTIVE',
+    listing_id: null,
+    property_id: null,
+    triggered_at: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+    resolved_at: null,
+    auto_resolve: true,
+    resolve_condition: 'Finalized in Lexware',
+    context: { listing_name: 'Villa Sehnsucht – Seegrundstück Mecklenburg', guest_name: 'Anna Brunner', invoiceId: 'LS-2026-0043' },
+  },
+  {
+    alert_id: 'alert-lexware-002',
+    type: 'LEXWARE_TAX_MAPPING_HOLD',
+    severity: 'WARNING',
+    status: 'ACTIVE',
+    listing_id: null,
+    property_id: null,
+    triggered_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    resolved_at: null,
+    auto_resolve: false,
+    resolve_condition: 'Finance remaps the tax rate to 0/7/19',
+    context: { listing_name: 'Villa Kunstpause – Kulturhaupstadt Weimar', guest_name: 'Sophia Maier', observed_vat: 16 },
+  },
+  {
+    alert_id: 'alert-lexware-003',
+    type: 'LEXWARE_CREDIT_NOTE_CREATED',
+    severity: 'INFO',
+    status: 'ACTIVE',
+    listing_id: null,
+    property_id: null,
+    triggered_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+    resolved_at: null,
+    auto_resolve: true,
+    resolve_condition: 'Credit note created and acknowledged',
+    context: { guest_name: 'Markus Steiner', invoiceId: 'LS-2026-0038', creditNoteId: 'LS-2026-0044' },
+  },
+  {
+    alert_id: 'alert-lexware-004',
+    type: 'LEXWARE_NON_EUR_EXCLUDED',
+    severity: 'INFO',
+    status: 'ACTIVE',
+    listing_id: null,
+    property_id: null,
+    triggered_at: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
+    resolved_at: null,
+    auto_resolve: true,
+    resolve_condition: 'Daily digest is rotated',
+    context: { excluded_count: 5, currencies: ['IDR', 'USD'] },
   },
 ]

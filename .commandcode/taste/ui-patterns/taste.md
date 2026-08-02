@@ -16,3 +16,8 @@
 - Prefers the shadcn-style pagination footer pattern for list/table views: rows-per-page Select + "Page X of N" counter + first/prev/next/last icon buttons (chevrons-left / chevron-left / chevron-right / chevrons-right). Auto-reset pageIndex to 0 when filter, search, or page size changes. Confidence: 0.80
 - Page-size options standard set: 10, 20, 30, 50. Confidence: 0.70
 - Filter/search row layout: filter control on the left, search input + primary action button grouped together on the right (search and action share the same flex container). Confidence: 0.72
+- For status/priority coloring (red for high priority, etc.): apply the color to the BADGE only, not the entire card body — keep cards neutral/white and let the badge carry the urgency signal. Confidence: 0.85
+- Truncate card content text (CSS `truncate`) when badges overflow — text shrinkage beats badge overlap with the card chrome. Confidence: 0.75
+- For unified lookup/assignee dropdowns (staff, roles, users): prefer searchable Command-style popovers with a search input at top + flat list of results; support role/user tabs where assignment can target either role OR specific user but only ONE mode at a time (not both). Confidence: 0.78
+- After selecting a listing in any cleaning/task/review form, auto-populate guest context (guest name, length of stay, whether they brought a pet) without an extra lookup step — derived from the listing's active booking. Confidence: 0.78
+- Distinguish card types of the same domain visually (e.g. cleaning card vs task card) — different iconography, different field emphasis (cleaning shows scheduled time, task omits time and shows assignee/overdue/priority). Confidence: 0.78

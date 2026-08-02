@@ -59,6 +59,11 @@ const FINANCE_TYPES: AlertType[] = [
   'RATE_PLAN_UNMAPPED',
   'WARRANTY_EXPIRING_SOON',
   'WARRANTY_EXPIRED',
+  'LEXWARE_DRAFT_INVOICE_READY',
+  'LEXWARE_CONNECTION_NEEDS_ATTENTION',
+  'LEXWARE_TAX_MAPPING_HOLD',
+  'LEXWARE_CREDIT_NOTE_CREATED',
+  'LEXWARE_NON_EUR_EXCLUDED',
 ]
 
 const REVIEW_TYPES: AlertType[] = [
@@ -137,7 +142,7 @@ export const notificationCategories: NotificationCategoryDefinition[] = [
   {
     id: 'finance',
     label: 'Finance & Inventory',
-    description: 'Payment, booking quota, rate plan, and warranty alerts.',
+    description: 'Payment, booking quota, rate plan, warranty, and Lexware accounting alerts.',
     alertTypes: FINANCE_TYPES,
   },
   {

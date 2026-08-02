@@ -3,14 +3,21 @@ import type { Integration, IntegrationStatus } from '@/components/finance/data/i
 import { computed, ref, watch } from 'vue'
 import { integrations } from '@/components/finance/data/integrations'
 import { useJurnal } from '@/composables/useJurnal'
+import { useLexware } from '@/composables/useLexware'
 
 const { isConnected: jurnalConnected } = useJurnal()
+const { isConnected: lexwareConnected } = useLexware()
 
 const selected = ref<Integration | null>(null)
 const sheetOpen = ref(false)
 
 // Close sheet when an integration is disconnected
 watch(jurnalConnected, (val) => {
+  if (!val)
+    sheetOpen.value = false
+})
+
+watch(lexwareConnected, (val) => {
   if (!val)
     sheetOpen.value = false
 })
@@ -23,6 +30,9 @@ function openIntegration(integration: Integration) {
 function effectiveStatus(integration: Integration): IntegrationStatus {
   if (integration.id === 'mekari-jurnal') {
     return jurnalConnected.value ? 'connected' : 'available'
+  }
+  if (integration.id === 'lexware') {
+    return lexwareConnected.value ? 'connected' : 'available'
   }
   return integration.status
 }
@@ -58,8 +68,10 @@ const statusDot: Record<string, string> = {
 const componentMap: Record<string, ReturnType<typeof resolveComponent>> = {
   FinanceJurnalIntegration: resolveComponent('FinanceJurnalIntegration'),
   FinanceBexioIntegration: resolveComponent('FinanceBexioIntegration'),
+  FinanceLexwareIntegration: resolveComponent('FinanceLexwareIntegration'),
   FinanceJurnalLogo: resolveComponent('FinanceJurnalLogo'),
   FinanceBexioLogo: resolveComponent('FinanceBexioLogo'),
+  FinanceLexwareLogo: resolveComponent('FinanceLexwareLogo'),
 }
 
 const activeComponent = computed(() =>
@@ -121,7 +133,9 @@ const activeComponent = computed(() =>
     <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-xl" side="right">
       <SheetHeader class="border-b px-6 py-4">
         <div class="flex items-center gap-3">
-          <SheetTitle class="text-base">Accounting Software Integration</SheetTitle>
+          <SheetTitle class="text-base">
+            Accounting Software Integration
+          </SheetTitle>
         </div>
       </SheetHeader>
       <ScrollArea class="flex-1">

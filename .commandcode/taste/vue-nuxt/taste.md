@@ -1,0 +1,13 @@
+# vue-nuxt
+- Reka UI SwitchRoot ignores external `:checked` prop changes — use `:key` force re-mount as workaround. Confidence: 0.85
+- Reka UI CheckboxRoot `:key` force-remount workaround doesn't fix visual state — replace with plain `<span>` + Tailwind classes instead. Confidence: 0.85
+- shadcn-vue Input/Textarea require `:model-value` + `@update:model-value` bindings, NOT `:value` + `@input`. Confidence: 0.85
+- Nuxt auto-imports components with directory prefix: `components/inventory/FooDrawer.vue` → `<InventoryFooDrawer>`. Confidence: 0.80
+- Use `useState<T>()` with spread syntax for shared reactive state in composables. Confidence: 0.80
+- Consolidate multiple imports from the same module onto one line: `import { createEmptyTemplate, type WhatsAppTemplate } from '~/components/.../whatsapp-templates'` rather than separate lines for value and type imports. Confidence: 0.80
+- Place all `<script setup>` imports at the top of the block — never interleave `import` statements with reactive state declarations or function definitions. Confidence: 0.85
+- Use `withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })` pattern for optional boolean props that need a default. Confidence: 0.78
+- When a shadcn-vue `Select`'s `@update:model-value` handler signature conflicts with `AcceptableValue`, cast the callback inline: `@update:model-value="(v: any) => setPageSize(v)"` rather than widening the declared function's parameter type. Confidence: 0.82
+- Place `defineProps` before `defineEmits` in `<script setup>` blocks (ESLint enforces this macro ordering — props first, then emits, both right after imports). Confidence: 0.85
+- Remove unused helper functions before committing; ESLint `no-unused-vars` will fail CI lint and block PR merge if a declared function is left without a call site. Confidence: 0.82
+- When seed/fixture data needs to represent an edge case that violates the production type (e.g. a non-conforming VAT rate for a `needs_mapping` invoice), widen the production type to `number` rather than casting at the seed site — keeps the type honest about what the model can carry while still validating the constraint at the pipeline boundary. Confidence: 0.80

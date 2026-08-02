@@ -35,6 +35,16 @@ export const integrations: Integration[] = [
     component: 'FinanceBexioIntegration',
   },
   {
+    id: 'lexware',
+    name: 'Lexware',
+    description: 'Push finalized EUR revenue as GoBD-ready drafts to Lexware for German bookkeeping.',
+    category: 'Accounting',
+    icon: 'i-lucide-landmark',
+    logo: 'FinanceLexwareLogo',
+    status: 'available',
+    component: 'FinanceLexwareIntegration',
+  },
+  {
     id: 'xero',
     name: 'Xero',
     description: 'Connect to Xero for cloud-based accounting and bookkeeping.',
