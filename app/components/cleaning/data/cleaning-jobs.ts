@@ -1594,6 +1594,207 @@ export const cleaningJobs = ref<CleaningJob[]>([
     reservationId: 'bk-24c',
     recurrence: null,
   },
+
+  // --- Done cleanings (with full checklist for the report panel) ---
+  // Aug 1 (yesterday) — check-out cleaning for Lucas Oliveira (lst-6)
+  {
+    id: 'cln-done-1',
+    listingId: 'lst-6',
+    listingName: 'Nomad Mansion Pool',
+    scheduledAt: '2026-08-01T11:00:00+08:00',
+    cleanerIds: ['staff-4'],
+    cleanerNames: ['Wayan Adi'],
+    teamName: 'Housekeeping',
+    status: 'done',
+    priority: 'high',
+    durationMinutes: 150,
+    notes: 'Check-out cleaning — Lucas Oliveira (pet in stay)',
+    source: 'check_out',
+    reservationId: 'bk-6a',
+    recurrence: null,
+    feedback: {
+      cleaningCode: 'CH - NomadPool',
+      supervisorName: 'Wayan Adi',
+      supervisorRole: 'Housekeeping',
+      startedAt: '2026-08-01T11:00:00+08:00',
+      confirmedAt: '2026-08-01T13:15:00+08:00',
+      checklist: [
+        {
+          id: 'start',
+          title: 'Start Reinigung',
+          items: [
+            { id: 's-1', label: 'Alle Fenster öffnen - Alle Betten abziehen (Bettwäsche nicht auf linke Seite drehen) - Schmutzwäsche sammeln und in Wäschewagen bringen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T11:30:00+08:00' },
+          ],
+        },
+        {
+          id: 'kitchen',
+          title: 'Küche',
+          items: [
+            { id: 'k-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T11:45:00+08:00' },
+            { id: 'k-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T11:50:00+08:00' },
+            { id: 'k-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:00:00+08:00' },
+            { id: 'k-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:05:00+08:00' },
+            { id: 'k-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'issue', notes: 'Pet hair found in lower drawers — extra cleaning required', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:30:00+08:00' },
+          ],
+        },
+        {
+          id: 'bath',
+          title: 'Badezimmer',
+          items: [
+            { id: 'b-1', label: 'Dusche, Badewanne, Waschbecken reinigen und entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:40:00+08:00' },
+            { id: 'b-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:45:00+08:00' },
+            { id: 'b-3', label: 'Handtücher und Badmatte austauschen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:50:00+08:00' },
+          ],
+        },
+        {
+          id: 'outdoor',
+          title: 'Aussenbereich',
+          items: [
+            { id: 'o-1', label: 'Pool auf Sauberkeit prüfen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T13:00:00+08:00' },
+            { id: 'o-2', label: 'Terrasse fegen + Pet hair entfernen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T13:10:00+08:00' },
+          ],
+        },
+      ],
+      cleanlinessRating: 4,
+      conditionNotes: 'Overall good. Pet hair found in kitchen drawers — extra effort needed. Bathroom and outdoor areas clean.',
+      damages: [],
+      itemsLeft: ['Pet toy (ball) under the bed'],
+      cleaningDurationMinutes: 135,
+      housekeeperNotes: 'Pet-friendly stay. Extra vacuuming required in kitchen and living areas.',
+    },
+  },
+  // Jul 30 — daily cleaning for Yuki Sato (lst-7)
+  {
+    id: 'cln-done-2',
+    listingId: 'lst-7',
+    listingName: 'Apartments Main',
+    scheduledAt: '2026-07-30T11:00:00+08:00',
+    cleanerIds: ['staff-3'],
+    cleanerNames: ['Made Surya'],
+    teamName: 'Housekeeping',
+    status: 'done',
+    priority: 'normal',
+    durationMinutes: 110,
+    notes: 'Daily cleaning — Yuki Sato',
+    source: 'daily',
+    reservationId: 'bk-7c',
+    recurrence: null,
+    feedback: {
+      cleaningCode: 'CH - AptsMain',
+      supervisorName: 'Made Surya',
+      supervisorRole: 'Housekeeping',
+      startedAt: '2026-07-30T11:00:00+08:00',
+      confirmedAt: '2026-07-30T12:50:00+08:00',
+      checklist: [
+        {
+          id: 'start',
+          title: 'Start Reinigung',
+          items: [
+            { id: 's-1', label: 'Alle Fenster öffnen - Alle Betten abziehen (Bettwäsche nicht auf linke Seite drehen) - Schmutzwäsche sammeln und in Wäschewagen bringen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T11:20:00+08:00' },
+          ],
+        },
+        {
+          id: 'kitchen',
+          title: 'Küche',
+          items: [
+            { id: 'k-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T11:30:00+08:00' },
+            { id: 'k-2', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T11:40:00+08:00' },
+            { id: 'k-3', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T11:45:00+08:00' },
+          ],
+        },
+        {
+          id: 'bath',
+          title: 'Badezimmer',
+          items: [
+            { id: 'b-1', label: 'Dusche, Badewanne, Waschbecken reinigen und entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T12:10:00+08:00' },
+            { id: 'b-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T12:15:00+08:00' },
+            { id: 'b-3', label: 'Handtücher und Badmatte austauschen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T12:20:00+08:00' },
+          ],
+        },
+        {
+          id: 'living',
+          title: 'Wohnzimmer',
+          items: [
+            { id: 'l-1', label: 'Möbel abstauben, Polster aufschütteln', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T12:30:00+08:00' },
+            { id: 'l-2', label: 'Boden wischen, Staubsaugen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-30T12:40:00+08:00' },
+          ],
+        },
+      ],
+      cleanlinessRating: 5,
+      conditionNotes: 'Property in excellent condition. No issues found.',
+      damages: [],
+      itemsLeft: [],
+      cleaningDurationMinutes: 110,
+      housekeeperNotes: 'Standard daily clean. Quick and easy.',
+    },
+  },
+  // Jul 27 — check-out cleaning for Frederik Madsen (lst-13)
+  {
+    id: 'cln-done-3',
+    listingId: 'lst-13',
+    listingName: 'Volcano View Villa Kintamani',
+    scheduledAt: '2026-07-27T11:00:00+08:00',
+    cleanerIds: ['staff-3'],
+    cleanerNames: ['Made Surya'],
+    teamName: 'Housekeeping',
+    status: 'done',
+    priority: 'high',
+    durationMinutes: 165,
+    notes: 'Check-out cleaning — Frederik Madsen (pet in stay)',
+    source: 'check_out',
+    reservationId: 'bk-13a',
+    recurrence: null,
+    feedback: {
+      cleaningCode: 'CH - Volcano',
+      supervisorName: 'Made Surya',
+      supervisorRole: 'Housekeeping',
+      startedAt: '2026-07-27T11:00:00+08:00',
+      confirmedAt: '2026-07-27T13:45:00+08:00',
+      checklist: [
+        {
+          id: 'start',
+          title: 'Start Reinigung',
+          items: [
+            { id: 's-1', label: 'Alle Fenster öffnen - Alle Betten abziehen (Bettwäsche nicht auf linke Seite drehen) - Schmutzwäsche sammeln und in Wäschewagen bringen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T11:30:00+08:00' },
+          ],
+        },
+        {
+          id: 'kitchen',
+          title: 'Küche',
+          items: [
+            { id: 'k-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'issue', notes: 'Strong pet smell in fridge area — deep cleaned', completedBy: 'Made Surya', completedAt: '2026-07-27T12:00:00+08:00' },
+            { id: 'k-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:05:00+08:00' },
+            { id: 'k-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:15:00+08:00' },
+            { id: 'k-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:20:00+08:00' },
+            { id: 'k-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'issue', notes: 'Pet chew toy in drawer — removed and placed in lost & found', completedBy: 'Made Surya', completedAt: '2026-07-27T12:40:00+08:00' },
+          ],
+        },
+        {
+          id: 'bath',
+          title: 'Badezimmer',
+          items: [
+            { id: 'b-1', label: 'Dusche, Badewanne, Waschbecken reinigen und entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:50:00+08:00' },
+            { id: 'b-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:55:00+08:00' },
+            { id: 'b-3', label: 'Handtücher und Badmatte austauschen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T13:00:00+08:00' },
+          ],
+        },
+        {
+          id: 'outdoor',
+          title: 'Aussenbereich',
+          items: [
+            { id: 'o-1', label: 'Pool auf Sauberkeit prüfen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T13:20:00+08:00' },
+            { id: 'o-2', label: 'Garten + Terrasse fegen, Pet Hair entfernen', status: 'issue', notes: 'Heavy pet hair on outdoor furniture', completedBy: 'Made Surya', completedAt: '2026-07-27T13:40:00+08:00' },
+          ],
+        },
+      ],
+      cleanlinessRating: 3,
+      conditionNotes: 'Property in poor condition after pet stay. Strong pet smell in kitchen, pet hair throughout, chew toy found in drawer. Required extra deep cleaning.',
+      damages: ['Minor scratch on wooden dining table (likely from pet)'],
+      itemsLeft: ['Pet chew toy (in drawer)', 'Pet bed (in living room)'],
+      cleaningDurationMinutes: 165,
+      housekeeperNotes: 'Pet-heavy stay. Required 2x normal cleaning time. Recommend adding pet fee or requiring professional cleaning for pet stays.',
+    },
+  },
 ])
 
 export const cleaningJobStatuses: CleaningJobStatus[] = ['draft', 'scheduled', 'confirmed', 'in_progress', 'done', 'cancelled']

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
+import type { Booking } from '~/components/listings/data/listings'
 import { cleanerOptions, cleaningJobStatusLabels, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { cleaningTypeIcons, cleaningTypeVariants } from '~/components/operations-calendar/data/operations-calendar'
+import { listings } from '~/components/listings/data/listings'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useTaskStore } from '~/composables/useTaskStore'
 import { toast } from 'vue-sonner'
@@ -231,33 +233,117 @@ const cleaningTypeMeta = computed(() => {
 })
 
 const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.event.hasPet))
+
+// Find the booking that overlaps the cleaning date for the same listing
+// Only "real" bookings count (checked_in / checked_out / verified) —
+// `inquiry` is not yet a booking, so no cleaning should be associated.
+const overlappingBooking = computed<Booking | null>(() => {
+  if (!props.event || props.event.type !== 'cleaning')
+    return null
+  const listing = listings.value.find(l => l.id === props.event.listingId)
+  if (!listing?.bookings?.length)
+    return null
+  const eventDay = props.event.start.slice(0, 10)
+  return listing.bookings.find(b =>
+    b.status !== 'cancelled'
+    && b.status !== 'inquiry'
+    && b.checkIn <= eventDay
+    && b.checkOut >= eventDay,
+  ) ?? null
+})
+
+const stayInfoLabel = computed(() => {
+  const b = overlappingBooking.value
+  if (!b)
+    return null
+  const checkIn = new Date(`${b.checkIn}T00:00:00+08:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const checkOut = new Date(`${b.checkOut}T00:00:00+08:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return {
+    guestName: b.guestName,
+    dateRange: `${checkIn} → ${checkOut}`,
+    nights: b.nights,
+    adults: b.adults ?? 0,
+    children: b.children ?? 0,
+    infants: b.infants ?? 0,
+    pets: b.pets ?? (b.hasPet ? 1 : 0),
+    hasPet: b.hasPet,
+  }
+})
 </script>
 
 <template>
   <Sheet :open="open" @update:open="$event ? emit('update:open', true) : close()">
     <SheetContent side="right" class="flex w-full flex-col gap-0 overflow-hidden sm:max-w-lg">
       <SheetHeader class="shrink-0 border-b px-6 py-4">
-        <div class="flex items-center gap-2">
-          <Badge variant="secondary" class="text-[10px] uppercase tracking-wider">
-            {{ eventTypeLabel }}
-          </Badge>
-        </div>
         <SheetTitle class="leading-tight">
-          {{ event?.title || 'Event details' }}
+          {{ event?.type === 'cleaning' && event?.cleaningTypeLabel
+            ? event.cleaningTypeLabel
+            : (event?.title || 'Event details') }}
         </SheetTitle>
-        <SheetDescription v-if="event?.listingName">
+        <SheetDescription v-if="event?.listingName" class="mt-1">
           {{ event.listingName }}
         </SheetDescription>
+        <div v-if="event" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Icon name="lucide:clock" class="h-3.5 w-3.5" />
+          <span>
+            {{ formatDate(event.start) }} · {{ formatTime(event.start) }} – {{ formatTime(event.end) }}
+          </span>
+        </div>
       </SheetHeader>
 
       <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
         <div v-if="event" class="flex flex-col gap-4 p-6">
-          <!-- Time range -->
-          <div class="flex items-center gap-2 text-sm">
-          <Icon name="lucide:clock" class="h-4 w-4 text-muted-foreground" />
-          <span>
-            {{ formatDate(event.start) }} · {{ formatTime(event.start) }} – {{ formatTime(event.end) }}
-          </span>
+
+        <!-- Guest in stay (cleaning only — shows overlapping booking info) -->
+        <div
+          v-if="event.type === 'cleaning' && stayInfoLabel"
+          class="flex flex-col gap-1.5"
+          data-testid="guest-in-stay"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <p class="text-lg font-bold tracking-tight">
+              {{ stayInfoLabel.guestName }}
+            </p>
+            <div
+              v-if="overlappingBooking"
+              class="flex shrink-0 items-center gap-1"
+            >
+              <Icon
+                name="lucide:star"
+                class="h-6 w-6 fill-amber-400 text-amber-500"
+              />
+              <span class="text-2xl font-bold tracking-tight">4</span>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <div class="flex items-center gap-1.5">
+              <Icon name="lucide:user" class="h-3.5 w-3.5" />
+              <span class="font-semibold text-foreground">{{ stayInfoLabel.adults }}</span>
+              <span>Adults</span>
+            </div>
+            <div v-if="stayInfoLabel.children" class="flex items-center gap-1.5">
+              <Icon name="lucide:users-round" class="h-3.5 w-3.5" />
+              <span class="font-semibold text-foreground">{{ stayInfoLabel.children }}</span>
+              <span>Children</span>
+            </div>
+            <div v-if="stayInfoLabel.infants" class="flex items-center gap-1.5">
+              <Icon name="lucide:baby" class="h-3.5 w-3.5" />
+              <span class="font-semibold text-foreground">{{ stayInfoLabel.infants }}</span>
+              <span>Infant{{ stayInfoLabel.infants === 1 ? '' : 's' }}</span>
+            </div>
+            <div v-if="stayInfoLabel.pets" class="flex items-center gap-1.5">
+              <Icon name="lucide:paw-print" class="h-3.5 w-3.5" />
+              <span class="font-semibold text-foreground">{{ stayInfoLabel.pets }}</span>
+              <span>Pet{{ stayInfoLabel.pets === 1 ? '' : 's' }}</span>
+            </div>
+          </div>
+          <div v-if="overlappingBooking" class="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Icon name="lucide:calendar" class="h-3.5 w-3.5" />
+            <span>Checkout :</span>
+            <span class="font-semibold text-foreground">
+              {{ new Date(`${overlappingBooking.checkOut}T11:00:00+08:00`).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '') }}
+            </span>
+          </div>
         </div>
 
         <!-- Cleaning job details (skipped when done — the report panel below replaces it) -->

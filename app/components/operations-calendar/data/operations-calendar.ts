@@ -275,7 +275,10 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
     const fullListing = listings.value.find(l => l.id === job.listingId)
     const scheduledDate = job.scheduledAt.slice(0, 10)
     const overlappingBooking = fullListing?.bookings.find(b =>
-      b.status !== 'cancelled' && b.checkIn <= scheduledDate && b.checkOut >= scheduledDate,
+      b.status !== 'cancelled'
+      && b.status !== 'inquiry'
+      && b.checkIn <= scheduledDate
+      && b.checkOut >= scheduledDate,
     )
     const cleaningType = normalizeCleaningType(job.source)
     const guestSuffix = job.source === 'checkout' && overlappingBooking
@@ -313,6 +316,9 @@ export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>
       continue
     const checkOutTime = getDefaultCheckOutTime(listing.id)
     for (const booking of fullListing.bookings) {
+      // Skip cancelled / inquiry — no actual checkout, no cleaning
+      if (booking.status === 'cancelled' || booking.status === 'inquiry')
+        continue
       const key = `${listing.id}:${booking.checkOut}`
       if (existingKeys.has(key))
         continue
@@ -351,6 +357,9 @@ export function buildAllEvents(jobs?: CleaningJob[]): CalendarEvent[] {
     const checkInTime = getDefaultCheckInTime(listing.id)
     const checkOutTime = getDefaultCheckOutTime(listing.id)
     for (const booking of fullListing.bookings) {
+      // Skip cancelled / inquiry — not a real booking, no stay or cleaning
+      if (booking.status === 'cancelled' || booking.status === 'inquiry')
+        continue
       events.push(...buildGuestStayEvents(booking, listing, checkInTime, checkOutTime))
     }
   }

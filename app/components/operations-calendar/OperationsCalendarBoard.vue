@@ -176,6 +176,34 @@ function getStayBars(listing: CalendarListing): StayBar[] {
 
 const todayKey = new Date().toISOString().slice(0, 10)
 
+const weekRangeLabel = computed(() => {
+  if (!props.weekDays?.length)
+    return ''
+  const first = props.weekDays[0]
+  const last = props.weekDays[props.weekDays.length - 1]
+  if (!first || !last)
+    return ''
+  const startDate = new Date(`${first.key}T00:00:00+08:00`)
+  const endDate = new Date(`${last.key}T00:00:00+08:00`)
+  const sameMonth = startDate.getMonth() === endDate.getMonth()
+  const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const endStr = sameMonth
+    ? endDate.toLocaleDateString('en-US', { day: 'numeric' })
+    : endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${startStr} – ${endStr}, ${endDate.getFullYear()}`
+})
+
+const totalEventsLabel = computed(() => {
+  const n = props.events?.length ?? 0
+  if (!n)
+    return 'No events'
+  return `${n} event${n === 1 ? '' : 's'} this week`
+})
+
+function formatWeekRangeHeader(_days: typeof props.weekDays) {
+  return weekRangeLabel.value
+}
+
 const listingColors = [
   'bg-sky-500',
   'bg-emerald-500',
@@ -254,6 +282,14 @@ function onCellClick(listingId: string, dayKey: string) {
         </Button>
       </div>
     </div>
+    <div class="flex items-center justify-between gap-3 border-b bg-muted/20 px-4 py-2 text-sm">
+      <p class="font-semibold tracking-tight">
+        {{ formatWeekRangeHeader(weekDays) }}
+      </p>
+      <p class="text-xs text-muted-foreground">
+        {{ totalEventsLabel }}
+      </p>
+    </div>
     <!-- Week view -->
     <div class="max-h-[calc(100vh-var(--header-height)-180px)] overflow-auto">
       <div class="min-w-[1100px]">
@@ -282,6 +318,9 @@ function onCellClick(listingId: string, dayKey: string) {
               </p>
               <p class="mt-1 text-sm font-semibold">
                 {{ day.key.slice(8, 10) }}
+              </p>
+              <p class="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                {{ day.date.toLocaleString('en-US', { month: 'short' }) }}
               </p>
             </div>
           </div>

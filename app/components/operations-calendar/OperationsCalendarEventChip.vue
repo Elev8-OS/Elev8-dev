@@ -15,36 +15,35 @@ const emit = defineEmits<{
 }>()
 
 const chipClasses = computed(() => {
-  const base = 'flex w-full flex-col rounded-md border-l-4 px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md'
+  const base = 'flex w-full flex-col rounded-md border px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md'
   if (props.event.type === 'guest_stay') {
-    return `${base} border-l-primary/60 bg-primary/10 border-primary/20 text-foreground`
+    return `${base} bg-primary/10 border-primary/20 text-foreground`
   }
 
   if (props.event.type === 'task') {
     if (isOverdueTask.value) {
-      return `${base} border-l-destructive bg-destructive/10 border-destructive/50 text-foreground ring-1 ring-destructive/40`
+      return `${base} bg-destructive/10 border-destructive/50 text-foreground ring-1 ring-destructive/40`
     }
-    return `${base} border-l-amber-500 bg-amber-500/10 border-amber-500/30 text-foreground`
+    return `${base} bg-amber-500/10 border-amber-500/30 text-foreground`
   }
 
   if (props.event.type === 'upsell') {
-    return `${base} border-l-violet-500 bg-violet-500/10 border-violet-500/20 text-foreground`
+    return `${base} bg-violet-500/10 border-violet-500/20 text-foreground`
   }
 
   if (props.event.type === 'cleaning') {
-    // Past/finalized states take over the left border + background tint
     if (stateMeta.value?.tone === 'done') {
-      return `${base} border-l-emerald-500 bg-emerald-500/10 border-emerald-500/30 text-foreground`
+      return `${base} bg-emerald-500/10 border-emerald-500/30 text-foreground`
     }
     if (stateMeta.value?.tone === 'in_progress') {
-      return `${base} border-l-amber-500 bg-amber-500/10 border-amber-500/30 text-foreground`
+      return `${base} bg-amber-500/10 border-amber-500/30 text-foreground`
     }
     if (stateMeta.value?.tone === 'missed' || stateMeta.value?.tone === 'was_missed' || stateMeta.value?.tone === 'cancelled') {
-      return `${base} border-l-destructive bg-destructive/10 border-destructive/40 text-foreground ring-1 ring-destructive/30`
+      return `${base} bg-destructive/10 border-destructive/40 text-foreground ring-1 ring-destructive/30`
     }
-    return `${base} border-l-sky-500 bg-sky-500/10 border-sky-500/30 text-foreground`
+    return `${base} bg-sky-500/10 border-sky-500/30 text-foreground`
   }
-  return `${base} border-l-muted bg-card border-border text-foreground`
+  return `${base} bg-card border-border text-foreground`
 })
 
 const isOverdueTask = computed(() => {
