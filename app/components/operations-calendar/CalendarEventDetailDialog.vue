@@ -274,16 +274,16 @@ const stayInfoLabel = computed(() => {
 <template>
   <Sheet :open="open" @update:open="$event ? emit('update:open', true) : close()">
     <SheetContent side="right" class="flex w-full flex-col gap-0 overflow-hidden sm:max-w-lg">
-      <SheetHeader class="shrink-0 border-b px-6 py-4">
-        <SheetTitle class="leading-tight">
+      <SheetHeader class="shrink-0 gap-0 border-b px-5 py-3">
+        <SheetTitle class="text-lg leading-tight">
           {{ event?.type === 'cleaning' && event?.cleaningTypeLabel
             ? event.cleaningTypeLabel
             : (event?.title || 'Event details') }}
         </SheetTitle>
-        <SheetDescription v-if="event?.listingName" class="mt-1">
+        <SheetDescription v-if="event?.listingName" class="mt-0.5 text-sm">
           {{ event.listingName }}
         </SheetDescription>
-        <div v-if="event" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div v-if="event" class="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
           <Icon name="lucide:clock" class="h-3.5 w-3.5" />
           <span>
             {{ formatDate(event.start) }} · {{ formatTime(event.start) }} – {{ formatTime(event.end) }}
