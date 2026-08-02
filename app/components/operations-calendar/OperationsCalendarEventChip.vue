@@ -2,7 +2,7 @@
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { computed } from 'vue'
-import { cleaningTypeIcons, formatTime } from '~/components/operations-calendar/data/operations-calendar'
+import { cleaningTypeIcons } from '~/components/operations-calendar/data/operations-calendar'
 import { staffMembers } from '~/components/tasks/data/data'
 
 const props = defineProps<{
@@ -32,10 +32,17 @@ const displayTitle = computed(() => {
   return props.event.title
 })
 
+/** 24-hour "HH:MM" from an ISO datetime — matches the stored Bali time. */
+function formatHourMinute(value: string) {
+  return value.slice(11, 16)
+}
+
 const timeRange = computed(() => {
   if (props.event.type === 'guest_stay' || props.event.type === 'task')
     return ''
-  return `${formatTime(props.event.start)} – ${formatTime(props.event.end)}`
+  if (props.event.type === 'cleaning' && props.event.start && props.event.end)
+    return `${formatHourMinute(props.event.start)} – ${formatHourMinute(props.event.end)}`
+  return ''
 })
 
 const cleaningStatusConfig: Record<string, { label: string, class: string, icon: string, spin?: boolean }> = {
@@ -118,154 +125,166 @@ const isUnassigned = computed(() => assignedStaff.value.length === 0)
   <button
     type="button"
     :draggable="draggable"
-    class="group flex w-full flex-col gap-0.5 rounded border bg-background px-1.5 py-1 text-left text-[10px] leading-tight shadow-sm transition-shadow hover:shadow-md"
+    class="group flex w-full flex-col gap-1 rounded-lg border p-1.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md"
     :class="{
-      'border-sky-200 bg-sky-50/40': event.type === 'cleaning' && !stateMeta,
-      'border-emerald-300 bg-emerald-50/50': stateMeta?.tone === 'done',
-      'border-amber-300 bg-amber-50/50': stateMeta?.tone === 'in_progress',
-      'border-red-300 bg-red-50/50': stateMeta?.tone === 'missed' || stateMeta?.tone === 'was_missed' || stateMeta?.tone === 'cancelled',
+      'border-sky-200 bg-sky-50': event.type === 'cleaning' && !stateMeta,
+      'border-emerald-300 bg-emerald-50/60': stateMeta?.tone === 'done',
+      'border-amber-300 bg-amber-50/60': stateMeta?.tone === 'in_progress',
+      'border-red-300 bg-red-50/60': stateMeta?.tone === 'missed' || stateMeta?.tone === 'was_missed' || stateMeta?.tone === 'cancelled',
+      'border-sky-200 bg-background': event.type !== 'cleaning',
     }"
     @click.stop="emit('click', event)"
     @dragstart.stop="emit('dragstart', event)"
   >
-    <!-- Title row with type icon + time + pet (one line) -->
-    <div class="flex items-center gap-1">
-      <Icon
-        v-if="event.type === 'cleaning'"
-        :name="cleaningTypeConfig?.icon ?? 'lucide:brush'"
-        class="h-3 w-3 shrink-0 text-muted-foreground"
-      />
-      <Icon
-        v-else-if="event.type === 'task'"
-        name="lucide:clipboard-list"
-        class="h-3 w-3 shrink-0 text-amber-600"
-      />
-      <Icon
-        v-else-if="event.type === 'upsell'"
-        name="lucide:sparkles"
-        class="h-3 w-3 shrink-0 text-violet-600"
-      />
-      <Icon
-        v-else-if="event.type === 'guest_stay'"
-        name="lucide:bed"
-        class="h-3 w-3 shrink-0 text-primary"
-      />
-      <p class="min-w-0 flex-1 truncate text-[10px] font-semibold">
-        {{ cleaningTypeConfig?.label || displayTitle }}
-      </p>
-      <Icon
-        v-if="hasPet"
-        name="lucide:paw-print"
-        class="h-2.5 w-2.5 shrink-0 text-amber-600"
-      />
-    </div>
-
-    <!-- Time range (if present) -->
-    <p v-if="timeRange" class="text-[9px] text-muted-foreground">
-      {{ timeRange }}
-    </p>
-
-    <!-- Status + priority badges (cleaning) — one row -->
-    <div
-      v-if="event.type === 'cleaning'"
-      class="flex flex-wrap items-center gap-0.5"
-    >
-      <Badge
-        v-if="priorityConfig?.isHigh"
-        class="gap-0.5 border-0 bg-red-100 px-1 py-0 text-[9px] font-semibold text-red-600"
-      >
-        <Icon name="lucide:flag" class="h-2.5 w-2.5 fill-red-500 text-red-500" />
-        High
-      </Badge>
-      <Badge
-        v-if="stateMeta || statusConfig"
-        :class="['gap-0.5 border-0 px-1 py-0 text-[9px] font-semibold', (stateMeta ? cleaningStatusConfig[event.status as string]?.class : statusConfig?.class) || '']"
-      >
-        <Icon
-          :name="(stateMeta?.icon ?? statusConfig?.icon) || 'lucide:circle'"
-          :class="[(stateMeta?.tone === 'in_progress' || event.status === 'in_progress') ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5']"
-        />
-        {{ stateMeta?.label || statusConfig?.label }}
-      </Badge>
-    </div>
-
-    <!-- Staff chips (cleaning) -->
-    <div
-      v-if="event.type === 'cleaning'"
-      class="flex flex-wrap items-center gap-0.5"
-    >
-      <span
-        v-for="member in assignedStaff.slice(0, 2)"
-        :key="member.name"
-        class="inline-flex items-center gap-0.5 rounded-full bg-background px-1 text-[9px] font-medium ring-1 ring-border"
-        :title="member.name"
-      >
-        <span
-          class="flex h-3 w-3 items-center justify-center rounded-full text-[7px] font-bold"
-          :class="member.color"
+    <!-- ============ Cleaning: mini card ============ -->
+    <template v-if="event.type === 'cleaning'">
+      <!-- Header row: priority (left) + status (right) -->
+      <div class="flex items-center justify-between gap-1">
+        <Badge
+          v-if="priorityConfig"
+          class="gap-0.5 border-0 px-1 py-0 text-[9px] font-semibold"
+          :class="priorityConfig.isHigh ? 'bg-red-100 text-red-600' : 'bg-muted text-muted-foreground'"
         >
-          {{ member.initials }}
-        </span>
-        <span class="max-w-[50px] truncate">{{ member.name.split(' ')[0] }}</span>
-      </span>
-      <span
-        v-if="isUnassigned"
-        class="inline-flex items-center gap-0.5 rounded-full bg-background px-1 text-[9px] font-medium text-muted-foreground ring-1 ring-border"
-      >
-        <Icon name="lucide:user-plus" class="h-2.5 w-2.5" />
-        Unassigned
-      </span>
-    </div>
+          <Icon name="lucide:flag" class="h-2.5 w-2.5 fill-red-500 text-red-500" />
+          {{ priorityConfig.label }}
+        </Badge>
+        <span v-else class="h-3.5" />
 
-    <!-- Task badges -->
-    <div
-      v-if="event.type === 'task'"
-      class="flex flex-wrap items-center gap-0.5"
-    >
-      <Badge
-        v-if="isOverdueTask"
-        variant="destructive"
-        class="gap-0.5 border-0 bg-red-100 px-1.5 py-0 text-[9px] font-semibold text-red-600"
-      >
-        <Icon name="lucide:alert-triangle" class="h-2.5 w-2.5" />
-        Overdue
-      </Badge>
-      <Badge
-        v-if="event.priority === 'high' || event.priority === 'urgent'"
-        class="gap-0.5 border-0 bg-red-100 px-1.5 py-0 text-[9px] font-semibold text-red-600"
-      >
-        <Icon name="lucide:flag" class="h-2.5 w-2.5 fill-red-500 text-red-500" />
-        {{ event.priority === 'urgent' ? 'Urgent' : 'High' }}
-      </Badge>
-      <Badge
-        v-if="event.assigneeLabel"
-        class="gap-0.5 border-0 bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
-      >
+        <Badge
+          v-if="stateMeta || statusConfig"
+          :class="['gap-0.5 border-0 px-1 py-0 text-[9px] font-semibold', (stateMeta ? cleaningStatusConfig[event.status as string]?.class : statusConfig?.class) || '']"
+        >
+          <Icon
+            :name="(stateMeta?.icon ?? statusConfig?.icon) || 'lucide:circle'"
+            :class="[(stateMeta?.tone === 'in_progress' || event.status === 'in_progress') ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5']"
+          />
+          {{ stateMeta?.label || statusConfig?.label }}
+        </Badge>
+      </div>
+
+      <!-- Title row: type icon + label -->
+      <div class="flex items-center gap-1">
         <Icon
-          :name="event.assigneeType === 'person' ? 'lucide:user' : 'lucide:users-round'"
-          class="h-2.5 w-2.5"
+          :name="cleaningTypeConfig?.icon ?? 'lucide:brush'"
+          class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
         />
-        <span class="max-w-[60px] truncate">{{ event.assigneeLabel }}</span>
-      </Badge>
-      <Badge
-        v-else
-        class="gap-0.5 border-0 bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
-      >
-        <Icon name="lucide:user-plus" class="h-2.5 w-2.5" />
-        Unassigned
-      </Badge>
-    </div>
+        <p class="min-w-0 flex-1 truncate text-[11px] font-semibold">
+          {{ cleaningTypeConfig?.label || displayTitle }}
+        </p>
+      </div>
 
-    <!-- Upsell status -->
-    <div
-      v-if="event.type === 'upsell' && event.status"
-      class="flex items-center"
-    >
-      <Badge
-        :class="['gap-0.5 border-0 px-1.5 py-0 text-[9px] font-semibold', event.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : event.status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground']"
+      <!-- Details row: time range + pet -->
+      <div class="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <span>{{ timeRange }}</span>
+        <template v-if="hasPet">
+          <span class="text-muted-foreground/50">·</span>
+          <span class="inline-flex items-center gap-0.5 font-medium text-amber-600">
+            <Icon name="lucide:paw-print" class="h-3 w-3" />
+            Pet
+          </span>
+        </template>
+      </div>
+
+      <!-- Assignees row -->
+      <div class="flex flex-wrap items-center gap-1">
+        <span
+          v-for="member in assignedStaff.slice(0, 2)"
+          :key="member.name"
+          class="inline-flex items-center gap-1 rounded-full bg-background/80 px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-border"
+          :title="member.name"
+        >
+          <span
+            class="flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold"
+            :class="member.color"
+          >
+            {{ member.initials }}
+          </span>
+          <span class="max-w-[60px] truncate">{{ member.name }}</span>
+        </span>
+        <span
+          v-if="isUnassigned"
+          class="inline-flex items-center gap-1 rounded-full bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border"
+        >
+          <Icon name="lucide:user-plus" class="h-3 w-3" />
+          Unassigned
+        </span>
+      </div>
+    </template>
+
+    <!-- ============ Other event types: compact layout ============ -->
+    <template v-else>
+      <!-- Title row with type icon + time + pet (one line) -->
+      <div class="flex items-center gap-1">
+        <Icon
+          v-if="event.type === 'task'"
+          name="lucide:clipboard-list"
+          class="h-3 w-3 shrink-0 text-amber-600"
+        />
+        <Icon
+          v-else-if="event.type === 'upsell'"
+          name="lucide:sparkles"
+          class="h-3 w-3 shrink-0 text-violet-600"
+        />
+        <Icon
+          v-else-if="event.type === 'guest_stay'"
+          name="lucide:bed"
+          class="h-3 w-3 shrink-0 text-primary"
+        />
+        <p class="min-w-0 flex-1 truncate text-[10px] font-semibold">
+          {{ displayTitle }}
+        </p>
+      </div>
+
+      <!-- Task badges -->
+      <div
+        v-if="event.type === 'task'"
+        class="flex flex-wrap items-center gap-0.5"
       >
-        {{ event.status === 'not_started' ? 'Pending' : event.status === 'in_progress' ? 'In Progress' : 'Done' }}
-      </Badge>
-    </div>
+        <Badge
+          v-if="isOverdueTask"
+          variant="destructive"
+          class="gap-0.5 border-0 bg-red-100 px-1.5 py-0 text-[9px] font-semibold text-red-600"
+        >
+          <Icon name="lucide:alert-triangle" class="h-2.5 w-2.5" />
+          Overdue
+        </Badge>
+        <Badge
+          v-if="event.priority === 'high' || event.priority === 'urgent'"
+          class="gap-0.5 border-0 bg-red-100 px-1.5 py-0 text-[9px] font-semibold text-red-600"
+        >
+          <Icon name="lucide:flag" class="h-2.5 w-2.5 fill-red-500 text-red-500" />
+          {{ event.priority === 'urgent' ? 'Urgent' : 'High' }}
+        </Badge>
+        <Badge
+          v-if="event.assigneeLabel"
+          class="gap-0.5 border-0 bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
+        >
+          <Icon
+            :name="event.assigneeType === 'person' ? 'lucide:user' : 'lucide:users-round'"
+            class="h-2.5 w-2.5"
+          />
+          <span class="max-w-[60px] truncate">{{ event.assigneeLabel }}</span>
+        </Badge>
+        <Badge
+          v-else
+          class="gap-0.5 border-0 bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
+        >
+          <Icon name="lucide:user-plus" class="h-2.5 w-2.5" />
+          Unassigned
+        </Badge>
+      </div>
+
+      <!-- Upsell status -->
+      <div
+        v-if="event.type === 'upsell' && event.status"
+        class="flex items-center"
+      >
+        <Badge
+          :class="['gap-0.5 border-0 px-1.5 py-0 text-[9px] font-semibold', event.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : event.status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground']"
+        >
+          {{ event.status === 'not_started' ? 'Pending' : event.status === 'in_progress' ? 'In Progress' : 'Done' }}
+        </Badge>
+      </div>
+    </template>
   </button>
 </template>
