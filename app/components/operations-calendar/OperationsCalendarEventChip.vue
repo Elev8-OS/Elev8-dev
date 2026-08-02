@@ -127,10 +127,7 @@ const isUnassigned = computed(() => assignedStaff.value.length === 0)
     :draggable="draggable"
     class="group flex w-full flex-col gap-1 rounded-lg border p-1.5 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md"
     :class="{
-      'border-sky-200 bg-sky-50': event.type === 'cleaning' && !stateMeta,
-      'border-emerald-300 bg-emerald-50/60': stateMeta?.tone === 'done',
-      'border-amber-300 bg-amber-50/60': stateMeta?.tone === 'in_progress',
-      'border-red-300 bg-red-50/60': stateMeta?.tone === 'missed' || stateMeta?.tone === 'was_missed' || stateMeta?.tone === 'cancelled',
+      'border-sky-200 bg-sky-50': event.type === 'cleaning',
       'border-sky-200 bg-background': event.type !== 'cleaning',
     }"
     @click.stop="emit('click', event)"
