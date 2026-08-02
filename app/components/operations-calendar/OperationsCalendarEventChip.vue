@@ -2,7 +2,8 @@
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { computed } from 'vue'
-import { cleaningTypeIcons, cleaningTypeVariants, formatTime } from '~/components/operations-calendar/data/operations-calendar'
+import { cleaningTypeIcons, formatTime } from '~/components/operations-calendar/data/operations-calendar'
+import { staffMembers } from '~/components/tasks/data/data'
 
 const props = defineProps<{
   event: CalendarEvent
@@ -13,38 +14,6 @@ const emit = defineEmits<{
   click: [event: CalendarEvent]
   dragstart: [event: CalendarEvent]
 }>()
-
-const chipClasses = computed(() => {
-  const base = 'flex w-full flex-col rounded-md border px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-shadow hover:shadow-md'
-  if (props.event.type === 'guest_stay') {
-    return `${base} bg-primary/10 border-primary/20 text-foreground`
-  }
-
-  if (props.event.type === 'task') {
-    if (isOverdueTask.value) {
-      return `${base} bg-destructive/10 border-destructive/50 text-foreground ring-1 ring-destructive/40`
-    }
-    return `${base} bg-amber-500/10 border-amber-500/30 text-foreground`
-  }
-
-  if (props.event.type === 'upsell') {
-    return `${base} bg-violet-500/10 border-violet-500/20 text-foreground`
-  }
-
-  if (props.event.type === 'cleaning') {
-    if (stateMeta.value?.tone === 'done') {
-      return `${base} bg-emerald-500/10 border-emerald-500/30 text-foreground`
-    }
-    if (stateMeta.value?.tone === 'in_progress') {
-      return `${base} bg-amber-500/10 border-amber-500/30 text-foreground`
-    }
-    if (stateMeta.value?.tone === 'missed' || stateMeta.value?.tone === 'was_missed' || stateMeta.value?.tone === 'cancelled') {
-      return `${base} bg-destructive/10 border-destructive/40 text-foreground ring-1 ring-destructive/30`
-    }
-    return `${base} bg-sky-500/10 border-sky-500/30 text-foreground`
-  }
-  return `${base} bg-card border-border text-foreground`
-})
 
 const isOverdueTask = computed(() => {
   if (props.event.type !== 'task' || !props.event.start)
@@ -66,16 +35,16 @@ const displayTitle = computed(() => {
 const timeRange = computed(() => {
   if (props.event.type === 'guest_stay' || props.event.type === 'task')
     return ''
-  return `${formatTime(props.event.start)} - ${formatTime(props.event.end)}`
+  return `${formatTime(props.event.start)} – ${formatTime(props.event.end)}`
 })
 
-const cleaningStatusConfig: Record<string, { label: string, variant: 'outline' | 'default' | 'secondary' | 'destructive', class: string }> = {
-  draft: { label: 'Draft', variant: 'outline', class: '' },
-  confirmed: { label: 'Confirmed', variant: 'default', class: 'bg-blue-500/80' },
-  in_progress: { label: 'In Progress', variant: 'default', class: 'bg-amber-500/80' },
-  done: { label: 'Done', variant: 'default', class: 'bg-emerald-500/80' },
-  cancelled: { label: 'Cancelled', variant: 'destructive', class: '' },
-  missed: { label: 'Missed', variant: 'destructive', class: '' },
+const cleaningStatusConfig: Record<string, { label: string, class: string, icon: string, spin?: boolean }> = {
+  draft: { label: 'Draft', class: 'bg-muted text-muted-foreground', icon: 'lucide:file-text' },
+  confirmed: { label: 'Confirmed', class: 'bg-sky-100 text-sky-700', icon: 'lucide:check-circle-2' },
+  in_progress: { label: 'In progress', class: 'bg-amber-100 text-amber-700', icon: 'lucide:loader', spin: true },
+  done: { label: 'Completed', class: 'bg-emerald-100 text-emerald-700', icon: 'lucide:check' },
+  cancelled: { label: 'Cancelled', class: 'bg-red-100 text-red-700', icon: 'lucide:ban' },
+  missed: { label: 'Missed', class: 'bg-red-100 text-red-700', icon: 'lucide:x' },
 }
 
 const statusConfig = computed(() => {
@@ -87,12 +56,9 @@ const statusConfig = computed(() => {
 const priorityConfig = computed(() => {
   if (props.event.type !== 'cleaning' || !props.event.priority)
     return null
-  const isHigh = props.event.priority === 'high'
   return {
     label: cleaningJobPriorityLabels[props.event.priority],
-    variant: isHigh ? ('destructive' as const) : ('secondary' as const),
-    icon: isHigh ? 'lucide:flag' : null,
-    highlight: isHigh,
+    isHigh: props.event.priority === 'high',
   }
 })
 
@@ -103,58 +69,71 @@ const cleaningTypeConfig = computed(() => {
     type: props.event.cleaningType,
     label: props.event.cleaningTypeLabel ?? '',
     icon: cleaningTypeIcons[props.event.cleaningType],
-    variant: cleaningTypeVariants[props.event.cleaningType],
   }
 })
 
 const hasPet = computed(() => props.event.type === 'cleaning' && Boolean(props.event.hasPet))
 
-// State meta for past/finalized cleanings — drives left border, background, and state badge
 type ChipStateTone = 'done' | 'in_progress' | 'missed' | 'was_missed' | 'cancelled' | null
 
-const stateMeta = computed<{ label: string, icon: string, tone: ChipStateTone, badgeClass: string } | null>(() => {
+const stateMeta = computed<{ label: string, icon: string, tone: ChipStateTone } | null>(() => {
   if (props.event.type !== 'cleaning')
     return null
   const status = props.event.status
-  if (status === 'done') {
-    return { label: 'Done', icon: 'lucide:check-circle-2', tone: 'done', badgeClass: 'gap-0.5 bg-emerald-500/80 text-white text-[9px] font-medium' }
-  }
-  if (status === 'in_progress') {
-    return { label: 'In progress', icon: 'lucide:loader', tone: 'in_progress', badgeClass: 'gap-0.5 bg-amber-500/80 text-white text-[9px] font-medium' }
-  }
-  if (status === 'missed') {
-    return { label: 'Missed', icon: 'lucide:circle-x', tone: 'missed', badgeClass: 'gap-0.5 bg-destructive/90 text-white text-[9px] font-medium' }
-  }
-  if (status === 'cancelled') {
-    return { label: 'Cancelled', icon: 'lucide:ban', tone: 'cancelled', badgeClass: 'gap-0.5 bg-destructive/90 text-white text-[9px] font-medium' }
-  }
-  // `scheduled` with a past date = "Was missed"
+  if (status === 'done')
+    return { label: 'Completed', icon: 'lucide:check', tone: 'done' }
+  if (status === 'in_progress')
+    return { label: 'In progress', icon: 'lucide:loader', tone: 'in_progress' }
+  if (status === 'missed')
+    return { label: 'Missed', icon: 'lucide:x', tone: 'missed' }
+  if (status === 'cancelled')
+    return { label: 'Cancelled', icon: 'lucide:ban', tone: 'cancelled' }
   if (status === 'scheduled' && props.event.start) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const scheduled = new Date(props.event.start)
     scheduled.setHours(0, 0, 0, 0)
-    if (scheduled.getTime() < today.getTime()) {
-      return { label: 'Was missed', icon: 'lucide:circle-x', tone: 'was_missed', badgeClass: 'gap-0.5 bg-destructive/90 text-white text-[9px] font-medium' }
-    }
+    if (scheduled.getTime() < today.getTime())
+      return { label: 'Was missed', icon: 'lucide:x', tone: 'was_missed' }
   }
   return null
 })
+
+const assignedStaff = computed(() => {
+  const names = props.event.assignedTo ?? []
+  return names.map((name) => {
+    const member = staffMembers.find(s => s.label === name)
+    return {
+      name,
+      initials: member?.label.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() ?? name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+      color: member ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+    }
+  })
+})
+
+const isUnassigned = computed(() => assignedStaff.value.length === 0)
 </script>
 
 <template>
   <button
     type="button"
-    :class="chipClasses"
     :draggable="draggable"
+    class="group flex w-full flex-col gap-0.5 rounded border bg-background px-1.5 py-1 text-left text-[10px] leading-tight shadow-sm transition-shadow hover:shadow-md"
+    :class="{
+      'border-sky-200 bg-sky-50/40': event.type === 'cleaning' && !stateMeta,
+      'border-emerald-300 bg-emerald-50/50': stateMeta?.tone === 'done',
+      'border-amber-300 bg-amber-50/50': stateMeta?.tone === 'in_progress',
+      'border-red-300 bg-red-50/50': stateMeta?.tone === 'missed' || stateMeta?.tone === 'was_missed' || stateMeta?.tone === 'cancelled',
+    }"
     @click.stop="emit('click', event)"
     @dragstart.stop="emit('dragstart', event)"
   >
-    <p class="flex min-w-0 items-center gap-1.5 truncate font-semibold">
+    <!-- Title row with type icon + time + pet (one line) -->
+    <div class="flex items-center gap-1">
       <Icon
         v-if="event.type === 'cleaning'"
-        name="lucide:brush"
-        class="h-3 w-3 shrink-0 text-sky-600"
+        :name="cleaningTypeConfig?.icon ?? 'lucide:brush'"
+        class="h-3 w-3 shrink-0 text-muted-foreground"
       />
       <Icon
         v-else-if="event.type === 'task'"
@@ -171,119 +150,119 @@ const stateMeta = computed<{ label: string, icon: string, tone: ChipStateTone, b
         name="lucide:bed"
         class="h-3 w-3 shrink-0 text-primary"
       />
-      <span class="min-w-0 truncate">{{ displayTitle }}</span>
-    </p>
-    <p v-if="timeRange" class="min-w-0 truncate text-[10px] text-muted-foreground">
+      <p class="min-w-0 flex-1 truncate text-[10px] font-semibold">
+        {{ cleaningTypeConfig?.label || displayTitle }}
+      </p>
+      <Icon
+        v-if="hasPet"
+        name="lucide:paw-print"
+        class="h-2.5 w-2.5 shrink-0 text-amber-600"
+      />
+    </div>
+
+    <!-- Time range (if present) -->
+    <p v-if="timeRange" class="text-[9px] text-muted-foreground">
       {{ timeRange }}
     </p>
-    <div v-if="event.type === 'cleaning'" class="mt-0.5 flex flex-wrap items-center gap-1">
+
+    <!-- Status + priority badges (cleaning) — one row -->
+    <div
+      v-if="event.type === 'cleaning'"
+      class="flex flex-wrap items-center gap-0.5"
+    >
       <Badge
-        v-if="stateMeta"
-        :class="stateMeta.badgeClass"
-        data-testid="event-state-badge"
-        :data-state="stateMeta.tone"
-        :title="stateMeta.label"
+        v-if="priorityConfig?.isHigh"
+        class="gap-0.5 border-0 bg-red-100 px-1 py-0 text-[9px] font-semibold text-red-600"
+      >
+        <Icon name="lucide:flag" class="h-2.5 w-2.5 fill-red-500 text-red-500" />
+        High
+      </Badge>
+      <Badge
+        v-if="stateMeta || statusConfig"
+        :class="['gap-0.5 border-0 px-1 py-0 text-[9px] font-semibold', (stateMeta ? cleaningStatusConfig[event.status as string]?.class : statusConfig?.class) || '']"
       >
         <Icon
-          :name="stateMeta.icon"
-          :class="stateMeta.tone === 'in_progress' ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5'"
+          :name="(stateMeta?.icon ?? statusConfig?.icon) || 'lucide:circle'"
+          :class="[(stateMeta?.tone === 'in_progress' || event.status === 'in_progress') ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5']"
         />
-        {{ stateMeta.label }}
-      </Badge>
-      <Badge
-        v-if="cleaningTypeConfig"
-        :variant="cleaningTypeConfig.variant"
-        class="gap-0.5 text-[9px] font-medium"
-        data-testid="event-cleaning-type-badge"
-        :data-cleaning-type="cleaningTypeConfig.type"
-      >
-        <Icon :name="cleaningTypeConfig.icon" class="h-2.5 w-2.5" />
-        {{ cleaningTypeConfig.label }}
-      </Badge>
-      <Badge
-        v-if="hasPet"
-        variant="outline"
-        class="gap-0.5 border-amber-500/40 bg-amber-500/10 text-[9px] font-medium text-amber-700"
-        data-testid="event-pet-badge"
-        title="Guest has a pet"
-      >
-        <Icon name="lucide:paw-print" class="h-2.5 w-2.5" />
-        Pet
-      </Badge>
-      <Badge
-        v-if="priorityConfig"
-        :variant="priorityConfig.variant"
-        class="text-[9px] font-medium"
-        :class="priorityConfig.highlight ? 'bg-destructive/90 text-white' : ''"
-        data-testid="event-priority-badge"
-      >
-        <Icon v-if="priorityConfig.icon" :name="priorityConfig.icon" class="mr-0.5 h-2.5 w-2.5" />
-        {{ priorityConfig.label }}
-      </Badge>
-      <Badge v-if="!event.assignedTo?.length" variant="destructive" class="text-[9px] font-medium">
-        Unassigned
-      </Badge>
-      <Badge
-        v-for="name in event.assignedTo"
-        :key="name"
-        variant="secondary"
-        class="text-[9px] font-medium"
-      >
-        {{ name }}
-      </Badge>
-      <Badge
-        v-if="statusConfig && !stateMeta"
-        :variant="statusConfig.variant"
-        class="text-[9px] font-medium"
-        :class="statusConfig.class"
-      >
-        {{ statusConfig.label }}
+        {{ stateMeta?.label || statusConfig?.label }}
       </Badge>
     </div>
-    <div v-if="event.type === 'task'" class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
+
+    <!-- Staff chips (cleaning) -->
+    <div
+      v-if="event.type === 'cleaning'"
+      class="flex flex-wrap items-center gap-0.5"
+    >
+      <span
+        v-for="member in assignedStaff.slice(0, 2)"
+        :key="member.name"
+        class="inline-flex items-center gap-0.5 rounded-full bg-background px-1 text-[9px] font-medium ring-1 ring-border"
+        :title="member.name"
+      >
+        <span
+          class="flex h-3 w-3 items-center justify-center rounded-full text-[7px] font-bold"
+          :class="member.color"
+        >
+          {{ member.initials }}
+        </span>
+        <span class="max-w-[50px] truncate">{{ member.name.split(' ')[0] }}</span>
+      </span>
+      <span
+        v-if="isUnassigned"
+        class="inline-flex items-center gap-0.5 rounded-full bg-background px-1 text-[9px] font-medium text-muted-foreground ring-1 ring-border"
+      >
+        <Icon name="lucide:user-plus" class="h-2.5 w-2.5" />
+        Unassigned
+      </span>
+    </div>
+
+    <!-- Task badges -->
+    <div
+      v-if="event.type === 'task'"
+      class="flex flex-wrap items-center gap-0.5"
+    >
       <Badge
         v-if="isOverdueTask"
         variant="destructive"
-        class="gap-0.5 text-[9px] font-medium"
-        data-testid="event-overdue-badge"
+        class="gap-0.5 border-0 bg-red-100 px-1.5 py-0 text-[9px] font-semibold text-red-600"
       >
         <Icon name="lucide:alert-triangle" class="h-2.5 w-2.5" />
         Overdue
       </Badge>
       <Badge
         v-if="event.priority === 'high' || event.priority === 'urgent'"
-        variant="destructive"
-        class="gap-0.5 text-[9px] font-medium"
-        data-testid="event-priority-badge"
+        class="gap-0.5 border-0 bg-red-100 px-1.5 py-0 text-[9px] font-semibold text-red-600"
       >
-        <Icon name="lucide:flag" class="h-2.5 w-2.5" />
+        <Icon name="lucide:flag" class="h-2.5 w-2.5 fill-red-500 text-red-500" />
         {{ event.priority === 'urgent' ? 'Urgent' : 'High' }}
       </Badge>
       <Badge
         v-if="event.assigneeLabel"
-        variant="secondary"
-        class="max-w-full min-w-0 gap-0.5 text-[9px] font-medium"
-        data-testid="event-assignee-badge"
+        class="gap-0.5 border-0 bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
       >
         <Icon
           :name="event.assigneeType === 'person' ? 'lucide:user' : 'lucide:users-round'"
-          class="h-2.5 w-2.5 shrink-0"
+          class="h-2.5 w-2.5"
         />
-        <span class="min-w-0 flex-1 truncate">
-          {{ event.assigneeLabel }}<span v-if="event.assigneeRoleLabel" class="text-muted-foreground"> · {{ event.assigneeRoleLabel }}</span>
-        </span>
+        <span class="max-w-[60px] truncate">{{ event.assigneeLabel }}</span>
       </Badge>
-      <Badge v-else variant="outline" class="gap-0.5 text-[9px] font-medium text-muted-foreground">
+      <Badge
+        v-else
+        class="gap-0.5 border-0 bg-muted px-1.5 py-0 text-[9px] font-medium text-muted-foreground"
+      >
         <Icon name="lucide:user-plus" class="h-2.5 w-2.5" />
         Unassigned
       </Badge>
     </div>
-    <div v-if="event.type === 'upsell'" class="mt-0.5 flex flex-wrap items-center gap-1">
+
+    <!-- Upsell status -->
+    <div
+      v-if="event.type === 'upsell' && event.status"
+      class="flex items-center"
+    >
       <Badge
-        v-if="event.status"
-        :variant="event.status === 'completed' ? 'default' : event.status === 'in_progress' ? 'secondary' : 'outline'"
-        class="text-[9px] font-medium"
-        :class="event.status === 'completed' ? 'bg-emerald-500/80' : ''"
+        :class="['gap-0.5 border-0 px-1.5 py-0 text-[9px] font-semibold', event.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : event.status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground']"
       >
         {{ event.status === 'not_started' ? 'Pending' : event.status === 'in_progress' ? 'In Progress' : 'Done' }}
       </Badge>
