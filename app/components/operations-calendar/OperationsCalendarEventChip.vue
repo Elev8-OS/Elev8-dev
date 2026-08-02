@@ -32,6 +32,16 @@ const chipClasses = computed(() => {
   }
 
   if (props.event.type === 'cleaning') {
+    // Past/finalized states take over the left border + background tint
+    if (stateMeta.value?.tone === 'done') {
+      return `${base} border-l-emerald-500 bg-emerald-500/10 border-emerald-500/30 text-foreground`
+    }
+    if (stateMeta.value?.tone === 'in_progress') {
+      return `${base} border-l-amber-500 bg-amber-500/10 border-amber-500/30 text-foreground`
+    }
+    if (stateMeta.value?.tone === 'missed' || stateMeta.value?.tone === 'was_missed' || stateMeta.value?.tone === 'cancelled') {
+      return `${base} border-l-destructive bg-destructive/10 border-destructive/40 text-foreground ring-1 ring-destructive/30`
+    }
     return `${base} border-l-sky-500 bg-sky-500/10 border-sky-500/30 text-foreground`
   }
   return `${base} border-l-muted bg-card border-border text-foreground`
@@ -99,6 +109,38 @@ const cleaningTypeConfig = computed(() => {
 })
 
 const hasPet = computed(() => props.event.type === 'cleaning' && Boolean(props.event.hasPet))
+
+// State meta for past/finalized cleanings — drives left border, background, and state badge
+type ChipStateTone = 'done' | 'in_progress' | 'missed' | 'was_missed' | 'cancelled' | null
+
+const stateMeta = computed<{ label: string, icon: string, tone: ChipStateTone, badgeClass: string } | null>(() => {
+  if (props.event.type !== 'cleaning')
+    return null
+  const status = props.event.status
+  if (status === 'done') {
+    return { label: 'Done', icon: 'lucide:check-circle-2', tone: 'done', badgeClass: 'gap-0.5 bg-emerald-500/80 text-white text-[9px] font-medium' }
+  }
+  if (status === 'in_progress') {
+    return { label: 'In progress', icon: 'lucide:loader', tone: 'in_progress', badgeClass: 'gap-0.5 bg-amber-500/80 text-white text-[9px] font-medium' }
+  }
+  if (status === 'missed') {
+    return { label: 'Missed', icon: 'lucide:circle-x', tone: 'missed', badgeClass: 'gap-0.5 bg-destructive/90 text-white text-[9px] font-medium' }
+  }
+  if (status === 'cancelled') {
+    return { label: 'Cancelled', icon: 'lucide:ban', tone: 'cancelled', badgeClass: 'gap-0.5 bg-destructive/90 text-white text-[9px] font-medium' }
+  }
+  // `scheduled` with a past date = "Was missed"
+  if (status === 'scheduled' && props.event.start) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const scheduled = new Date(props.event.start)
+    scheduled.setHours(0, 0, 0, 0)
+    if (scheduled.getTime() < today.getTime()) {
+      return { label: 'Was missed', icon: 'lucide:circle-x', tone: 'was_missed', badgeClass: 'gap-0.5 bg-destructive/90 text-white text-[9px] font-medium' }
+    }
+  }
+  return null
+})
 </script>
 
 <template>
@@ -136,6 +178,19 @@ const hasPet = computed(() => props.event.type === 'cleaning' && Boolean(props.e
       {{ timeRange }}
     </p>
     <div v-if="event.type === 'cleaning'" class="mt-0.5 flex flex-wrap items-center gap-1">
+      <Badge
+        v-if="stateMeta"
+        :class="stateMeta.badgeClass"
+        data-testid="event-state-badge"
+        :data-state="stateMeta.tone"
+        :title="stateMeta.label"
+      >
+        <Icon
+          :name="stateMeta.icon"
+          :class="stateMeta.tone === 'in_progress' ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5'"
+        />
+        {{ stateMeta.label }}
+      </Badge>
       <Badge
         v-if="cleaningTypeConfig"
         :variant="cleaningTypeConfig.variant"
@@ -177,7 +232,12 @@ const hasPet = computed(() => props.event.type === 'cleaning' && Boolean(props.e
       >
         {{ name }}
       </Badge>
-      <Badge v-if="statusConfig" :variant="statusConfig.variant" class="text-[9px] font-medium" :class="statusConfig.class">
+      <Badge
+        v-if="statusConfig && !stateMeta"
+        :variant="statusConfig.variant"
+        class="text-[9px] font-medium"
+        :class="statusConfig.class"
+      >
         {{ statusConfig.label }}
       </Badge>
     </div>

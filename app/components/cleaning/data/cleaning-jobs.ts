@@ -39,7 +39,30 @@ export const CLEANING_SOURCE_VARIANTS: Record<CleaningJobSource, 'default' | 'se
 }
 export type CleaningRecurrenceFrequency = 'weekly' | 'monthly'
 
+export type CleaningChecklistItemStatus = 'ok' | 'issue' | 'na'
+
+export interface CleaningChecklistItem {
+  id: string
+  label: string
+  status: CleaningChecklistItemStatus
+  notes?: string
+  completedBy?: string
+  completedAt?: string
+}
+
+export interface CleaningChecklistGroup {
+  id: string
+  title: string
+  items: CleaningChecklistItem[]
+}
+
 export interface CleaningFeedback {
+  cleaningCode?: string // e.g. "CH - Vogelberg"
+  supervisorName?: string
+  supervisorRole?: string
+  startedAt?: string
+  confirmedAt?: string
+  checklist?: CleaningChecklistGroup[]
   cleanlinessRating: number // 1-5
   conditionNotes: string
   damages: string[]
@@ -151,6 +174,56 @@ export const cleaningJobs = ref<CleaningJob[]>([
     reservationId: null,
     recurrence: null,
     feedback: {
+      cleaningCode: 'CH - Canggu01',
+      supervisorName: 'Made Surya',
+      supervisorRole: 'Supervisor',
+      startedAt: '2026-06-22T09:00:00+08:00',
+      confirmedAt: '2026-06-22T10:54:00+08:00',
+      checklist: [
+        {
+          id: 'start',
+          title: 'Start Reinigung',
+          items: [
+            { id: 'start-1', label: 'Alle Fenster öffnen - Alle Betten abziehen (Bettwäsche nicht auf linke Seite drehen) - Schmutzwäsche sammeln und in Wäschewagen bringen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:00:00+08:00' },
+          ],
+        },
+        {
+          id: 'kitchen',
+          title: 'Küche',
+          items: [
+            { id: 'kit-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:20:00+08:00' },
+            { id: 'kit-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:25:00+08:00' },
+            { id: 'kit-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T10:30:00+08:00' },
+            { id: 'kit-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T10:35:00+08:00' },
+            { id: 'kit-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:45:00+08:00' },
+          ],
+        },
+        {
+          id: 'bath',
+          title: 'Badezimmer',
+          items: [
+            { id: 'bath-1', label: 'Dusche, Badewanne, Waschbecken reinigen und entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T10:50:00+08:00' },
+            { id: 'bath-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T10:52:00+08:00' },
+            { id: 'bath-3', label: 'Handtücher und Badmatte austauschen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:53:00+08:00' },
+          ],
+        },
+        {
+          id: 'living',
+          title: 'Wohnzimmer',
+          items: [
+            { id: 'liv-1', label: 'Möbel abstauben, Polster aufschütteln', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:40:00+08:00' },
+            { id: 'liv-2', label: 'Boden wischen, Staubsaugen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T10:48:00+08:00' },
+          ],
+        },
+        {
+          id: 'outdoor',
+          title: 'Aussenbereich',
+          items: [
+            { id: 'out-1', label: 'Pool auf Sauberkeit prüfen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T10:42:00+08:00' },
+            { id: 'out-2', label: 'Terrasse fegen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T10:44:00+08:00' },
+          ],
+        },
+      ],
       cleanlinessRating: 5,
       conditionNotes: 'Property left very clean. Kitchen spotless, beds made, towels folded. Minor sand on the floor near the entrance.',
       damages: [],
@@ -175,6 +248,48 @@ export const cleaningJobs = ref<CleaningJob[]>([
     reservationId: null,
     recurrence: null,
     feedback: {
+      cleaningCode: 'CH - NomadGarden',
+      supervisorName: 'Made Surya',
+      supervisorRole: 'Housekeeping',
+      startedAt: '2026-06-22T13:52:00+08:00',
+      confirmedAt: '2026-06-22T15:22:00+08:00',
+      checklist: [
+        {
+          id: 'start',
+          title: 'Start Reinigung',
+          items: [
+            { id: 'start-1', label: 'Alle Fenster öffnen - Alle Betten abziehen (Bettwäsche nicht auf linke Seite drehen) - Schmutzwäsche sammeln und in Wäschewagen bringen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:00:00+08:00' },
+          ],
+        },
+        {
+          id: 'kitchen',
+          title: 'Küche',
+          items: [
+            { id: 'kit-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:15:00+08:00' },
+            { id: 'kit-2', label: 'Geschirr in der Spüle spülen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:25:00+08:00' },
+            { id: 'kit-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:30:00+08:00' },
+            { id: 'kit-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:32:00+08:00' },
+            { id: 'kit-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:45:00+08:00' },
+          ],
+        },
+        {
+          id: 'bath',
+          title: 'Badezimmer',
+          items: [
+            { id: 'bath-1', label: 'Dusche, Badewanne, Waschbecken reinigen und entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:55:00+08:00' },
+            { id: 'bath-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T15:00:00+08:00' },
+            { id: 'bath-3', label: 'Handtücher und Badmatte austauschen', status: 'issue', notes: 'Towels left on bathroom floor — picked up and replaced', completedBy: 'Made Surya', completedAt: '2026-06-22T15:05:00+08:00' },
+          ],
+        },
+        {
+          id: 'living',
+          title: 'Wohnzimmer',
+          items: [
+            { id: 'liv-1', label: 'Möbel abstauben, Polster aufschütteln', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T15:10:00+08:00' },
+            { id: 'liv-2', label: 'Boden wischen, Staubsaugen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T15:18:00+08:00' },
+          ],
+        },
+      ],
       cleanlinessRating: 4,
       conditionNotes: 'Overall clean. Kitchen had some unwashed dishes in the sink. Towels left on the bathroom floor.',
       damages: [],
@@ -199,6 +314,48 @@ export const cleaningJobs = ref<CleaningJob[]>([
     reservationId: null,
     recurrence: null,
     feedback: {
+      cleaningCode: 'CH - Surf01',
+      supervisorName: 'Wayan Adi',
+      supervisorRole: 'Housekeeping',
+      startedAt: '2026-06-22T14:23:00+08:00',
+      confirmedAt: '2026-06-22T16:48:00+08:00',
+      checklist: [
+        {
+          id: 'start',
+          title: 'Start Reinigung',
+          items: [
+            { id: 'start-1', label: 'Alle Fenster öffnen - Alle Betten abziehen (Bettwäsche nicht auf linke Seite drehen) - Schmutzwäsche sammeln und in Wäschewagen bringen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T14:45:00+08:00' },
+          ],
+        },
+        {
+          id: 'kitchen',
+          title: 'Küche',
+          items: [
+            { id: 'kit-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'issue', notes: 'Dishes piled in the sink — extra effort needed', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:30:00+08:00' },
+            { id: 'kit-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:35:00+08:00' },
+            { id: 'kit-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:45:00+08:00' },
+            { id: 'kit-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:50:00+08:00' },
+            { id: 'kit-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:10:00+08:00' },
+          ],
+        },
+        {
+          id: 'bath',
+          title: 'Badezimmer',
+          items: [
+            { id: 'bath-1', label: 'Dusche, Badewanne,Waschbecken reinigen und entkalken', status: 'issue', notes: 'Water on the floor — extra drying required', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:20:00+08:00' },
+            { id: 'bath-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:25:00+08:00' },
+            { id: 'bath-3', label: 'Handtücher und Badmatte austauschen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:30:00+08:00' },
+          ],
+        },
+        {
+          id: 'outdoor',
+          title: 'Aussenbereich',
+          items: [
+            { id: 'out-1', label: 'Sand im Wohnzimmer aufkehren', status: 'issue', notes: 'Heavy sand throughout living room', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:35:00+08:00' },
+            { id: 'out-2', label: 'Pooltücher einsammeln', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:40:00+08:00' },
+          ],
+        },
+      ],
       cleanlinessRating: 3,
       conditionNotes: 'Sand throughout the living room. Dishes piled in the sink. Bathroom had water on the floor. Pool towels left outside overnight.',
       damages: ['Small scratch on the glass coffee table'],
@@ -206,6 +363,22 @@ export const cleaningJobs = ref<CleaningJob[]>([
       cleaningDurationMinutes: 150,
       housekeeperNotes: 'Guests used the property heavily. Extra effort needed for kitchen and bathroom.',
     },
+  },
+  {
+    id: 'cln-12',
+    listingId: 'lst-12',
+    listingName: 'Surf Shack Canggu',
+    scheduledAt: '2026-06-22T14:23:00+08:00',
+    cleanerIds: ['staff-4'],
+    cleanerNames: ['Wayan Adi'],
+    teamName: 'Housekeeping',
+    status: 'done',
+    priority: 'normal',
+    durationMinutes: 150,
+    notes: 'Completed',
+    source: 'manual',
+    reservationId: null,
+    recurrence: null,
   },
   {
     id: 'cln-24',

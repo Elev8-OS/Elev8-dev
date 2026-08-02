@@ -5,6 +5,7 @@ import { cleaningTypeIcons, cleaningTypeVariants } from '~/components/operations
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useTaskStore } from '~/composables/useTaskStore'
 import { toast } from 'vue-sonner'
+import CleaningReportPanel from '~/components/operations-calendar/CleaningReportPanel.vue'
 
 const props = defineProps<{
   open: boolean
@@ -67,6 +68,30 @@ const isEditable = computed(() => {
   const scheduled = new Date(cleaningJob.value.scheduledAt)
   scheduled.setHours(0, 0, 0, 0)
   return scheduled.getTime() >= today.getTime()
+})
+
+// Specific reason the dialog is locked — shown on the lock banner
+const lockReason = computed<{ label: string, description: string } | null>(() => {
+  if (!cleaningJob.value || isEditable.value)
+    return null
+  const job = cleaningJob.value
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const scheduled = new Date(job.scheduledAt)
+  scheduled.setHours(0, 0, 0, 0)
+  const isPast = scheduled.getTime() < today.getTime()
+
+  if (job.status === 'in_progress')
+    return { label: 'In progress', description: 'Cleaning is currently underway' }
+  if (job.status === 'done')
+    return { label: 'Done', description: 'Cleaning has been completed' }
+  if (job.status === 'missed')
+    return { label: 'Missed', description: 'Cleaning was not done' }
+  if (job.status === 'cancelled')
+    return { label: 'Cancelled', description: 'Cleaning was cancelled' }
+  if (job.status === 'scheduled' && isPast)
+    return { label: 'Was missed', description: 'Scheduled date has passed without being marked done' }
+  return { label: 'Locked', description: 'No further changes' }
 })
 
 // --- Editable state ---
@@ -209,33 +234,92 @@ const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="$event ? emit('update:open', true) : close()">
-    <DialogContent class="sm:max-w-lg">
-      <DialogHeader>
+  <Sheet :open="open" @update:open="$event ? emit('update:open', true) : close()">
+    <SheetContent side="right" class="flex w-full flex-col gap-0 overflow-hidden sm:max-w-lg">
+      <SheetHeader class="shrink-0 border-b px-6 py-4">
         <div class="flex items-center gap-2">
           <Badge variant="secondary" class="text-[10px] uppercase tracking-wider">
             {{ eventTypeLabel }}
           </Badge>
         </div>
-        <DialogTitle class="leading-tight">
+        <SheetTitle class="leading-tight">
           {{ event?.title || 'Event details' }}
-        </DialogTitle>
-        <DialogDescription v-if="event?.listingName">
+        </SheetTitle>
+        <SheetDescription v-if="event?.listingName">
           {{ event.listingName }}
-        </DialogDescription>
-      </DialogHeader>
+        </SheetDescription>
+      </SheetHeader>
 
-      <div v-if="event" class="flex flex-col gap-4">
-        <!-- Time range -->
-        <div class="flex items-center gap-2 text-sm">
+      <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
+        <div v-if="event" class="flex flex-col gap-4 p-6">
+          <!-- Time range -->
+          <div class="flex items-center gap-2 text-sm">
           <Icon name="lucide:clock" class="h-4 w-4 text-muted-foreground" />
           <span>
             {{ formatDate(event.start) }} · {{ formatTime(event.start) }} – {{ formatTime(event.end) }}
           </span>
         </div>
 
-        <!-- Cleaning job details -->
-        <template v-if="event.type === 'cleaning' && cleaningJob">
+        <!-- Cleaning job details (skipped when done — the report panel below replaces it) -->
+        <template v-if="event.type === 'cleaning' && cleaningJob && cleaningJob.status !== 'done'">
+          <!-- Lock state banner (only when not editable) -->
+          <div
+            v-if="lockReason"
+            class="flex items-start gap-3 rounded-lg border p-3 text-sm"
+            :class="{
+              'border-emerald-500/40 bg-emerald-500/10 text-emerald-700': lockReason.label === 'Done',
+              'border-amber-500/40 bg-amber-500/10 text-amber-700': lockReason.label === 'In progress',
+              'border-destructive/40 bg-destructive/10 text-destructive': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
+              'border-muted bg-muted/30 text-muted-foreground': lockReason.label === 'Locked',
+            }"
+            data-testid="detail-lock-banner"
+            :data-lock-reason="lockReason.label"
+          >
+            <div
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+              :class="{
+                'bg-emerald-500/20': lockReason.label === 'Done',
+                'bg-amber-500/20': lockReason.label === 'In progress',
+                'bg-destructive/20': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
+                'bg-muted-foreground/20': lockReason.label === 'Locked',
+              }"
+            >
+              <Icon
+                :name="
+                  lockReason.label === 'Done' ? 'lucide:check-circle-2'
+                  : lockReason.label === 'In progress' ? 'lucide:loader'
+                  : lockReason.label === 'Missed' || lockReason.label === 'Was missed' ? 'lucide:circle-x'
+                  : lockReason.label === 'Cancelled' ? 'lucide:ban'
+                  : 'lucide:lock'
+                "
+                :class="lockReason.label === 'In progress' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'"
+              />
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+              <p class="text-sm font-semibold" :class="{
+                'text-emerald-700 dark:text-emerald-400': lockReason.label === 'Done',
+                'text-amber-700 dark:text-amber-400': lockReason.label === 'In progress',
+                'text-destructive': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
+              }">
+                {{ lockReason.label }}
+                <span v-if="lockReason.label === 'Was missed'" class="text-xs font-normal text-muted-foreground">
+                  · {{ formatDate(cleaningJob.scheduledAt) }}
+                </span>
+                <span v-else-if="lockReason.label === 'Done'" class="text-xs font-normal text-muted-foreground">
+                  · {{ formatDate(cleaningJob.scheduledAt) }}
+                </span>
+              </p>
+              <p class="text-xs" :class="{
+                'text-emerald-700/80 dark:text-emerald-400/80': lockReason.label === 'Done',
+                'text-amber-700/80 dark:text-amber-400/80': lockReason.label === 'In progress',
+                'text-destructive/80': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
+                'text-muted-foreground': lockReason.label === 'Locked',
+              }">
+                {{ lockReason.description }}
+              </p>
+            </div>
+          </div>
+
           <div
             class="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm"
             :class="cleaningJob.priority === 'high' ? 'border-destructive/40 bg-destructive/10 ring-1 ring-destructive/30' : 'bg-muted/30'"
@@ -261,14 +345,31 @@ const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.
                 Pet in stay
               </Badge>
               <Badge
-                v-if="!isEditable"
-                variant="outline"
-                class="gap-1 text-[10px] font-medium text-muted-foreground"
+                v-if="!isEditable && lockReason"
+                :variant="lockReason.label === 'Done' ? 'default' : lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled' ? 'destructive' : 'outline'"
+                class="gap-1 text-[10px] font-medium"
+                :class="[
+                  lockReason.label === 'Done' ? 'bg-emerald-500/80 text-white' : '',
+                  lockReason.label === 'In progress' ? 'bg-amber-500/80 text-white' : '',
+                  (lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled')
+                    ? 'bg-destructive/90 text-white'
+                    : 'text-muted-foreground',
+                ]"
                 data-testid="detail-locked-badge"
-                :title="`Editing is locked because the cleaning is ${statusLabel?.toLowerCase()}`"
+                :data-lock-reason="lockReason.label"
+                :title="`${lockReason.label} · ${lockReason.description}`"
               >
-                <Icon name="lucide:lock" class="h-3 w-3" />
-                Locked
+                <Icon
+                  :name="
+                    lockReason.label === 'Done' ? 'lucide:check-circle-2'
+                    : lockReason.label === 'In progress' ? 'lucide:loader'
+                    : lockReason.label === 'Missed' || lockReason.label === 'Was missed' ? 'lucide:circle-x'
+                    : lockReason.label === 'Cancelled' ? 'lucide:ban'
+                    : 'lucide:lock'
+                  "
+                  class="h-3 w-3"
+                />
+                {{ lockReason.label }}
               </Badge>
             </div>
             <div>
@@ -453,6 +554,13 @@ const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.
           </div>
         </template>
 
+        <!-- Cleaning report (only when cleaning is done) -->
+        <CleaningReportPanel
+          v-if="event.type === 'cleaning' && cleaningJob?.status === 'done' && cleaningJob.feedback"
+          :feedback="cleaningJob.feedback"
+          :is-checkout-cleaning="event.cleaningType === 'check_out'"
+        />
+
         <!-- Guest stay details -->
         <template v-else-if="event.type === 'guest_stay'">
           <div class="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -468,9 +576,10 @@ const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.
             <p class="font-medium">{{ event.source || '—' }}</p>
           </div>
         </template>
-      </div>
+        </div>
+      </ScrollArea>
 
-      <DialogFooter class="gap-2">
+      <SheetFooter class="shrink-0 border-t px-6 py-4 sm:flex-row sm:justify-end sm:gap-2">
         <Button variant="ghost" @click="close">
           Close
         </Button>
@@ -490,7 +599,7 @@ const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.
           <Icon name="lucide:trash-2" class="mr-2 h-4 w-4" />
           Delete
         </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </template>
