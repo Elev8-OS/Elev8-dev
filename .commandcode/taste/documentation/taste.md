@@ -1,0 +1,7 @@
+# documentation
+- Include a concise executive summary / quick-reference section at the top of PRD documents so developers can understand the feature at a glance before diving into details. Confidence: 0.70
+- Write PRDs and technical specs as implementation-ready documents without labeling anything as "mock" — developers will build from them as real specifications. Confidence: 0.70
+- PRDs should be short but detailed ("singkat tapi detail") — concise enough to skim quickly, yet still covering requirements, flows, data model, business rules, and acceptance criteria. Confidence: 0.75
+- When writing a new PRD, follow the repo's existing PRD conventions (TL;DR quickstart at top, then requirements/flows/data model/acceptance criteria) and place the file in `docs/` alongside existing PRDs. Confidence: 0.6
+- When making a PRD canonical/final, include an explicit "Known Gaps" section documenting not-yet-implemented items with their risks — the PRD becomes the single source of truth for what is implemented versus what still needs work. Confidence: 0.7
+- PRDs should include an explicit Scope section split into "In Scope" vs "Out of Scope", with out-of-scope items cross-referenced to the Known Gaps section numbers so scope boundaries stay traceable. Confidence: 0.8

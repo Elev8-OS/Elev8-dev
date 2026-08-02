@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { revenueStats } from '@/components/finance/data/revenue'
 import { useCosts } from '@/composables/useCosts'
 import { useReservations } from '@/composables/useReservations'
 import { useUpsells } from '@/composables/useUpsells'
 
 const activeTab = useState<string>('finance-active-tab', () => 'overview')
+
+// Deep-link support: /finance?tab=integrations (alert routes, banners) lands on that tab.
+onMounted(() => {
+  const route = useRoute()
+  const tab = route.query.tab
+  if (typeof tab === 'string' && ['overview', 'revenue', 'costs', 'integrations'].includes(tab))
+    activeTab.value = tab
+})
 
 const { costs, unsyncedCount: unsyncedCosts } = useCosts()
 const { unsyncedCount: unsyncedReservations } = useReservations()

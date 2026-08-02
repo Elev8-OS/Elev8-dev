@@ -1,3 +1,5 @@
+import { listings } from '@/components/listings/data/listings'
+
 export type LexwareInvoiceStatus
   = | 'draft_created' // Elev8 created the draft in Lexware
     | 'open_in_lexware' // Host finalized in Lexware (invoice.changed webhook)
@@ -58,6 +60,20 @@ export const eurListingsForMock = [
   { id: 'lst-villa-zeitreise', name: 'Villa Zeitreise – Weinregion Pfalz', city: 'Neustadt' },
   { id: 'lst-villa-kunstpause', name: 'Villa Kunstpause – Kulturhaupstadt Weimar', city: 'Weimar' },
 ]
+
+/**
+ * EUR-eligible listings derived from the real listings store (tags include 'EUR').
+ * The DACH villas live in `app/components/listings/data/listings.ts` as `lst-20`…`lst-24`.
+ */
+export function getEurListings(): { id: string, name: string, city: string }[] {
+  return listings.value
+    .filter(l => l.tags.includes('EUR'))
+    .map(l => ({
+      id: l.id,
+      name: l.name,
+      city: l.location.split(',')[0]?.trim() ?? '',
+    }))
+}
 
 export const mockLexwareInvoices: LexwareInvoice[] = [
   {

@@ -21,6 +21,7 @@ const {
   syncHistory,
   eurListings,
   eurListingsCount,
+  lexwareDraftReadyCount,
   draftCount,
   openCount,
   paidCount,
@@ -31,7 +32,6 @@ const {
   totalSyncedEur,
   nonEligibleDigest,
   connect,
-  testConnection,
   disconnect,
   reconnect,
   runHealthCheck,
@@ -77,14 +77,7 @@ async function handleReconnect() {
   clearNeedsAttention()
 }
 
-async function handleTestConnection() {
-  const ok = await testConnection()
-  if (ok)
-    toast.success('Connection successful — Lexware API responded.')
-  else toast.error('Connection failed. Check your API key.')
-}
-
-function handleDisconnect() {
+async function handleDisconnect() {
   disconnect()
   showDisconnectConfirm.value = false
   toast.info('Disconnected from Lexware.')
@@ -375,6 +368,15 @@ async function handleRunHealthCheck() {
 
           <div class="mt-2 text-xs text-muted-foreground">
             Total synced to Lexware: <span class="font-medium text-foreground">{{ formatAccounting(totalSyncedEur) }}</span>
+          </div>
+
+          <div v-if="lexwareDraftReadyCount > 0" class="mt-3 rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs">
+            <p class="font-medium text-amber-900">
+              {{ lexwareDraftReadyCount }} EUR reservation{{ lexwareDraftReadyCount > 1 ? 's' : '' }} ready as drafts
+            </p>
+            <p class="mt-0.5 text-amber-800">
+              Push them from the <span class="font-medium">Revenue</span> tab, or they'll sync on next checkout.
+            </p>
           </div>
 
           <div class="mt-4 flex flex-wrap gap-2">
@@ -1005,9 +1007,6 @@ async function handleRunHealthCheck() {
                 </td>
                 <td class="px-3 py-2 text-xs text-right">
                   <div class="flex justify-end gap-1">
-                    <Button v-if="invoice.status === 'draft_created'" variant="ghost" size="sm" class="h-6 text-[11px]" @click="handleTestConnection">
-                      Simulate finalize
-                    </Button>
                     <Button v-if="invoice.status === 'sync_failed'" variant="ghost" size="sm" class="h-6 text-[11px]" @click="handleRetry(invoice)">
                       <Icon name="i-lucide-rotate-cw" class="mr-1 h-3 w-3" />Retry
                     </Button>

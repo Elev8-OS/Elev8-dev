@@ -3,7 +3,7 @@
 [cmd]: https://commandcode.ai/
 
 # communication
-- Always respond in English, even when the user writes in Indonesian. Confidence: 0.90
+- Always respond in English, even when the user writes in Indonesian. Confidence: 0.92
 
 # finance
 - For Booking Revenue double-entry tables: each line item must have separate Debit and Credit account columns/selectors, not a single account with a pre-assigned debit/credit indicator. Confidence: 0.65
@@ -24,7 +24,7 @@ See [finance/taste.md](finance/taste.md)
 
 # 3cx
 - For mock 3CX integration: skip the OAuth redirect page/callback flow and go directly to "connected" state. Confidence: 0.65
-- Use mock data for third-party API integrations during development before switching to real API calls. Confidence: 0.75
+- During development, keep third-party API integrations mocked, but mock only the API/network layer — wire the pipeline to real application data (reservations, listings, pricing) rather than isolated hardcoded fixtures ("mock tapi flow asli": mock backend, real flow). Confidence: 0.8
 
 # payment-requests
 - Use "cancel" terminology (not "delete") for cancelling payment links. Confidence: 0.75
@@ -44,13 +44,13 @@ See [finance/taste.md](finance/taste.md)
 # review-hub
 See [review-hub/taste.md](review-hub/taste.md)
 # documentation
-- Include a concise executive summary / quick-reference section at the top of PRD documents so developers can understand the feature at a glance before diving into details. Confidence: 0.70
-- Write PRDs and technical specs as implementation-ready documents without labeling anything as "mock" — developers will build from them as real specifications. Confidence: 0.70
+See [documentation/taste.md](documentation/taste.md)
 # icons
 - Use the sparkle AI SVG icon (flaticon #17653301) for AI-related iconography instead of custom brush/pen designs. Confidence: 0.75
 
 # integrations
 - Don't mention third-party integration provider brand names (e.g., Seam) anywhere in the UI except within the integration settings/configuration page itself. Confidence: 0.75
+- When a mock/demo action exists in an integration UI (e.g. "Simulate finalize"), model it on the real-world event it stands for — the provider's webhook and its state transition (e.g. Lexware `invoice.changed`: `draft_created` → `open_in_lexware`) — not on a generic "test connection" action. Users will question the semantics until they match the real flow. Confidence: 0.6
 
 # notifications
 See [notifications/taste.md](notifications/taste.md)

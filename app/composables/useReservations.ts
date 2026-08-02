@@ -20,6 +20,18 @@ export function useReservations() {
     )
   }
 
+  function markSyncedToLexware(id: string, checkIn: string) {
+    reservations.value = reservations.value.map(r =>
+      r.id === id && r.checkIn === checkIn
+        ? { ...r, syncedToLexware: true, syncedToLexwareAt: new Date().toISOString() }
+        : r,
+    )
+  }
+
+  const unsyncedToLexwareCount = computed(() =>
+    reservations.value.filter(r => !r.syncedToLexware).length,
+  )
+
   async function pushReservations() {
     const unsynced = reservations.value.filter(r => !r.synced)
     if (unsynced.length === 0)
@@ -44,10 +56,12 @@ export function useReservations() {
   return {
     reservations,
     unsyncedCount,
+    unsyncedToLexwareCount,
     isPushingReservations,
     isPushingSelected,
     lastReservationSync,
     markSynced,
+    markSyncedToLexware,
     pushReservations,
     pushSelected,
   }

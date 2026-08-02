@@ -40,7 +40,13 @@
       "Shell(pnpm dev > /tmp/dev2.log 2>&1 & DEV_PID=$! echo \"DEV_PID=$DEV_PID\" for i in $(seq 1 60); do if grep -q \"Local:\" /tmp/dev2.log 2>/dev/null; then echo \"Server ready\" break fi sleep 1 done sleep 3 # Check for any compile errors in log grep -iE \"error|fail|cannot\" /tmp/dev2.log | head -10 echo \"----\" tail -10 /tmp/dev2.log kill $DEV_PID 2>/dev/null wait $DEV_PID 2>/dev/null echo \"killed dev\")",
       "Shell(cat:*)",
       "Shell(lsof:*)",
-      "Shell(curl -sSL http://localhost:3000/finance 2 >& 1)"
+      "Shell(curl -sSL http://localhost:3000/finance 2 >& 1)",
+      "Shell(curl -s -o /dev/null -w \"/dashboard/ → HTTP %{http_code} in %{time_total}s\\n\" -L http://localhost:3000/dashboard/)",
+      "Shell(curl -s -o /dev/null -w /listings → HTTP %{http_code}\\n -L http://localhost:3000/listings)",
+      "Shell(curl -s -o /dev/null -w /journeys → HTTP %{http_code}\\n -L http://localhost:3000/journeys)",
+      "Shell(curl -s http://localhost:3000/dashboard/finance 2 >& 1)",
+      "Shell(findstr:*)",
+      "Shell(curl -s http://localhost:3000/dashboard/finance -o %TEMP%finance-page.html 2 >& 1)"
     ],
     "deny": [],
     "defaultMode": "default"

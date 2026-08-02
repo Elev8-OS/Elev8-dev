@@ -9,12 +9,17 @@ export interface ListingMapping {
 }
 
 const BALI_KEYWORDS = ['Tambora', 'Kalmantan', 'Pererenan', 'Sinabung', 'Merapi', 'Sanur', 'Ubud', 'Canggu', 'Bali', 'Badung', 'Kerobokan']
+const GERMAN_CITIES = ['Potsdam', 'Waren', 'Freiburg', 'Neustadt', 'Weimar', 'Brandenburg', 'Mecklenburg', 'Baden', 'Pfalz', 'Thüringen', 'Rheinland-Pfalz']
 
-export const allListings = revenueByListing.map(r => ({
-  name: r.listing,
-  city: r.city,
-  region: BALI_KEYWORDS.some(k => r.city.includes(k) || r.listing.includes(k)) ? 'Bali' : 'Switzerland' as 'Bali' | 'Switzerland',
-}))
+export const allListings = revenueByListing.map((r) => {
+  const isBali = BALI_KEYWORDS.some(k => r.city.includes(k) || r.listing.includes(k))
+  const isGermany = GERMAN_CITIES.some(k => r.city.includes(k) || r.listing.includes(k))
+  return {
+    name: r.listing,
+    city: r.city,
+    region: isBali ? 'Bali' : isGermany ? 'Germany' : 'Switzerland' as 'Bali' | 'Switzerland' | 'Germany',
+  }
+})
 
 const initialMappings: Record<string, ListingMapping> = {
   // ── Jurnal — Bali listings ─────────────────────────────────────────────────
@@ -69,6 +74,12 @@ const initialMappings: Record<string, ListingMapping> = {
   'The R Apartment Engelberg, Gym, Balkon, Parking': { integration: 'bexio', tag: 'Solothurn' },
   'The R Hasenberg Suite': { integration: 'bexio', tag: 'Widen' },
   'The R Apartment Passwang, Gym, Balkon, Parking': { integration: 'bexio', tag: 'Solothurn' },
+  // ── Lexware — German DACH listings ─────────────────────────────────────────
+  'Villa Luwa – Hügellage Brandenburg': { integration: 'lexware', tag: 'Potsdam' },
+  'Villa Sehnsucht – Seegrundstück Mecklenburg': { integration: 'lexware', tag: 'Waren (Müritz)' },
+  'Villa Bergfried – Schwarzwald': { integration: 'lexware', tag: 'Freiburg' },
+  'Villa Zeitreise – Weinregion Pfalz': { integration: 'lexware', tag: 'Neustadt' },
+  'Villa Kunstpause – Kulturhaupstadt Weimar': { integration: 'lexware', tag: 'Weimar' },
 }
 
 export function useListingMappings() {

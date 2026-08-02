@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { recentReservations } from '~/components/finance/data/revenue'
+import { listings } from '~/components/listings/data/listings'
 import { useLexware } from '~/composables/useLexware'
+import { useReservations } from '~/composables/useReservations'
 
 describe('useLexware — connection lifecycle', () => {
   it('starts disconnected with healthy state', () => {
@@ -323,5 +326,72 @@ describe('useLexware — computed stats', () => {
     markFinalized(a.invoice.id)
     markPaid(b.invoice.id)
     expect(totalSyncedEur.value).toBeGreaterThanOrEqual(1300)
+  })
+})
+
+describe('useLexware — real-data pipeline (reservations + listings)', () => {
+  it('eligibleUnsyncedReservations counts only EUR/EUR-listing unsynced reservations', () => {
+    const { eligibleUnsyncedReservations } = useLexware()
+    // Seed: 8 EUR rows, 3 already syncedToLexware (lex-res-001/003/004) → 5 eligible.
+    const eligible = eligibleUnsyncedReservations.value
+    expect(eligible.length).toBe(5)
+    expect(eligible.every(r => r.currency === 'EUR')).toBe(true)
+    expect(eligible.every(r => r.syncedToLexware === undefined || r.syncedToLexware === false)).toBe(true)
+    // Listing ids resolve to the real lst-20…lst-24 set.
+    const names = new Set(eligible.map(r => r.listing))
+    expect(listings.value.filter(l => names.has(l.name)).every(l => l.tags.includes('EUR'))).toBe(true)
+  })
+
+  it('buildLineItems reconciles to res.amount from listing pricing', () => {
+    const { buildLineItems } = useLexware()
+    // lex-res-001 (Villa Luwa): 5×220 + 90 cleaning + 35 platform = 1225 ≠ 1280
+    // → falls back to a single Accommodation line matching the booking total.
+    const fallbackRes = recentReservations.find(r => r.id === 'lex-res-001')!
+    const fallbackListing = listings.value.find(l => l.name === fallbackRes.listing)!
+    const fallbackItems = buildLineItems(fallbackRes, fallbackListing)
+    const fallbackTotal = fallbackItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0)
+    expect(fallbackTotal).toBeCloseTo(fallbackRes.amount, 1)
+    expect(fallbackItems).toHaveLength(1)
+    expect(fallbackItems[0]!.category).toBe('Accommodation')
+    // A synthetic booking whose total exactly matches the pricing breakdown
+    // (Villa Luwa: 3×220 + 90 cleaning + 35 platform = 785) keeps the real line items.
+    const res = { ...recentReservations[0]!, id: 'lex-synth', amount: 785, nights: 3 }
+    const listing = listings.value.find(l => l.name === res.listing)!
+    const items = buildLineItems(res, listing)
+    const total = items.reduce((s, li) => s + li.quantity * li.unitPrice, 0)
+    expect(total).toBeCloseTo(res.amount, 1)
+    expect(items.some(li => li.category === 'Accommodation' && li.vatRate === 7)).toBe(true)
+    expect(items.some(li => li.category === 'CleaningFee' && li.vatRate === 19)).toBe(true)
+    expect(items.some(li => li.category === 'PlatformFee' && li.vatRate === 0)).toBe(true)
+  })
+
+  it('pushEligibleReservations creates drafts with real listing ids and flips syncedToLexware only', async () => {
+    const { connect, pushEligibleReservations, invoices, lexwareDraftReadyCount } = useLexware()
+    const { reservations, unsyncedToLexwareCount } = useReservations()
+    await connect('lx-real-1')
+    const before = invoices.value.length
+    const eurRes = reservations.value.find(r => r.id === 'lex-res-002')!
+    expect(eurRes.syncedToLexware).toBeFalsy()
+    const result = await pushEligibleReservations()
+    expect(result.pushed).toBeGreaterThanOrEqual(1)
+    expect(invoices.value.length).toBe(before + result.pushed)
+    const updated = reservations.value.find(r => r.id === 'lex-res-002')!
+    expect(updated.syncedToLexware).toBe(true)
+    // Jurnal `synced` flag untouched for EUR rows (independent state).
+    expect(updated.synced).toBe(false)
+    // Draft carries the real listing id, not the mock lst-villa-*.
+    const draft = invoices.value.find(i => i.reservationId === 'lex-res-002')
+    expect(draft).toBeDefined()
+    expect(draft?.listingId).toMatch(/^lst-2[0-4]$/)
+    expect(lexwareDraftReadyCount.value).toBeLessThan(5)
+    expect(unsyncedToLexwareCount.value).toBeGreaterThanOrEqual(1)
+  }, 30_000)
+
+  it('non-eligible (non-EUR) reservations land in the digest, not drafts', () => {
+    const { nonEligibleDigest, nonEligibleCount, invoices } = useLexware()
+    // Seed CHF reservations are not EUR → appear in digest.
+    expect(nonEligibleCount.value).toBeGreaterThan(0)
+    expect(nonEligibleDigest.value.every(d => d.currency !== 'EUR')).toBe(true)
+    expect(invoices.value.every(i => i.currency === 'EUR')).toBe(true)
   })
 })

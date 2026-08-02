@@ -1,8 +1,11 @@
 import type { LexwareInvoice, LexwareInvoiceLineItem, LexwareInvoiceStatus } from '@/components/finance/data/lexware-invoices'
+import type { ReservationEntry } from '@/components/finance/data/revenue'
 import { computed, ref } from 'vue'
-import { eurListingsForMock, mockLexwareInvoices, nonEligibleReservationsForDigest } from '@/components/finance/data/lexware-invoices'
+import { getEurListings, mockLexwareInvoices } from '@/components/finance/data/lexware-invoices'
+import { listings } from '@/components/listings/data/listings'
 import { useListingMappings } from '@/composables/useListingMappings'
 import { useNotifications } from '@/composables/useNotifications'
+import { useReservations } from '@/composables/useReservations'
 
 export type LexwareConnectionStatus = 'connected' | 'needs_attention' | 'disconnected'
 export type LexwareStep = 'connect' | 'mapping' | 'connected'
@@ -39,13 +42,42 @@ export function useLexware() {
   }))
 
   const invoices = useState<LexwareInvoice[]>('lexware-invoices', () => JSON.parse(JSON.stringify(mockLexwareInvoices)))
-  const nonEligibleDigest = useState('lexware-non-eligible-digest', () => [...nonEligibleReservationsForDigest])
 
   const { setMapping, clearMapping, getMappingFor } = useListingMappings()
   const { createLexwareAlert } = useNotifications()
+  const { reservations, markSyncedToLexware } = useReservations()
 
   // ── EUR-only eligibility gate (Rule 1) ─────────────────────────────────
-  const eurListings = eurListingsForMock
+  // Derived from the real listings store (tags include 'EUR') — lst-20…lst-24.
+  const eurListings = getEurListings()
+
+  // Lookup listing by display name — ReservationEntry.listing is a name, not an id.
+  const listingByName = new Map(listings.value.map(l => [l.name, l]))
+
+  function isEurListing(listingName: string): boolean {
+    return listingByName.get(listingName)?.tags.includes('EUR') ?? false
+  }
+
+  function isEligible(res: ReservationEntry): boolean {
+    return res.currency === 'EUR' && isEurListing(res.listing)
+  }
+
+  // Reservations ready to push (EUR + EUR listing + not yet synced to Lexware).
+  const eligibleUnsyncedReservations = computed(() =>
+    reservations.value.filter(r => isEligible(r) && !r.syncedToLexware),
+  )
+
+  // Non-EUR / non-eligible bookings surfaced as a digest (Rule 1).
+  const nonEligibleDigest = computed(() =>
+    reservations.value
+      .filter(r => !isEligible(r) && r.currency !== 'EUR')
+      .map(r => ({
+        listingName: r.listing,
+        checkIn: r.checkIn,
+        currency: r.currency,
+        reason: `Listing currency is ${r.currency} — not eligible for Lexware export.`,
+      })),
+  )
 
   // ── Locale / currency helpers ──────────────────────────────────────────
   const accountingCurrency = 'EUR'
@@ -326,6 +358,88 @@ export function useLexware() {
     return { pushed, throttled: true }
   }
 
+  // ── Real-data line items (pricing from listings store) ─────────────────
+  function buildLineItems(res: ReservationEntry, listing: { pricing: { nightlyRate: number, cleaningFee: number, serviceFee: number } }): LexwareInvoiceLineItem[] {
+    const accommodation = listing.pricing.nightlyRate * res.nights
+    const cleaningFee = listing.pricing.cleaningFee
+    const platformFee = listing.pricing.serviceFee
+    const sum = accommodation + cleaningFee + platformFee
+    // If the breakdown doesn't reconcile with the booking total, fall back to a
+    // single Accommodation line so the Lexware invoice total always matches.
+    if (Math.abs(sum - res.amount) > 0.01) {
+      return [{
+        category: 'Accommodation',
+        description: `${res.nights} nights accommodation`,
+        quantity: res.nights,
+        unitPrice: res.amount / res.nights,
+        vatRate: 7,
+        postingAccountId: 'la-8210',
+      }]
+    }
+    const items: LexwareInvoiceLineItem[] = [
+      {
+        category: 'Accommodation',
+        description: `${res.nights} nights accommodation`,
+        quantity: res.nights,
+        unitPrice: listing.pricing.nightlyRate,
+        vatRate: 7,
+        postingAccountId: 'la-8210',
+      },
+      {
+        category: 'CleaningFee',
+        description: 'Final cleaning',
+        quantity: 1,
+        unitPrice: listing.pricing.cleaningFee,
+        vatRate: 19,
+        postingAccountId: 'la-8300',
+      },
+    ]
+    if (listing.pricing.serviceFee > 0) {
+      items.push({
+        category: 'PlatformFee',
+        description: 'OTA platform fee',
+        quantity: 1,
+        unitPrice: listing.pricing.serviceFee,
+        vatRate: 0,
+        postingAccountId: 'la-4500',
+      })
+    }
+    return items
+  }
+
+  // ── Push eligible EUR reservations to Lexware (real-flow pipeline) ─────
+  const isPushingLexware = ref(false)
+  async function pushEligibleReservations(): Promise<{ pushed: number, skipped: number }> {
+    const eligible = eligibleUnsyncedReservations.value
+    if (eligible.length === 0)
+      return { pushed: 0, skipped: 0 }
+    if (!isConnected.value || needsAttention.value)
+      return { pushed: 0, skipped: eligible.length }
+    isPushingLexware.value = true
+    let pushed = 0
+    for (const res of eligible) {
+      const listing = listingByName.get(res.listing)
+      if (!listing)
+        continue
+      const result = await createDraftInvoice({
+        reservationId: res.id,
+        listingId: listing.id,
+        listingName: listing.name,
+        guestName: res.guest,
+        guestEmail: '',
+        lineItems: buildLineItems(res, listing),
+      })
+      if (result.success) {
+        pushed += 1
+        markSyncedToLexware(res.id, res.checkIn)
+      }
+      // Token-bucket throttle: 2 requests/sec.
+      await new Promise(r => setTimeout(r, RATE_LIMIT_INTERVAL_MS))
+    }
+    isPushingLexware.value = false
+    return { pushed, skipped: eligible.length - pushed }
+  }
+
   // ── Mapping edit (Rule 5: editable, applied prospectively) ─────────────
   function confirmMapping() {
     step.value = 'connected'
@@ -337,6 +451,7 @@ export function useLexware() {
 
   // ── Computed helpers ───────────────────────────────────────────────────
   const eurListingsCount = computed(() => eurListings.length)
+  const lexwareDraftReadyCount = computed(() => eligibleUnsyncedReservations.value.length)
   const draftCount = computed(() => invoices.value.filter(i => i.status === 'draft_created').length)
   const openCount = computed(() => invoices.value.filter(i => i.status === 'open_in_lexware').length)
   const paidCount = computed(() => invoices.value.filter(i => i.status === 'paid').length)
@@ -403,12 +518,19 @@ export function useLexware() {
     issueCreditNoteForCancellation,
     retryFailedInvoice,
     startBulkHistoricalSync,
+    // real-data pipeline
+    eligibleUnsyncedReservations,
+    pushEligibleReservations,
+    isPushingLexware,
+    buildLineItems,
+    isEligible,
     // mapping
     confirmMapping,
     editMapping,
     // stats
     eurListings,
     eurListingsCount,
+    lexwareDraftReadyCount,
     draftCount,
     openCount,
     paidCount,

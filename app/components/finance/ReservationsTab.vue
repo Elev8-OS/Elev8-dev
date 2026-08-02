@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { useBexio } from '@/composables/useBexio'
 import { useJurnal } from '@/composables/useJurnal'
+import { useLexware } from '@/composables/useLexware'
 import { useListingMappings } from '@/composables/useListingMappings'
 import { useReservations } from '@/composables/useReservations'
 
@@ -19,6 +20,12 @@ const {
 
 const { isConnected: jurnalConnected, formatDate } = useJurnal()
 const { isConnected: bexioConnected } = useBexio()
+const {
+  isConnected: lexwareConnected,
+  lexwareDraftReadyCount,
+  isPushingLexware,
+  pushEligibleReservations,
+} = useLexware()
 const { getMappingFor, mappedByIntegration } = useListingMappings()
 const { showConvertedColumn, getAccountingAmount } = useActiveIntegration()
 
@@ -35,18 +42,6 @@ const syncTarget = computed(() => {
   if (hasBexio)
     return 'Bexio'
   return 'your accounting software'
-})
-
-const pushDestLabel = computed(() => {
-  const integs = new Set<string>()
-  selectedUnsynced.value.forEach((r) => {
-    const mapping = getMappingFor(r.listing)
-    if (mapping)
-      integs.add(mapping.integration)
-  })
-  if (integs.size === 1)
-    return [...integs][0] === 'jurnal' ? 'Jurnal' : 'Bexio'
-  return 'accounting'
 })
 
 // ── Filters ────────────────────────────────────────────────────────────────
@@ -102,6 +97,8 @@ const filteredReservations = computed(() => {
       if (filterIntegration.value === 'jurnal' && mapping?.integration !== 'jurnal')
         return false
       if (filterIntegration.value === 'bexio' && mapping?.integration !== 'bexio')
+        return false
+      if (filterIntegration.value === 'lexware' && !(r.currency === 'EUR' && r.syncedToLexware))
         return false
     }
     return true
@@ -175,6 +172,22 @@ const selectedUnsynced = computed(() =>
   selectedWithInvoice.value.filter(r => !r.synced),
 )
 
+const selectedEurUnsynced = computed(() =>
+  selectedWithInvoice.value.filter(r => r.currency === 'EUR' && !r.syncedToLexware),
+)
+
+const pushDestLabel = computed(() => {
+  const integs = new Set<string>()
+  selectedUnsynced.value.forEach((r) => {
+    const mapping = getMappingFor(r.listing)
+    if (mapping)
+      integs.add(mapping.integration)
+  })
+  if (integs.size === 1)
+    return [...integs][0] === 'jurnal' ? 'Jurnal' : 'Bexio'
+  return 'accounting'
+})
+
 const selectedCount = computed(() =>
   allFilteredKeys.value.filter(k => selected.value.includes(k)).length,
 )
@@ -183,6 +196,14 @@ const selectedCount = computed(() =>
 async function handlePushNow() {
   await pushReservations()
   toast.success(`All reservations pushed to ${syncTarget.value}.`)
+}
+
+async function handlePushToLexware() {
+  const { pushed, skipped } = await pushEligibleReservations()
+  if (pushed > 0)
+    toast.success(`${pushed} EUR reservation${pushed > 1 ? 's' : ''} pushed to Lexware.`)
+  if (skipped > 0)
+    toast.info(`${skipped} skipped — connect Lexware first.`)
 }
 
 async function handlePushSelected() {
@@ -300,6 +321,32 @@ const statusClass: Record<string, string> = {
         />
         <Icon v-else name="i-lucide-upload" class="mr-1.5 h-3.5 w-3.5" />
         {{ isPushingReservations ? 'Pushing…' : 'Push now' }}
+      </Button>
+    </div>
+
+    <!-- Lexware EUR push banner (shown when Lexware connected + eligible unsynced) -->
+    <div
+      v-if="lexwareConnected && lexwareDraftReadyCount > 0"
+      class="flex items-center gap-3 rounded-lg border border-gold/30 bg-gold/10 px-4 py-3"
+    >
+      <Icon name="i-lucide-file-text" class="h-4 w-4 shrink-0 text-amber-700" />
+      <p class="flex-1 text-sm text-amber-900">
+        <span class="font-medium">{{ lexwareDraftReadyCount }} EUR {{ lexwareDraftReadyCount === 1 ? 'reservation' : 'reservations' }}</span>
+        ready as Lexware draft invoices.
+      </p>
+      <Button
+        size="sm"
+        class="h-7 bg-amber-600 text-white hover:bg-amber-700"
+        :disabled="isPushingLexware"
+        @click="handlePushToLexware"
+      >
+        <Icon
+          v-if="isPushingLexware"
+          name="i-lucide-loader-2"
+          class="mr-1.5 h-3.5 w-3.5 animate-spin"
+        />
+        <Icon v-else name="i-lucide-upload" class="mr-1.5 h-3.5 w-3.5" />
+        {{ isPushingLexware ? 'Pushing…' : 'Push to Lexware' }}
       </Button>
     </div>
 
@@ -444,6 +491,9 @@ const statusClass: Record<string, string> = {
             <SelectItem value="bexio">
               Bexio
             </SelectItem>
+            <SelectItem value="lexware">
+              Lexware
+            </SelectItem>
             <SelectItem value="none">
               Not mapped
             </SelectItem>
@@ -538,6 +588,21 @@ const statusClass: Record<string, string> = {
         />
         <Icon v-else name="i-lucide-upload" class="mr-1.5 h-3.5 w-3.5" />
         {{ isPushingSelected ? 'Pushing…' : `Push ${selectedUnsynced.length} to ${pushDestLabel}` }}
+      </Button>
+      <Button
+        v-if="lexwareConnected && selectedEurUnsynced.length > 0"
+        size="sm"
+        class="h-7 bg-amber-600 text-white hover:bg-amber-700"
+        :disabled="isPushingLexware"
+        @click="handlePushToLexware"
+      >
+        <Icon
+          v-if="isPushingLexware"
+          name="i-lucide-loader-2"
+          class="mr-1.5 h-3.5 w-3.5 animate-spin"
+        />
+        <Icon v-else name="i-lucide-upload" class="mr-1.5 h-3.5 w-3.5" />
+        {{ isPushingLexware ? 'Pushing…' : `Push ${selectedEurUnsynced.length} to Lexware` }}
       </Button>
     </div>
 
@@ -636,24 +701,39 @@ const statusClass: Record<string, string> = {
                 />
               </TableCell>
               <TableCell class="text-center">
-                <template v-if="res.synced">
-                  <div class="inline-flex items-center gap-1.5">
-                    <Icon name="i-lucide-cloud-check" class="h-4 w-4 text-green-500" />
-                    <span
-                      v-if="getMappingFor(res.listing)"
-                      class="rounded-full px-2 py-0.5 text-xs font-medium"
-                      :class="getMappingFor(res.listing)!.integration === 'jurnal' ? 'text-blue-700 bg-blue-50' : 'text-violet-700 bg-violet-50'"
-                    >
-                      {{ getMappingFor(res.listing)!.integration === 'jurnal' ? 'Jurnal' : 'Bexio' }}
+                <div class="flex flex-col items-center gap-1">
+                  <template v-if="res.synced">
+                    <div class="inline-flex items-center gap-1.5">
+                      <Icon name="i-lucide-cloud-check" class="h-4 w-4 text-green-500" />
+                      <span
+                        v-if="getMappingFor(res.listing)"
+                        class="rounded-full px-2 py-0.5 text-xs font-medium"
+                        :class="getMappingFor(res.listing)!.integration === 'jurnal' ? 'text-blue-700 bg-blue-50' : 'text-violet-700 bg-violet-50'"
+                      >
+                        {{ getMappingFor(res.listing)!.integration === 'jurnal' ? 'Jurnal' : 'Bexio' }}
+                      </span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span class="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Icon name="i-lucide-cloud-off" class="h-3 w-3" />
+                      Not synced
                     </span>
-                  </div>
-                </template>
-                <Icon
-                  v-else
-                  name="i-lucide-cloud-off"
-                  class="mx-auto h-4 w-4 text-muted-foreground"
-                  title="Not synced"
-                />
+                  </template>
+                  <template v-if="res.currency === 'EUR'">
+                    <span
+                      v-if="res.syncedToLexware"
+                      class="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                    >
+                      <Icon name="i-lucide-file-check" class="h-3 w-3" />
+                      Lexware
+                    </span>
+                    <span v-else class="inline-flex items-center gap-1 text-[10px] text-amber-700/70">
+                      <Icon name="i-lucide-file-text" class="h-3 w-3" />
+                      Lexware pending
+                    </span>
+                  </template>
+                </div>
               </TableCell>
               <TableCell @click.stop>
                 <DropdownMenu>

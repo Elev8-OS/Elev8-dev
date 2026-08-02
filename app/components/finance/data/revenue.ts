@@ -15,6 +15,9 @@ export interface ReservationEntry {
   invoice: string
   synced: boolean
   syncedAt?: string
+  /** Lexware-specific sync state — independent of Jurnal/Bexio `synced`. */
+  syncedToLexware?: boolean
+  syncedToLexwareAt?: string
 }
 
 export const revenueStats = {
@@ -108,10 +111,10 @@ export const revenueByListing = [
 
 export const recentReservations: ReservationEntry[] = [
   // ── EUR DACH check-ins (July 2026 — Lexware-eligible) ─────────────────────
-  { id: 'lex-res-001', guest: 'Erik Hoffmann', listing: 'Villa Luwa – Hügellage Brandenburg', channel: 'Airbnb', checkIn: '2026-07-21', checkOut: '2026-07-26', nights: 5, guests: 2, amount: 1280.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0042', synced: true, syncedAt: '2026-07-27T10:00:00Z' },
+  { id: 'lex-res-001', guest: 'Erik Hoffmann', listing: 'Villa Luwa – Hügellage Brandenburg', channel: 'Airbnb', checkIn: '2026-07-21', checkOut: '2026-07-26', nights: 5, guests: 2, amount: 1280.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0042', synced: true, syncedAt: '2026-07-27T10:00:00Z', syncedToLexware: true, syncedToLexwareAt: '2026-07-27T10:00:00Z' },
   { id: 'lex-res-002', guest: 'Anna Brunner', listing: 'Villa Sehnsucht – Seegrundstück Mecklenburg', channel: 'Airbnb', checkIn: '2026-07-22', checkOut: '2026-07-29', nights: 7, guests: 2, amount: 2460.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0043', synced: false },
-  { id: 'lex-res-003', guest: 'Lukas Vogel', listing: 'Villa Bergfried – Schwarzwald', channel: 'Airbnb', checkIn: '2026-07-18', checkOut: '2026-07-21', nights: 3, guests: 2, amount: 980.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0040', synced: true, syncedAt: '2026-07-25T14:00:00Z' },
-  { id: 'lex-res-004', guest: 'Markus Steiner', listing: 'Villa Zeitreise – Weinregion Pfalz', channel: 'Airbnb', checkIn: '2026-07-12', checkOut: '2026-07-16', nights: 4, guests: 2, amount: 1640.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0038', synced: true, syncedAt: '2026-07-29T13:30:00Z' },
+  { id: 'lex-res-003', guest: 'Lukas Vogel', listing: 'Villa Bergfried – Schwarzwald', channel: 'Airbnb', checkIn: '2026-07-18', checkOut: '2026-07-21', nights: 3, guests: 2, amount: 980.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0040', synced: true, syncedAt: '2026-07-25T14:00:00Z', syncedToLexware: true, syncedToLexwareAt: '2026-07-25T14:00:00Z' },
+  { id: 'lex-res-004', guest: 'Markus Steiner', listing: 'Villa Zeitreise – Weinregion Pfalz', channel: 'Airbnb', checkIn: '2026-07-12', checkOut: '2026-07-16', nights: 4, guests: 2, amount: 1640.00, currency: 'EUR', status: 'Checked-out', invoice: 'LS-2026-0038', synced: true, syncedAt: '2026-07-29T13:30:00Z', syncedToLexware: true, syncedToLexwareAt: '2026-07-29T13:30:00Z' },
   { id: 'lex-res-005', guest: 'Sophia Maier', listing: 'Villa Kunstpause – Kulturhaupstadt Weimar', channel: 'Airbnb', checkIn: '2026-07-28', checkOut: '2026-07-30', nights: 2, guests: 2, amount: 720.00, currency: 'EUR', status: 'Checked-out', invoice: 'pending', synced: false },
   { id: 'lex-res-006', guest: 'Christina Wolf', listing: 'Villa Luwa – Hügellage Brandenburg', channel: 'Booking.com', checkIn: '2026-07-28', checkOut: '2026-08-02', nights: 5, guests: 2, amount: 1450.00, currency: 'EUR', status: 'Checked-out', invoice: 'pending', synced: false },
   { id: 'lex-res-007', guest: 'Julia Wagner', listing: 'Villa Zeitreise – Weinregion Pfalz', channel: 'Booking.com', checkIn: '2026-07-26', checkOut: '2026-07-30', nights: 4, guests: 2, amount: 1500.00, currency: 'EUR', status: 'Checked-out', invoice: 'pending', synced: false },
