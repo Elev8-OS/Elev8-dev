@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { CleaningJob, CleaningJobInput, CleaningJobPriority, CleaningJobRecurrence, CleaningJobSource, CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
-import { cleanerOptions, cleaningJobSourceLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { CLEANING_SOURCE_OPTIONS, cleanerOptions, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
+import DatePicker from '~/components/base/DatePicker.vue'
 
 const props = withDefaults(defineProps<{
   modelValue?: Partial<CleaningJob> | null
@@ -169,6 +170,59 @@ const canSubmit = computed(() =>
   && isValidTimeRange.value,
 )
 
+function formatSummaryDate(value: string) {
+  if (!value)
+    return ''
+  return new Date(`${value}T00:00:00+08:00`).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'Asia/Singapore',
+  })
+}
+
+function formatDuration(minutes: number) {
+  if (!minutes)
+    return '—'
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (hours && mins)
+    return `${hours}h ${mins}m`
+  if (hours)
+    return `${hours}h`
+  return `${mins}m`
+}
+
+const summaryListing = computed(() => {
+  if (!form.listingId)
+    return null
+  return listings.value.find(l => l.id === form.listingId) ?? null
+})
+
+const summaryDurationMinutes = computed(() => {
+  if (cleaningTimeEnabled.value && cleaningTimeFrom.value && cleaningTimeTo.value) {
+    const mins = diffMinutes(cleaningTimeFrom.value, cleaningTimeTo.value)
+    if (mins > 0)
+      return mins
+  }
+  return form.durationMinutes || DEFAULT_DURATION_MINUTES
+})
+
+const summaryRecurrence = computed(() => {
+  if (!recurrenceEnabled.value)
+    return null
+  const freq = recurrenceFrequency.value === 'weekly' ? 'Weekly' : 'Monthly'
+  const interval = recurrenceInterval.value > 1 ? `every ${recurrenceInterval.value} ${recurrenceFrequency.value === 'weekly' ? 'weeks' : 'months'}` : ''
+  return `${freq}${interval ? ` (${interval})` : ''}`
+})
+
+const isReadyForSummary = computed(() =>
+  Boolean(form.listingId)
+  && Boolean(cleaningDate.value)
+  && form.cleanerIds.length > 0,
+)
+
 // --- Sync scheduledAt + duration from date/time pickers ---
 function syncScheduledAt() {
   if (!cleaningDate.value) {
@@ -261,7 +315,7 @@ function submit() {
 
     <div class="grid gap-1.5">
       <Label>Date <span class="text-destructive">*</span></Label>
-      <Input v-model="cleaningDate" type="date" />
+      <DatePicker v-model="cleaningDate" />
     </div>
 
     <div class="grid gap-1.5 rounded-md border p-3">
@@ -373,13 +427,13 @@ function submit() {
           <Switch v-model="isHighPriority" />
         </div>
       </div>
-      <div v-if="!isCreate" class="grid gap-1.5">
-        <Label>Source</Label>
+      <div class="grid gap-1.5">
+        <Label>Cleaning type</Label>
         <Select :model-value="form.source" @update:model-value="value => { form.source = value as CleaningJobSource }">
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
           <SelectContent>
-            <SelectItem v-for="([value, label]) in Object.entries(cleaningJobSourceLabels)" :key="value" :value="value">
-              {{ label }}
+            <SelectItem v-for="option in CLEANING_SOURCE_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -421,6 +475,94 @@ function submit() {
           <Input v-model.number="recurrenceInterval" type="number" min="1" step="1" />
         </div>
       </div>
+    </div>
+
+    <!-- Cleaning details summary -->
+    <div
+      v-if="isReadyForSummary"
+      class="rounded-lg border bg-muted/30 p-4"
+      data-testid="cleaning-details-summary"
+    >
+      <div class="mb-3 flex items-center gap-2">
+        <Icon name="lucide:clipboard-list" class="h-4 w-4 text-muted-foreground" />
+        <p class="text-sm font-medium">
+          Cleaning details
+        </p>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+        <div class="col-span-2">
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Listing
+          </dt>
+          <dd class="mt-0.5 font-medium">
+            {{ summaryListing?.name ?? form.listingName }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Date
+          </dt>
+          <dd class="mt-0.5 font-medium">
+            {{ formatSummaryDate(cleaningDate) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Duration
+          </dt>
+          <dd class="mt-0.5 font-medium">
+            {{ formatDuration(summaryDurationMinutes) }}
+            <span v-if="cleaningTimeEnabled && cleaningTimeFrom" class="text-xs font-normal text-muted-foreground">
+              · {{ cleaningTimeFrom }}{{ cleaningTimeTo ? ` – ${cleaningTimeTo}` : '' }}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Housekeeping
+          </dt>
+          <dd class="mt-0.5 font-medium">
+            <span v-if="form.cleanerNames.length">
+              {{ form.cleanerNames.join(', ') }}
+            </span>
+            <span v-else class="text-muted-foreground">
+              Not assigned
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Priority
+          </dt>
+          <dd class="mt-0.5">
+            <Badge
+              :variant="form.priority === 'high' ? 'destructive' : 'secondary'"
+              class="text-[10px]"
+              :class="form.priority === 'high' ? 'gap-1 bg-destructive/90 text-white' : ''"
+            >
+              <Icon v-if="form.priority === 'high'" name="lucide:flag" class="h-3 w-3" />
+              {{ form.priority === 'high' ? 'High' : 'Normal' }}
+            </Badge>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Type
+          </dt>
+          <dd class="mt-0.5 font-medium">
+            {{ cleaningJobSourceLabels[form.source] }}
+          </dd>
+        </div>
+        <div v-if="summaryRecurrence">
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Recurrence
+          </dt>
+          <dd class="mt-0.5 flex items-center gap-1 font-medium">
+            <Icon name="lucide:repeat" class="h-3.5 w-3.5 text-muted-foreground" />
+            {{ summaryRecurrence }}
+          </dd>
+        </div>
+      </dl>
     </div>
 
     <div class="flex items-center justify-end gap-2 pt-2">

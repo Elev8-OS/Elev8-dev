@@ -1,4 +1,4 @@
-import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningJob, CleaningJobSource } from '~/components/cleaning/data/cleaning-jobs'
 import type { Booking } from '~/components/listings/data/listings'
 import type { CleaningJobPriority } from '~/components/cleaning/data/cleaning-jobs'
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
@@ -7,6 +7,38 @@ import { listings } from '~/components/listings/data/listings'
 import { mockUpsellOrders } from '~/components/upsells/data/upsell-orders'
 
 export type CalendarEventType = 'guest_stay' | 'owner_stay' | 'cleaning' | 'task' | 'upsell'
+
+export type CleaningType = 'daily' | 'check_out' | 'mid_stay' | 'custom'
+
+/** Map a `CleaningJobSource` (incl. legacy aliases) to the 4 canonical cleaning types. */
+export function normalizeCleaningType(source: CleaningJobSource | string | undefined): CleaningType {
+  if (source === 'daily' || source === 'check_out' || source === 'mid_stay' || source === 'custom')
+    return source
+  if (source === 'checkout')
+    return 'check_out'
+  return 'custom'
+}
+
+export const cleaningTypeLabels: Record<CleaningType, string> = {
+  daily: 'Daily cleaning',
+  check_out: 'Check-out cleaning',
+  mid_stay: 'Mid-stay cleaning',
+  custom: 'Custom cleaning',
+}
+
+export const cleaningTypeIcons: Record<CleaningType, string> = {
+  daily: 'lucide:calendar-days',
+  check_out: 'lucide:log-out',
+  mid_stay: 'lucide:clock-4',
+  custom: 'lucide:settings-2',
+}
+
+export const cleaningTypeVariants: Record<CleaningType, 'default' | 'secondary' | 'outline'> = {
+  daily: 'secondary',
+  check_out: 'default',
+  mid_stay: 'secondary',
+  custom: 'outline',
+}
 
 export interface CalendarEvent {
   id: string
@@ -17,6 +49,9 @@ export interface CalendarEvent {
   start: string // ISO datetime
   end: string // ISO datetime
   guestName?: string
+  hasPet?: boolean
+  cleaningType?: CleaningType
+  cleaningTypeLabel?: string
   status?: string
   priority?: CleaningJobPriority
   assignedTo?: string[]
@@ -239,9 +274,12 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
     const listing = listingMap?.get(job.listingId)
     const fullListing = listings.value.find(l => l.id === job.listingId)
     const scheduledDate = job.scheduledAt.slice(0, 10)
-    const checkoutBooking = fullListing?.bookings.find(b => b.checkOut === scheduledDate)
-    const guestSuffix = job.source === 'checkout' && checkoutBooking
-      ? ` · ${checkoutBooking.guestName}`
+    const overlappingBooking = fullListing?.bookings.find(b =>
+      b.status !== 'cancelled' && b.checkIn <= scheduledDate && b.checkOut >= scheduledDate,
+    )
+    const cleaningType = normalizeCleaningType(job.source)
+    const guestSuffix = job.source === 'checkout' && overlappingBooking
+      ? ` · ${overlappingBooking.guestName}`
       : ''
     return {
       id: job.id,
@@ -251,6 +289,10 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
       title: `Cleaning${guestSuffix}`,
       start: job.scheduledAt,
       end: new Date(new Date(job.scheduledAt).getTime() + job.durationMinutes * 60000).toISOString(),
+      guestName: overlappingBooking?.guestName ?? job.notes?.match(/guest:\s*([^\n]+)/i)?.[1]?.trim(),
+      hasPet: overlappingBooking?.hasPet ?? false,
+      cleaningType,
+      cleaningTypeLabel: cleaningTypeLabels[cleaningType],
       assignedTo: job.cleanerNames ?? [],
       status: job.status,
       priority: job.priority,
@@ -284,6 +326,9 @@ export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>
         start,
         end: new Date(new Date(start).getTime() + 120 * 60000).toISOString(),
         guestName: booking.guestName,
+        hasPet: booking.hasPet ?? false,
+        cleaningType: 'check_out',
+        cleaningTypeLabel: cleaningTypeLabels.check_out,
         priority: 'high',
         source: booking.source,
         colorIndex: listingMap?.get(listing.id)?.colorIndex ?? listing.colorIndex,

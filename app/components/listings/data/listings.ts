@@ -382,7 +382,7 @@ export const listings = ref<Listing[]>([
       { id: 'bk-2', guestName: 'James Kim', checkIn: '2026-06-12', checkOut: '2026-06-15', nights: 3, status: 'checked_out', revenue: 555, source: 'Booking.com' },
       { id: 'bk-3', guestName: 'Emma Wilson', checkIn: '2026-06-20', checkOut: '2026-06-25', nights: 5, status: 'inquiry', revenue: 925, source: 'Airbnb', hasPet: true },
     
-      { id: 'bk-1c', guestName: 'Isabella Romano', checkIn: '2026-07-30', checkOut: '2026-08-04', nights: 5, status: 'checked_in', revenue: 1850, source: 'Airbnb' },],
+      { id: 'bk-1c', guestName: 'Isabella Romano', checkIn: '2026-07-30', checkOut: '2026-08-04', nights: 5, status: 'checked_in', revenue: 1850, source: 'Airbnb', hasPet: true },],
     blockedDates: ['2026-06-10', '2026-06-11'],
     reviews: [
       { id: 'rv-1', guestName: 'Sarah Mitchell', date: '2026-05-20', rating: 5, text: 'Amazing villa! The pool was perfect and staff was incredibly helpful. Would definitely come back.', categories: { cleanliness: 5, communication: 5, location: 4, value: 5 } },
@@ -444,6 +444,7 @@ export const listings = ref<Listing[]>([
     bookings: [
       { id: 'bk-2a', guestName: 'Olivia Tan', checkIn: '2026-07-12', checkOut: '2026-07-16', nights: 4, status: 'checked_out', revenue: 480, source: 'Airbnb' },
       { id: 'bk-2b', guestName: 'Marco Rossi', checkIn: '2026-07-22', checkOut: '2026-07-26', nights: 4, status: 'checked_out', revenue: 480, source: 'Booking.com', hasPet: true },
+      { id: 'bk-2e', guestName: 'Pierre Dubois', checkIn: '2026-08-01', checkOut: '2026-08-05', nights: 4, status: 'checked_in', revenue: 480, source: 'Airbnb', hasPet: true },
       { id: 'bk-2c', guestName: 'Hannah Lee', checkIn: '2026-08-08', checkOut: '2026-08-13', nights: 5, status: 'verified', revenue: 600, source: 'Direct' },
       { id: 'bk-2d', guestName: 'Diana Park', checkIn: '2026-08-20', checkOut: '2026-08-25', nights: 5, status: 'inquiry', revenue: 600, source: 'Airbnb' },
     ],
@@ -558,6 +559,7 @@ export const listings = ref<Listing[]>([
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
       { id: 'bk-6', guestName: 'Nina Schwarz', checkIn: '2026-06-23', checkOut: '2026-06-26', nights: 3, status: 'verified', revenue: 450, source: 'Booking.com', hasPet: true },
+      { id: 'bk-6a', guestName: 'Lucas Oliveira', checkIn: '2026-08-02', checkOut: '2026-08-07', nights: 5, status: 'checked_in', revenue: 750, source: 'Direct', hasPet: true },
     ],
     blockedDates: [],
     reviews: [],
@@ -587,7 +589,8 @@ export const listings = ref<Listing[]>([
     bookings: [
       { id: 'bk-7a', guestName: 'Sophie Mueller', checkIn: '2026-07-05', checkOut: '2026-07-09', nights: 4, status: 'checked_out', revenue: 560, source: 'Direct' },
       { id: 'bk-7b', guestName: 'Liam O. Brien', checkIn: '2026-07-15', checkOut: '2026-07-19', nights: 4, status: 'verified', revenue: 560, source: 'Airbnb', hasPet: true },
-      { id: 'bk-7c', guestName: 'Yuki Sato', checkIn: '2026-08-01', checkOut: '2026-08-05', nights: 4, status: 'verified', revenue: 560, source: 'Booking.com' },
+      { id: 'bk-7d', guestName: 'Aria Patel', checkIn: '2026-08-01', checkOut: '2026-08-05', nights: 4, status: 'checked_in', revenue: 560, source: 'Airbnb', hasPet: true },
+      { id: 'bk-7c', guestName: 'Yuki Sato', checkIn: '2026-08-05', checkOut: '2026-08-09', nights: 4, status: 'verified', revenue: 560, source: 'Booking.com' },
       { id: 'blk-7a', type: 'block', guestName: 'Owner stay', checkIn: '2026-08-15', checkOut: '2026-08-19', nights: 4, status: 'verified', revenue: 0, source: 'Manual', blockReason: 'Owner personal visit' },
     ],
     blockedDates: [],
@@ -676,6 +679,7 @@ export const listings = ref<Listing[]>([
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
       { id: 'bk-10', guestName: 'Robert Chen', checkIn: '2026-06-24', checkOut: '2026-06-27', nights: 3, status: 'verified', revenue: 285, source: 'Booking.com' },
+      { id: 'bk-10a', guestName: 'Min-jae Kim', checkIn: '2026-08-13', checkOut: '2026-08-18', nights: 5, status: 'checked_in', revenue: 475, source: 'Airbnb', hasPet: true },
     ],
     blockedDates: [],
     reviews: [],
@@ -763,6 +767,7 @@ export const listings = ref<Listing[]>([
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
     bookings: [
       { id: 'bk-13', guestName: 'Reto Wyss', checkIn: '2026-06-26', checkOut: '2026-06-29', nights: 3, status: 'verified', revenue: 255, source: 'Airbnb' },
+      { id: 'bk-13a', guestName: 'Frederik Madsen', checkIn: '2026-08-05', checkOut: '2026-08-10', nights: 5, status: 'checked_in', revenue: 425, source: 'Booking.com', hasPet: true },
       { id: 'blk-1', type: 'block', guestName: 'Maintenance window', checkIn: '2026-06-22', checkOut: '2026-06-23', nights: 1, status: 'verified', revenue: 0, source: 'Manual', blockReason: 'Pool deck resurfacing' },
     ],
     blockedDates: [],
@@ -820,7 +825,9 @@ export const listings = ref<Listing[]>([
     aiSchedule: alwaysOn(),
     stats: { monthlyRevenue: 2800, revenueTrend: 5, occupancyRate: 65, occupancyTrend: 2, avgRating: 4.5, totalReviews: 12 },
     pricing: { nightlyRate: 120, cleaningFee: 30, serviceFee: 20, weeklyDiscount: 8, monthlyDiscount: 15, seasonalRates: [] },
-    bookings: [],
+    bookings: [
+      { id: 'bk-15a', guestName: 'Charlotte Moore', checkIn: '2026-08-03', checkOut: '2026-08-08', nights: 5, status: 'checked_in', revenue: 450, source: 'Airbnb', hasPet: true },
+    ],
     blockedDates: [],
     reviews: [],
     maintenance: { cleaningSchedule: [], tasks: [] },
@@ -931,7 +938,8 @@ export const listings = ref<Listing[]>([
     bookings: [
       { id: 'bk-19a', guestName: 'Tyler Brooks', checkIn: '2026-07-04', checkOut: '2026-07-08', nights: 4, status: 'checked_out', revenue: 320, source: 'Direct' },
       { id: 'bk-19b', guestName: 'Maya Iversen', checkIn: '2026-07-26', checkOut: '2026-07-31', nights: 5, status: 'verified', revenue: 400, source: 'Airbnb' },
-      { id: 'bk-19c', guestName: 'Joao Mendes', checkIn: '2026-08-08', checkOut: '2026-08-12', nights: 4, status: 'inquiry', revenue: 320, source: 'Booking.com' },
+      { id: 'bk-19e', guestName: 'Connor Walsh', checkIn: '2026-08-10', checkOut: '2026-08-15', nights: 5, status: 'checked_in', revenue: 400, source: 'Direct', hasPet: true },
+      { id: 'bk-19c', guestName: 'Joao Mendes', checkIn: '2026-08-15', checkOut: '2026-08-19', nights: 4, status: 'inquiry', revenue: 320, source: 'Booking.com' },
       { id: 'bk-19d', guestName: 'Priya Iyer', checkIn: '2026-08-22', checkOut: '2026-08-26', nights: 4, status: 'verified', revenue: 320, source: 'Direct' },
     ],
     blockedDates: [],

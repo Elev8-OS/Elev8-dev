@@ -2,7 +2,7 @@
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { computed } from 'vue'
-import { formatTime } from '~/components/operations-calendar/data/operations-calendar'
+import { cleaningTypeIcons, cleaningTypeVariants, formatTime } from '~/components/operations-calendar/data/operations-calendar'
 
 const props = defineProps<{
   event: CalendarEvent
@@ -86,6 +86,19 @@ const priorityConfig = computed(() => {
     highlight: isHigh,
   }
 })
+
+const cleaningTypeConfig = computed(() => {
+  if (props.event.type !== 'cleaning' || !props.event.cleaningType)
+    return null
+  return {
+    type: props.event.cleaningType,
+    label: props.event.cleaningTypeLabel ?? '',
+    icon: cleaningTypeIcons[props.event.cleaningType],
+    variant: cleaningTypeVariants[props.event.cleaningType],
+  }
+})
+
+const hasPet = computed(() => props.event.type === 'cleaning' && Boolean(props.event.hasPet))
 </script>
 
 <template>
@@ -123,6 +136,26 @@ const priorityConfig = computed(() => {
       {{ timeRange }}
     </p>
     <div v-if="event.type === 'cleaning'" class="mt-0.5 flex flex-wrap items-center gap-1">
+      <Badge
+        v-if="cleaningTypeConfig"
+        :variant="cleaningTypeConfig.variant"
+        class="gap-0.5 text-[9px] font-medium"
+        data-testid="event-cleaning-type-badge"
+        :data-cleaning-type="cleaningTypeConfig.type"
+      >
+        <Icon :name="cleaningTypeConfig.icon" class="h-2.5 w-2.5" />
+        {{ cleaningTypeConfig.label }}
+      </Badge>
+      <Badge
+        v-if="hasPet"
+        variant="outline"
+        class="gap-0.5 border-amber-500/40 bg-amber-500/10 text-[9px] font-medium text-amber-700"
+        data-testid="event-pet-badge"
+        title="Guest has a pet"
+      >
+        <Icon name="lucide:paw-print" class="h-2.5 w-2.5" />
+        Pet
+      </Badge>
       <Badge
         v-if="priorityConfig"
         :variant="priorityConfig.variant"

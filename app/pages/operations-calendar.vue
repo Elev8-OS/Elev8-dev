@@ -44,6 +44,12 @@ function handleCreate(payload: { listingId: string, dayKey: string }) {
   createOpen.value = true
 }
 
+function openCreateOperation() {
+  createListingId.value = undefined
+  createDayKey.value = undefined
+  createOpen.value = true
+}
+
 function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: string }) {
   moveCleaning(payload)
   toast.success('Cleaning job moved')
@@ -52,7 +58,7 @@ function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: 
 
 <template>
   <div class="w-full flex flex-col gap-4">
-    <div class="flex flex-wrap items-end justify-between gap-2">
+    <div class="sticky top-[var(--header-height)] z-20 -mx-4 flex flex-wrap items-end justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:-mx-6 lg:px-6">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">
           Operations Calendar
@@ -60,6 +66,12 @@ function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: 
         <p class="text-muted-foreground">
           Time-based view of guest stays, cleaning, and tasks.
         </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <Button @click="openCreateOperation">
+          <Icon name="lucide:plus" class="mr-2 h-4 w-4" />
+          Create operation
+        </Button>
       </div>
     </div>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
-import { cleaningJobStatusLabels, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { cleanerOptions, cleaningJobStatusLabels, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { cleaningTypeIcons, cleaningTypeVariants } from '~/components/operations-calendar/data/operations-calendar'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useTaskStore } from '~/composables/useTaskStore'
 import { toast } from 'vue-sonner'
@@ -15,7 +16,7 @@ const emit = defineEmits<{
   'deleted': [event: CalendarEvent]
 }>()
 
-const { jobs: cleaningJobs, updateJob, deleteJob } = useCleaningJobs()
+const { jobs: cleaningJobs, updateJob, deleteJob, resolveCleanerNames } = useCleaningJobs()
 const { tasks: taskStore, deleteTask } = useTaskStore()
 
 const cleaningJob = computed(() => {
@@ -52,6 +53,94 @@ const priorityVariant = computed<'outline' | 'secondary' | 'default' | 'destruct
     return 'default'
   return 'secondary'
 })
+
+// Housekeeping + priority can only be edited while the cleaning is still `scheduled`
+// AND the scheduled date is today or in the future. Once the date has passed
+// (or the status moved to in_progress / done / missed), the job is locked.
+const isEditable = computed(() => {
+  if (!cleaningJob.value)
+    return false
+  if (cleaningJob.value.status !== 'scheduled')
+    return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const scheduled = new Date(cleaningJob.value.scheduledAt)
+  scheduled.setHours(0, 0, 0, 0)
+  return scheduled.getTime() >= today.getTime()
+})
+
+// --- Editable state ---
+const editingCleanerIds = ref<string[]>([])
+const editingPriority = ref<'low' | 'normal' | 'high' | 'urgent'>('normal')
+const cleanerPickerOpen = ref(false)
+const cleanerSearch = ref('')
+const isSavingHousekeeping = ref(false)
+const isSavingPriority = ref(false)
+
+watch(cleaningJob, (job) => {
+  if (job) {
+    editingCleanerIds.value = [...job.cleanerIds]
+    editingPriority.value = job.priority
+  }
+}, { immediate: true })
+
+const filteredCleanerOptions = computed(() => {
+  const q = cleanerSearch.value.trim().toLowerCase()
+  if (!q)
+    return cleanerOptions
+  return cleanerOptions.filter(c =>
+    c.name.toLowerCase().includes(q) || c.role.toLowerCase().includes(q),
+  )
+})
+
+const editingCleanerNames = computed(() => resolveCleanerNames(editingCleanerIds.value))
+
+const hasHousekeepingChanges = computed(() => {
+  if (!cleaningJob.value)
+    return false
+  const original = [...cleaningJob.value.cleanerIds].sort()
+  const edited = [...editingCleanerIds.value].sort()
+  if (original.length !== edited.length)
+    return true
+  return original.some((id, idx) => id !== edited[idx])
+})
+
+const hasPriorityChanges = computed(() => {
+  if (!cleaningJob.value)
+    return false
+  return cleaningJob.value.priority !== editingPriority.value
+})
+
+function toggleCleaner(cleanerId: string) {
+  editingCleanerIds.value = editingCleanerIds.value.includes(cleanerId)
+    ? editingCleanerIds.value.filter(id => id !== cleanerId)
+    : [...editingCleanerIds.value, cleanerId]
+}
+
+function saveHousekeeping() {
+  if (!cleaningJob.value || !hasHousekeepingChanges.value)
+    return
+  isSavingHousekeeping.value = true
+  const names = resolveCleanerNames(editingCleanerIds.value)
+  updateJob(cleaningJob.value.id, {
+    cleanerIds: [...editingCleanerIds.value],
+    cleanerNames: names,
+  })
+  toast.success(names.length
+    ? `Assigned ${names.join(', ')}`
+    : 'Housekeeping cleared')
+  isSavingHousekeeping.value = false
+  cleanerPickerOpen.value = false
+}
+
+function savePriority() {
+  if (!cleaningJob.value || !hasPriorityChanges.value)
+    return
+  isSavingPriority.value = true
+  updateJob(cleaningJob.value.id, { priority: editingPriority.value })
+  toast.success(`Priority set to ${cleaningJobPriorityLabels[editingPriority.value]}`)
+  isSavingPriority.value = false
+}
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -104,6 +193,19 @@ const eventTypeLabel = computed(() => {
     default: return 'Event'
   }
 })
+
+const cleaningTypeMeta = computed(() => {
+  if (!props.event || props.event.type !== 'cleaning' || !props.event.cleaningType)
+    return null
+  return {
+    type: props.event.cleaningType,
+    label: props.event.cleaningTypeLabel ?? '',
+    icon: cleaningTypeIcons[props.event.cleaningType],
+    variant: cleaningTypeVariants[props.event.cleaningType],
+  }
+})
+
+const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.event.hasPet))
 </script>
 
 <template>
@@ -138,13 +240,68 @@ const eventTypeLabel = computed(() => {
             class="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm"
             :class="cleaningJob.priority === 'high' ? 'border-destructive/40 bg-destructive/10 ring-1 ring-destructive/30' : 'bg-muted/30'"
           >
+            <div class="col-span-2 flex flex-wrap items-center gap-1.5">
+              <Badge
+                v-if="cleaningTypeMeta"
+                :variant="cleaningTypeMeta.variant"
+                class="gap-1 text-[10px] font-medium"
+                data-testid="detail-cleaning-type-badge"
+                :data-cleaning-type="cleaningTypeMeta.type"
+              >
+                <Icon :name="cleaningTypeMeta.icon" class="h-3 w-3" />
+                {{ cleaningTypeMeta.label }}
+              </Badge>
+              <Badge
+                v-if="hasPet"
+                variant="outline"
+                class="gap-1 border-amber-500/40 bg-amber-500/10 text-[10px] font-medium text-amber-700"
+                data-testid="detail-pet-badge"
+              >
+                <Icon name="lucide:paw-print" class="h-3 w-3" />
+                Pet in stay
+              </Badge>
+              <Badge
+                v-if="!isEditable"
+                variant="outline"
+                class="gap-1 text-[10px] font-medium text-muted-foreground"
+                data-testid="detail-locked-badge"
+                :title="`Editing is locked because the cleaning is ${statusLabel?.toLowerCase()}`"
+              >
+                <Icon name="lucide:lock" class="h-3 w-3" />
+                Locked
+              </Badge>
+            </div>
             <div>
               <p class="text-xs text-muted-foreground">Status</p>
               <p class="font-medium">{{ statusLabel }}</p>
             </div>
             <div>
               <p class="text-xs text-muted-foreground">Priority</p>
+              <!-- Editable priority -->
+              <div v-if="isEditable" class="mt-0.5 flex items-center gap-2">
+                <Switch
+                  :model-value="editingPriority === 'high'"
+                  :disabled="isSavingPriority"
+                  data-testid="detail-priority-switch"
+                  @update:model-value="(v: boolean) => { editingPriority = v ? 'high' : 'normal'; savePriority() }"
+                />
+                <Badge
+                  :variant="editingPriority === 'high' ? 'destructive' : 'secondary'"
+                  class="gap-1 text-[10px] font-medium"
+                  :class="editingPriority === 'high' ? 'bg-destructive/90 text-white' : ''"
+                >
+                  <Icon v-if="editingPriority === 'high'" name="lucide:flag" class="h-3 w-3" />
+                  {{ cleaningJobPriorityLabels[editingPriority] }}
+                </Badge>
+                <Icon
+                  v-if="isSavingPriority"
+                  name="lucide:loader-2"
+                  class="h-3.5 w-3.5 animate-spin text-muted-foreground"
+                />
+              </div>
+              <!-- Read-only priority (locked) -->
               <Badge
+                v-else
                 :variant="priorityVariant"
                 class="mt-0.5 text-[10px]"
                 :class="cleaningJob.priority === 'high' ? 'gap-1 bg-destructive/90 text-white' : ''"
@@ -153,14 +310,111 @@ const eventTypeLabel = computed(() => {
                 {{ priorityLabel }}
               </Badge>
             </div>
+            <div v-if="event.guestName" class="col-span-2">
+              <p class="text-xs text-muted-foreground">Guest in stay</p>
+              <p class="font-medium">{{ event.guestName }}</p>
+            </div>
             <div class="col-span-2">
               <p class="text-xs text-muted-foreground">Housekeeping</p>
-              <p v-if="cleaningJob.cleanerNames.length" class="mt-1 flex flex-wrap gap-1">
-                <Badge v-for="name in cleaningJob.cleanerNames" :key="name" variant="secondary" class="text-[10px]">
-                  {{ name }}
-                </Badge>
-              </p>
-              <p v-else class="font-medium text-muted-foreground">Unassigned</p>
+              <!-- Editable housekeeping -->
+              <div v-if="isEditable" class="mt-1">
+                <Popover v-model:open="cleanerPickerOpen">
+                  <PopoverTrigger as-child>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="h-8 w-full justify-between gap-1.5 px-2.5 text-xs font-normal"
+                      :class="!editingCleanerIds.length ? 'text-muted-foreground' : ''"
+                      data-testid="detail-housekeeping-trigger"
+                    >
+                      <span class="flex items-center gap-1.5 truncate">
+                        <Icon name="lucide:brush-cleaning" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span v-if="editingCleanerNames.length" class="truncate">
+                          {{ editingCleanerNames.join(', ') }}
+                        </span>
+                        <span v-else>Assign housekeeping</span>
+                      </span>
+                      <Icon name="lucide:chevrons-up-down" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent class="w-72 p-0" align="start" :side-offset="4">
+                    <div class="flex items-center gap-2 border-b px-3 py-2">
+                      <Icon name="lucide:search" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <input
+                        v-model="cleanerSearch"
+                        class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                        placeholder="Search staff…"
+                      >
+                      <button v-if="cleanerSearch" class="shrink-0 text-muted-foreground hover:text-foreground" @click="cleanerSearch = ''">
+                        <Icon name="lucide:x" class="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <ScrollArea class="h-56">
+                      <div class="p-1">
+                        <template v-if="filteredCleanerOptions.length > 0">
+                          <button
+                            v-for="cleaner in filteredCleanerOptions"
+                            :key="cleaner.id"
+                            type="button"
+                            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                            :class="editingCleanerIds.includes(cleaner.id) ? 'bg-accent' : ''"
+                            @click="toggleCleaner(cleaner.id)"
+                          >
+                            <div
+                              class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
+                                editingCleanerIds.includes(cleaner.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
+                              ]"
+                            >
+                              <Icon v-if="editingCleanerIds.includes(cleaner.id)" name="lucide:check" class="h-3 w-3" />
+                            </div>
+                            <div class="flex min-w-0 flex-col text-left">
+                              <span class="truncate text-sm leading-tight">{{ cleaner.name }}</span>
+                              <span class="text-xs text-muted-foreground">{{ cleaner.role }}</span>
+                            </div>
+                          </button>
+                        </template>
+                        <p v-else class="py-6 text-center text-sm text-muted-foreground">
+                          No staff found
+                        </p>
+                      </div>
+                    </ScrollArea>
+                    <div class="flex items-center justify-end gap-2 border-t px-3 py-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        :disabled="isSavingHousekeeping || !hasHousekeepingChanges"
+                        class="h-7 text-xs"
+                        @click="cleanerPickerOpen = false"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        :disabled="isSavingHousekeeping || !hasHousekeepingChanges"
+                        class="h-7 text-xs"
+                        data-testid="detail-housekeeping-save"
+                        @click="saveHousekeeping"
+                      >
+                        <Icon
+                          v-if="isSavingHousekeeping"
+                          name="lucide:loader-2"
+                          class="mr-1 h-3 w-3 animate-spin"
+                        />
+                        Save
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <!-- Read-only housekeeping (locked) -->
+              <div v-else>
+                <p v-if="cleaningJob.cleanerNames.length" class="mt-1 flex flex-wrap gap-1">
+                  <Badge v-for="name in cleaningJob.cleanerNames" :key="name" variant="secondary" class="text-[10px]">
+                    {{ name }}
+                  </Badge>
+                </p>
+                <p v-else class="font-medium text-muted-foreground">Unassigned</p>
+              </div>
             </div>
             <div v-if="cleaningJob.notes" class="col-span-2">
               <p class="text-xs text-muted-foreground">Notes</p>

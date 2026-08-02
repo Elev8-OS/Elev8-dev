@@ -6,6 +6,7 @@ import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
+import DatePicker from '~/components/base/DatePicker.vue'
 
 const props = defineProps<{
   open: boolean
@@ -194,14 +195,17 @@ function handleCreateTask() {
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="$event ? emit('update:open', true) : close()">
-    <DialogContent class="sm:max-w-2xl">
-      <DialogHeader>
-        <DialogTitle>Create operation</DialogTitle>
-        <DialogDescription>
+  <Sheet :open="open" @update:open="$event ? emit('update:open', true) : close()">
+    <SheetContent side="right" class="flex w-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+      <SheetHeader class="shrink-0 border-b px-6 py-4">
+        <SheetTitle>Create operation</SheetTitle>
+        <SheetDescription>
           Add a new cleaning job or task for {{ listingId ? resolveListingName(listingId) : 'selected listing' }} on {{ dayKey }}.
-        </DialogDescription>
-      </DialogHeader>
+        </SheetDescription>
+      </SheetHeader>
+
+      <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
+        <div class="flex flex-col gap-5 p-6">
 
       <Tabs v-model="activeTab" class="mt-2">
         <TabsList class="grid w-full grid-cols-2">
@@ -247,7 +251,7 @@ function handleCreateTask() {
             <div class="grid grid-cols-2 gap-3">
               <div class="flex flex-col gap-1.5">
                 <Label>Due date</Label>
-                <Input v-model="taskDueDate" type="date" />
+                <DatePicker v-model="taskDueDate" />
               </div>
               <div class="flex flex-col gap-1.5">
                 <Label>Priority</Label>
@@ -482,17 +486,19 @@ function handleCreateTask() {
               </div>
             </div>
 
-            <DialogFooter>
-              <Button variant="outline" @click="close">
-                Cancel
-              </Button>
-              <Button :disabled="!canCreateTask" @click="handleCreateTask">
-                Create Task
-              </Button>
-            </DialogFooter>
           </div>
         </TabsContent>
       </Tabs>
-    </DialogContent>
-  </Dialog>
+        </div>
+      </ScrollArea>
+      <SheetFooter v-if="activeTab === 'task'" class="shrink-0 border-t px-6 py-4 sm:flex-row sm:justify-end sm:gap-2">
+        <Button variant="outline" @click="close">
+          Cancel
+        </Button>
+        <Button :disabled="!canCreateTask" @click="handleCreateTask">
+          Create Task
+        </Button>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </template>

@@ -255,7 +255,7 @@ function onCellClick(listingId: string, dayKey: string) {
       </div>
     </div>
     <!-- Week view -->
-    <div class="overflow-auto">
+    <div class="max-h-[calc(100vh-var(--header-height)-180px)] overflow-auto">
       <div class="min-w-[1100px]">
         <!-- Header -->
         <div class="sticky top-0 z-20 flex border-b bg-background">
