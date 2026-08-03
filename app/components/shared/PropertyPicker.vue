@@ -1,9 +1,22 @@
 <script setup lang="ts">
 import { allListings } from '~/composables/useListingMappings'
 
-const props = defineProps<{
+export interface PropertyPickerOption {
+  name: string
+  city: string
+  region: string
+}
+
+const props = withDefaults(defineProps<{
   modelValue: string[]
-}>()
+  /** Override the source list (defaults to the finance-derived allListings). */
+  options?: PropertyPickerOption[]
+  /** When false, toggling a property selects only that one (single-select). */
+  multiSelect?: boolean
+}>(), {
+  options: () => allListings,
+  multiSelect: true,
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
@@ -18,7 +31,7 @@ const selectedTags = ref<string[]>([])
 // Derive tags: unique cities only (regions removed per request), sorted
 const allTags = computed(() => {
   const cities = new Set<string>()
-  allListings.forEach((l) => { cities.add(l.city) })
+  props.options.forEach((l) => { cities.add(l.city) })
   return [...Array.from(cities).sort()]
 })
 
@@ -30,7 +43,7 @@ const filteredTags = computed(() => {
 })
 
 const filteredListings = computed(() => {
-  let list = allListings
+  let list = props.options
   if (selectedTags.value.length > 0) {
     list = list.filter(l => selectedTags.value.some(t => l.region === t || l.city === t))
   }
@@ -61,22 +74,36 @@ function isSelected(name: string) {
 }
 
 function toggleProperty(name: string) {
-  if (isAllProperties.value) { emit('update:modelValue', [name]); return }
+  // Single-select: choosing a property replaces the current selection.
+  if (!props.multiSelect) {
+    emit('update:modelValue', [name])
+    return
+  }
+  if (isAllProperties.value) {
+    emit('update:modelValue', [name])
+    return
+  }
   const current = [...props.modelValue]
   const idx = current.indexOf(name)
-  if (idx === -1) { current.push(name) }
+  if (idx === -1) {
+    current.push(name)
+  }
   else {
     current.splice(idx, 1)
-    if (current.length === 0) { emit('update:modelValue', ['All Properties']); return }
+    if (current.length === 0) {
+      emit('update:modelValue', ['All Properties'])
+      return
+    }
   }
   emit('update:modelValue', current)
 }
 
 const displayLabel = computed(() => {
-  if (isAllProperties.value)
-    return 'All Properties'
-  if (props.modelValue.length === 1) {
-    const name = props.modelValue[0]
+  if (isAllProperties.value) {
+    return props.multiSelect ? 'All Properties' : 'Select property'
+  }
+  const name = props.modelValue[0]
+  if (props.modelValue.length === 1 && name) {
     return name.length > 22 ? `${name.slice(0, 22)}…` : name
   }
   return `${props.modelValue.length} properties`
@@ -187,6 +214,7 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
       <ScrollArea class="h-56">
         <div class="p-1">
           <button
+            v-if="multiSelect"
             class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
             @click="toggleAllProperties"
           >
@@ -198,10 +226,10 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
               <Icon v-if="isAllProperties" name="i-lucide-check" class="h-3 w-3" />
             </div>
             <span class="font-medium">All Properties</span>
-            <span class="ml-auto text-xs text-muted-foreground">{{ allListings.length }}</span>
+            <span class="ml-auto text-xs text-muted-foreground">{{ props.options.length }}</span>
           </button>
 
-          <Separator class="my-1" />
+          <Separator v-if="multiSelect" class="my-1" />
 
           <template v-if="filteredListings.length > 0">
             <button
@@ -234,7 +262,7 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
         <span class="text-xs text-muted-foreground">
           {{ selectedCount > 0 ? `${selectedCount} selected` : `${filteredListings.length} properties` }}
         </span>
-        <button v-if="selectedCount > 0" class="text-xs text-muted-foreground hover:text-foreground" @click="emit('update:modelValue', ['All Properties'])">
+        <button v-if="selectedCount > 0" class="text-xs text-muted-foreground hover:text-foreground" @click="emit('update:modelValue', multiSelect ? ['All Properties'] : [])">
           Clear
         </button>
       </div>

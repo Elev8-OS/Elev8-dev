@@ -1,12 +1,13 @@
 # ui-patterns
 - Show empty state first, then provide an add/create button to populate. Confidence: 0.80
 - Use sheet/drawer components for forms rather than full-page navigation. Confidence: 0.75
-- Reuse existing shadcn-vue components rather than building custom ones. Confidence: 0.75
+- Reuse existing shadcn-vue components rather than building custom ones. Confidence: 0.85
+- For property/listing selection in forms, reuse the existing shared picker component (search + Tags button) instead of a native `<select>` — the user explicitly requested the existing tags-button picker over a plain select, even for single-select rows (owner onboarding property rows). Confidence: 0.85
 - SelectTrigger inside table cells must use `w-full` to fill the container instead of hugging content width. Confidence: 0.65
 - Use hatscripts.github.io/circle-flags for flag icons. Confidence: 0.65
 - Use multi-select components with tags/chips for listing or filter dropdowns where multiple selections are possible. Confidence: 0.60
 - Consolidate all table filters (listing search with inline tags button, date range) into a single Filters popover button rather than separate filter buttons. Confidence: 0.65
-- Prefer modals (Dialog) over sheets/drawers (Sheet) for item detail/viewer panels; reserve sheets for forms and multi-step workflows. Confidence: 0.80
+- Prefer modals (Dialog) over sheets/drawers (Sheet) for item detail/viewer panels; reserve sheets for forms and multi-step workflows (e.g. the multi-step Add owner onboarding was explicitly requested as a right-side Sheet, not a centered popup). Confidence: 0.88
 - Keep modal/detail popups open after submitting a form instead of auto-closing them on submit. Confidence: 0.65
 - Avoid `text-primary` on `bg-primary/10` backgrounds and on plain white — it fails contrast/legibility. Use `text-primary-foreground` (or another high-contrast color) instead. Confidence: 0.90
 - Don't use `text-zinc-*` for text on light backgrounds — it's too low-contrast. Match the text color to the button/surface treatment (e.g. `text-primary-foreground` on primary surfaces). Confidence: 0.85
@@ -17,7 +18,17 @@
 - Page-size options standard set: 10, 20, 30, 50. Confidence: 0.70
 - Filter/search row layout: filter control on the left, search input + primary action button grouped together on the right (search and action share the same flex container). Confidence: 0.72
 - For status/priority coloring (red for high priority, etc.): apply the color to the BADGE only, not the entire card body — keep cards neutral/white and let the badge carry the urgency signal. Confidence: 0.85
+- Within a single card type (e.g. cleaning cards), keep the card background color UNIFORM regardless of status — differentiate statuses only via the badge, never via card chrome colors. Confidence: 0.85
 - Truncate card content text (CSS `truncate`) when badges overflow — text shrinkage beats badge overlap with the card chrome. Confidence: 0.75
 - For unified lookup/assignee dropdowns (staff, roles, users): prefer searchable Command-style popovers with a search input at top + flat list of results; support role/user tabs where assignment can target either role OR specific user but only ONE mode at a time (not both). Confidence: 0.78
 - After selecting a listing in any cleaning/task/review form, auto-populate guest context (guest name, length of stay, whether they brought a pet) without an extra lookup step — derived from the listing's active booking. Confidence: 0.78
 - Distinguish card types of the same domain visually (e.g. cleaning card vs task card) — different iconography, different field emphasis (cleaning shows scheduled time, task omits time and shows assignee/overdue/priority). Confidence: 0.78
+- For hierarchical pickers (Property → Unit Type → Room), render the full tree with collapsible group headers (icon + chevron) and make only the deepmost level a selectable row; the select emits the leaf entity's canonical id/name so downstream stores don't need to change. Search should auto-expand all nodes and flatten, hiding group headers. Confidence: 0.85
+- Tree picker chrome: include "expand all" / "collapse all" icon buttons in the row above the list, and show a count summary in the footer (e.g. "N rooms"). Confidence: 0.75
+- Tracking collapsed state in a tree: use a `Set<string>` of node ids plus a `groupBy<T>(items, keyFn)` helper to build a flat ordered `PickerTreeNode[]` for rendering — keeps the tree preview/UI decoupled from ad-hoc recursive templates. Confidence: 0.72
+- Prefers compact, explicitly controlled vertical spacing in sheet/dialog headers; override component defaults such as `gap` when title, subtitle, and metadata rows need to read as a tight stack. Confidence: 0.88
+- In multi-row allocation forms (e.g. ownership percentages per property), auto-calculate derived numeric fields so totals land exactly on the target (100%): compute remaining share as `100 - existing mappings - draft rows`, recompute on add and on scope/listing change, and fall back to 0 (not 100) when the scope is already fully allocated so the row visibly has no share left instead of silently tripping the >100% validation at submit. Confidence: 0.72
+- In multi-row allocation forms, editing one row's share should also keep the scope total at 100%: rebalance the sibling draft rows in the same scope proportionally based on their previous values (e.g. changing a 0% row to 50% turns a sibling 100% row into 50%) instead of leaving the total inconsistent. Confidence: 0.8
+- For "Add another"-style add-row buttons in multi-row forms, default the new row to an option not already used in the draft (e.g. first unused listing), so each added row is visibly distinct. Always defaulting to the same first option produces identical-looking rows and makes the button appear unresponsive to the user. Confidence: 0.62
+- In "Add another"-style add-row actions in multi-row forms, only add the primary entity (e.g. the property row) — do NOT auto-create associated sub-entities (e.g. commission rules) for the new row; leave related sub-fields blank (empty name, rate 0) so the user fills them explicitly instead of silently inheriting the standard/default rule. Confidence: 0.72
+- Add-row actions ("Add another"/"Add more") must give explicit feedback: a success toast naming the item that was added (e.g. "<listing name> added."), and when the action is a no-op because every option is already in use, an info toast explaining why (e.g. "All properties are already added.") instead of failing silently. Confidence: 0.72

@@ -1,6 +1,6 @@
 <!-- app/components/owners/OwnerOnboardingDialog.vue -->
 <!--
-  Three-step onboarding dialog for adding a new tenant owner.
+  Three-step onboarding sheet for adding a new tenant owner.
 
   The parent owns the open state via `modelValue`. Steps:
     1. Basics — name/email/phone/language/statement currency.
@@ -23,7 +23,7 @@ import type { OwnerPropertyMapping } from '~/components/owners/data/owners'
 import { toast } from 'vue-sonner'
 import { ownerPermissionTemplates } from '~/components/owners/data/owner-permissions'
 import { Button } from '~/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useOwners } from '~/composables/useOwners'
 import OwnerOnboardingAssignments from './OwnerOnboardingAssignments.vue'
 import OwnerOnboardingBasics from './OwnerOnboardingBasics.vue'
@@ -47,7 +47,7 @@ const emit = defineEmits<{
   'created': [ownerId: string]
 }>()
 
-const { owners, createOwner } = useOwners()
+const { owners, mappings: existingMappings, createOwner } = useOwners()
 
 const DRAFT_TEMPLATE_ID = `draft-${Math.random().toString(36).slice(2, 10)}`
 
@@ -124,15 +124,29 @@ function validateStep1(): boolean {
   return Object.keys(e).length === 0
 }
 
+// Ownership validation mirrors useOwners.createOwner — both the batch on its
+// own and the batch combined with existing stored mappings must stay <= 100%
+// per (listingId, unitId) scope. This keeps the step-2 guard in sync with the
+// submit-time check so a fully allocated listing cannot pass the dialog.
 const cumulativeOwnershipByScope = computed(() => {
   const totals = new Map<string, number>()
   for (const m of draft.value.mappings) {
     const key = `${m.mapping.listingId}::${m.mapping.unitId ?? ''}`
     totals.set(key, (totals.get(key) ?? 0) + (m.mapping.ownershipPercentage ?? 0))
   }
+  // Pass 1 — the batch must not exceed 100% on its own.
   for (const [key, total] of totals) {
     if (total > 100)
       return { valid: false, scope: key, total }
+  }
+  // Pass 2 — combined with existing mappings on the same scope.
+  for (const [key, batchTotal] of totals) {
+    const [listingId, unitId] = key.split('::') as [string, string]
+    const existingTotal = existingMappings.value
+      .filter(item => item.listingId === listingId && (item.unitId ?? '') === unitId)
+      .reduce((sum, item) => sum + item.ownershipPercentage, 0)
+    if (existingTotal + batchTotal > 100)
+      return { valid: false, scope: key, total: existingTotal + batchTotal }
   }
   return { valid: true }
 })
@@ -239,18 +253,18 @@ watch(
 </script>
 
 <template>
-  <Dialog
+  <Sheet
     :open="props.modelValue"
     @update:open="(v) => emit('update:modelValue', v)"
   >
-    <DialogContent class="max-h-[90vh] w-full max-w-2xl gap-0 overflow-hidden p-0">
-      <DialogHeader class="border-b px-6 py-4">
-        <DialogTitle>Add owner</DialogTitle>
-        <DialogDescription>
+    <SheetContent class="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <SheetHeader class="border-b px-6 py-4">
+        <SheetTitle>Add owner</SheetTitle>
+        <SheetDescription>
           Onboard a new property owner. Add their basics, assign ownership
           shares and commission rules, and pick the portal permissions.
-        </DialogDescription>
-      </DialogHeader>
+        </SheetDescription>
+      </SheetHeader>
 
       <div class="flex items-center gap-2 border-b bg-muted/30 px-6 py-3 text-xs font-medium">
         <button
@@ -316,7 +330,7 @@ watch(
         />
       </div>
 
-      <DialogFooter class="flex-row items-center justify-between gap-2 border-t px-6 py-4">
+      <SheetFooter class="flex-row items-center justify-between gap-2 border-t px-6 py-4">
         <Button
           variant="ghost"
           @click="handleCancel"
@@ -345,7 +359,7 @@ watch(
             {{ draft.inviteNow ? 'Create & invite owner' : 'Create owner' }}
           </Button>
         </div>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+      </SheetFooter>
+    </SheetContent>
+  </Sheet>
 </template>

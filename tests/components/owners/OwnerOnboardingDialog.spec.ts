@@ -10,8 +10,10 @@
 //     and submits with invite-now when the toggle is on.
 //   - Cancel discards the in-flight draft and does not persist anything.
 
+import type { RebalanceRow } from '~/components/owners/lib/ownership-rebalance'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { rebalanceSiblings } from '~/components/owners/lib/ownership-rebalance'
 import OwnerOnboardingDialog from '~/components/owners/OwnerOnboardingDialog.vue'
 import { useOwners } from '~/composables/useOwners'
 
@@ -63,6 +65,24 @@ async function clickButtonByText(text: string | RegExp): Promise<boolean> {
   btn.click()
   await tick()
   return true
+}
+
+/**
+ * Open the shared property picker whose trigger currently shows
+ * `triggerText`, then click the option named `optionText`.
+ */
+async function pickProperty(triggerText: string, optionText: string) {
+  const ok = await clickButtonByText(new RegExp(triggerText))
+  expect(ok).toBe(true)
+  await tick()
+  await tick()
+  // Options live in a teleported PopoverContent; match by substring.
+  const options = Array.from(document.body.querySelectorAll('button')) as HTMLButtonElement[]
+  const option = options.find(b => b.textContent?.trim() === optionText || b.textContent?.trim().startsWith(optionText))
+  expect(option, `option "${optionText}" not found in popover`).toBeTruthy()
+  option!.click()
+  await tick()
+  await tick()
 }
 
 describe('ownerOnboardingDialog', () => {
@@ -243,5 +263,103 @@ describe('ownerOnboardingDialog', () => {
 
     expect(owners.value.length).toBe(ownersBefore)
     expect(owners.value.find(o => o.email === 'cancel.test@example.com')).toBeUndefined()
+  })
+
+  it('step 2: adding a property on a fully-allocated listing auto-fills 0% ownership', async () => {
+    // Seed has lst-1 at 100% (Wayan). Adding a row to it must not trip the
+    // 100% guard — the auto-fill should cap the share at 0.
+    mountDialog()
+    await tick()
+
+    await setBasics('Auto Calc', 'autocalc.full@example.com')
+    await clickButtonByText('Next')
+    await tick()
+
+    // The default draft row selects the first listing (lst-1). Add another
+    // row — the auto-fill should set ownership to 0 for lst-1.
+    const addBtn = findButtonByText(/add another/i)
+    expect(addBtn).toBeTruthy()
+    addBtn!.click()
+    await tick()
+
+    const ownershipInputs = Array.from(document.body.querySelectorAll('input[type="number"]')) as HTMLInputElement[]
+    const filtered = ownershipInputs.filter(i => i.id.startsWith('ownership-'))
+    // lst-1 is fully allocated, so the fresh row's ownership is 0.
+    const last = filtered.at(-1)
+    expect(last).toBeTruthy()
+    expect(last!.value).toBe('0')
+  })
+
+  it('step 2: adding another property does not auto-create a commission rule', async () => {
+    mountDialog()
+    await tick()
+
+    await setBasics('Rule Blank', 'rule.blank@example.com')
+    await clickButtonByText('Next')
+    await tick()
+
+    // Count commission rule editors before adding another row.
+    const commissionNameInputs = () => Array.from(document.body.querySelectorAll('input#commission-name')) as HTMLInputElement[]
+    const commissionRateInputs = () => Array.from(document.body.querySelectorAll('input#commission-rate')) as HTMLInputElement[]
+    const namesBefore = commissionNameInputs().length
+
+    const addBtn = findButtonByText(/add another/i)
+    expect(addBtn).toBeTruthy()
+    addBtn!.click()
+    await tick()
+
+    // A new row was added with its own blank commission rule editor.
+    expect(commissionNameInputs().length).toBe(namesBefore + 1)
+    // The new rule is blank, not defaulted to "Standard 20% management".
+    const lastRate = commissionRateInputs().at(-1)
+    expect(lastRate).toBeTruthy()
+    expect(lastRate!.value).toBe('0')
+    const lastInput = commissionNameInputs().at(-1)
+    expect(lastInput).toBeTruthy()
+    expect(lastInput!.value).toBe('')
+  })
+
+  it('step 2: switching listing to a partially-shared one auto-fills the remaining share', async () => {
+    // Seed lst-2 (Apartments Pool) has no owner. Give it a 50% existing
+    // mapping so the new owner's share should auto-fill to the remaining 50%.
+    const { addMapping } = useOwners()
+    const seeded = addMapping({
+      ownerId: 'own-1',
+      listingId: 'lst-2',
+      ownershipPercentage: 50,
+      commissionRuleId: 'cr-1',
+      effectiveFrom: '2026-01-15',
+    })
+    expect(seeded.success).toBe(true)
+
+    mountDialog()
+    await tick()
+
+    await setBasics('Auto Calc Partial', 'autocalc.partial@example.com')
+    await clickButtonByText('Next')
+    await tick()
+
+    // Default row has no property selected yet — pick Apartments Pool (lst-2).
+    await pickProperty('Select property', 'Apartments Pool')
+
+    const ownershipInputs = Array.from(document.body.querySelectorAll('input[type="number"]')) as HTMLInputElement[]
+    const filtered = ownershipInputs.filter(i => i.id.startsWith('ownership-'))
+    expect(filtered[0]?.value).toBe('50')
+  })
+
+  it('step 2: editing one ownership share rebalances the sibling row in the same scope to total 100', async () => {
+    // Pure unit test on the rebalancing helper (UI picker interaction is
+    // covered by the switching-listing test above). Two draft rows share
+    // lst-4: 100% + 0%. Editing the 0% row to 50 must rebalance the 100%
+    // row to 50 so the scope totals 100. The changed row already carries
+    // the new value (the component applies the edit before rebalancing).
+    const existing: Array<{ listingId: string, unitId?: string, ownershipPercentage: number }> = []
+    const rows: RebalanceRow[] = [
+      { mapping: { listingId: 'lst-4', ownershipPercentage: 100 } },
+      { mapping: { listingId: 'lst-4', ownershipPercentage: 50 } },
+    ]
+    const rebalanced = rebalanceSiblings(existing, rows, 1, 50)
+    expect(rebalanced[0]!.mapping.ownershipPercentage).toBe(50)
+    expect(rebalanced[1]!.mapping.ownershipPercentage).toBe(50)
   })
 })

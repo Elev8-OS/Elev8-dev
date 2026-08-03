@@ -4,6 +4,7 @@
 
 # communication
 - Always respond in English, even when the user writes in Indonesian. Confidence: 0.92
+- For UI changes, the user often conveys the desired design by attaching a reference screenshot plus a short sentence in Indonesian (e.g. "untuk cleaning event cardnya kaya di gambar") rather than writing detailed written specs. Treat the screenshot as the source of truth and read it via the vision tool before touching code. Confidence: 0.75
 
 # finance
 - For Booking Revenue double-entry tables: each line item must have separate Debit and Credit account columns/selectors, not a single account with a pre-assigned debit/credit indicator. Confidence: 0.65

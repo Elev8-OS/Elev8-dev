@@ -46,7 +46,17 @@
       "Shell(curl -s -o /dev/null -w /journeys → HTTP %{http_code}\\n -L http://localhost:3000/journeys)",
       "Shell(curl -s http://localhost:3000/dashboard/finance 2 >& 1)",
       "Shell(findstr:*)",
-      "Shell(curl -s http://localhost:3000/dashboard/finance -o %TEMP%finance-page.html 2 >& 1)"
+      "Shell(curl -s http://localhost:3000/dashboard/finance -o %TEMP%finance-page.html 2 >& 1)",
+      "Shell(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001/operations-calendar)",
+      "Shell(npx vitest run tests/components/owners/OwnerOnboardingDialog.spec.ts -t switching listing 2 >& 1)",
+      "Shell(npx vitest run tests/components/owners/OwnerOnboardingDialog.spec.ts tests/composables/useOwners.spec.ts 2 >& 1)",
+      "Shell(npx eslint app/components/owners/OwnerOnboardingAssignments.vue app/components/owners/OwnerOnboardingDialog.vue tests/components/owners/OwnerOnboardingDialog.spec.ts 2 >& 1)",
+      "Shell(npx vitest run tests/composables/useSavedViews.spec.ts tests/components/settings/BrandingForm.spec.ts tests/components/users/NotificationSettings.spec.ts 2 >& 1)",
+      "Shell(sed:*)",
+      "Shell(pnpm dev > /tmp/elev8-dev.log 2>&1 & DEV_PID=$! echo \"DEV_PID=$DEV_PID\" for i in $(seq 1 90); do if grep -q \"Local:\" /tmp/elev8-dev.log 2>/dev/null; then echo \"Server ready\"; break; fi sleep 1 done grep -E \"Local:|error|Error\" /tmp/elev8-dev.log | head -5)",
+      "Shell(npx vitest run tests/components/owners/OwnerOnboardingDialog.spec.ts 2 >& 1)",
+      "Shell(pnpm dev > /tmp/elev8-dev2.log 2>&1 & DEV_PID=$! echo \"DEV_PID=$DEV_PID\" for i in $(seq 1 90); do if grep -q \"Local:\" /tmp/elev8-dev2.log 2>/dev/null; then echo \"Server ready\"; break; fi sleep 1 done grep -E \"Local:\" /tmp/elev8-dev2.log | head -2)",
+      "Shell(npx vitest run tests/components/owners/OwnerOnboardingDialog.spec.ts -t rebalances 2 >& 1)"
     ],
     "deny": [],
     "defaultMode": "default"

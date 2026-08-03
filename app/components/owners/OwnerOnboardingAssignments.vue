@@ -11,14 +11,18 @@
 <script setup lang="ts">
 import type { CommissionRuleDraft } from '~/components/owners/data/commission-rules'
 import type { OwnerPropertyMapping } from '~/components/owners/data/owners'
+import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import SharedPropertyPicker from '~/components/shared/PropertyPicker.vue'
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
+import { useOwners } from '~/composables/useOwners'
 import CommissionRuleEditor from './CommissionRuleEditor.vue'
+import { rebalanceSiblings, remainingShare } from './lib/ownership-rebalance'
 
 export interface OwnerMappingDraft {
   mapping: Omit<OwnerPropertyMapping, 'id' | 'ownerId' | 'commissionRuleId'>
@@ -36,36 +40,74 @@ const emit = defineEmits<{
   'update:mappings': [value: OwnerMappingDraft[]]
 }>()
 
-// Cached `listings.value` array — used to populate the listing selector.
+const { mappings: existingMappings } = useOwners()
+
+// Cached `listings.value` array — used to populate the property picker.
+// Picker options are keyed by listing name, so we keep an id↔name index.
 const listingOptions = computed(() =>
-  listings.value.map(l => ({ id: l.id, name: l.name, location: l.location })),
+  listings.value.map(l => ({
+    id: l.id,
+    name: l.name,
+    location: l.location,
+    city: l.location.split(',')[0]?.trim() ?? l.location,
+    region: l.tags?.[0] ?? 'All',
+  })),
 )
 
-function makeDefaultRule(listingId: string): CommissionRuleDraft {
+const listingIdByName = computed(() => {
+  const map = new Map<string, string>()
+  for (const l of listingOptions.value)
+    map.set(l.name, l.id)
+  return map
+})
+
+function listingNameById(id: string): string | undefined {
+  return listingOptions.value.find(l => l.id === id)?.name
+}
+
+/**
+ * An unconfigured commission rule for a newly added property row. "Add
+ * another" only adds the property — the owner's commission for that
+ * listing stays blank until explicitly filled in, instead of silently
+ * defaulting to the standard rule.
+ */
+function makeEmptyRule(listingId: string): CommissionRuleDraft {
   return {
     type: 'flat',
-    rate: 20,
+    rate: 0,
     listingId,
-    name: 'Standard 20% management',
+    name: '',
     effectiveFrom: new Date().toISOString().slice(0, 10),
   }
 }
 
 function addMapping() {
-  const firstListing = listingOptions.value[0]?.id ?? ''
-  if (!firstListing)
+  // Pick the first listing that is not already in the draft, so a new row
+  // is always visibly different from the existing ones (and never silently
+  // duplicates the first listing with a 0% share).
+  const usedListingIds = new Set(props.mappings.map(m => m.mapping.listingId))
+  const nextListing = listingOptions.value.find(l => !usedListingIds.has(l.id))
+  if (!nextListing) {
+    toast.info('All properties are already added.')
     return
+  }
+  const share = remainingShare(existingMappings.value, props.mappings, nextListing.id, undefined)
   emit('update:mappings', [
     ...props.mappings,
     {
       mapping: {
-        listingId: firstListing,
-        ownershipPercentage: 100,
+        listingId: nextListing.id,
+        // Auto-fill the remaining share so a fresh row never trips the
+        // 100% guard on a listing that already has owners. A fully
+        // allocated scope falls back to 0 (not 100) so the row is
+        // immediately visible as having no share left.
+        ownershipPercentage: share ?? 0,
         effectiveFrom: new Date().toISOString().slice(0, 10),
       },
-      commissionRule: makeDefaultRule(firstListing),
+      commissionRule: makeEmptyRule(nextListing.id),
     },
   ])
+  toast.success(`${nextListing.name} added.`)
 }
 
 function removeMapping(index: number) {
@@ -79,14 +121,32 @@ function patchMapping(index: number, partial: Partial<OwnerMappingDraft['mapping
   const cur = next[index]
   if (!cur)
     return
+  let mappingPatch = partial
+  // When the listing changes, auto-fill the remaining share for the newly
+  // selected scope. A fully allocated scope falls back to 0.
+  if (partial.listingId !== undefined && partial.listingId !== cur.mapping.listingId) {
+    const share = remainingShare(existingMappings.value, props.mappings, partial.listingId, cur.mapping.unitId, index)
+    mappingPatch = {
+      ...partial,
+      ownershipPercentage: share ?? 0,
+    }
+  }
   const merged: OwnerMappingDraft = {
-    mapping: { ...cur.mapping, ...partial },
+    mapping: { ...cur.mapping, ...mappingPatch },
     // Commission rule follows the listing so the editor stays in sync.
     commissionRule: partial.listingId !== undefined
       ? { ...cur.commissionRule, listingId: partial.listingId }
       : cur.commissionRule,
   }
   next[index] = merged
+  // Rebalance sibling rows in the same scope so the total stays at 100%.
+  // Only when the ownership percentage itself was edited — switching the
+  // listing already auto-fills the new scope.
+  if (partial.ownershipPercentage !== undefined && partial.listingId === undefined) {
+    const rebalanced = rebalanceSiblings(existingMappings.value, next, index, merged.mapping.ownershipPercentage)
+    emit('update:mappings', rebalanced)
+    return
+  }
   emit('update:mappings', next)
 }
 
@@ -100,6 +160,22 @@ function patchRule(index: number, rule: CommissionRuleDraft) {
     commissionRule: rule,
   }
   emit('update:mappings', next)
+}
+
+/**
+ * Handle a selection from the shared property picker. The picker is
+ * single-select here — it emits an array with the chosen listing name
+ * (or an empty array when cleared).
+ */
+function selectListing(index: number, names: string[]) {
+  const name = names[0]
+  if (!name) {
+    patchMapping(index, { listingId: '' })
+    return
+  }
+  const listingId = listingIdByName.value.get(name)
+  if (listingId)
+    patchMapping(index, { listingId })
 }
 
 // Aggregate ownership per (listingId, unitId) scope across the local draft.
@@ -170,16 +246,13 @@ const cumulativeOverflow = computed<{ scope: string, total: number } | null>(() 
                   <Label :for="`listing-${index}`">
                     Property
                   </Label>
-                  <select
+                  <SharedPropertyPicker
                     :id="`listing-${index}`"
-                    class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                    :value="draft.mapping.listingId"
-                    @change="patchMapping(index, { listingId: ($event.target as HTMLSelectElement).value })"
-                  >
-                    <option v-for="opt in listingOptions" :key="opt.id" :value="opt.id">
-                      {{ opt.name }} — {{ opt.location }}
-                    </option>
-                  </select>
+                    :model-value="draft.mapping.listingId ? [listingNameById(draft.mapping.listingId) ?? ''] : []"
+                    :options="listingOptions"
+                    :multi-select="false"
+                    @update:model-value="(v) => selectListing(index, v)"
+                  />
                 </div>
 
                 <div class="space-y-1.5">

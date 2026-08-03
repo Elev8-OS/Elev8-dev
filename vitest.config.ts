@@ -12,6 +12,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
+    // Ignore stale sub-agent worktrees so tests only run from the root.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.nuxt/**',
+      '**/.output/**',
+      '**/.claude/worktrees/**',
+    ],
   },
   resolve: {
     alias: {

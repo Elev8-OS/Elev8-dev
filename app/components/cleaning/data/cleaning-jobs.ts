@@ -81,6 +81,9 @@ export interface CleaningJob {
   id: string
   listingId: string
   listingName: string
+  /** For multi-unit listings, the specific room this job is for. */
+  unitId?: string | null
+  unitName?: string | null
   scheduledAt: string
   cleanerIds: string[]
   cleanerNames: string[]

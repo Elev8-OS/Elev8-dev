@@ -5,6 +5,7 @@
 - Nuxt auto-imports components with directory prefix: `components/inventory/FooDrawer.vue` → `<InventoryFooDrawer>`. Confidence: 0.80
 - Use `useState<T>()` with spread syntax for shared reactive state in composables. Confidence: 0.80
 - Consolidate multiple imports from the same module onto one line: `import { createEmptyTemplate, type WhatsAppTemplate } from '~/components/.../whatsapp-templates'` rather than separate lines for value and type imports. Confidence: 0.80
+- Perfectionist import-order rule in this codebase: internal `import type` (from `~/`) first, then external package imports (e.g. `vue-sonner`), then internal `~/` value imports, then relative imports — placing an external import before the type imports or among the `~/` value imports fails lint. Confidence: 0.70
 - Place all `<script setup>` imports at the top of the block — never interleave `import` statements with reactive state declarations or function definitions. Confidence: 0.85
 - Use `withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })` pattern for optional boolean props that need a default. Confidence: 0.78
 - When a shadcn-vue `Select`'s `@update:model-value` handler signature conflicts with `AcceptableValue`, cast the callback inline: `@update:model-value="(v: any) => setPageSize(v)"` rather than widening the declared function's parameter type. Confidence: 0.82
