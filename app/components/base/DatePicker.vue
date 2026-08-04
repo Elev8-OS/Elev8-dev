@@ -36,14 +36,25 @@ function toCalendarDate(value?: string | null) {
   }
 }
 
-const selected = computed({
-  get: () => toCalendarDate(props.modelValue),
-  set: (val) => {
-    if (!val)
-      emit('update:modelValue', null)
-    else
-      emit('update:modelValue', val.toString())
-  },
+// Plain ref (not computed) — Reka UI Calendar's v-model only commits reliably
+// to a mutable ref, not a computed with a transforming setter.
+const selected = ref<CalendarDate | null>(toCalendarDate(props.modelValue))
+
+function commitDate(val: CalendarDate | undefined) {
+  if (!val) {
+    selected.value = null
+    emit('update:modelValue', null)
+  }
+  else {
+    selected.value = val
+    emit('update:modelValue', val.toString())
+  }
+}
+
+watch(() => props.modelValue, (val) => {
+  const next = toCalendarDate(val)
+  if (!next || !selected.value || next.toString() !== selected.value.toString())
+    selected.value = next
 })
 
 const minDate = computed(() => toCalendarDate(props.min) ?? undefined)
@@ -75,12 +86,13 @@ const displayLabel = computed(() => {
       </PopoverTrigger>
       <PopoverContent class="w-auto p-0" align="start">
         <Calendar
-          v-model="selected"
+          :model-value="selected"
           weekday-format="short"
           :min-value="minDate"
           :max-value="maxDate"
           :default-value="defaultMonth"
           initial-focus
+          @update:model-value="commitDate"
         />
       </PopoverContent>
     </Popover>

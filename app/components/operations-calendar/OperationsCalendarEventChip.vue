@@ -112,6 +112,7 @@ const assignedStaff = computed(() => {
     const member = staffMembers.find(s => s.label === name)
     return {
       name,
+      isExtrasauber: name.toLowerCase() === 'extrasauber' || name.toLowerCase() === 'extrasauber.com',
       initials: member?.label.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() ?? name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
       color: member ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
     }
@@ -119,6 +120,14 @@ const assignedStaff = computed(() => {
 })
 
 const isUnassigned = computed(() => assignedStaff.value.length === 0)
+
+const isExtrasauber = computed(() => {
+  if (props.event.type !== 'cleaning')
+    return false
+  return (props.event.assignedTo ?? []).some(name =>
+    name.toLowerCase() === 'extrasauber' || name.toLowerCase() === 'extrasauber.com',
+  )
+})
 </script>
 
 <template>
@@ -184,8 +193,25 @@ const isUnassigned = computed(() => assignedStaff.value.length === 0)
 
       <!-- Assignees row -->
       <div class="flex flex-wrap items-center gap-1">
+        <!-- Extrasauber branded chip (replaces the generic staff chip when it handles the clean) -->
         <span
-          v-for="member in assignedStaff.slice(0, 2)"
+          v-if="isExtrasauber"
+          class="inline-flex items-center gap-1 rounded-md bg-[#0A6CFF]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#0A6CFF] ring-1 ring-[#0A6CFF]/30"
+        >
+          <svg
+            class="h-3 w-3 shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#0A6CFF" />
+            <path d="M9.5 9a2.5 2.5 0 1 1 5 0 2.5 2.5 0 0 1-5 0z" fill="white" />
+          </svg>
+          <span class="truncate">Extrasauber</span>
+        </span>
+        <!-- Other staff assignees (exclude Extrasauber so it isn't duplicated) -->
+        <span
+          v-for="member in assignedStaff.filter(m => !m.isExtrasauber).slice(0, 2)"
           :key="member.name"
           class="inline-flex items-center gap-1 rounded-full bg-background/80 px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-border"
           :title="member.name"
@@ -206,6 +232,14 @@ const isUnassigned = computed(() => assignedStaff.value.length === 0)
           Unassigned
         </span>
       </div>
+
+      <!-- Extrasauber tagline -->
+      <p
+        v-if="isExtrasauber"
+        class="text-[9px] font-medium text-[#0A6CFF]/70"
+      >
+        Einfach. Alles. Sauber.
+      </p>
     </template>
 
     <!-- ============ Other event types: compact layout ============ -->

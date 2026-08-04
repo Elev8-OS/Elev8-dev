@@ -158,6 +158,13 @@ export const cleanerOptions = staffMembers
     name: member.name,
     role: member.role,
   }))
+  .concat([
+    {
+      id: 'extrasauber',
+      name: 'Extrasauber',
+      role: 'External cleaning service',
+    },
+  ])
 
 export const cleaningJobs = ref<CleaningJob[]>([
   // --- June 22 (past) ---

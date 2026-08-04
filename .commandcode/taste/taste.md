@@ -3,8 +3,9 @@
 [cmd]: https://commandcode.ai/
 
 # communication
-- Always respond in English, even when the user writes in Indonesian. Confidence: 0.92
-- For UI changes, the user often conveys the desired design by attaching a reference screenshot plus a short sentence in Indonesian (e.g. "untuk cleaning event cardnya kaya di gambar") rather than writing detailed written specs. Treat the screenshot as the source of truth and read it via the vision tool before touching code. Confidence: 0.75
+- Always respond in English, even when the user writes in Indonesian. Confidence: 0.95
+- For UI changes, the user often conveys the desired design by attaching a reference screenshot plus a short sentence in Indonesian (e.g. "untuk cleaning event cardnya kaya di gambar", "buat cleaning card eventnya tambahin handle by extrasauber, ini pngnya") rather than writing detailed written specs. Treat the screenshot as the source of truth and read it via the vision tool before touching code — this includes extracting brand colors, taglines, and logo styling from the image. Confidence: 0.85
+- After completing a UI feature, proactively state where the user can see it (exact route/page) and how to reproduce it (e.g. which form field to pick, create vs. edit flow) — the user will otherwise ask "ceknya dimana" ("where do I check it?"). Offering to seed mock/demo data so the change is visible without manual setup is welcomed. Confidence: 0.6
 
 # finance
 - For Booking Revenue double-entry tables: each line item must have separate Debit and Credit account columns/selectors, not a single account with a pre-assigned debit/credit indicator. Confidence: 0.65
@@ -60,3 +61,6 @@ See [notifications/taste.md](notifications/taste.md)
 
 # operations-calendar
 - When selecting listing in cleaning/task/review forms, surface guest info automatically (name, stay length, has-pet) — don't require a separate lookup. Confidence: 0.80
+
+# cleaning
+- Cleaning job assignment (both create and edit flows) must offer external cleaning services (e.g. Extrasauber, "External cleaning service") as assignable options alongside internal staff — assignees are not limited to staff members. Confidence: 0.8
