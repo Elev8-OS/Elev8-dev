@@ -3,6 +3,7 @@ export type CostCategory = 'Cleaning Labor' | 'Cleaning Supplies' | 'Maintenance
 
 export interface CostEntry {
   id: string
+  name: string
   date: string
   listing: string
   type: CostType
@@ -72,6 +73,7 @@ export const mockCosts: CostEntry[] = [
   // ── May 12 cleanings (unsynced) ──────────────────────────────────────────
   {
     id: 'F517994FF1EC429A9CD0192C6F0D9FA8',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'Modern 2BR the R Villa Swantika w/Pool - Pererenan',
     type: 'Cleaning',
@@ -86,6 +88,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '27FA1C798CAF40EC98DF9D38C18F75A4',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'The R Pererenan Mezzanine Apartment w/ balcony',
     type: 'Cleaning',
@@ -100,6 +103,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'C3F4B998B16B472AB4ECCB2ED8ABC18F',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'The R Villa Samalas | 4BR Retreat in Pererenan',
     type: 'Cleaning',
@@ -114,6 +118,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '1D114B92562A4BCDA5716D4E94A2D67A',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'The R Pererenan Mezzanine Studio + Plunge Pool',
     type: 'Cleaning',
@@ -128,6 +133,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '741324484D00468CB09CD4CE80A8F306',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'TAMBORA - The R Tambora: Stylish 3BR Tropical Escape',
     type: 'Cleaning',
@@ -142,6 +148,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'F2D8CEA8D267408398558FC2DB1B098E',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'The R Apartments Studio walk to the Beach',
     type: 'Cleaning',
@@ -156,6 +163,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '5CF52821D7E6473F9EC9FC124649470B',
+    name: 'Turnover Cleaning',
     date: '2026-05-12',
     listing: 'Cozy 2BR- the R Villa Sinabung w/ Pool in Sanur',
     type: 'Cleaning',
@@ -171,6 +179,7 @@ export const mockCosts: CostEntry[] = [
   // ── May 11 cleanings (unsynced) ──────────────────────────────────────────
   {
     id: 'F18F7CF23F4747B18F2AAABEE6A38487',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: 'Tranquil the R Villa Patuha-Pool/Rice Field Views',
     type: 'Cleaning',
@@ -185,6 +194,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '7D9354F4CC7E48968629BC9DE7A37B57',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: 'Cozy Meets Luxe – 3BR the R Villa Ranakah Stay',
     type: 'Cleaning',
@@ -199,6 +209,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '6B2130FDDB944672B253970DCBA1C251',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: 'KABA - Stylish 2BR the R Villa Kaba-Kerobokan+Pool/Bikes',
     type: 'Cleaning',
@@ -213,6 +224,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'AF06B0729405472B9D31FA2B3D78D2BA',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: 'Tropical 2BR the R Villa Dempo w/Pool - Pererenan',
     type: 'Cleaning',
@@ -227,6 +239,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'DE5515B687364B1EB97BEBDC2ABD73AF',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: '2BR-Tropical Escape at Villa Toba | Pool & Bikes',
     type: 'Cleaning',
@@ -241,6 +254,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '2CD6E39BAC844375B991A987B64FF939',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: 'Cozy 2BR- the R Villa Sinabung w/ Pool in Sanur',
     type: 'Cleaning',
@@ -255,6 +269,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '29C7CFDF569F40C38575995AACDD6CE7',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: '5BR Pool the R Villa Luwa – Serene near Canggu',
     type: 'Cleaning',
@@ -270,6 +285,7 @@ export const mockCosts: CostEntry[] = [
   // ── May 10 cleanings (synced) ────────────────────────────────────────────
   {
     id: 'C1DBB45310BA4B8C8496731FAF88F858',
+    name: 'Turnover Cleaning',
     date: '2026-05-10',
     listing: 'KABA - Stylish 2BR the R Villa Kaba-Kerobokan+Pool/Bikes',
     type: 'Cleaning',
@@ -285,6 +301,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'AC6A7F283DC54056BCB0F3E04DF71D4F',
+    name: 'Turnover Cleaning',
     date: '2026-05-10',
     listing: 'Cozy Meets Luxe – 3BR the R Villa Ranakah Stay',
     type: 'Cleaning',
@@ -300,6 +317,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: '35D12991885746DBA07A05A8E7B481EF',
+    name: 'Turnover Cleaning',
     date: '2026-05-10',
     listing: 'The R Apartments Studio walk to the Beach',
     type: 'Cleaning',
@@ -315,6 +333,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'C95B8091C6BC46E89DE903FAE72A709B',
+    name: 'Turnover Cleaning',
     date: '2026-05-10',
     listing: 'BRATAN - The R Bratan | 3BR- Serene Getaway in Canggu',
     type: 'Cleaning',
@@ -331,6 +350,7 @@ export const mockCosts: CostEntry[] = [
   // ── Manual entries ───────────────────────────────────────────────────────
   {
     id: 'manual-001',
+    name: 'Plumbing Repair',
     date: '2026-05-12',
     listing: 'TAMBORA - The R Tambora: Stylish 3BR Tropical Escape',
     type: 'Manual',
@@ -345,6 +365,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'manual-002',
+    name: 'Supplies Restock',
     date: '2026-05-11',
     listing: 'Modern 2BR the R Villa Swantika w/Pool - Pererenan',
     type: 'Manual',
@@ -359,6 +380,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'manual-003',
+    name: 'Pool Maintenance Chemicals',
     date: '2026-05-10',
     listing: 'Cozy 2BR- the R Villa Sinabung w/ Pool in Sanur',
     type: 'Manual',
@@ -374,6 +396,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'manual-004',
+    name: 'AC Servicing',
     date: '2026-05-09',
     listing: 'The R Villa Samalas | 4BR Retreat in Pererenan',
     type: 'Manual',
@@ -389,6 +412,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'manual-005',
+    name: 'Cleaning Supplies Purchase',
     date: '2026-05-09',
     listing: 'KABA - Stylish 2BR the R Villa Kaba-Kerobokan+Pool/Bikes',
     type: 'Manual',
@@ -404,6 +428,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'manual-006',
+    name: 'Electrical Repair',
     date: '2026-05-08',
     listing: 'BRATAN - The R Bratan | 3BR- Serene Getaway in Canggu',
     type: 'Manual',
@@ -420,6 +445,7 @@ export const mockCosts: CostEntry[] = [
   // ── Task entries ─────────────────────────────────────────────────────────
   {
     id: 'task-cost-001',
+    name: 'Villa Inspection & Touch-ups',
     date: '2026-05-08',
     listing: 'Modern 2BR the R Villa Swantika w/Pool - Pererenan',
     type: 'Task',
@@ -436,6 +462,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'task-cost-002',
+    name: 'Furniture Rearrangement',
     date: '2026-05-09',
     listing: 'The R Apartments Studio walk to the Beach',
     type: 'Task',
@@ -452,6 +479,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'task-cost-003',
+    name: 'Water Heater Inspection',
     date: '2026-05-10',
     listing: 'TAMBORA - The R Tambora: Stylish 3BR Tropical Escape',
     type: 'Task',
@@ -468,6 +496,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'task-cost-004',
+    name: 'Welcome Basket Setup',
     date: '2026-05-11',
     listing: 'Tranquil the R Villa Patuha-Pool/Rice Field Views',
     type: 'Task',
@@ -483,6 +512,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'task-cost-005',
+    name: 'Pool Pump Filter Replacement',
     date: '2026-05-12',
     listing: 'BRATAN - The R Bratan | 3BR- Serene Getaway in Canggu',
     type: 'Task',
@@ -499,6 +529,7 @@ export const mockCosts: CostEntry[] = [
   // ── Activity entries ─────────────────────────────────────────────────────
   {
     id: 'activity-001',
+    name: 'Pool Area Cleaning',
     date: '2026-05-12',
     listing: 'The R Pererenan Mezzanine Apartment w/ balcony',
     type: 'Activity',
@@ -513,6 +544,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'activity-002',
+    name: 'Garden Maintenance',
     date: '2026-05-11',
     listing: 'BRATAN - The R Bratan | 3BR- Serene Getaway in Canggu',
     type: 'Activity',
@@ -527,6 +559,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'activity-003',
+    name: 'Pre-arrival Setup',
     date: '2026-05-10',
     listing: '5BR Pool the R Villa Luwa – Serene near Canggu',
     type: 'Activity',
@@ -544,6 +577,7 @@ export const mockCosts: CostEntry[] = [
   // ── Material entries (split from Task/Activity) ──────────────────────────
   {
     id: 'mat-001',
+    name: 'Water Heater Parts',
     date: '2026-05-10',
     listing: 'TAMBORA - The R Tambora: Stylish 3BR Tropical Escape',
     type: 'Manual',
@@ -560,6 +594,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'mat-002',
+    name: 'Welcome Basket Contents',
     date: '2026-05-11',
     listing: 'Tranquil the R Villa Patuha-Pool/Rice Field Views',
     type: 'Manual',
@@ -575,6 +610,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'mat-003',
+    name: 'Pool Filter Cartridge & Chemicals',
     date: '2026-05-12',
     listing: 'BRATAN - The R Bratan | 3BR- Serene Getaway in Canggu',
     type: 'Manual',
@@ -590,6 +626,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'mat-004',
+    name: 'Garden Materials',
     date: '2026-05-11',
     listing: 'BRATAN - The R Bratan | 3BR- Serene Getaway in Canggu',
     type: 'Manual',
@@ -607,6 +644,7 @@ export const mockCosts: CostEntry[] = [
   // ── Switzerland — Jurnal-mapped listings ─────────────────────────────────
   {
     id: 'ch-001',
+    name: 'Full Turnover Cleaning',
     date: '2026-05-08',
     listing: 'The R Apartment Bodensee - Old Town',
     type: 'Cleaning',
@@ -622,6 +660,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'ch-002',
+    name: 'Bathroom Tap Replacement',
     date: '2026-05-09',
     listing: 'The R Apartment Randen',
     type: 'Manual',
@@ -637,6 +676,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'ch-003',
+    name: 'Turnover Cleaning',
     date: '2026-05-11',
     listing: 'Modern Apartment in Schaffhausen Center',
     type: 'Cleaning',
@@ -650,6 +690,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'ch-004',
+    name: 'Cleaning Supplies Restock',
     date: '2026-05-13',
     listing: 'The R Apartment Bodensee - Old Town',
     type: 'Cleaning',
@@ -665,6 +706,7 @@ export const mockCosts: CostEntry[] = [
   // ── Switzerland — Bexio-mapped listings ──────────────────────────────────
   {
     id: 'ch-005',
+    name: 'Standard Checkout Cleaning',
     date: '2026-05-07',
     listing: 'The R Apartment Chrischona - free public transport',
     type: 'Cleaning',
@@ -680,6 +722,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'ch-006',
+    name: 'Window Frame Repair',
     date: '2026-05-10',
     listing: 'The R Apartment Hemmental',
     type: 'Manual',
@@ -695,6 +738,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'ch-007',
+    name: 'Deep Clean',
     date: '2026-05-12',
     listing: 'The R Apartment Rosengasse',
     type: 'Cleaning',
@@ -709,6 +753,7 @@ export const mockCosts: CostEntry[] = [
   },
   {
     id: 'ch-008',
+    name: 'Monthly Consumables Restock',
     date: '2026-05-14',
     listing: 'The R Apartment Hemmental',
     type: 'Cleaning',

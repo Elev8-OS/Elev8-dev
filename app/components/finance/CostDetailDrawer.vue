@@ -103,6 +103,16 @@ function typeBadgeClass(type: string) {
 
       <ScrollArea class="flex-1">
         <div v-if="props.cost" class="flex flex-col gap-6 p-6">
+          <!-- Cost name -->
+          <div>
+            <p class="text-sm text-muted-foreground">
+              Cost
+            </p>
+            <p class="font-semibold">
+              {{ props.cost.name }}
+            </p>
+          </div>
+
           <!-- Staff + listing -->
           <div class="flex items-start gap-3">
             <Avatar class="h-10 w-10 shrink-0">
