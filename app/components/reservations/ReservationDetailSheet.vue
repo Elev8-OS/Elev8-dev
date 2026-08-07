@@ -103,9 +103,9 @@ function formatExpiry(iso: string): string {
 
 <template>
   <Sheet :open="open" @update:open="emit('update:open', $event)">
-    <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-md" side="right">
+    <SheetContent class="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md" side="right">
       <template v-if="reservation">
-        <ScrollArea class="flex-1">
+        <ScrollArea class="h-full min-h-0 flex-1">
           <div class="flex flex-col">
             <!-- Hero banner -->
             <div class="relative h-36 w-full shrink-0">
