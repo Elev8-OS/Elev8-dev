@@ -97,6 +97,12 @@ export function useReservationsModule() {
     )
   }
 
+  function updateReservationStatus(id: string, status: ReservationStatus) {
+    reservations.value = reservations.value.map(r =>
+      r.id === id ? { ...r, status } : r,
+    )
+  }
+
   function reset() {
     reservations.value = initialReservations.map(r => ({ ...r }))
     guests.value = initialGuests.map(g => ({ ...g }))
@@ -113,6 +119,7 @@ export function useReservationsModule() {
     getReservationsForGuest,
     createReservation,
     updateGuestNotes,
+    updateReservationStatus,
     reset,
   }
 }

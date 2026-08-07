@@ -99,4 +99,12 @@ describe('useReservationsModule', () => {
     updateGuestNotes('missing', 'x')
     expect(getGuestById('missing')).toBeNull()
   })
+
+  it('updateReservationStatus updates a reservation status', () => {
+    const { updateReservationStatus, reservations } = useReservationsModule()
+    updateReservationStatus('res-1', 'cancelled')
+    expect(reservations.value.find(r => r.id === 'res-1')?.status).toBe('cancelled')
+    updateReservationStatus('missing', 'verified')
+    expect(reservations.value.find(r => r.id === 'res-1')?.status).toBe('cancelled')
+  })
 })

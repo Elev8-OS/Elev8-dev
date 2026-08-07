@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{
   reservation: ReservationEntry | null
@@ -12,6 +14,18 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
   'openGuest': [id: string]
 }>()
+
+const { updateReservationStatus } = useReservationsModule()
+
+const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
+
+function onStatusChange(value: unknown) {
+  if (!props.reservation)
+    return
+  const status = value as ReservationStatus
+  updateReservationStatus(props.reservation.id, status)
+  toast.success(`Status updated to ${reservationStatusLabels[status]}`)
+}
 
 const smartLock = useSmartLock()
 
@@ -120,9 +134,25 @@ function formatExpiry(iso: string): string {
                 class="h-full w-full object-cover"
               >
               <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-              <!-- Status chip -->
+              <!-- Status chip (editable) -->
               <div class="absolute top-4 left-4">
-                <ReservationStatusBadge :status="reservation.status" />
+                <Select :model-value="reservation.status" @update:model-value="onStatusChange">
+                  <SelectTrigger class="h-7 gap-1.5 border-0 bg-white/95 px-2.5 text-xs font-medium shadow-none hover:bg-white">
+                    <SelectValue>
+                      <template #default>
+                        <ReservationStatusBadge :status="reservation.status" />
+                      </template>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+                      <span class="flex items-center gap-2">
+                        <ReservationStatusBadge :status="opt.value as ReservationStatus" />
+                        {{ opt.label }}
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <!-- Channel logo -->
               <div class="absolute top-4 right-4 flex size-9 items-center justify-center bg-white/90">
