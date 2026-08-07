@@ -4,7 +4,7 @@
 
 **Goal:** Add a Reservations module — a filterable reservations table at `/reservations` and a guest profile page at `/reservations/guests/[id]` — built on a new standalone dataset following existing app patterns.
 
-**Architecture:** New `app/components/reservations/` module + `app/composables/useReservations.ts` composable holding `useState` reservations/guests, filters, and derived per-guest data. Pages mirror existing conventions: list page like `payment-requests/index.vue`, guest detail like `users/[id].vue`. Data is blended mock data (6 rich inbox reservations + finance rows); no API.
+**Architecture:** New `app/components/reservations/` module + `app/composables/useReservationsModule.ts` composable holding `useState` reservations/guests, filters, and derived per-guest data (named `useReservationsModule` because `useReservations` is an existing finance composable). Pages mirror existing conventions: list page like `payment-requests/index.vue`, guest detail like `users/[id].vue`. Data is blended mock data (6 rich inbox reservations + finance rows); no API.
 
 **Tech Stack:** Nuxt 3, Vue 3, shadcn-vue (Button, Card, Badge, Avatar, Input, Select, Popover, Command, Checkbox, RangeCalendar, Separator, ScrollArea, Sheet, DropdownMenu, Table, Skeleton), TanStack? (no — plain shadcn table like PaymentRequestTable), reka-ui DateRange, vue-sonner toasts, date-fns formatting, vitest.
 
@@ -14,7 +14,7 @@
 
 **Create:**
 - `app/components/reservations/data/reservations.ts` — types + mock data
-- `app/composables/useReservations.ts` — state, filters, derived data
+- `app/composables/useReservationsModule.ts` — state, filters, derived data (NOTE: named `useReservationsModule`, NOT `useReservations` — the latter is an existing finance composable; the new one must not collide)
 - `app/components/reservations/ReservationStatusBadge.vue` — status badge
 - `app/components/reservations/ReservationGuestCell.vue` — guest avatar/name/email cell
 - `app/components/reservations/ReservationTable.vue` — the list table
@@ -319,36 +319,36 @@ git commit -m "feat(reservations): add reservation and guest data model with moc
 ## Task 2: Composable + unit tests
 
 **Files:**
-- Create: `app/composables/useReservations.ts`
+- Create: `app/composables/useReservationsModule.ts` (NOTE: NOT `useReservations.ts` — that name is taken by an existing finance composable; the new one must be `useReservationsModule`)
 - Create: `tests/composables/useReservations.spec.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, it, beforeEach } from 'vitest'
-import { useReservations } from '~/composables/useReservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
-describe('useReservations', () => {
+describe('useReservationsModule', () => {
   beforeEach(() => {
     // Reset module state between tests (useState persists across calls)
-    const { reset } = useReservations()
+    const { reset } = useReservationsModule()
     reset()
   })
 
   it('initializes with mock data', () => {
-    const { reservations, guests } = useReservations()
+    const { reservations, guests } = useReservationsModule()
     expect(reservations.value.length).toBeGreaterThanOrEqual(5)
     expect(guests.value.length).toBeGreaterThanOrEqual(5)
   })
 
   it('getGuestById returns a guest and null for missing id', () => {
-    const { getGuestById } = useReservations()
+    const { getGuestById } = useReservationsModule()
     expect(getGuestById('guest-1')?.name).toBe('Sarah Mitchell')
     expect(getGuestById('missing')).toBeNull()
   })
 
   it('getReservationsForGuest returns all stays sorted by check-in desc', () => {
-    const { getReservationsForGuest } = useReservations()
+    const { getReservationsForGuest } = useReservationsModule()
     const stays = getReservationsForGuest('guest-1')
     expect(stays.length).toBeGreaterThanOrEqual(1)
     const dates = stays.map(s => s.checkIn)
@@ -356,7 +356,7 @@ describe('useReservations', () => {
   })
 
   it('filteredReservations applies search, status, listing, and date range filters', () => {
-    const { filteredReservations, filters } = useReservations()
+    const { filteredReservations, filters } = useReservationsModule()
     filters.value.search = 'sarah'
     expect(filteredReservations.value.every(r => r.guestName.toLowerCase().includes('sarah'))).toBe(true)
     filters.value.search = ''
@@ -372,13 +372,13 @@ describe('useReservations', () => {
   })
 
   it('stats counts upcoming, current, past, and cancelled reservations', () => {
-    const { stats } = useReservations()
+    const { stats } = useReservationsModule()
     expect(stats.value.upcoming + stats.value.current + stats.value.past + stats.value.cancelled)
       .toBeGreaterThanOrEqual(5)
   })
 
   it('createReservation validates required fields and adds to list', () => {
-    const { createReservation, reservations } = useReservations()
+    const { createReservation, reservations } = useReservationsModule()
     const before = reservations.value.length
     const result = createReservation({
       guestName: '',
@@ -420,7 +420,7 @@ describe('useReservations', () => {
   })
 
   it('updateGuestNotes updates a guest profile', () => {
-    const { updateGuestNotes, getGuestById } = useReservations()
+    const { updateGuestNotes, getGuestById } = useReservationsModule()
     updateGuestNotes('guest-1', 'New note')
     expect(getGuestById('guest-1')?.notes).toBe('New note')
     updateGuestNotes('missing', 'x')
@@ -448,7 +448,7 @@ export interface ReservationFilters {
   dateTo: string
 }
 
-export function useReservations() {
+export function useReservationsModule() {
   const reservations = useState<ReservationEntry[]>('reservations-entries', () =>
     initialReservations.map(r => ({ ...r })))
   const guests = useState<GuestProfile[]>('reservations-guests', () =>
@@ -564,8 +564,8 @@ Expected: PASS (6 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/composables/useReservations.ts tests/composables/useReservations.spec.ts
-git commit -m "feat(reservations): add useReservations composable with filters and tests"
+git add app/composables/useReservationsModule.ts tests/composables/useReservations.spec.ts
+git commit -m "feat(reservations): add useReservationsModule composable with filters and tests"
 ```
 
 ---
@@ -976,7 +976,7 @@ git commit -m "feat(reservations): add reservation detail sheet"
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { nightsBetween } from '~/components/reservations/data/reservations'
 import { listings } from '~/components/listings/data/listings'
-import { useReservations } from '~/composables/useReservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 import { toast } from 'vue-sonner'
 
 const props = defineProps<{ open: boolean }>()
@@ -985,7 +985,7 @@ const emit = defineEmits<{
   created: [reservation: ReservationEntry]
 }>()
 
-const { createReservation } = useReservations()
+const { createReservation } = useReservationsModule()
 
 const guestName = ref('')
 const guestEmail = ref('')
@@ -1169,7 +1169,7 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import { useReservations } from '~/composables/useReservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { listings } from '~/components/listings/data/listings'
 import ReservationTable from '~/components/reservations/ReservationTable.vue'
@@ -1182,7 +1182,7 @@ const {
   filteredReservations,
   stats,
   filters,
-} = useReservations()
+} = useReservationsModule()
 
 const df = new DateFormatter('en-US', { dateStyle: 'medium' })
 
@@ -2152,7 +2152,7 @@ git commit -m "feat(reservations): add guest history, activity, payments, upsell
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
-import { useReservations } from '~/composables/useReservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useInbox } from '~/composables/useInbox'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
@@ -2173,7 +2173,7 @@ const {
   getGuestById,
   getReservationsForGuest,
   updateGuestNotes,
-} = useReservations()
+} = useReservationsModule()
 const { requests } = usePaymentRequests()
 const { conversations } = useInbox()
 const { links } = useGuestGuideLinks()
