@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import type { UpsellItem } from '~/components/inbox/data/conversations'
+import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
+import { useUpsellOrders } from '@/composables/useUpsellOrders'
+import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 
-defineProps<{ items: UpsellItem[] }>()
+const props = withDefaults(defineProps<{ orderIds: string[] }>(), {
+  orderIds: () => [],
+})
+
+const { orders } = useUpsellOrders()
+
+const linkedOrders = computed(() => {
+  if (props.orderIds.length === 0)
+    return []
+  return orders.value.filter(o => props.orderIds.includes(o.id))
+})
 
 function fmtCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
 }
 
-const statusMeta: Record<UpsellItem['status'], { label: string, tone: string }> = {
-  confirmed: { label: 'Confirmed', tone: 'bg-green-500/10 text-green-700 border-green-500/30' },
-  pending: { label: 'Pending', tone: 'bg-amber-500/10 text-amber-700 border-amber-500/30' },
-  cancelled: { label: 'Cancelled', tone: 'bg-muted text-muted-foreground border-border' },
+function orderStatusLabel(order: UpsellOrder): string {
+  return getOrderStatusMeta(order).label
 }
 </script>
 
@@ -22,30 +32,30 @@ const statusMeta: Record<UpsellItem['status'], { label: string, tone: string }> 
       </CardTitle>
     </CardHeader>
     <CardContent class="p-0">
-      <div v-if="items.length === 0" class="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
+      <div v-if="linkedOrders.length === 0" class="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
         <Icon name="lucide:tag" class="size-8 opacity-50" />
         No upsells.
       </div>
       <div v-else class="divide-y">
         <div
-          v-for="item in items"
-          :key="item.id"
+          v-for="order in linkedOrders"
+          :key="order.id"
           class="flex items-center justify-between gap-3 px-4 py-3"
         >
           <div class="min-w-0">
             <p class="text-sm font-medium truncate">
-              {{ item.name }}
+              {{ order.serviceName }}
             </p>
             <p class="text-xs text-muted-foreground">
-              Purchased {{ new Date(item.purchasedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+              {{ new Date(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }} · {{ order.guestName }}
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <Badge variant="outline" :class="statusMeta[item.status].tone">
-              {{ statusMeta[item.status].label }}
+            <Badge variant="outline" :class="[getOrderStatusMeta(order).color, 'rounded-full']">
+              {{ orderStatusLabel(order) }}
             </Badge>
             <span class="text-sm font-semibold tabular-nums">
-              {{ fmtCurrency(item.price, item.currency) }}
+              {{ fmtCurrency(order.grandTotal, order.currency) }}
             </span>
           </div>
         </div>
