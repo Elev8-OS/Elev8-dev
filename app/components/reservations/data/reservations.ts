@@ -25,6 +25,7 @@ export interface ReservationEntry {
   guestGuideId?: string
   upsellIds?: string[]
   blockReason?: string
+  bookingNote?: string
   activity: ActivityEvent[]
 }
 
@@ -209,6 +210,7 @@ export const initialReservations: ReservationEntry[] = [
     paymentRequestId: 'pr-006',
     guestGuideId: 'ggl-mock-002',
     upsellIds: ['ord-003'],
+    bookingNote: '** THIS RESERVATION HAS BEEN PRE-PAID ** BOOKING NOTE : Payment charge is IDR 542087.253 Approximate time of arrival: between 21:00 and 22:00 Meal Plan: There is no meal option with this room. Smoking Preference: Non-Smoking Payment Collect: OTA collect OTA Commission: 3535352.00',
     activity: [
       {
         id: 'act-res3-1',
