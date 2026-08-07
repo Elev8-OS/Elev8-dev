@@ -26,8 +26,8 @@ function fmtCurrency(amount: number, currency: string): string {
 
 <template>
   <Sheet :open="open" @update:open="emit('update:open', $event)">
-    <SheetContent class="w-full sm:max-w-md">
-      <SheetHeader>
+    <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-md" side="right">
+      <SheetHeader class="border-b px-6 py-4">
         <SheetTitle>
           Reservation
         </SheetTitle>
@@ -37,8 +37,8 @@ function fmtCurrency(amount: number, currency: string): string {
       </SheetHeader>
 
       <template v-if="reservation">
-        <ScrollArea class="flex-1 pr-4">
-          <div class="space-y-6 py-4">
+        <ScrollArea class="flex-1">
+          <div class="flex flex-col gap-6 p-6">
             <!-- Guest -->
             <div>
               <div class="text-xs text-muted-foreground uppercase tracking-wide mb-2">
