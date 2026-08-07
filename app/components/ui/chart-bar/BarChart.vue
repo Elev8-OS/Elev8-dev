@@ -69,7 +69,7 @@ const selectorsBar = computed(() => props.type === 'grouped' ? GroupedBar.select
       :style="{ height: isMounted ? '100%' : 'auto' }"
       :margin="margin"
     >
-      <ChartCrosshair v-if="showTooltip" :colors="colors" :items="legendItems" :custom-tooltip="customTooltip" :index="index" />
+      <ChartCrosshair v-if="showTooltip" :colors="colors" :items="legendItems" :custom-tooltip="customTooltip" :index="index" :categories="categories" />
 
       <VisBarComponent
         :x="(d: Data, i: number) => i"

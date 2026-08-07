@@ -11,8 +11,11 @@ const props = withDefaults(defineProps<{
   index: string
   items: BulletLegendItemInterface[]
   customTooltip?: Component
+  /** Restrict tooltip rows to these data keys (in order). Defaults to all keys except index. */
+  categories?: string[]
 }>(), {
   colors: () => [],
+  categories: () => [],
 })
 
 // Use weakmap to store reference to each datapoint for Tooltip
@@ -23,9 +26,13 @@ function template(d: any) {
   }
   else {
     const componentDiv = document.createElement('div')
-    const omittedData = Object.entries(omit(d, [props.index])).map(([key, value]) => {
-      const legendReference = props.items.find(i => i.name === key)
-      return { ...legendReference, value }
+    const keys = props.categories.length > 0
+      ? props.categories
+      : Object.keys(omit(d, [props.index]))
+    const omittedData = keys.map((key, i) => {
+      // Match legend items by index so renamed labels ("This year", etc.) show correctly
+      const legendReference = props.items[i]
+      return { ...legendReference, name: legendReference?.name ?? key, value: d[key] }
     })
     const TooltipComponent = props.customTooltip ?? ChartTooltip
     createApp(TooltipComponent, { title: d[props.index].toString(), data: omittedData }).mount(componentDiv)

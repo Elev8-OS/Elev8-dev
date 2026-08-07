@@ -6,7 +6,7 @@ import { Axis, CurveType, Line } from '@unovis/ts'
 
 import { VisAxis, VisLine, VisXYContainer } from '@unovis/vue'
 import { useMounted } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ChartCrosshair, ChartLegend, defaultColors } from '@/components/ui/chart'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +19,11 @@ const props = withDefaults(defineProps<BaseChartProps<T> & {
    * Type of curve
    */
   curveType?: CurveType
+  /**
+   * Optional human-readable labels for legend items, keyed by category name.
+   * Falls back to the raw category name when missing.
+   */
+  legendLabels?: Record<string, string>
 }>(), {
   curveType: CurveType.MonotoneX,
   filterOpacity: 0.2,
@@ -28,6 +33,7 @@ const props = withDefaults(defineProps<BaseChartProps<T> & {
   showTooltip: true,
   showLegend: true,
   showGridLine: true,
+  legendLabels: () => ({}),
 })
 
 const emits = defineEmits<{
@@ -41,10 +47,19 @@ const index = computed(() => props.index as KeyOfT)
 const colors = computed(() => props.colors?.length ? props.colors : defaultColors(props.categories.length))
 
 const legendItems = ref<BulletLegendItemInterface[]>(props.categories.map((category, i) => ({
-  name: category,
+  name: props.legendLabels?.[category] ?? category,
   color: colors.value[i],
   inactive: false,
 })))
+
+// Rebuild legend names when labels change (e.g. comparison mode switch)
+watch(() => props.legendLabels, () => {
+  props.categories.forEach((category, i) => {
+    if (legendItems.value[i]) {
+      legendItems.value[i] = { ...legendItems.value[i]!, name: props.legendLabels?.[category] ?? category }
+    }
+  })
+})
 
 const isMounted = useMounted()
 
@@ -62,7 +77,7 @@ function handleLegendItemClick(d: BulletLegendItemInterface, i: number) {
       :data="data"
       :style="{ height: isMounted ? '100%' : 'auto' }"
     >
-      <ChartCrosshair v-if="showTooltip" :colors="colors" :items="legendItems" :index="index" :custom-tooltip="customTooltip" />
+      <ChartCrosshair v-if="showTooltip" :colors="colors" :items="legendItems" :index="index" :categories="props.categories" :custom-tooltip="customTooltip" />
 
       <template v-for="(category, i) in categories" :key="category">
         <VisLine
@@ -72,7 +87,7 @@ function handleLegendItemClick(d: BulletLegendItemInterface, i: number) {
           :color="colors[i]"
           :attributes="{
             [Line.selectors.line]: {
-              opacity: legendItems.find(item => item.name === category)?.inactive ? filterOpacity : 1,
+              opacity: legendItems[i]?.inactive ? filterOpacity : 1,
             },
           }"
         />

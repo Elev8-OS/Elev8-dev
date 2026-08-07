@@ -24,6 +24,13 @@ export default defineNuxtConfig({
       extensions: ['.vue'],
       pathPrefix: false,
     },
+    // Review Hub analytics components keep their own ReviewAnalytics* names
+    // (disable path prefix so they auto-import without the review-hub/analytics nesting)
+    {
+      path: '~/components/review-hub/analytics',
+      extensions: ['.vue'],
+      pathPrefix: false,
+    },
   ],
 
   modules: [
