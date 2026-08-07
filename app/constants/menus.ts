@@ -31,6 +31,12 @@ export const navMenu: NavMenu[] = [
         link: '/cleaning-calendar',
       },
       {
+        title: 'Reservations',
+        icon: 'i-lucide-calendar-check',
+        link: '/reservations',
+        new: true,
+      },
+      {
         title: 'Operations Calendar',
         icon: 'i-lucide-calendar-days',
         link: '/operations-calendar',
