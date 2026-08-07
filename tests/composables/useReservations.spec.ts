@@ -33,8 +33,8 @@ describe('useReservationsModule', () => {
     filters.value.search = 'sarah'
     expect(filteredReservations.value.every(r => r.guestName.toLowerCase().includes('sarah'))).toBe(true)
     filters.value.search = ''
-    filters.value.status = 'confirmed'
-    expect(filteredReservations.value.every(r => r.status === 'confirmed')).toBe(true)
+    filters.value.status = 'verified'
+    expect(filteredReservations.value.every(r => r.status === 'verified')).toBe(true)
     filters.value.status = 'all'
     filters.value.listings = ['lst-1']
     expect(filteredReservations.value.every(r => r.listingId === 'lst-1')).toBe(true)
@@ -89,7 +89,7 @@ describe('useReservationsModule', () => {
     expect(ok.success).toBe(true)
     expect(reservations.value.length).toBe(before + 1)
     expect(reservations.value[0].guestName).toBe('Test Guest')
-    expect(reservations.value[0].status).toBe('confirmed')
+    expect(reservations.value[0].status).toBe('verified')
   })
 
   it('updateGuestNotes updates a guest profile', () => {

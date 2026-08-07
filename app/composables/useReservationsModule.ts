@@ -84,7 +84,7 @@ export function useReservationsModule() {
       id,
       guestId: '',
       ...draft,
-      status: 'confirmed',
+      status: 'verified',
       activity: [],
     }
     reservations.value = [entry, ...reservations.value]

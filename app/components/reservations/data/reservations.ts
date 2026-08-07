@@ -1,6 +1,6 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 
-export type ReservationStatus = 'inquiry' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled'
+export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked'
 
 export interface ReservationEntry {
   id: string
@@ -24,6 +24,7 @@ export interface ReservationEntry {
   paymentRequestId?: string
   guestGuideId?: string
   upsellIds?: string[]
+  blockReason?: string
   activity: ActivityEvent[]
 }
 
@@ -73,10 +74,12 @@ export function generateReservationId(): string {
 
 export const reservationStatusLabels: Record<ReservationStatus, string> = {
   inquiry: 'Inquiry',
-  confirmed: 'Confirmed',
+  unverified: 'Unverified',
+  verified: 'Verified',
   checked_in: 'Checked in',
   checked_out: 'Checked out',
   cancelled: 'Cancelled',
+  blocked: 'Blocked',
 }
 
 export const initialReservations: ReservationEntry[] = [
@@ -113,13 +116,13 @@ export const initialReservations: ReservationEntry[] = [
     listingId: 'lst-2',
     listingName: 'Villa Sehnsucht – Seegrundstück Mecklenburg',
     channel: 'Booking.com',
-    checkIn: '2026-07-20',
-    checkOut: '2026-07-27',
+    checkIn: '2026-08-20',
+    checkOut: '2026-08-27',
     nights: 7,
     guestCount: 2,
     totalPrice: 2460,
     currency: 'EUR',
-    status: 'checked_out',
+    status: 'inquiry',
     conversationId: 'conv-2',
     activity: [],
   },
@@ -161,7 +164,7 @@ export const initialReservations: ReservationEntry[] = [
     guestCount: 3,
     totalPrice: 1200,
     currency: 'EUR',
-    status: 'confirmed',
+    status: 'verified',
     activity: [],
   },
   {
@@ -175,13 +178,13 @@ export const initialReservations: ReservationEntry[] = [
     listingId: 'lst-5',
     listingName: 'Villa Bergfried – Schwarzwald',
     channel: 'Airbnb',
-    checkIn: '2026-07-22',
-    checkOut: '2026-07-29',
+    checkIn: '2026-08-22',
+    checkOut: '2026-08-29',
     nights: 7,
     guestCount: 2,
     totalPrice: 2460,
     currency: 'EUR',
-    status: 'checked_out',
+    status: 'unverified',
     activity: [],
   },
   {
@@ -265,6 +268,28 @@ export const initialReservations: ReservationEntry[] = [
         colorDot: 'green',
       },
     ],
+  },
+  // Manual block — not a reservation; blocks the calendar with a reason
+  {
+    id: 'res-block-1',
+    guestId: '',
+    guestName: '—',
+    guestEmail: '',
+    guestPhone: '',
+    guestLanguage: '',
+    guestNotes: '',
+    listingId: 'lst-2',
+    listingName: 'The R Pererenan Mezzanine Studio + Plunge Pool',
+    channel: 'Direct',
+    checkIn: '2026-08-15',
+    checkOut: '2026-08-17',
+    nights: 2,
+    guestCount: 0,
+    totalPrice: 0,
+    currency: 'USD',
+    status: 'blocked',
+    blockReason: 'Owner family stay — property unavailable',
+    activity: [],
   },
 ]
 

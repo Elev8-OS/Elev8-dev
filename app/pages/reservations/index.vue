@@ -158,7 +158,7 @@ const dateFilterLabel = computed(() => {
 
 // Stats cards (clickable to filter)
 const statCards = computed(() => [
-  { label: 'Upcoming', value: stats.value.upcoming, status: 'confirmed' as const, icon: 'lucide:calendar-clock' },
+  { label: 'Upcoming', value: stats.value.upcoming, status: 'verified' as const, icon: 'lucide:calendar-clock' },
   { label: 'Current', value: stats.value.current, status: 'checked_in' as const, icon: 'lucide:calendar-check' },
   { label: 'Past', value: stats.value.past, status: 'checked_out' as const, icon: 'lucide:calendar-x' },
   { label: 'Cancelled', value: stats.value.cancelled, status: 'cancelled' as const, icon: 'lucide:calendar-off' },
