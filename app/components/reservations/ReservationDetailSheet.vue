@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 
 defineProps<{
@@ -11,6 +12,8 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
   'openGuest': [id: string]
 }>()
+
+const smartLock = useSmartLock()
 
 const df = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
@@ -42,6 +45,59 @@ function partyLabel(count: number): string {
 
 function initials(name: string): string {
   return name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
+}
+
+// --- Smart lock ---
+function locksForListing(listingId: string) {
+  return smartLock.getLocksForListing(listingId)
+}
+
+function codesForReservation(reservation: ReservationEntry) {
+  return smartLock.codes.value
+    .filter(c => c.reservationId === reservation.id && c.status === 'active')
+    .sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime())
+}
+
+const generatingLockId = ref<string | null>(null)
+
+async function generateCode(reservation: ReservationEntry, lockId: string) {
+  if (generatingLockId.value)
+    return
+  generatingLockId.value = lockId
+  try {
+    const result = await smartLock.generateAccessCode({
+      lockId,
+      reservationId: reservation.id,
+      guestName: reservation.guestName,
+    })
+    if (!result.success) {
+      toast.error(result.error ?? 'Failed to generate code.')
+      return
+    }
+    toast.success(`Access code generated: ${result.code!.code}`)
+  }
+  finally {
+    generatingLockId.value = null
+  }
+}
+
+function revokeCode(codeId: string) {
+  smartLock.revokeAccessCode(codeId)
+  toast.info('Access code revoked.')
+}
+
+async function copyCode(code: string) {
+  try {
+    await navigator.clipboard.writeText(code)
+    toast.success('Code copied to clipboard.')
+  }
+  catch {
+    toast.error(`Failed to copy. Code: ${code}`)
+  }
+}
+
+function formatExpiry(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
@@ -184,6 +240,96 @@ function initials(name: string): string {
                   <div class="text-sm font-medium">
                     {{ reservation.channel }}
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Smart lock -->
+            <div class="border-b px-5 py-4">
+              <div class="mb-3 flex items-center gap-2">
+                <Icon name="lucide:key-round" class="size-4 text-muted-foreground" />
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Smart lock
+                </span>
+              </div>
+
+              <div v-if="!smartLock.isConnected.value" class="border border-dashed p-3 text-center">
+                <p class="text-xs text-muted-foreground">
+                  Smart Lock isn't connected.
+                </p>
+                <NuxtLink to="/settings/integrations" class="mt-1 inline-block text-xs text-primary underline">
+                  Connect in Settings
+                </NuxtLink>
+              </div>
+
+              <div v-else-if="locksForListing(reservation.listingId).length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                No smart locks paired to this listing.
+              </div>
+
+              <div v-else class="space-y-2">
+                <div
+                  v-for="lock in locksForListing(reservation.listingId)"
+                  :key="lock.id"
+                  class="border p-3"
+                >
+                  <div class="flex items-center gap-2">
+                    <Icon
+                      :name="lock.online ? 'lucide:lock' : 'lucide:lock-open'"
+                      class="size-4 shrink-0"
+                      :class="lock.online ? 'text-green-600' : 'text-muted-foreground'"
+                    />
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-medium truncate">
+                        {{ lock.name }}
+                      </p>
+                      <p class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Icon name="lucide:battery" class="size-2.5" :class="lock.batteryLevel <= 20 ? 'text-amber-500' : ''" />
+                        {{ lock.batteryLevel }}%
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      class="h-7 gap-1 text-xs"
+                      :disabled="!lock.online || generatingLockId === lock.id"
+                      @click="generateCode(reservation, lock.id)"
+                    >
+                      <Icon
+                        v-if="generatingLockId === lock.id"
+                        name="lucide:loader-2"
+                        class="size-3 animate-spin"
+                      />
+                      <Icon v-else name="lucide:plus" class="size-3" />
+                      {{ generatingLockId === lock.id ? 'Generating…' : 'Generate code' }}
+                    </Button>
+                  </div>
+
+                  <div
+                    v-for="code in codesForReservation(reservation).filter(c => c.lockId === lock.id)"
+                    :key="code.id"
+                    class="mt-2 flex items-center justify-between gap-2 border bg-muted/30 p-2"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <p class="font-mono text-base font-bold tracking-widest">
+                        {{ code.code }}
+                      </p>
+                      <p class="text-[10px] text-muted-foreground">
+                        {{ code.guestName || 'Guest' }} · expires {{ formatExpiry(code.endsAt) }}
+                      </p>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Copy code" @click="copyCode(code.code)">
+                        <Icon name="lucide:copy" class="size-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" class="h-7 w-7 p-0 hover:text-destructive" title="Revoke" @click="revokeCode(code.id)">
+                        <Icon name="lucide:trash-2" class="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <p v-if="codesForReservation(reservation).filter(c => c.lockId === lock.id).length === 0" class="mt-2 text-[10px] text-muted-foreground italic">
+                    No active codes. Click "Generate code" to create one.
+                  </p>
                 </div>
               </div>
             </div>
