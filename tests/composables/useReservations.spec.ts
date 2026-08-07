@@ -1,27 +1,27 @@
 import { describe, expect, it, beforeEach } from 'vitest'
-import { useReservations } from '~/composables/useReservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 describe('useReservations', () => {
   beforeEach(() => {
     // Reset module state between tests (useState persists across calls)
-    const { reset } = useReservations()
+    const { reset } = useReservationsModule()
     reset()
   })
 
   it('initializes with mock data', () => {
-    const { reservations, guests } = useReservations()
+    const { reservations, guests } = useReservationsModule()
     expect(reservations.value.length).toBeGreaterThanOrEqual(5)
     expect(guests.value.length).toBeGreaterThanOrEqual(5)
   })
 
   it('getGuestById returns a guest and null for missing id', () => {
-    const { getGuestById } = useReservations()
+    const { getGuestById } = useReservationsModule()
     expect(getGuestById('guest-1')?.name).toBe('Sarah Mitchell')
     expect(getGuestById('missing')).toBeNull()
   })
 
   it('getReservationsForGuest returns all stays sorted by check-in desc', () => {
-    const { getReservationsForGuest } = useReservations()
+    const { getReservationsForGuest } = useReservationsModule()
     const stays = getReservationsForGuest('guest-1')
     expect(stays.length).toBeGreaterThanOrEqual(1)
     const dates = stays.map(s => s.checkIn)
@@ -29,7 +29,7 @@ describe('useReservations', () => {
   })
 
   it('filteredReservations applies search, status, listing, and date range filters', () => {
-    const { filteredReservations, filters } = useReservations()
+    const { filteredReservations, filters } = useReservationsModule()
     filters.value.search = 'sarah'
     expect(filteredReservations.value.every(r => r.guestName.toLowerCase().includes('sarah'))).toBe(true)
     filters.value.search = ''
@@ -45,13 +45,13 @@ describe('useReservations', () => {
   })
 
   it('stats counts upcoming, current, past, and cancelled reservations', () => {
-    const { stats } = useReservations()
+    const { stats } = useReservationsModule()
     expect(stats.value.upcoming + stats.value.current + stats.value.past + stats.value.cancelled)
       .toBeGreaterThanOrEqual(5)
   })
 
   it('createReservation validates required fields and adds to list', () => {
-    const { createReservation, reservations } = useReservations()
+    const { createReservation, reservations } = useReservationsModule()
     const before = reservations.value.length
     const result = createReservation({
       guestName: '',
@@ -93,7 +93,7 @@ describe('useReservations', () => {
   })
 
   it('updateGuestNotes updates a guest profile', () => {
-    const { updateGuestNotes, getGuestById } = useReservations()
+    const { updateGuestNotes, getGuestById } = useReservationsModule()
     updateGuestNotes('guest-1', 'New note')
     expect(getGuestById('guest-1')?.notes).toBe('New note')
     updateGuestNotes('missing', 'x')
