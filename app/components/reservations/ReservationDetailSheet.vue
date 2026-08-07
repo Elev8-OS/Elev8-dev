@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 
 const props = defineProps<{
   reservation: ReservationEntry | null

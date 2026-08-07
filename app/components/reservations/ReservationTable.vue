@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
+import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 
 defineProps<{ reservations: ReservationEntry[] }>()
 
