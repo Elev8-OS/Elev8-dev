@@ -4,12 +4,12 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import { useReservationsModule } from '~/composables/useReservationsModule'
-import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { listings } from '~/components/listings/data/listings'
-import ReservationTable from '~/components/reservations/ReservationTable.vue'
-import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
+import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
+import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
+import ReservationTable from '~/components/reservations/ReservationTable.vue'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const router = useRouter()
 
@@ -289,7 +289,9 @@ function applyStatFilter(status: string) {
             <CommandList>
               <CommandEmpty>
                 <div v-if="listingSearch.trim() || selectedListingTags.length" class="py-3 text-center">
-                  <p class="text-sm text-muted-foreground">No listing found.</p>
+                  <p class="text-sm text-muted-foreground">
+                    No listing found.
+                  </p>
                 </div>
                 <div v-else class="py-3 text-center text-sm text-muted-foreground">
                   Type to search...
@@ -306,8 +308,12 @@ function applyStatFilter(status: string) {
                   <div class="flex items-start gap-2 w-full">
                     <Checkbox :model-value="filters.listings.includes(listing.id)" class="mt-0.5 size-4" />
                     <div class="min-w-0 flex-1">
-                      <p class="text-sm font-medium">{{ listing.name }}</p>
-                      <p class="text-xs text-muted-foreground">{{ listing.location }}</p>
+                      <p class="text-sm font-medium">
+                        {{ listing.name }}
+                      </p>
+                      <p class="text-xs text-muted-foreground">
+                        {{ listing.location }}
+                      </p>
                       <div class="mt-1 flex flex-wrap gap-1">
                         <Badge v-for="tag in listing.tags" :key="tag" variant="outline" class="text-[10px]">
                           {{ tag }}
