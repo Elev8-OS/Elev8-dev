@@ -65,7 +65,7 @@ function fmtCurrency(amount: number, currency: string): string {
               <div class="text-xs text-muted-foreground uppercase tracking-wide mb-2">
                 Listing
               </div>
-              <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-primary hover:underline text-sm font-medium">
+              <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-sm font-medium">
                 {{ reservation.listingName }}
               </NuxtLink>
             </div>

@@ -52,7 +52,7 @@ function fmtCurrency(amount: number, currency: string): string {
               class="border-t hover:bg-muted/30 transition-colors"
             >
               <td class="px-4 py-3">
-                <NuxtLink :to="`/listings/${r.listingId}`" class="text-primary hover:underline">
+                <NuxtLink :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
                   {{ r.listingName }}
                 </NuxtLink>
               </td>
