@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import { reservationStatusLabels } from '~/components/reservations/data/reservations'
-import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
+import { listings } from '~/components/listings/data/listings'
 
 defineProps<{
   reservation: ReservationEntry | null
@@ -22,109 +21,75 @@ function fmtDate(iso: string): string {
 function fmtCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
 }
+
+function listingPhoto(listingId: string): string {
+  return listings.value.find(l => l.id === listingId)?.photos?.[0] ?? ''
+}
+
+function channelIcon(channel: string): string {
+  if (channel === 'Airbnb')
+    return 'logos:airbnb'
+  if (channel === 'Booking.com')
+    return 'simple-icons:bookingdotcom'
+  return 'lucide:globe'
+}
+
+function partyLabel(count: number): string {
+  if (count <= 0)
+    return ''
+  return count === 1 ? '1 Guest' : `${count} Guests`
+}
+
+function initials(name: string): string {
+  return name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
+}
 </script>
 
 <template>
   <Sheet :open="open" @update:open="emit('update:open', $event)">
-    <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-md" side="right">
-      <SheetHeader class="border-b px-6 py-4">
-        <SheetTitle>
-          Reservation
-        </SheetTitle>
-        <SheetDescription v-if="reservation">
-          {{ reservation.id }} · {{ reservationStatusLabels[reservation.status] }}
-        </SheetDescription>
-      </SheetHeader>
-
+    <SheetContent class="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md" side="right">
       <template v-if="reservation">
         <ScrollArea class="flex-1">
-          <div class="flex flex-col gap-6 p-6">
-            <!-- Guest -->
-            <div>
-              <div class="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-                Guest
+          <div class="flex flex-col">
+            <!-- Hero banner -->
+            <div class="relative h-36 w-full shrink-0">
+              <img
+                :src="listingPhoto(reservation.listingId)"
+                :alt="reservation.listingName"
+                class="h-full w-full object-cover"
+              >
+              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+              <!-- Status chip -->
+              <div class="absolute top-4 left-4">
+                <ReservationStatusBadge :status="reservation.status" />
               </div>
-              <div class="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  class="text-left hover:underline"
-                  @click="emit('openGuest', reservation.guestId)"
-                >
-                  <ReservationGuestCell :name="reservation.guestName" :email="reservation.guestEmail" />
-                </button>
+              <!-- Channel logo -->
+              <div class="absolute top-4 right-4 flex size-9 items-center justify-center rounded-full bg-white/90 shadow-sm">
+                <Icon :name="channelIcon(reservation.channel)" class="size-5" />
               </div>
-              <p class="mt-1 text-xs text-muted-foreground">
-                {{ reservation.guestPhone }}
-              </p>
-            </div>
-
-            <Separator />
-
-            <!-- Listing -->
-            <div>
-              <div class="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-                Listing
-              </div>
-              <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-sm font-medium">
-                {{ reservation.listingName }}
-              </NuxtLink>
-            </div>
-
-            <Separator />
-
-            <!-- Dates -->
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  Check-in
-                </div>
-                <div class="text-sm font-medium">
-                  {{ fmtDate(reservation.checkIn) }}
-                </div>
-              </div>
-              <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  Check-out
-                </div>
-                <div class="text-sm font-medium">
-                  {{ fmtDate(reservation.checkOut) }}
-                </div>
+              <!-- Listing name on banner -->
+              <div class="absolute bottom-3 left-4 right-4">
+                <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-white hover:underline text-lg font-semibold leading-tight">
+                  {{ reservation.listingName }}
+                </NuxtLink>
               </div>
             </div>
 
-            <Separator />
-
-            <!-- Details -->
-            <div class="grid grid-cols-2 gap-4">
+            <!-- Reservation id + price -->
+            <div class="flex items-center justify-between px-5 py-4">
               <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  Nights
+                <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Reservation
                 </div>
-                <div class="text-sm font-medium">
-                  {{ reservation.nights }}
+                <div class="font-mono text-sm font-semibold">
+                  {{ reservation.id }}
                 </div>
               </div>
-              <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  Guests
-                </div>
-                <div class="text-sm font-medium">
-                  {{ reservation.guestCount }}
-                </div>
-              </div>
-              <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                  Channel
-                </div>
-                <div class="text-sm font-medium">
-                  {{ reservation.channel }}
-                </div>
-              </div>
-              <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+              <div class="text-right">
+                <div class="text-xs text-muted-foreground uppercase tracking-wide">
                   Total
                 </div>
-                <div class="text-sm font-semibold">
+                <div class="text-xl font-bold">
                   {{ fmtCurrency(reservation.totalPrice, reservation.currency) }}
                 </div>
               </div>
@@ -132,17 +97,131 @@ function fmtCurrency(amount: number, currency: string): string {
 
             <Separator />
 
-            <!-- Notes -->
-            <div>
-              <div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">
-                Guest notes
+            <!-- Guest -->
+            <div class="px-5 py-4">
+              <div class="flex items-center gap-3">
+                <Avatar class="size-11">
+                  <AvatarFallback class="bg-primary/10 text-primary text-sm">
+                    {{ initials(reservation.guestName) }}
+                  </AvatarFallback>
+                </Avatar>
+                <div class="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    class="block text-left hover:underline"
+                    @click="emit('openGuest', reservation.guestId)"
+                  >
+                    <span class="font-semibold">{{ reservation.guestName }}</span>
+                  </button>
+                  <p class="text-xs text-muted-foreground truncate">
+                    {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
+                  </p>
+                </div>
               </div>
-              <p class="text-sm" :class="reservation.guestNotes ? '' : 'text-muted-foreground italic'">
-                {{ reservation.guestNotes || 'No notes' }}
-              </p>
+              <div v-if="partyLabel(reservation.guestCount)" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Icon name="lucide:users" class="size-3.5" />
+                {{ partyLabel(reservation.guestCount) }}
+              </div>
+              <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+                <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
+                {{ reservation.guestNotes }}
+              </div>
+            </div>
+
+            <Separator />
+
+            <!-- Dates -->
+            <div class="px-5 py-4">
+              <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <div>
+                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Check-in
+                  </div>
+                  <div class="text-base font-semibold">
+                    {{ fmtDate(reservation.checkIn) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    2:00 PM
+                  </div>
+                </div>
+                <div class="flex flex-col items-center gap-1">
+                  <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Icon name="lucide:moon-star" class="size-4" />
+                  </div>
+                  <span class="text-[11px] font-medium text-muted-foreground">
+                    {{ reservation.nights }} nights
+                  </span>
+                </div>
+                <div class="text-right">
+                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Check-out
+                  </div>
+                  <div class="text-base font-semibold">
+                    {{ fmtDate(reservation.checkOut) }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    11:00 AM
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <!-- Details grid -->
+            <div class="grid grid-cols-2 gap-4 px-5 py-4">
+              <div class="flex items-center gap-2.5">
+                <Icon name="lucide:users" class="size-4 text-muted-foreground" />
+                <div>
+                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Guests
+                  </div>
+                  <div class="text-sm font-medium">
+                    {{ reservation.guestCount }}
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2.5">
+                <Icon :name="channelIcon(reservation.channel)" class="size-4 text-muted-foreground" />
+                <div>
+                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Channel
+                  </div>
+                  <div class="text-sm font-medium">
+                    {{ reservation.channel }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <!-- Actions -->
+            <div class="flex gap-2 px-5 py-4">
+              <Button variant="outline" size="sm" class="flex-1 gap-1.5" @click="emit('openGuest', reservation.guestId)">
+                <Icon name="lucide:user-round" class="size-3.5" />
+                Guest profile
+              </Button>
+              <Button variant="outline" size="sm" class="flex-1 gap-1.5" as-child>
+                <NuxtLink :to="`/listings/${reservation.listingId}`">
+                  <Icon name="lucide:building-2" class="size-3.5" />
+                  View listing
+                </NuxtLink>
+              </Button>
             </div>
           </div>
         </ScrollArea>
+      </template>
+
+      <template v-else>
+        <SheetHeader class="border-b px-6 py-4">
+          <SheetTitle>
+            Reservation
+          </SheetTitle>
+        </SheetHeader>
+        <div class="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+          No reservation selected.
+        </div>
       </template>
     </SheetContent>
   </Sheet>
