@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
-describe('useReservations', () => {
+describe('useReservationsModule', () => {
   beforeEach(() => {
     // Reset module state between tests (useState persists across calls)
     const { reset } = useReservationsModule()

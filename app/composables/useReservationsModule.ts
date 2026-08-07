@@ -15,13 +15,13 @@ export function useReservationsModule() {
   const guests = useState<GuestProfile[]>('reservations-guests', () =>
     initialGuests.map(g => ({ ...g })))
 
-  const filters = ref<ReservationFilters>({
+  const filters = useState<ReservationFilters>('reservations-filters', () => ({
     search: '',
     status: 'all',
     listings: [],
     dateFrom: '',
     dateTo: '',
-  })
+  }))
 
   const filteredReservations = computed(() => {
     return reservations.value.filter((r) => {
