@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { GuestProfile } from '~/components/reservations/data/reservations'
 
-const props = defineProps<{ guest: GuestProfile }>()
+defineProps<{ guest: GuestProfile }>()
 
 const emit = defineEmits<{
   newReservation: []

@@ -28,16 +28,36 @@ function fmtCurrency(amount: number, currency: string): string {
       <table class="w-full text-sm">
         <thead class="bg-muted/50 text-xs uppercase text-muted-foreground">
           <tr>
-            <th class="text-left font-medium px-4 py-3">Guest</th>
-            <th class="text-left font-medium px-4 py-3">Listing</th>
-            <th class="text-left font-medium px-4 py-3">Check-in</th>
-            <th class="text-left font-medium px-4 py-3">Check-out</th>
-            <th class="text-left font-medium px-4 py-3">Nights</th>
-            <th class="text-left font-medium px-4 py-3">Guests</th>
-            <th class="text-left font-medium px-4 py-3">Channel</th>
-            <th class="text-right font-medium px-4 py-3">Total</th>
-            <th class="text-left font-medium px-4 py-3">Status</th>
-            <th class="text-left font-medium px-4 py-3"><span class="sr-only">Actions</span></th>
+            <th class="text-left font-medium px-4 py-3">
+              Guest
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Listing
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Check-in
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Check-out
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Nights
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Guests
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Channel
+            </th>
+            <th class="text-right font-medium px-4 py-3">
+              Total
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              Status
+            </th>
+            <th class="text-left font-medium px-4 py-3">
+              <span class="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>

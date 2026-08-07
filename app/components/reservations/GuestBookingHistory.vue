@@ -26,10 +26,18 @@ function fmtCurrency(amount: number, currency: string): string {
         <table class="w-full text-sm">
           <thead class="bg-muted/50 text-xs uppercase text-muted-foreground">
             <tr>
-              <th class="text-left font-medium px-4 py-3">Stay</th>
-              <th class="text-left font-medium px-4 py-3">Listing</th>
-              <th class="text-right font-medium px-4 py-3">Total</th>
-              <th class="text-left font-medium px-4 py-3">Ratings</th>
+              <th class="text-left font-medium px-4 py-3">
+                Stay
+              </th>
+              <th class="text-left font-medium px-4 py-3">
+                Listing
+              </th>
+              <th class="text-right font-medium px-4 py-3">
+                Total
+              </th>
+              <th class="text-left font-medium px-4 py-3">
+                Ratings
+              </th>
             </tr>
           </thead>
           <tbody>

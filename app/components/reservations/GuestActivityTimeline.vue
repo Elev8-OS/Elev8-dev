@@ -38,7 +38,7 @@ const typeMeta: Record<ActivityEvent['type'], { icon: string, tone: string }> = 
           :key="e.id"
           class="flex items-start gap-3 px-4 py-3"
         >
-          <div :class="['flex size-9 items-center justify-center rounded-full shrink-0', typeMeta[e.type].tone]">
+          <div class="flex size-9 items-center justify-center rounded-full shrink-0" :class="[typeMeta[e.type].tone]">
             <Icon :name="typeMeta[e.type].icon" class="size-4" />
           </div>
           <div class="flex-1 min-w-0">

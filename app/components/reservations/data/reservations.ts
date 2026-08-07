@@ -1,4 +1,3 @@
-import { ref } from 'vue'
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 
 export type ReservationStatus = 'inquiry' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled'

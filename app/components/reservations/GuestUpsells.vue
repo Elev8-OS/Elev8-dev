@@ -3,7 +3,7 @@ import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 
-const props = withDefaults(defineProps<{ orderIds: string[] }>(), {
+const props = withDefaults(defineProps<{ orderIds?: string[] }>(), {
   orderIds: () => [],
 })
 
@@ -51,7 +51,7 @@ function orderStatusLabel(order: UpsellOrder): string {
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <Badge variant="outline" :class="[getOrderStatusMeta(order).color, 'rounded-full']">
+            <Badge variant="outline" class="rounded-full" :class="[getOrderStatusMeta(order).color]">
               {{ orderStatusLabel(order) }}
             </Badge>
             <span class="text-sm font-semibold tabular-nums">

@@ -3,14 +3,14 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 
-const props = defineProps<{
+defineProps<{
   reservation: ReservationEntry | null
   open: boolean
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  openGuest: [id: string]
+  'openGuest': [id: string]
 }>()
 
 const df = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' })

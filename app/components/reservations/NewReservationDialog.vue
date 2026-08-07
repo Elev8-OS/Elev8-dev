@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import { nightsBetween } from '~/components/reservations/data/reservations'
-import { listings } from '~/components/listings/data/listings'
-import { useReservationsModule } from '~/composables/useReservationsModule'
 import { toast } from 'vue-sonner'
+import { listings } from '~/components/listings/data/listings'
+import { nightsBetween } from '~/components/reservations/data/reservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
-const props = defineProps<{ open: boolean }>()
+defineProps<{ open: boolean }>()
+
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  created: [reservation: ReservationEntry]
+  'created': [reservation: ReservationEntry]
 }>()
 
 const { createReservation } = useReservationsModule()
