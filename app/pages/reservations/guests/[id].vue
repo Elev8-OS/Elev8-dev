@@ -9,7 +9,6 @@ import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
-import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
@@ -334,13 +333,6 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                 </p>
                 <p class="text-xs text-muted-foreground">
                   {{ primaryStay.guestCount }} guests
-                </p>
-              </div>
-              <Separator />
-              <div class="space-y-1.5 text-sm">
-                <p class="flex items-center justify-between">
-                  <span class="text-muted-foreground">Status</span>
-                  <ReservationStatusBadge :status="primaryStay.status" />
                 </p>
               </div>
             </template>
