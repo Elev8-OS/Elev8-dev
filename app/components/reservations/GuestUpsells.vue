@@ -16,7 +16,7 @@ const linkedOrders = computed(() => {
 })
 
 function fmtCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
+  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
 }
 
 function orderStatusLabel(order: UpsellOrder): string {
@@ -47,7 +47,7 @@ function orderStatusLabel(order: UpsellOrder): string {
               {{ order.serviceName }}
             </p>
             <p class="text-xs text-muted-foreground">
-              {{ new Date(order.orderDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }} · {{ order.guestName }}
+              {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
             </p>
           </div>
           <div class="flex items-center gap-2">

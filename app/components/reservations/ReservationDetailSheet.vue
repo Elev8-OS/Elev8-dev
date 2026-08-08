@@ -55,14 +55,14 @@ function onStatusChange(value: unknown) {
 
 const smartLock = useSmartLock()
 
-const df = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
 
 function fmtDate(iso: string): string {
   return df.format(new Date(`${iso}T00:00:00Z`))
 }
 
 function fmtCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
+  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
 }
 
 function listingPhoto(listingId: string): string {
@@ -136,7 +136,7 @@ async function copyCode(code: string) {
 }
 
 function formatExpiry(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 

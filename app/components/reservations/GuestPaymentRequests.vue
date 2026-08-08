@@ -3,14 +3,14 @@ import type { PaymentRequest } from '~/components/payment-request/data/payment-r
 
 defineProps<{ requests: PaymentRequest[] }>()
 
-const df = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 function fmtDate(iso: string): string {
   return df.format(new Date(iso))
 }
 
 function fmtCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
+  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
 }
 </script>
 

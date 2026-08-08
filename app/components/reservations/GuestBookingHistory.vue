@@ -3,14 +3,14 @@ import type { GuestBookingHistoryItem } from '~/components/reservations/data/res
 
 defineProps<{ bookings: GuestBookingHistoryItem[] }>()
 
-const df = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 function fmtDate(iso: string): string {
   return df.format(new Date(`${iso}T00:00:00Z`))
 }
 
 function fmtCurrency(amount: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
+  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
 }
 </script>
 

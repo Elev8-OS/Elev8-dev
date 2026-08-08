@@ -10,7 +10,7 @@ interface Props {
 const props = defineProps<Props>()
 
 function fmtCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: props.currency, maximumFractionDigits: 0 }).format(amount)
+  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${props.currency}`
 }
 </script>
 
