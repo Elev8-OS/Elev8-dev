@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
+import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -165,10 +166,12 @@ const nextCleaning = computed(() => {
 const addCleaningOpen = ref(false)
 const newCleaningDate = ref('')
 const newCleaningTime = ref('11:00')
+const newCleaningAssignee = ref<string>('')
 
 function openAddCleaning() {
   newCleaningDate.value = reservation.value?.checkOut?.slice(0, 10) ?? ''
   newCleaningTime.value = '11:00'
+  newCleaningAssignee.value = ''
   addCleaningOpen.value = true
 }
 
@@ -176,12 +179,13 @@ function addCleaning() {
   const r = reservation.value
   if (!r || !newCleaningDate.value)
     return
+  const assignee = cleanerOptions.find(c => c.id === newCleaningAssignee.value)
   createJob({
     listingId: r.listingId,
     listingName: r.listingName,
     scheduledAt: `${newCleaningDate.value}T${newCleaningTime.value || '11:00'}:00`,
-    cleanerIds: [],
-    cleanerNames: [],
+    cleanerIds: assignee ? [assignee.id] : [],
+    cleanerNames: assignee ? [assignee.name] : [],
     teamName: 'Housekeeping',
     status: 'scheduled',
     priority: 'normal',
@@ -364,47 +368,50 @@ function fmtCleaningDate(iso: string): string {
               </div>
             </div>
 
-            <!-- Upsells purchased by the guest -->
-            <div class="border-b px-5 py-4">
-              <div class="mb-3 flex items-center gap-2">
-                <Icon name="lucide:tag" class="size-4 text-muted-foreground" />
-                <span class="text-xs text-muted-foreground uppercase tracking-wide">
-                  Upsells
-                </span>
-                <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                  {{ reservationUpsells.length }}
-                </Badge>
-              </div>
-
-              <div v-if="reservationUpsells.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                No upsells purchased for this reservation.
-              </div>
-
-              <div v-else class="space-y-2">
-                <div
-                  v-for="order in reservationUpsells"
-                  :key="order.id"
-                  class="flex items-center justify-between gap-3 border p-3"
-                >
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium truncate">
-                      {{ order.serviceName }}
-                    </p>
-                    <p class="text-[10px] text-muted-foreground">
-                      {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
-                    </p>
-                  </div>
-                  <div class="flex shrink-0 items-center gap-2">
-                    <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
-                      {{ getOrderStatusMeta(order).label }}
+            <!-- Upsells purchased by the guest (accordion) -->
+            <Accordion type="single" collapsible class="w-full border-b px-2">
+              <AccordionItem value="upsells" class="border-b-0">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
+                  <span class="flex items-center gap-2">
+                    <Icon name="lucide:tag" class="size-4" />
+                    Upsells
+                    <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                      {{ reservationUpsells.length }}
                     </Badge>
-                    <span class="text-sm font-semibold tabular-nums">
-                      {{ fmtCurrency(order.grandTotal, order.currency) }}
-                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="px-3 pb-3">
+                  <div v-if="reservationUpsells.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                    No upsells purchased for this reservation.
                   </div>
-                </div>
-              </div>
-            </div>
+
+                  <div v-else class="space-y-2">
+                    <div
+                      v-for="order in reservationUpsells"
+                      :key="order.id"
+                      class="flex items-center justify-between gap-3 border p-3"
+                    >
+                      <div class="min-w-0">
+                        <p class="text-sm font-medium truncate">
+                          {{ order.serviceName }}
+                        </p>
+                        <p class="text-[10px] text-muted-foreground">
+                          {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
+                        </p>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-2">
+                        <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
+                          {{ getOrderStatusMeta(order).label }}
+                        </Badge>
+                        <span class="text-sm font-semibold tabular-nums">
+                          {{ fmtCurrency(order.grandTotal, order.currency) }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
 
             <!-- Smart lock (collapsible accordion) -->
             <Accordion type="single" collapsible class="w-full border-b px-2">
@@ -502,69 +509,83 @@ function fmtCleaningDate(iso: string): string {
               </AccordionItem>
             </Accordion>
 
-            <!-- Housekeeping schedule -->
-            <div class="border-b px-5 py-4">
-              <div class="mb-3 flex items-center gap-2">
-                <Icon name="lucide:sparkles" class="size-4 text-muted-foreground" />
-                <span class="text-xs text-muted-foreground uppercase tracking-wide">
-                  Housekeeping
-                </span>
-              </div>
-
-              <div v-if="!nextCleaning" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                No upcoming cleaning scheduled.
-              </div>
-
-              <div v-else class="border p-3">
-                <div class="flex items-center justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="text-[10px] text-muted-foreground uppercase tracking-wide">
-                      Next cleaning
-                    </p>
-                    <p class="mt-0.5 text-sm font-semibold">
-                      {{ fmtCleaningDate(nextCleaning.scheduledAt) }}
-                    </p>
-                  </div>
-                  <Badge variant="outline" class="shrink-0 text-[10px]">
-                    {{ nextCleaning.status }}
-                  </Badge>
-                </div>
-              </div>
-
-              <!-- All scheduled cleanings -->
-              <div v-if="housekeepingJobs.length" class="mt-3 space-y-1.5">
-                <div
-                  v-for="job in housekeepingJobs"
-                  :key="job.id"
-                  class="flex items-center justify-between gap-2 border bg-muted/20 px-2.5 py-1.5"
-                >
-                  <div class="min-w-0">
-                    <p class="truncate text-xs font-medium">
-                      {{ fmtCleaningDate(job.scheduledAt) }}
-                    </p>
-                  </div>
-                  <div class="flex shrink-0 items-center gap-1">
-                    <Badge variant="outline" class="text-[9px]">
-                      {{ job.status }}
+            <!-- Housekeeping schedule (accordion) -->
+            <Accordion type="single" collapsible class="w-full border-b px-2">
+              <AccordionItem value="housekeeping" class="border-b-0">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
+                  <span class="flex items-center gap-2">
+                    <Icon name="lucide:sparkles" class="size-4" />
+                    Housekeeping
+                    <Badge v-if="housekeepingJobs.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                      {{ housekeepingJobs.length }}
                     </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="h-6 w-6 p-0 hover:text-destructive"
-                      title="Delete cleaning"
-                      @click="removeCleaning(job.id)"
-                    >
-                      <Icon name="lucide:trash-2" class="size-3" />
-                    </Button>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="px-3 pb-3">
+                  <div v-if="!nextCleaning" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                    No upcoming cleaning scheduled.
                   </div>
-                </div>
-              </div>
 
-              <Button variant="outline" size="sm" class="mt-3 w-full gap-1.5" @click="openAddCleaning">
-                <Icon name="lucide:plus" class="size-3.5" />
-                Add cleaning
-              </Button>
-            </div>
+                  <div v-else class="border p-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-[10px] text-muted-foreground uppercase tracking-wide">
+                          Next cleaning
+                        </p>
+                        <p class="mt-0.5 text-sm font-semibold">
+                          {{ fmtCleaningDate(nextCleaning.scheduledAt) }}
+                        </p>
+                      </div>
+                      <Badge variant="outline" class="shrink-0 text-[10px]">
+                        {{ nextCleaning.status }}
+                      </Badge>
+                    </div>
+                    <p v-if="nextCleaning.cleanerNames.length" class="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Icon name="lucide:user-round" class="size-3" />
+                      {{ nextCleaning.cleanerNames.join(', ') }}
+                    </p>
+                  </div>
+
+                  <!-- All scheduled cleanings -->
+                  <div v-if="housekeepingJobs.length" class="mt-3 space-y-1.5">
+                    <div
+                      v-for="job in housekeepingJobs"
+                      :key="job.id"
+                      class="flex items-center justify-between gap-2 border bg-muted/20 px-2.5 py-1.5"
+                    >
+                      <div class="min-w-0">
+                        <p class="truncate text-xs font-medium">
+                          {{ fmtCleaningDate(job.scheduledAt) }}
+                        </p>
+                        <p v-if="job.cleanerNames.length" class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Icon name="lucide:user-round" class="size-2.5" />
+                          {{ job.cleanerNames.join(', ') }}
+                        </p>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-1">
+                        <Badge variant="outline" class="text-[9px]">
+                          {{ job.status }}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="h-6 w-6 p-0 hover:text-destructive"
+                          title="Delete cleaning"
+                          @click="removeCleaning(job.id)"
+                        >
+                          <Icon name="lucide:trash-2" class="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button variant="outline" size="sm" class="mt-3 w-full gap-1.5" @click="openAddCleaning">
+                    <Icon name="lucide:plus" class="size-3.5" />
+                    Add cleaning
+                  </Button>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
 
             <!-- Actions -->
             <div class="flex gap-2 px-5 py-4">
@@ -615,6 +636,22 @@ function fmtCleaningDate(iso: string): string {
         <div class="space-y-2">
           <Label>Time</Label>
           <Input v-model="newCleaningTime" type="time" />
+        </div>
+        <div class="space-y-2">
+          <Label>Assignee (optional)</Label>
+          <Select v-model="newCleaningAssignee">
+            <SelectTrigger>
+              <SelectValue placeholder="Select assignee" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">
+                Unassigned
+              </SelectItem>
+              <SelectItem v-for="c in cleanerOptions" :key="c.id" :value="c.id">
+                {{ c.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <DialogFooter>
