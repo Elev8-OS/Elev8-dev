@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
+import { listings } from '~/components/listings/data/listings'
+import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
-import GuestBookingHistory from '~/components/reservations/GuestBookingHistory.vue'
 import GuestNotes from '~/components/reservations/GuestNotes.vue'
 import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
-import GuestProfileHeader from '~/components/reservations/GuestProfileHeader.vue'
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
-import GuestStatsStrip from '~/components/reservations/GuestStatsStrip.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
@@ -33,27 +32,21 @@ const guest = computed(() => getGuestById(guestId.value))
 const stays = computed<ReservationEntry[]>(() => guest.value ? getReservationsForGuest(guest.value.id) : [])
 
 const today = new Date().toISOString().split('T')[0] ?? ''
-const upcomingCount = computed(() => stays.value.filter(r => r.checkIn > today && r.status !== 'cancelled').length)
 const currentCount = computed(() => stays.value.filter(r => r.checkIn <= today && r.checkOut >= today && r.status !== 'cancelled').length)
 const totalSpent = computed(() => stays.value
   .filter(r => r.status !== 'cancelled')
   .reduce((sum, r) => sum + r.totalPrice, 0))
 const spentCurrency = computed(() => stays.value.find(r => r.status !== 'cancelled')?.currency ?? 'USD')
 
-// Booking history — from previous-stays data + past stays
-const bookingHistory = computed(() => {
-  if (!guest.value)
-    return []
-  return stays.value
-    .filter(r => r.status === 'checked_out')
-    .map(r => ({
-      id: r.id,
-      checkIn: r.checkIn,
-      nights: r.nights,
-      listingName: r.listingName,
-      totalPrice: r.totalPrice,
-      currency: r.currency,
-    }))
+// Primary (most relevant) stay for the Booking Info / Room Info cards
+const primaryStay = computed<ReservationEntry | null>(() => {
+  if (stays.value.length === 0)
+    return null
+  const active = stays.value.find(r => r.checkIn <= today && r.checkOut >= today && r.status !== 'cancelled')
+  if (active)
+    return active
+  const upcoming = stays.value.find(r => r.checkIn > today && r.status !== 'cancelled')
+  return upcoming ?? stays.value[0] ?? null
 })
 
 // Activity — merged from stays
@@ -95,6 +88,38 @@ function saveNotes(notes: string) {
 }
 
 const newReservationOpen = ref(false)
+
+// Formatting helpers
+const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+
+function fmtDate(iso: string): string {
+  return df.format(new Date(`${iso}T00:00:00Z`))
+}
+
+function fmtCurrency(amount: number, currency: string): string {
+  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+}
+
+function listingPhoto(listingId: string): string {
+  return listings.value.find(l => l.id === listingId)?.photos?.[0] ?? ''
+}
+
+function callPhone(phone: string) {
+  window.location.href = `tel:${phone.replace(/[^\d+]/g, '')}`
+}
+
+function reservationStatusMeta(status?: ReservationStatus): string {
+  const map: Record<ReservationStatus, string> = {
+    unverified: 'bg-neutral-400/20 text-neutral-700 border-neutral-400/40',
+    verified: 'bg-green-500/10 text-green-700 border-green-500/30',
+    checked_in: 'bg-orange-500/10 text-orange-700 border-orange-500/30',
+    checked_out: 'bg-blue-500/10 text-blue-700 border-blue-500/30',
+    cancelled: 'bg-muted text-muted-foreground border-border',
+    blocked: 'bg-black/80 text-white border-black/80',
+    inquiry: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+  }
+  return status ? map[status] : ''
+}
 </script>
 
 <template>
@@ -121,15 +146,242 @@ const newReservationOpen = ref(false)
         </Button>
       </div>
 
-      <GuestProfileHeader :guest="guest" @new-reservation="newReservationOpen = true" />
+      <!-- Top: 3-column cards (Profile | Booking Info | Room Info) -->
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <!-- Profile card -->
+        <Card>
+          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle class="text-base">
+              Profile
+            </CardTitle>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
+                  <Icon name="lucide:more-horizontal" class="size-4" />
+                  <span class="sr-only">Menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem @click="newReservationOpen = true">
+                  <Icon name="lucide:plus" class="mr-2 size-4" />
+                  New reservation
+                </DropdownMenuItem>
+                <DropdownMenuItem @click="router.push('/reservations')">
+                  <Icon name="lucide:arrow-left" class="mr-2 size-4" />
+                  Back to list
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex items-center gap-3">
+              <Avatar class="size-12">
+                <AvatarFallback class="bg-primary/10 text-primary">
+                  {{ guest.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
+                </AvatarFallback>
+              </Avatar>
+              <div class="min-w-0">
+                <p class="font-semibold truncate">
+                  {{ guest.name }}
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  ID: {{ guest.id }}
+                </p>
+              </div>
+            </div>
+            <div class="space-y-1.5 text-sm">
+              <p class="flex items-center gap-2 text-muted-foreground">
+                <Icon name="lucide:phone" class="size-3.5" />
+                <button type="button" class="hover:underline" @click="callPhone(guest.phone)">
+                  {{ guest.phone }}
+                </button>
+              </p>
+              <p class="flex items-center gap-2 text-muted-foreground">
+                <Icon name="lucide:mail" class="size-3.5" />
+                <a :href="`mailto:${guest.email}`" class="hover:underline truncate">{{ guest.email }}</a>
+              </p>
+              <p class="flex items-center gap-2 text-muted-foreground">
+                <Icon name="lucide:languages" class="size-3.5" />
+                {{ guest.language }}
+              </p>
+            </div>
+            <Separator />
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Joined
+                </p>
+                <p class="font-medium">
+                  {{ fmtDate(guest.createdAt) }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Previous stays
+                </p>
+                <p class="font-medium">
+                  {{ guest.previousStays }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Total spent
+                </p>
+                <p class="font-medium">
+                  {{ fmtCurrency(totalSpent, spentCurrency) }}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Current stay
+                </p>
+                <p class="font-medium">
+                  {{ currentCount }}
+                </p>
+              </div>
+            </div>
+            <div v-if="guest.tags.length" class="flex flex-wrap gap-1.5">
+              <Badge v-for="tag in guest.tags" :key="tag" variant="secondary">
+                {{ tag }}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
 
-      <GuestStatsStrip
-        :total-stays="stays.length"
-        :upcoming="upcomingCount"
-        :current="currentCount"
-        :total-spent="totalSpent"
-        :currency="spentCurrency"
-      />
+        <!-- Booking Info card -->
+        <Card>
+          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle class="text-base">
+              Booking Info
+            </CardTitle>
+            <Badge variant="outline" :class="reservationStatusMeta(primaryStay?.status)">
+              {{ primaryStay ? reservationStatusLabels[primaryStay.status] : 'No booking' }}
+            </Badge>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <template v-if="primaryStay">
+              <div class="space-y-1.5 text-sm">
+                <p class="flex items-center gap-2 text-muted-foreground">
+                  <Icon name="lucide:hash" class="size-3.5" />
+                  Booking ID:
+                  <span class="font-mono font-medium text-foreground">{{ primaryStay.id }}</span>
+                </p>
+                <p class="flex items-center gap-2 text-muted-foreground">
+                  <Icon name="lucide:calendar" class="size-3.5" />
+                  {{ fmtDate(primaryStay.checkIn) }} → {{ fmtDate(primaryStay.checkOut) }}
+                </p>
+                <p class="flex items-center gap-2 text-muted-foreground">
+                  <Icon name="lucide:moon" class="size-3.5" />
+                  {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
+                </p>
+              </div>
+              <Separator />
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Channel
+                  </p>
+                  <p class="font-medium">
+                    {{ primaryStay.channel }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Total
+                  </p>
+                  <p class="font-medium">
+                    {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Check-in
+                  </p>
+                  <p class="font-medium">
+                    {{ fmtDate(primaryStay.checkIn) }}
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                    Check-out
+                  </p>
+                  <p class="font-medium">
+                    {{ fmtDate(primaryStay.checkOut) }}
+                  </p>
+                </div>
+              </div>
+              <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                {{ primaryStay.guestNotes }}
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted-foreground italic">
+              No active booking for this guest.
+            </p>
+          </CardContent>
+        </Card>
+
+        <!-- Room Info card -->
+        <Card>
+          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle class="text-base">
+              Room Info
+            </CardTitle>
+            <Button v-if="primaryStay" variant="link" size="sm" class="h-8 p-0 text-xs" as-child>
+              <NuxtLink :to="`/listings/${primaryStay.listingId}`">
+                View detail
+              </NuxtLink>
+            </Button>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <template v-if="primaryStay">
+              <div class="h-28 w-full overflow-hidden border bg-muted">
+                <img
+                  :src="listingPhoto(primaryStay.listingId)"
+                  :alt="primaryStay.listingName"
+                  class="h-full w-full object-cover"
+                >
+              </div>
+              <div>
+                <p class="text-sm font-semibold leading-tight">
+                  {{ primaryStay.listingName }}
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
+                </p>
+              </div>
+              <Separator />
+              <div class="space-y-1.5 text-sm">
+                <p class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Price</span>
+                  <span class="font-medium">{{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}</span>
+                </p>
+                <p class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Nights</span>
+                  <span class="font-medium">{{ primaryStay.nights }}</span>
+                </p>
+                <p class="flex items-center justify-between">
+                  <span class="text-muted-foreground">Status</span>
+                  <ReservationStatusBadge :status="primaryStay.status" />
+                </p>
+              </div>
+              <div v-if="primaryStay.guestNotes" class="rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                {{ primaryStay.guestNotes }}
+              </div>
+            </template>
+            <p v-else class="text-sm text-muted-foreground italic">
+              No room booked.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <!-- Booking History table (full width) -->
+      <section class="space-y-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Booking History
+        </h2>
+        <GuestReservationsTable :reservations="stays" />
+      </section>
 
       <!-- Related links -->
       <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap gap-2">
@@ -154,22 +406,6 @@ const newReservationOpen = ref(false)
           Guest guide
         </Button>
       </div>
-
-      <!-- Reservations -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Reservations
-        </h2>
-        <GuestReservationsTable :reservations="stays" />
-      </section>
-
-      <!-- Booking history -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Booking history
-        </h2>
-        <GuestBookingHistory :bookings="bookingHistory" />
-      </section>
 
       <!-- Activity -->
       <section class="space-y-2">
