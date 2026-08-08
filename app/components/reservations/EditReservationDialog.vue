@@ -140,7 +140,7 @@ function categoryLabel(category: string): string {
 
 <template>
   <Dialog :open="open" @update:open="emit('update:open', $event)">
-    <DialogContent class="sm:max-w-lg">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>
           Edit Reservation
