@@ -344,12 +344,16 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       </div>
 
       <!-- Booking History table (full width) -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold text-muted-foreground">
-          Booking History
-        </h2>
-        <GuestReservationsTable :reservations="stays" />
-      </section>
+      <Card>
+        <CardHeader class="pb-2">
+          <CardTitle class="text-base">
+            Booking History
+          </CardTitle>
+        </CardHeader>
+        <CardContent class="p-0">
+          <GuestReservationsTable :reservations="stays" />
+        </CardContent>
+      </Card>
 
       <!-- Related links -->
       <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
