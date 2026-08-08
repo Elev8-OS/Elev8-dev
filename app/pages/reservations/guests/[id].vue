@@ -9,6 +9,7 @@ import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
+import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
@@ -334,12 +335,14 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           </CardHeader>
           <CardContent class="space-y-4">
             <template v-if="primaryStay">
-              <div class="h-28 w-full overflow-hidden border bg-muted">
+              <div class="flex h-28 w-full items-center justify-center overflow-hidden border bg-muted/40">
                 <img
+                  v-if="listingPhoto(primaryStay.listingId)"
                   :src="listingPhoto(primaryStay.listingId)"
                   :alt="primaryStay.listingName"
                   class="h-full w-full object-cover"
                 >
+                <Icon v-else name="lucide:building-2" class="size-8 text-muted-foreground/50" />
               </div>
               <div>
                 <p class="text-sm font-semibold leading-tight">
@@ -384,7 +387,10 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       </section>
 
       <!-- Related links -->
-      <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap gap-2">
+      <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
+        <span class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mr-2">
+          Quick links
+        </span>
         <Button
           v-if="relatedConversation"
           variant="outline"
@@ -418,7 +424,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       <!-- Payment requests -->
       <section class="space-y-2">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Payment requests
+          Payment Requests
         </h2>
         <GuestPaymentRequests :requests="guestPaymentRequests" />
       </section>
