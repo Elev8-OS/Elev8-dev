@@ -3,16 +3,9 @@ import type { ReservationEntry, ReservationStatus } from '~/components/reservati
 import { computed, ref } from 'vue'
 import { listings } from '~/components/listings/data/listings'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
-import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
-import GuestNotes from '~/components/reservations/GuestNotes.vue'
-import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
-import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
-import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
-import { useInbox } from '~/composables/useInbox'
-import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const route = useRoute()
@@ -21,11 +14,7 @@ const router = useRouter()
 const {
   getGuestById,
   getReservationsForGuest,
-  updateGuestNotes,
 } = useReservationsModule()
-const { requests } = usePaymentRequests()
-const { conversations } = useInbox()
-const { links } = useGuestGuideLinks()
 
 const guestId = computed(() => String(route.params.id))
 const guest = computed(() => getGuestById(guestId.value))
@@ -49,44 +38,6 @@ const primaryStay = computed<ReservationEntry | null>(() => {
   const upcoming = stays.value.find(r => r.checkIn > today && r.status !== 'cancelled')
   return upcoming ?? stays.value[0] ?? null
 })
-
-// Activity — merged from stays
-const activity = computed(() => stays.value.flatMap(r => r.activity).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)))
-
-// Payment requests — matched by email or explicit link
-const guestPaymentRequests = computed(() => {
-  if (!guest.value)
-    return []
-  const email = guest.value.email.toLowerCase()
-  return requests.value.filter(r => r.guestEmail.toLowerCase() === email || stays.value.some(s => s.paymentRequestId === r.id))
-})
-
-// Upsells — merged from stays
-const upsells = computed(() => stays.value.flatMap(r => r.upsellIds ?? []))
-
-// Related links
-const relatedConversation = computed(() => {
-  if (!guest.value)
-    return null
-  const convId = stays.value.find(r => r.conversationId)?.conversationId
-  return convId ? conversations.value.find(c => c.id === convId) ?? null : null
-})
-
-const relatedGuide = computed(() => {
-  if (!guest.value)
-    return null
-  const guideId = stays.value.find(r => r.guestGuideId)?.guestGuideId
-  return guideId ? links.value.find(l => l.id === guideId) ?? null : null
-})
-
-function openConversation() {
-  if (relatedConversation.value)
-    router.push(`/inbox?conversation=${relatedConversation.value.id}`)
-}
-
-function saveNotes(notes: string) {
-  updateGuestNotes(guestId.value, notes)
-}
 
 const newReservationOpen = ref(false)
 
@@ -357,65 +308,6 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           Booking History
         </h2>
         <GuestReservationsTable :reservations="stays" />
-      </section>
-
-      <!-- Related links -->
-      <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
-        <span class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mr-2">
-          Quick links
-        </span>
-        <Button
-          v-if="relatedConversation"
-          variant="outline"
-          size="sm"
-          class="gap-1.5"
-          @click="openConversation"
-        >
-          <Icon name="lucide:message-circle" class="size-3.5" />
-          Open conversation
-        </Button>
-        <Button
-          v-if="relatedGuide"
-          variant="outline"
-          size="sm"
-          class="gap-1.5"
-          @click="router.push(`/guest-guides/${relatedGuide.id}`)"
-        >
-          <Icon name="lucide:book-open" class="size-3.5" />
-          Guest guide
-        </Button>
-      </div>
-
-      <!-- Activity -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Activity
-        </h2>
-        <GuestActivityTimeline :events="activity" />
-      </section>
-
-      <!-- Payment requests -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Payment Requests
-        </h2>
-        <GuestPaymentRequests :requests="guestPaymentRequests" />
-      </section>
-
-      <!-- Upsells -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Upsells
-        </h2>
-        <GuestUpsells :order-ids="upsells" />
-      </section>
-
-      <!-- Notes -->
-      <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Notes
-        </h2>
-        <GuestNotes :notes="guest.notes" @save="saveNotes" />
       </section>
     </div>
 
