@@ -394,6 +394,16 @@ function fmtCleaningDate(iso: string): string {
                   </p>
                 </div>
               </div>
+              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span class="flex items-center gap-1.5">
+                  <Icon name="lucide:users" class="size-3.5" />
+                  {{ reservation.guestCount }} guests
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
+                  {{ reservation.channel }}
+                </span>
+              </div>
               <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
                 <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
                 {{ reservation.guestNotes }}
@@ -510,32 +520,6 @@ function fmtCleaningDate(iso: string): string {
                 <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
                   {{ bookingNoteBody }}
                 </p>
-              </div>
-            </div>
-
-            <!-- Details grid -->
-            <div class="grid grid-cols-2 gap-4 border-b px-5 py-4">
-              <div class="flex items-center gap-2.5">
-                <Icon name="lucide:users" class="size-4 text-muted-foreground" />
-                <div>
-                  <div class="text-xs text-muted-foreground">
-                    Guests
-                  </div>
-                  <div class="text-sm font-medium">
-                    {{ reservation.guestCount }}
-                  </div>
-                </div>
-              </div>
-              <div class="flex items-center gap-2.5">
-                <Icon :name="channelIcon(reservation.channel)" class="size-4 text-muted-foreground" />
-                <div>
-                  <div class="text-xs text-muted-foreground">
-                    Channel
-                  </div>
-                  <div class="text-sm font-medium">
-                    {{ reservation.channel }}
-                  </div>
-                </div>
               </div>
             </div>
 
