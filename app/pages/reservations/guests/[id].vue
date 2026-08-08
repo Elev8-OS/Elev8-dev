@@ -3,6 +3,7 @@ import type { ReservationEntry, ReservationStatus } from '~/components/reservati
 import { computed, ref } from 'vue'
 import { listings } from '~/components/listings/data/listings'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import GuestNotes from '~/components/reservations/GuestNotes.vue'
 import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
@@ -88,6 +89,7 @@ function saveNotes(notes: string) {
 }
 
 const newReservationOpen = ref(false)
+const editReservationOpen = ref(false)
 
 // Formatting helpers
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -254,9 +256,15 @@ function reservationStatusMeta(status?: ReservationStatus): string {
             <CardTitle class="text-base">
               Booking Info
             </CardTitle>
-            <Badge variant="outline" :class="reservationStatusMeta(primaryStay?.status)">
-              {{ primaryStay ? reservationStatusLabels[primaryStay.status] : 'No booking' }}
-            </Badge>
+            <div class="flex items-center gap-1.5">
+              <Badge variant="outline" :class="reservationStatusMeta(primaryStay?.status)">
+                {{ primaryStay ? reservationStatusLabels[primaryStay.status] : 'No booking' }}
+              </Badge>
+              <Button v-if="primaryStay" variant="ghost" size="sm" class="h-7 w-7 p-0" title="Edit reservation" @click="editReservationOpen = true">
+                <Icon name="lucide:pencil" class="size-3.5" />
+                <span class="sr-only">Edit</span>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent class="space-y-4">
             <template v-if="primaryStay">
@@ -398,6 +406,13 @@ function reservationStatusMeta(status?: ReservationStatus): string {
     <NewReservationDialog
       v-if="guest"
       v-model:open="newReservationOpen"
+    />
+
+    <EditReservationDialog
+      v-if="primaryStay"
+      :reservation="primaryStay"
+      :open="editReservationOpen"
+      @update:open="editReservationOpen = $event"
     />
 
     <template #fallback>

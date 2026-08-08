@@ -103,6 +103,12 @@ export function useReservationsModule() {
     )
   }
 
+  function updateReservation(id: string, patch: Partial<ReservationEntry>) {
+    reservations.value = reservations.value.map(r =>
+      r.id === id ? { ...r, ...patch } : r,
+    )
+  }
+
   function reset() {
     reservations.value = initialReservations.map(r => ({ ...r }))
     guests.value = initialGuests.map(g => ({ ...g }))
@@ -120,6 +126,7 @@ export function useReservationsModule() {
     createReservation,
     updateGuestNotes,
     updateReservationStatus,
+    updateReservation,
     reset,
   }
 }

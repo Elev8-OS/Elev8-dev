@@ -107,4 +107,19 @@ describe('useReservationsModule', () => {
     updateReservationStatus('missing', 'verified')
     expect(reservations.value.find(r => r.id === 'res-1')?.status).toBe('cancelled')
   })
+
+  it('updateReservation patches fields on a reservation', () => {
+    const { updateReservation, reservations } = useReservationsModule()
+    updateReservation('res-1', { checkIn: '2026-08-01', guestCount: 4, totalPrice: 999, guestNotes: 'Updated note' })
+    const r = reservations.value.find(r => r.id === 'res-1')!
+    expect(r.checkIn).toBe('2026-08-01')
+    expect(r.guestCount).toBe(4)
+    expect(r.totalPrice).toBe(999)
+    expect(r.guestNotes).toBe('Updated note')
+    // other fields untouched
+    expect(r.guestName).toBe('Sarah Mitchell')
+    // missing id is a no-op
+    updateReservation('missing', { guestCount: 1 })
+    expect(reservations.value.find(r => r.id === 'res-1')!.guestCount).toBe(4)
+  })
 })

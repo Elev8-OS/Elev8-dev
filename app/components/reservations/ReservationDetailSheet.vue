@@ -35,6 +35,8 @@ const reservationUpsells = computed(() => {
   return upsellOrders.value.filter(o => r.upsellIds!.includes(o.id))
 })
 
+const editOpen = ref(false)
+
 const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
 
 const statusDotClass = computed(() => {
@@ -241,6 +243,10 @@ function fmtCleaningDate(iso: string): string {
                 </div>
               </div>
               <div class="flex shrink-0 items-center gap-2">
+                <Button variant="outline" size="sm" class="h-8 w-8 p-0" title="Edit reservation" @click="editOpen = true">
+                  <Icon name="lucide:pencil" class="size-3.5" />
+                  <span class="sr-only">Edit</span>
+                </Button>
                 <div class="flex size-9 items-center justify-center border bg-muted/40">
                   <Icon :name="channelIcon(reservation.channel)" class="size-4" />
                 </div>
@@ -664,4 +670,11 @@ function fmtCleaningDate(iso: string): string {
       </DialogFooter>
     </DialogContent>
   </Dialog>
+
+  <!-- Edit reservation dialog -->
+  <EditReservationDialog
+    :reservation="reservation"
+    :open="editOpen"
+    @update:open="editOpen = $event"
+  />
 </template>
