@@ -3,6 +3,7 @@ import type { ReservationEntry, ReservationStatus } from '~/components/reservati
 import { toast } from 'vue-sonner'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
