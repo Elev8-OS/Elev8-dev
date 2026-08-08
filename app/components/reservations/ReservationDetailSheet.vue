@@ -269,23 +269,69 @@ function fmtCleaningDate(iso: string): string {
             </div>
 
             <!-- Reservation id + price -->
-            <div class="flex items-center justify-between border-b px-5 py-4">
-              <div>
-                <div class="text-xs text-muted-foreground">
-                  Reservation
+            <div class="border-b px-5 py-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs text-muted-foreground">
+                    Reservation
+                  </div>
+                  <div class="font-mono text-sm font-semibold">
+                    {{ reservation.id }}
+                  </div>
                 </div>
-                <div class="font-mono text-sm font-semibold">
-                  {{ reservation.id }}
+                <div class="text-right">
+                  <div class="text-xs text-muted-foreground">
+                    Guest paid
+                  </div>
+                  <div class="text-xl font-bold">
+                    {{ fmtCurrency(reservation.priceDetails?.guestPaid ?? reservation.totalPrice, reservation.currency) }}
+                  </div>
                 </div>
               </div>
-              <div class="text-right">
-                <div class="text-xs text-muted-foreground">
-                  Total
+
+              <!-- Price breakdown -->
+              <template v-if="reservation.priceDetails">
+                <Separator class="my-3" />
+                <div class="space-y-1.5 text-sm">
+                  <div class="flex items-center justify-between">
+                    <span class="text-muted-foreground">Subtotal ({{ reservation.nights }} nights)</span>
+                    <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.subtotal, reservation.currency) }}</span>
+                  </div>
+                  <div v-if="reservation.priceDetails.cleaningFee" class="flex items-center justify-between">
+                    <span class="text-muted-foreground">Cleaning fee</span>
+                    <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.cleaningFee, reservation.currency) }}</span>
+                  </div>
+                  <div v-if="reservation.priceDetails.serviceFee" class="flex items-center justify-between">
+                    <span class="text-muted-foreground">Service fee</span>
+                    <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.serviceFee, reservation.currency) }}</span>
+                  </div>
+                  <div v-if="reservation.priceDetails.tax" class="flex items-center justify-between">
+                    <span class="text-muted-foreground">Tax</span>
+                    <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.tax, reservation.currency) }}</span>
+                  </div>
+                  <div v-if="reservation.priceDetails.extras" class="flex items-center justify-between">
+                    <span class="text-muted-foreground">Extras</span>
+                    <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.extras, reservation.currency) }}</span>
+                  </div>
+                  <Separator class="my-1.5" />
+                  <!-- Guest paid vs payout -->
+                  <div class="flex items-center justify-between font-medium">
+                    <span>Guest paid</span>
+                    <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-muted-foreground">
+                    <span class="flex items-center gap-1.5">
+                      <Icon name="lucide:percent" class="size-3" />
+                      Commission ({{ reservation.channel }})
+                    </span>
+                    <span>− {{ fmtCurrency(reservation.priceDetails.commission, reservation.currency) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-md bg-green-500/10 px-2 py-1.5 font-semibold text-green-700 dark:text-green-400">
+                    <span>Payout</span>
+                    <span>{{ fmtCurrency(reservation.priceDetails.payout, reservation.currency) }}</span>
+                  </div>
                 </div>
-                <div class="text-xl font-bold">
-                  {{ fmtCurrency(reservation.totalPrice, reservation.currency) }}
-                </div>
-              </div>
+              </template>
             </div>
 
             <!-- Guest -->

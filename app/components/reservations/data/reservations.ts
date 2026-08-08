@@ -17,6 +17,22 @@ export interface GuestOccupant {
   isPrimary?: boolean
 }
 
+export interface PriceDetails {
+  /** Subtotal = nights × nightly rate, before fees/tax */
+  subtotal: number
+  cleaningFee: number
+  serviceFee: number
+  tax: number
+  /** Extra charges (upsells, extras) paid by guest */
+  extras: number
+  /** What the guest paid in total (subtotal + fees + tax + extras) */
+  guestPaid: number
+  /** OTA/booking commission (percentage or amount) */
+  commission: number
+  /** What the host/owner receives after commission */
+  payout: number
+}
+
 export interface ReservationEntry {
   id: string
   guestId: string
@@ -35,6 +51,7 @@ export interface ReservationEntry {
   guests?: GuestOccupant[]
   totalPrice: number
   currency: string
+  priceDetails?: PriceDetails
   status: ReservationStatus
   conversationId?: string
   paymentRequestId?: string
@@ -221,6 +238,16 @@ export const initialReservations: ReservationEntry[] = [
     guestCount: 2,
     totalPrice: 640,
     currency: 'USD',
+    priceDetails: {
+      subtotal: 600,
+      cleaningFee: 25,
+      serviceFee: 0,
+      tax: 15,
+      extras: 0,
+      guestPaid: 640,
+      commission: 64,
+      payout: 576,
+    },
     status: 'checked_in',
     conversationId: 'conv-3',
     paymentRequestId: 'pr-006',
