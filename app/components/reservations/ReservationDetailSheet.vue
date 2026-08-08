@@ -250,7 +250,7 @@ function fmtCleaningDate(iso: string): string {
             <!-- Reservation id + price -->
             <div class="flex items-center justify-between border-b px-5 py-4">
               <div>
-                <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                <div class="text-xs text-muted-foreground">
                   Reservation
                 </div>
                 <div class="font-mono text-sm font-semibold">
@@ -258,7 +258,7 @@ function fmtCleaningDate(iso: string): string {
                 </div>
               </div>
               <div class="text-right">
-                <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                <div class="text-xs text-muted-foreground">
                   Total
                 </div>
                 <div class="text-xl font-bold">
@@ -298,7 +298,7 @@ function fmtCleaningDate(iso: string): string {
             <div class="border-b px-5 py-4">
               <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                 <div>
-                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                  <div class="text-xs text-muted-foreground">
                     Check-in
                   </div>
                   <div class="text-base font-semibold">
@@ -317,7 +317,7 @@ function fmtCleaningDate(iso: string): string {
                   </span>
                 </div>
                 <div class="text-right">
-                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                  <div class="text-xs text-muted-foreground">
                     Check-out
                   </div>
                   <div class="text-base font-semibold">
@@ -347,7 +347,7 @@ function fmtCleaningDate(iso: string): string {
               <div class="flex items-center gap-2.5">
                 <Icon name="lucide:users" class="size-4 text-muted-foreground" />
                 <div>
-                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                  <div class="text-xs text-muted-foreground">
                     Guests
                   </div>
                   <div class="text-sm font-medium">
@@ -358,7 +358,7 @@ function fmtCleaningDate(iso: string): string {
               <div class="flex items-center gap-2.5">
                 <Icon :name="channelIcon(reservation.channel)" class="size-4 text-muted-foreground" />
                 <div>
-                  <div class="text-xs text-muted-foreground uppercase tracking-wide">
+                  <div class="text-xs text-muted-foreground">
                     Channel
                   </div>
                   <div class="text-sm font-medium">
@@ -371,7 +371,7 @@ function fmtCleaningDate(iso: string): string {
             <!-- Upsells purchased by the guest (accordion) -->
             <Accordion type="single" collapsible class="w-full border-b px-2">
               <AccordionItem value="upsells" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
                   <span class="flex items-center gap-2">
                     <Icon name="lucide:tag" class="size-4" />
                     Upsells
@@ -416,7 +416,7 @@ function fmtCleaningDate(iso: string): string {
             <!-- Smart lock (collapsible accordion) -->
             <Accordion type="single" collapsible class="w-full border-b px-2">
               <AccordionItem value="smartlock" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
                   <span class="flex items-center gap-2">
                     <Icon name="lucide:key-round" class="size-4" />
                     Smart lock
@@ -512,7 +512,7 @@ function fmtCleaningDate(iso: string): string {
             <!-- Housekeeping schedule (accordion) -->
             <Accordion type="single" collapsible class="w-full border-b px-2">
               <AccordionItem value="housekeeping" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
                   <span class="flex items-center gap-2">
                     <Icon name="lucide:sparkles" class="size-4" />
                     Housekeeping
@@ -529,7 +529,7 @@ function fmtCleaningDate(iso: string): string {
                   <div v-else class="border p-3">
                     <div class="flex items-center justify-between gap-3">
                       <div class="min-w-0">
-                        <p class="text-[10px] text-muted-foreground uppercase tracking-wide">
+                        <p class="text-[10px] text-muted-foreground">
                           Next cleaning
                         </p>
                         <p class="mt-0.5 text-sm font-semibold">

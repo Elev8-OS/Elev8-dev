@@ -208,7 +208,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
             <Separator />
             <div class="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                <p class="text-xs text-muted-foreground">
                   Joined
                 </p>
                 <p class="font-medium">
@@ -216,7 +216,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                 </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                <p class="text-xs text-muted-foreground">
                   Previous stays
                 </p>
                 <p class="font-medium">
@@ -224,7 +224,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                 </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                <p class="text-xs text-muted-foreground">
                   Total spent
                 </p>
                 <p class="font-medium">
@@ -232,7 +232,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                 </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                <p class="text-xs text-muted-foreground">
                   Current stay
                 </p>
                 <p class="font-medium">
@@ -278,7 +278,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
               <Separator />
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                  <p class="text-xs text-muted-foreground">
                     Channel
                   </p>
                   <p class="font-medium">
@@ -286,7 +286,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   </p>
                 </div>
                 <div>
-                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
+                  <p class="text-xs text-muted-foreground">
                     Total
                   </p>
                   <p class="font-medium">
@@ -345,7 +345,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
 
       <!-- Booking History table (full width) -->
       <section class="space-y-2">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 class="text-sm font-semibold text-muted-foreground">
           Booking History
         </h2>
         <GuestReservationsTable :reservations="stays" />
@@ -353,7 +353,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
 
       <!-- Related links -->
       <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
-        <span class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mr-2">
+        <span class="text-sm font-semibold text-muted-foreground mr-2">
           Quick links
         </span>
         <Button

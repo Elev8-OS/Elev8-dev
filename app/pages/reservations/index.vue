@@ -197,7 +197,7 @@ function applyStatFilter(status: string) {
         @click="applyStatFilter(card.status)"
       >
         <div class="flex items-center justify-between">
-          <span class="text-xs text-muted-foreground uppercase tracking-wide">{{ card.label }}</span>
+          <span class="text-xs text-muted-foreground">{{ card.label }}</span>
           <Icon :name="card.icon" class="size-4 text-muted-foreground" />
         </div>
         <div class="text-2xl font-bold mt-1">

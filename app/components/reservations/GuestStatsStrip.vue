@@ -18,7 +18,7 @@ function fmtCurrency(amount: number): string {
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
     <Card>
       <CardContent class="p-4">
-        <div class="text-xs text-muted-foreground uppercase tracking-wide">
+        <div class="text-xs text-muted-foreground">
           Total stays
         </div>
         <div class="text-2xl font-bold mt-1">
@@ -28,7 +28,7 @@ function fmtCurrency(amount: number): string {
     </Card>
     <Card>
       <CardContent class="p-4">
-        <div class="text-xs text-muted-foreground uppercase tracking-wide">
+        <div class="text-xs text-muted-foreground">
           Upcoming
         </div>
         <div class="text-2xl font-bold mt-1">
@@ -38,7 +38,7 @@ function fmtCurrency(amount: number): string {
     </Card>
     <Card>
       <CardContent class="p-4">
-        <div class="text-xs text-muted-foreground uppercase tracking-wide">
+        <div class="text-xs text-muted-foreground">
           Current
         </div>
         <div class="text-2xl font-bold mt-1">
@@ -48,7 +48,7 @@ function fmtCurrency(amount: number): string {
     </Card>
     <Card>
       <CardContent class="p-4">
-        <div class="text-xs text-muted-foreground uppercase tracking-wide">
+        <div class="text-xs text-muted-foreground">
           Total spent
         </div>
         <div class="text-2xl font-bold mt-1">
