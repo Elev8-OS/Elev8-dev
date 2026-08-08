@@ -146,7 +146,21 @@ async function copyCode(code: string) {
 }
 
 function formatExpiry(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function categoryLabel(category: string): string {
+  const map: Record<string, string> = { adult: 'Adult', child: 'Child', infant: 'Infant' }
+  return map[category] ?? category
+}
+
+function idTypeLabel(type: string): string {
+  const map: Record<string, string> = { passport: 'Passport', id_card: 'ID Card', drivers_license: 'Driver\'s License' }
+  return map[type] ?? type
+}
+
+function fmtDob(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 // --- Housekeeping schedule ---
@@ -300,6 +314,71 @@ function fmtCleaningDate(iso: string): string {
                 {{ reservation.guestNotes }}
               </div>
             </div>
+
+            <!-- Guests group (occupants) -->
+            <Accordion v-if="reservation.guests?.length" type="single" collapsible class="w-full border-b px-2">
+              <AccordionItem value="guests" class="border-b-0">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                  <span class="flex items-center gap-2">
+                    <Icon name="lucide:users" class="size-4" />
+                    Guests
+                    <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                      {{ reservation.guests.length }}
+                    </Badge>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="px-3 pb-3">
+                  <div class="space-y-2">
+                    <div
+                      v-for="g in reservation.guests"
+                      :key="g.id"
+                      class="border p-3"
+                    >
+                      <div class="flex items-center gap-2.5">
+                        <Avatar class="size-9">
+                          <AvatarFallback class="bg-primary/10 text-primary text-xs">
+                            {{ initials(g.name) }}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-1.5">
+                            <p class="text-sm font-medium truncate">
+                              {{ g.name }}
+                            </p>
+                            <Badge v-if="g.isPrimary" variant="default" class="text-[9px] px-1 py-0">
+                              Main
+                            </Badge>
+                          </div>
+                          <p class="text-[10px] text-muted-foreground">
+                            {{ categoryLabel(g.category) }}
+                            <template v-if="g.dob">
+                              · {{ fmtDob(g.dob) }}
+                            </template>
+                            <template v-if="g.nationality">
+                              · {{ g.nationality }}
+                            </template>
+                          </p>
+                        </div>
+                      </div>
+                      <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                        <p v-if="g.email" class="flex items-center gap-1.5 truncate">
+                          <Icon name="lucide:mail" class="size-3 shrink-0" />
+                          {{ g.email }}
+                        </p>
+                        <p v-if="g.phone" class="flex items-center gap-1.5 truncate">
+                          <Icon name="lucide:phone" class="size-3 shrink-0" />
+                          {{ g.phone }}
+                        </p>
+                        <p v-if="g.idType" class="flex items-center gap-1.5">
+                          <Icon name="lucide:credit-card" class="size-3 shrink-0" />
+                          {{ idTypeLabel(g.idType) }}: {{ g.idNumber }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
 
             <!-- Dates -->
             <div class="border-b px-5 py-4">

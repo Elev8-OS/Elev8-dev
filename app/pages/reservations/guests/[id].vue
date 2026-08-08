@@ -91,6 +91,24 @@ function saveNotes(notes: string) {
 const newReservationOpen = ref(false)
 const editReservationOpen = ref(false)
 
+// Party summary from occupants, e.g. "2 Adults · 1 Child · 1 Infant"
+const partySummary = computed(() => {
+  const guests = primaryStay.value?.guests ?? []
+  if (!guests.length)
+    return `${primaryStay.value?.guestCount ?? 0} guests`
+  const adults = guests.filter(g => g.category === 'adult').length
+  const children = guests.filter(g => g.category === 'child').length
+  const infants = guests.filter(g => g.category === 'infant').length
+  const parts: string[] = []
+  if (adults)
+    parts.push(`${adults} Adult${adults > 1 ? 's' : ''}`)
+  if (children)
+    parts.push(`${children} Child${children > 1 ? 'ren' : ''}`)
+  if (infants)
+    parts.push(`${infants} Infant${infants > 1 ? 's' : ''}`)
+  return parts.join(' · ')
+})
+
 // Formatting helpers
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -283,6 +301,35 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
                 </p>
               </div>
+
+              <!-- Party breakdown -->
+              <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
+                <div class="flex -space-x-2">
+                  <Avatar
+                    v-for="g in primaryStay.guests.slice(0, 4)"
+                    :key="g.id"
+                    class="size-8 border-2 border-background"
+                  >
+                    <AvatarFallback class="bg-primary/10 text-primary text-[10px]">
+                      {{ g.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span
+                    v-if="primaryStay.guests.length > 4"
+                    class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
+                  >
+                    +{{ primaryStay.guests.length - 4 }}
+                  </span>
+                </div>
+                <div class="text-xs text-muted-foreground">
+                  <p class="font-medium text-foreground">
+                    {{ partySummary }}
+                  </p>
+                  <p>
+                    {{ primaryStay.guests.map(g => g.name).join(', ') }}
+                  </p>
+                </div>
+              </div>
               <Separator />
               <div class="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -358,7 +405,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
             Booking History
           </CardTitle>
         </CardHeader>
-        <CardContent class="px-4 pb-4">
+        <CardContent class="px-6 pb-6">
           <GuestReservationsTable :reservations="stays" />
         </CardContent>
       </Card>

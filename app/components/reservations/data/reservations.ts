@@ -2,6 +2,21 @@ import type { ActivityEvent } from '~/components/inbox/data/conversations'
 
 export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked'
 
+export type GuestCategory = 'adult' | 'child' | 'infant'
+
+export interface GuestOccupant {
+  id: string
+  name: string
+  category: GuestCategory
+  email?: string
+  phone?: string
+  dob?: string
+  nationality?: string
+  idType?: 'passport' | 'id_card' | 'drivers_license'
+  idNumber?: string
+  isPrimary?: boolean
+}
+
 export interface ReservationEntry {
   id: string
   guestId: string
@@ -17,6 +32,7 @@ export interface ReservationEntry {
   checkOut: string // ISO date YYYY-MM-DD
   nights: number
   guestCount: number
+  guests?: GuestOccupant[]
   totalPrice: number
   currency: string
   status: ReservationStatus
@@ -210,6 +226,32 @@ export const initialReservations: ReservationEntry[] = [
     paymentRequestId: 'pr-006',
     guestGuideId: 'ggl-mock-002',
     upsellIds: ['ord-003'],
+    guests: [
+      {
+        id: 'occ-1',
+        name: 'Emily Chen',
+        category: 'adult',
+        email: 'emily.chen@email.com',
+        phone: '+65 8123 4567',
+        dob: '1992-04-18',
+        nationality: 'Singaporean',
+        idType: 'passport',
+        idNumber: 'E4829137',
+        isPrimary: true,
+      },
+      {
+        id: 'occ-2',
+        name: 'Daniel Chen',
+        category: 'adult',
+        email: 'daniel.chen@email.com',
+        phone: '+65 8123 8901',
+        dob: '1990-11-02',
+        nationality: 'Singaporean',
+        idType: 'passport',
+        idNumber: 'E5012478',
+        isPrimary: false,
+      },
+    ],
     bookingNote: '** THIS RESERVATION HAS BEEN PRE-PAID ** BOOKING NOTE : Payment charge is IDR 542087.253 Approximate time of arrival: between 21:00 and 22:00 Meal Plan: There is no meal option with this room. Smoking Preference: Non-Smoking Payment Collect: OTA collect OTA Commission: 3535352.00',
     activity: [
       {
