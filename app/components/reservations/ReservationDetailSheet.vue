@@ -37,6 +37,7 @@ const reservationUpsells = computed(() => {
 })
 
 const editOpen = ref(false)
+const priceView = ref<'guest' | 'payout'>('guest')
 
 const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
 
@@ -283,15 +284,37 @@ function fmtCleaningDate(iso: string): string {
                     </span>
                     <span class="text-right">
                       <span class="block text-xs text-muted-foreground">
-                        Guest paid
+                        {{ priceView === 'guest' ? 'Guest paid' : 'Payout' }}
                       </span>
                       <span class="block text-xl font-bold">
-                        {{ fmtCurrency(reservation.priceDetails?.guestPaid ?? reservation.totalPrice, reservation.currency) }}
+                        {{ priceView === 'guest'
+                          ? fmtCurrency(reservation.priceDetails?.guestPaid ?? reservation.totalPrice, reservation.currency)
+                          : fmtCurrency(reservation.priceDetails?.payout ?? reservation.totalPrice, reservation.currency) }}
                       </span>
                     </span>
                   </span>
                 </AccordionTrigger>
                 <AccordionContent class="px-3 pb-3">
+                  <!-- View toggle -->
+                  <div v-if="reservation.priceDetails" class="mb-3 flex rounded-md border bg-muted/40 p-0.5">
+                    <button
+                      type="button"
+                      class="flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors"
+                      :class="priceView === 'guest' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                      @click="priceView = 'guest'"
+                    >
+                      Guest paid
+                    </button>
+                    <button
+                      type="button"
+                      class="flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors"
+                      :class="priceView === 'payout' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                      @click="priceView = 'payout'"
+                    >
+                      Payout
+                    </button>
+                  </div>
+
                   <!-- Price breakdown -->
                   <template v-if="reservation.priceDetails">
                     <div class="space-y-1.5 text-sm">
@@ -316,22 +339,31 @@ function fmtCleaningDate(iso: string): string {
                         <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.extras, reservation.currency) }}</span>
                       </div>
                       <Separator class="my-1.5" />
-                      <!-- Guest paid vs payout -->
-                      <div class="flex items-center justify-between font-medium">
-                        <span>Guest paid</span>
-                        <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
-                      </div>
-                      <div class="flex items-center justify-between text-muted-foreground">
-                        <span class="flex items-center gap-1.5">
-                          <Icon name="lucide:percent" class="size-3" />
-                          Commission ({{ reservation.channel }})
-                        </span>
-                        <span>− {{ fmtCurrency(reservation.priceDetails.commission, reservation.currency) }}</span>
-                      </div>
-                      <div class="flex items-center justify-between rounded-md bg-green-500/10 px-2 py-1.5 font-semibold text-green-700 dark:text-green-400">
-                        <span>Payout</span>
-                        <span>{{ fmtCurrency(reservation.priceDetails.payout, reservation.currency) }}</span>
-                      </div>
+                      <!-- Guest paid view -->
+                      <template v-if="priceView === 'guest'">
+                        <div class="flex items-center justify-between font-medium">
+                          <span>Guest paid</span>
+                          <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
+                        </div>
+                      </template>
+                      <!-- Payout view -->
+                      <template v-else>
+                        <div class="flex items-center justify-between text-muted-foreground">
+                          <span>Guest paid</span>
+                          <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between text-muted-foreground">
+                          <span class="flex items-center gap-1.5">
+                            <Icon name="lucide:percent" class="size-3" />
+                            Commission ({{ reservation.channel }})
+                          </span>
+                          <span>− {{ fmtCurrency(reservation.priceDetails.commission, reservation.currency) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between rounded-md bg-green-500/10 px-2 py-1.5 font-semibold text-green-700 dark:text-green-400">
+                          <span>Payout</span>
+                          <span>{{ fmtCurrency(reservation.priceDetails.payout, reservation.currency) }}</span>
+                        </div>
+                      </template>
                     </div>
                   </template>
                   <p v-else class="text-sm text-muted-foreground">
