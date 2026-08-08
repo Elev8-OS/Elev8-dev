@@ -294,22 +294,6 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                     {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
                   </p>
                 </div>
-                <div>
-                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
-                    Check-in
-                  </p>
-                  <p class="font-medium">
-                    {{ fmtDate(primaryStay.checkIn) }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs text-muted-foreground uppercase tracking-wide">
-                    Check-out
-                  </p>
-                  <p class="font-medium">
-                    {{ fmtDate(primaryStay.checkOut) }}
-                  </p>
-                </div>
               </div>
               <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
                 {{ primaryStay.guestNotes }}
@@ -349,26 +333,15 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   {{ primaryStay.listingName }}
                 </p>
                 <p class="text-xs text-muted-foreground">
-                  {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
+                  {{ primaryStay.guestCount }} guests
                 </p>
               </div>
               <Separator />
               <div class="space-y-1.5 text-sm">
                 <p class="flex items-center justify-between">
-                  <span class="text-muted-foreground">Price</span>
-                  <span class="font-medium">{{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}</span>
-                </p>
-                <p class="flex items-center justify-between">
-                  <span class="text-muted-foreground">Nights</span>
-                  <span class="font-medium">{{ primaryStay.nights }}</span>
-                </p>
-                <p class="flex items-center justify-between">
                   <span class="text-muted-foreground">Status</span>
                   <ReservationStatusBadge :status="primaryStay.status" />
                 </p>
-              </div>
-              <div v-if="primaryStay.guestNotes" class="rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground">
-                {{ primaryStay.guestNotes }}
               </div>
             </template>
             <p v-else class="text-sm text-muted-foreground italic">
