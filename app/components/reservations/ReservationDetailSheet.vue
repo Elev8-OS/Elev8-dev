@@ -235,24 +235,6 @@ function formatExpiry(iso: string): string {
               </div>
             </div>
 
-            <!-- Booking note -->
-            <div v-if="reservation.bookingNote" class="border-b px-5 py-4">
-              <div class="mb-2 flex items-center gap-2">
-                <Icon name="lucide:file-text" class="size-4 text-muted-foreground" />
-                <span class="text-xs text-muted-foreground uppercase tracking-wide">
-                  Booking note
-                </span>
-              </div>
-              <div class="border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                <p class="font-semibold tracking-wide">
-                  ** THIS RESERVATION HAS BEEN PRE-PAID **
-                </p>
-                <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
-                  {{ bookingNoteBody }}
-                </p>
-              </div>
-            </div>
-
             <!-- Dates -->
             <div class="border-b px-5 py-4">
               <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -286,6 +268,18 @@ function formatExpiry(iso: string): string {
                     11:00 AM
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Booking note (below dates) -->
+            <div v-if="reservation.bookingNote" class="border-b px-5 py-4">
+              <div class="border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                <p class="font-semibold tracking-wide">
+                  ** THIS RESERVATION HAS BEEN PRE-PAID **
+                </p>
+                <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
+                  {{ bookingNoteBody }}
+                </p>
               </div>
             </div>
 
