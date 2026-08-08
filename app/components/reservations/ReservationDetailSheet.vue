@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
-import { listings } from '~/components/listings/data/listings'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{
@@ -16,12 +16,21 @@ const emit = defineEmits<{
 }>()
 
 const { reservations, updateReservationStatus } = useReservationsModule()
+const { orders: upsellOrders } = useUpsellOrders()
 
 // Resolve the reservation from live state so status edits reflect immediately
 const reservation = computed<ReservationEntry | null>(() => {
   if (!props.reservation)
     return null
   return reservations.value.find(r => r.id === props.reservation!.id) ?? props.reservation
+})
+
+// Upsell orders purchased for this reservation
+const reservationUpsells = computed(() => {
+  const r = reservation.value
+  if (!r?.upsellIds?.length)
+    return []
+  return upsellOrders.value.filter(o => r.upsellIds!.includes(o.id))
 })
 
 const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
@@ -63,10 +72,6 @@ function fmtDate(iso: string): string {
 
 function fmtCurrency(amount: number, currency: string): string {
   return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
-}
-
-function listingPhoto(listingId: string): string {
-  return listings.value.find(l => l.id === listingId)?.photos?.[0] ?? ''
 }
 
 function channelIcon(channel: string): string {
@@ -146,42 +151,35 @@ function formatExpiry(iso: string): string {
       <template v-if="reservation">
         <ScrollArea class="h-full min-h-0 flex-1">
           <div class="flex flex-col">
-            <!-- Hero banner -->
-            <div class="relative h-36 w-full shrink-0">
-              <img
-                :src="listingPhoto(reservation.listingId)"
-                :alt="reservation.listingName"
-                class="h-full w-full object-cover"
-              >
-              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-              <!-- Status chip (editable) -->
-              <div class="absolute top-4 left-4">
-                <Select :model-value="reservation.status" @update:model-value="onStatusChange">
-                  <SelectTrigger class="h-9 gap-2 border-0 bg-white/95 px-3 text-sm font-semibold shadow-none hover:bg-white">
-                    <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-                      <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
-                      {{ reservationStatusLabels[reservation.status] }}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent class="min-w-[200px]">
-                    <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
-                      <span class="flex items-center gap-2 whitespace-nowrap">
-                        <ReservationStatusBadge :status="opt.value as ReservationStatus" />
-                        <span class="ml-1">{{ opt.label }}</span>
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <!-- Channel logo -->
-              <div class="absolute top-4 right-4 flex size-9 items-center justify-center bg-white/90">
-                <Icon :name="channelIcon(reservation.channel)" class="size-5" />
-              </div>
-              <!-- Listing name on banner -->
-              <div class="absolute bottom-3 left-4 right-4">
-                <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-white hover:underline text-lg font-semibold leading-tight">
+            <!-- Header: status dropdown + channel + listing name -->
+            <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
+              <div class="min-w-0">
+                <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-base font-semibold leading-tight">
                   {{ reservation.listingName }}
                 </NuxtLink>
+                <div class="mt-2">
+                  <Select :model-value="reservation.status" @update:model-value="onStatusChange">
+                    <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
+                      <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
+                        {{ reservationStatusLabels[reservation.status] }}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent class="min-w-[200px]">
+                      <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
+                        <span class="flex items-center gap-2 whitespace-nowrap">
+                          <ReservationStatusBadge :status="opt.value as ReservationStatus" />
+                          <span class="ml-1">{{ opt.label }}</span>
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <div class="flex size-9 items-center justify-center border bg-muted/40">
+                  <Icon :name="channelIcon(reservation.channel)" class="size-4" />
+                </div>
               </div>
             </div>
 
@@ -301,6 +299,48 @@ function formatExpiry(iso: string): string {
                   </div>
                   <div class="text-sm font-medium">
                     {{ reservation.channel }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Upsells purchased by the guest -->
+            <div class="border-b px-5 py-4">
+              <div class="mb-3 flex items-center gap-2">
+                <Icon name="lucide:tag" class="size-4 text-muted-foreground" />
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Upsells
+                </span>
+                <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                  {{ reservationUpsells.length }}
+                </Badge>
+              </div>
+
+              <div v-if="reservationUpsells.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                No upsells purchased for this reservation.
+              </div>
+
+              <div v-else class="space-y-2">
+                <div
+                  v-for="order in reservationUpsells"
+                  :key="order.id"
+                  class="flex items-center justify-between gap-3 border p-3"
+                >
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium truncate">
+                      {{ order.serviceName }}
+                    </p>
+                    <p class="text-[10px] text-muted-foreground">
+                      {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
+                    </p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
+                      {{ getOrderStatusMeta(order).label }}
+                    </Badge>
+                    <span class="text-sm font-semibold tabular-nums">
+                      {{ fmtCurrency(order.grandTotal, order.currency) }}
+                    </span>
                   </div>
                 </div>
               </div>
