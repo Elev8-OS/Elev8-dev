@@ -358,7 +358,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
             Booking History
           </CardTitle>
         </CardHeader>
-        <CardContent class="p-0">
+        <CardContent class="px-4 pb-4">
           <GuestReservationsTable :reservations="stays" />
         </CardContent>
       </Card>
