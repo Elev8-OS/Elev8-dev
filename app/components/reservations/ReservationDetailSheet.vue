@@ -15,7 +15,14 @@ const emit = defineEmits<{
   'openGuest': [id: string]
 }>()
 
-const { updateReservationStatus } = useReservationsModule()
+const { reservations, updateReservationStatus } = useReservationsModule()
+
+// Resolve the reservation from live state so status edits reflect immediately
+const reservation = computed<ReservationEntry | null>(() => {
+  if (!props.reservation)
+    return null
+  return reservations.value.find(r => r.id === props.reservation!.id) ?? props.reservation
+})
 
 const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
 
@@ -29,20 +36,20 @@ const statusDotClass = computed(() => {
     blocked: 'bg-black',
     inquiry: 'bg-amber-500',
   }
-  return props.reservation ? map[props.reservation.status] : 'bg-neutral-400'
+  return reservation.value ? map[reservation.value.status] : 'bg-neutral-400'
 })
 
 const bookingNoteBody = computed(() => {
-  const note = props.reservation?.bookingNote ?? ''
+  const note = reservation.value?.bookingNote ?? ''
   const idx = note.indexOf('BOOKING NOTE :')
   return idx >= 0 ? note.slice(idx + 'BOOKING NOTE :'.length).trim() : note
 })
 
 function onStatusChange(value: unknown) {
-  if (!props.reservation)
+  if (!reservation.value)
     return
   const status = value as ReservationStatus
-  updateReservationStatus(props.reservation.id, status)
+  updateReservationStatus(reservation.value.id, status)
   toast.success(`Status updated to ${reservationStatusLabels[status]}`)
 }
 
@@ -86,7 +93,7 @@ function codesForReservation(reservation: ReservationEntry) {
 }
 
 const activeCodesCount = computed(() => {
-  const r = props.reservation
+  const r = reservation.value
   return r ? codesForReservation(r).length : 0
 })
 
