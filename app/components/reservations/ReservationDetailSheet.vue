@@ -19,6 +19,19 @@ const { updateReservationStatus } = useReservationsModule()
 
 const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
 
+const statusDotClass = computed(() => {
+  const map: Record<ReservationStatus, string> = {
+    unverified: 'bg-neutral-400',
+    verified: 'bg-green-600',
+    checked_in: 'bg-orange-500',
+    checked_out: 'bg-blue-600',
+    cancelled: 'bg-neutral-400',
+    blocked: 'bg-black',
+    inquiry: 'bg-amber-500',
+  }
+  return props.reservation ? map[props.reservation.status] : 'bg-neutral-400'
+})
+
 const bookingNoteBody = computed(() => {
   const note = props.reservation?.bookingNote ?? ''
   const idx = note.indexOf('BOOKING NOTE :')
@@ -143,13 +156,18 @@ function formatExpiry(iso: string): string {
               <!-- Status chip (editable) -->
               <div class="absolute top-4 left-4">
                 <Select :model-value="reservation.status" @update:model-value="onStatusChange">
-                  <SelectTrigger class="h-8 gap-2 border-0 bg-white/95 px-3 text-sm font-medium shadow-none hover:bg-white">
-                    <ReservationStatusBadge :status="reservation.status" />
+                  <SelectTrigger class="h-9 gap-2 border-0 bg-white/95 px-3 text-sm font-semibold shadow-none hover:bg-white">
+                    <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
+                      {{ reservationStatusLabels[reservation.status] }}
+                    </span>
                   </SelectTrigger>
-                  <SelectContent class="min-w-[180px]">
-                    <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2">
-                      <ReservationStatusBadge :status="opt.value as ReservationStatus" />
-                      <span class="ml-2">{{ opt.label }}</span>
+                  <SelectContent class="min-w-[200px]">
+                    <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
+                      <span class="flex items-center gap-2 whitespace-nowrap">
+                        <ReservationStatusBadge :status="opt.value as ReservationStatus" />
+                        <span class="ml-1">{{ opt.label }}</span>
+                      </span>
                     </SelectItem>
                   </SelectContent>
                 </Select>
