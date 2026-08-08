@@ -143,19 +143,13 @@ function formatExpiry(iso: string): string {
               <!-- Status chip (editable) -->
               <div class="absolute top-4 left-4">
                 <Select :model-value="reservation.status" @update:model-value="onStatusChange">
-                  <SelectTrigger class="h-7 gap-1.5 border-0 bg-white/95 px-2.5 text-xs font-medium shadow-none hover:bg-white">
-                    <SelectValue>
-                      <template #default>
-                        <ReservationStatusBadge :status="reservation.status" />
-                      </template>
-                    </SelectValue>
+                  <SelectTrigger class="h-7 gap-1.5 border-0 bg-white/95 px-2 text-xs font-medium shadow-none hover:bg-white">
+                    <ReservationStatusBadge :status="reservation.status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-                      <span class="flex items-center gap-2">
-                        <ReservationStatusBadge :status="opt.value as ReservationStatus" />
-                        {{ opt.label }}
-                      </span>
+                      <ReservationStatusBadge :status="opt.value as ReservationStatus" />
+                      <span class="ml-2">{{ opt.label }}</span>
                     </SelectItem>
                   </SelectContent>
                 </Select>
