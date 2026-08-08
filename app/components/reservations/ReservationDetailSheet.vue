@@ -17,6 +17,7 @@ const emit = defineEmits<{
 
 const { reservations, updateReservationStatus } = useReservationsModule()
 const { orders: upsellOrders } = useUpsellOrders()
+const { jobs: cleaningJobs, createJob, deleteJob } = useCleaningJobs()
 
 // Resolve the reservation from live state so status edits reflect immediately
 const reservation = computed<ReservationEntry | null>(() => {
@@ -142,6 +143,65 @@ async function copyCode(code: string) {
 
 function formatExpiry(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+// --- Housekeeping schedule ---
+const housekeepingJobs = computed(() => {
+  const r = reservation.value
+  if (!r)
+    return []
+  return cleaningJobs.value
+    .filter(job => job.listingId === r.listingId && (job.reservationId === r.id || !job.reservationId))
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+})
+
+const nextCleaning = computed(() => {
+  const now = new Date().toISOString()
+  return housekeepingJobs.value.find(job => job.scheduledAt >= now && !['done', 'cancelled', 'missed'].includes(job.status))
+    ?? housekeepingJobs.value.find(job => job.scheduledAt >= now)
+    ?? null
+})
+
+const addCleaningOpen = ref(false)
+const newCleaningDate = ref('')
+const newCleaningTime = ref('11:00')
+
+function openAddCleaning() {
+  newCleaningDate.value = reservation.value?.checkOut?.slice(0, 10) ?? ''
+  newCleaningTime.value = '11:00'
+  addCleaningOpen.value = true
+}
+
+function addCleaning() {
+  const r = reservation.value
+  if (!r || !newCleaningDate.value)
+    return
+  createJob({
+    listingId: r.listingId,
+    listingName: r.listingName,
+    scheduledAt: `${newCleaningDate.value}T${newCleaningTime.value || '11:00'}:00`,
+    cleanerIds: [],
+    cleanerNames: [],
+    teamName: 'Housekeeping',
+    status: 'scheduled',
+    priority: 'normal',
+    durationMinutes: 180,
+    notes: `Cleaning for reservation ${r.id}`,
+    source: 'custom',
+    reservationId: r.id,
+    recurrence: null,
+  })
+  toast.success('Cleaning scheduled')
+  addCleaningOpen.value = false
+}
+
+function removeCleaning(jobId: string) {
+  deleteJob(jobId)
+  toast.info('Cleaning removed')
+}
+
+function fmtCleaningDate(iso: string): string {
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
@@ -442,6 +502,70 @@ function formatExpiry(iso: string): string {
               </AccordionItem>
             </Accordion>
 
+            <!-- Housekeeping schedule -->
+            <div class="border-b px-5 py-4">
+              <div class="mb-3 flex items-center gap-2">
+                <Icon name="lucide:sparkles" class="size-4 text-muted-foreground" />
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">
+                  Housekeeping
+                </span>
+              </div>
+
+              <div v-if="!nextCleaning" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                No upcoming cleaning scheduled.
+              </div>
+
+              <div v-else class="border p-3">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      Next cleaning
+                    </p>
+                    <p class="mt-0.5 text-sm font-semibold">
+                      {{ fmtCleaningDate(nextCleaning.scheduledAt) }}
+                    </p>
+                  </div>
+                  <Badge variant="outline" class="shrink-0 text-[10px]">
+                    {{ nextCleaning.status }}
+                  </Badge>
+                </div>
+              </div>
+
+              <!-- All scheduled cleanings -->
+              <div v-if="housekeepingJobs.length" class="mt-3 space-y-1.5">
+                <div
+                  v-for="job in housekeepingJobs"
+                  :key="job.id"
+                  class="flex items-center justify-between gap-2 border bg-muted/20 px-2.5 py-1.5"
+                >
+                  <div class="min-w-0">
+                    <p class="truncate text-xs font-medium">
+                      {{ fmtCleaningDate(job.scheduledAt) }}
+                    </p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1">
+                    <Badge variant="outline" class="text-[9px]">
+                      {{ job.status }}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-6 w-6 p-0 hover:text-destructive"
+                      title="Delete cleaning"
+                      @click="removeCleaning(job.id)"
+                    >
+                      <Icon name="lucide:trash-2" class="size-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Button variant="outline" size="sm" class="mt-3 w-full gap-1.5" @click="openAddCleaning">
+                <Icon name="lucide:plus" class="size-3.5" />
+                Add cleaning
+              </Button>
+            </div>
+
             <!-- Actions -->
             <div class="flex gap-2 px-5 py-4">
               <Button variant="outline" size="sm" class="flex-1 gap-1.5" @click="emit('openGuest', reservation.guestId)">
@@ -471,4 +595,36 @@ function formatExpiry(iso: string): string {
       </template>
     </SheetContent>
   </Sheet>
+
+  <!-- Add cleaning dialog -->
+  <Dialog :open="addCleaningOpen" @update:open="addCleaningOpen = $event">
+    <DialogContent class="sm:max-w-sm">
+      <DialogHeader>
+        <DialogTitle>
+          Schedule cleaning
+        </DialogTitle>
+        <DialogDescription>
+          Add a housekeeping job for this reservation.
+        </DialogDescription>
+      </DialogHeader>
+      <div class="grid gap-4 py-2">
+        <div class="space-y-2">
+          <Label>Date</Label>
+          <Input v-model="newCleaningDate" type="date" />
+        </div>
+        <div class="space-y-2">
+          <Label>Time</Label>
+          <Input v-model="newCleaningTime" type="time" />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" @click="addCleaningOpen = false">
+          Cancel
+        </Button>
+        <Button :disabled="!newCleaningDate" @click="addCleaning">
+          Schedule
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
