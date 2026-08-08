@@ -70,12 +70,6 @@ function channelIcon(channel: string): string {
   return 'lucide:globe'
 }
 
-function partyLabel(count: number): string {
-  if (count <= 0)
-    return ''
-  return count === 1 ? '1 Guest' : `${count} Guests`
-}
-
 function initials(name: string): string {
   return name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
 }
@@ -224,10 +218,6 @@ function formatExpiry(iso: string): string {
                     {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
                   </p>
                 </div>
-              </div>
-              <div v-if="partyLabel(reservation.guestCount)" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Icon name="lucide:users" class="size-3.5" />
-                {{ partyLabel(reservation.guestCount) }}
               </div>
               <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
                 <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
