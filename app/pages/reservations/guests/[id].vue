@@ -386,44 +386,17 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         </Button>
       </div>
 
-      <!-- More sections (collapsible) -->
-      <Accordion type="multiple" class="w-full space-y-2">
-        <AccordionItem value="activity" class="border rounded-md">
-          <AccordionTrigger class="px-4 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
-            Activity
-          </AccordionTrigger>
-          <AccordionContent class="px-4 pb-4">
-            <GuestActivityTimeline :events="activity" />
-          </AccordionContent>
-        </AccordionItem>
+      <!-- Activity -->
+      <GuestActivityTimeline :events="activity" />
 
-        <AccordionItem value="payments" class="border rounded-md">
-          <AccordionTrigger class="px-4 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
-            Payment Requests
-          </AccordionTrigger>
-          <AccordionContent class="px-4 pb-4">
-            <GuestPaymentRequests :requests="guestPaymentRequests" />
-          </AccordionContent>
-        </AccordionItem>
+      <!-- Payment requests -->
+      <GuestPaymentRequests :requests="guestPaymentRequests" />
 
-        <AccordionItem value="upsells" class="border rounded-md">
-          <AccordionTrigger class="px-4 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
-            Upsells
-          </AccordionTrigger>
-          <AccordionContent class="px-4 pb-4">
-            <GuestUpsells :order-ids="upsells" />
-          </AccordionContent>
-        </AccordionItem>
+      <!-- Upsells -->
+      <GuestUpsells :order-ids="upsells" />
 
-        <AccordionItem value="notes" class="border rounded-md">
-          <AccordionTrigger class="px-4 text-xs text-muted-foreground uppercase tracking-wide hover:no-underline">
-            Notes
-          </AccordionTrigger>
-          <AccordionContent class="px-4 pb-4">
-            <GuestNotes :notes="guest.notes" @save="saveNotes" />
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+      <!-- Notes -->
+      <GuestNotes :notes="guest.notes" @save="saveNotes" />
     </div>
 
     <NewReservationDialog
