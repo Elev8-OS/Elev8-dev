@@ -39,6 +39,25 @@ const reservationUpsells = computed(() => {
 const editOpen = ref(false)
 const priceView = ref<'guest' | 'payout'>('guest')
 
+// Party breakdown from occupants, e.g. "2 Adults · 1 Child · 1 Infant"
+const partyBreakdown = computed(() => {
+  const r = reservation.value
+  const guests = r?.guests ?? []
+  if (!guests.length)
+    return `${r?.guestCount ?? 0} guests`
+  const adults = guests.filter(g => g.category === 'adult').length
+  const children = guests.filter(g => g.category === 'child').length
+  const infants = guests.filter(g => g.category === 'infant').length
+  const parts: string[] = []
+  if (adults)
+    parts.push(`${adults} Adult${adults > 1 ? 's' : ''}`)
+  if (children)
+    parts.push(`${children} Child${children > 1 ? 'ren' : ''}`)
+  if (infants)
+    parts.push(`${infants} Infant${infants > 1 ? 's' : ''}`)
+  return parts.join(' · ')
+})
+
 const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
 
 const statusDotClass = computed(() => {
@@ -397,7 +416,7 @@ function fmtCleaningDate(iso: string): string {
               <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span class="flex items-center gap-1.5">
                   <Icon name="lucide:users" class="size-3.5" />
-                  {{ reservation.guestCount }} guests
+                  {{ partyBreakdown }}
                 </span>
                 <span class="flex items-center gap-1.5">
                   <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
