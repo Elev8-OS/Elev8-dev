@@ -31,7 +31,7 @@ function orderStatusLabel(order: UpsellOrder): string {
         Upsells
       </CardTitle>
     </CardHeader>
-    <CardContent class="p-0">
+    <CardContent class="px-6 pb-4">
       <div v-if="linkedOrders.length === 0" class="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
         <Icon name="lucide:tag" class="size-8 opacity-50" />
         No upsells.
@@ -40,7 +40,7 @@ function orderStatusLabel(order: UpsellOrder): string {
         <div
           v-for="order in linkedOrders"
           :key="order.id"
-          class="flex items-center justify-between gap-3 px-4 py-3"
+          class="flex items-center justify-between gap-3 py-3"
         >
           <div class="min-w-0">
             <p class="text-sm font-medium truncate">

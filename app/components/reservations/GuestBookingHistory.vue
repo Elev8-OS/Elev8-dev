@@ -21,7 +21,7 @@ function fmtCurrency(amount: number, currency: string): string {
         Booking history
       </CardTitle>
     </CardHeader>
-    <CardContent class="p-0">
+    <CardContent class="px-6 pb-4">
       <div class="rounded-md border overflow-hidden">
         <table class="w-full text-sm">
           <thead class="bg-muted/50 text-xs uppercase text-muted-foreground">

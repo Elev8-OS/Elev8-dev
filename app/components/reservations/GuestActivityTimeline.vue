@@ -27,7 +27,7 @@ const typeMeta: Record<ActivityEvent['type'], { icon: string, tone: string }> = 
         Activity
       </CardTitle>
     </CardHeader>
-    <CardContent class="p-0">
+    <CardContent class="px-6 pb-4">
       <div v-if="events.length === 0" class="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
         <Icon name="lucide:activity" class="size-8 opacity-50" />
         No activity recorded yet.
@@ -36,7 +36,7 @@ const typeMeta: Record<ActivityEvent['type'], { icon: string, tone: string }> = 
         <li
           v-for="e in events"
           :key="e.id"
-          class="flex items-start gap-3 px-4 py-3"
+          class="flex items-start gap-3 py-3"
         >
           <div class="flex size-9 items-center justify-center rounded-full shrink-0" :class="[typeMeta[e.type].tone]">
             <Icon :name="typeMeta[e.type].icon" class="size-4" />

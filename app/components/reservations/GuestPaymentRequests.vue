@@ -21,7 +21,7 @@ function fmtCurrency(amount: number, currency: string): string {
         Payment requests
       </CardTitle>
     </CardHeader>
-    <CardContent class="p-0">
+    <CardContent class="px-6 pb-4">
       <div v-if="requests.length === 0" class="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
         <Icon name="lucide:link" class="size-8 opacity-50" />
         No payment requests.
@@ -30,7 +30,7 @@ function fmtCurrency(amount: number, currency: string): string {
         <div
           v-for="r in requests"
           :key="r.id"
-          class="flex items-center justify-between gap-3 px-4 py-3"
+          class="flex items-center justify-between gap-3 py-3"
         >
           <div class="min-w-0">
             <p class="text-sm font-medium truncate">
