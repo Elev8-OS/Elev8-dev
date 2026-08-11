@@ -99,7 +99,8 @@ function toggleProperty(name: string) {
 }
 
 function selectAll() {
-  if (!props.multiSelect) return
+  if (!props.multiSelect)
+    return
   emit('update:modelValue', props.options.map(l => l.name))
 }
 
