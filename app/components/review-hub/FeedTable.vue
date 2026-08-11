@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReviewFeedItem } from '~/components/review-hub/data/types'
+import type { HubSortKey } from '~/composables/useReviewHub'
 import { format } from 'date-fns'
 import { getDisplayScore, getDisplayMax } from '~/components/review-hub/data/types'
 
@@ -15,7 +16,7 @@ const emit = defineEmits<{
   'update:page': [page: number]
 }>()
 
-const { getHostReviewCountdown, getUnitInfo, getListingStructure, isGuestReviewHidden, getReplyCountdown, getComputedStatus } = useReviewHub()
+const { getHostReviewCountdown, getUnitInfo, getListingStructure, isGuestReviewHidden, getReplyCountdown, getComputedStatus, sortBy, sortDir, setSort } = useReviewHub()
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.items.length / props.pageSize)))
 
@@ -23,6 +24,20 @@ const pageItems = computed(() => {
   const start = (props.page - 1) * props.pageSize
   return props.items.slice(start, start + props.pageSize)
 })
+
+function toggleSort(key: HubSortKey) {
+  setSort(key)
+  emit('update:page', 1)
+}
+
+function sortIcon(key: HubSortKey) {
+  if (sortBy.value !== key) return 'lucide:chevrons-up-down'
+  return sortDir.value === 'asc' ? 'lucide:arrow-up' : 'lucide:arrow-down'
+}
+
+function sortHeaderClass(key: HubSortKey) {
+  return sortBy.value === key ? 'text-foreground font-semibold' : ''
+}
 
 function getPropertySubtext(item: ReviewFeedItem) {
   const structure = getListingStructure(item.review_record.listing_id)
@@ -90,11 +105,51 @@ function isReplyExpired(item: ReviewFeedItem) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Guest</TableHead>
+          <TableHead>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded hover:text-foreground"
+              :class="sortHeaderClass('guest_name')"
+              @click="toggleSort('guest_name')"
+            >
+              Guest
+              <Icon :name="sortIcon('guest_name')" class="size-3.5" />
+            </button>
+          </TableHead>
           <TableHead>Property</TableHead>
-          <TableHead>Channel</TableHead>
-          <TableHead>Checkout</TableHead>
-          <TableHead>Rating</TableHead>
+          <TableHead>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded hover:text-foreground"
+              :class="sortHeaderClass('source')"
+              @click="toggleSort('source')"
+            >
+              Channel
+              <Icon :name="sortIcon('source')" class="size-3.5" />
+            </button>
+          </TableHead>
+          <TableHead>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded hover:text-foreground"
+              :class="sortHeaderClass('checkout_date')"
+              @click="toggleSort('checkout_date')"
+            >
+              Checkout
+              <Icon :name="sortIcon('checkout_date')" class="size-3.5" />
+            </button>
+          </TableHead>
+          <TableHead>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded hover:text-foreground"
+              :class="sortHeaderClass('rating')"
+              @click="toggleSort('rating')"
+            >
+              Rating
+              <Icon :name="sortIcon('rating')" class="size-3.5" />
+            </button>
+          </TableHead>
           <TableHead>Stay Report</TableHead>
           <TableHead>Status</TableHead>
           <TableHead class="text-right">

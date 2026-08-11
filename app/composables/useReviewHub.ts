@@ -9,6 +9,7 @@ import { useAirbnbReviews } from '~/composables/useAirbnbReviews'
 
 export type HubFilterStatus = 'all' | ReplyStatus
 export type HubFilterChannel = 'all' | ReviewSource
+export type HubSortKey = 'checkout_date' | 'guest_name' | 'rating' | 'source'
 
 export function useReviewHub() {
   const reviewRecords = useState<ReviewRecord[]>('review-hub-records', () => JSON.parse(JSON.stringify(mockReviewRecords)))
@@ -21,6 +22,20 @@ export function useReviewHub() {
   const filterStatus = ref<HubFilterStatus>('all')
   const filterChannel = ref<HubFilterChannel>('all')
   const filterListing = ref<string[]>([])
+
+  // Sorting (useState so all useReviewHub() instances share the same sort state)
+  const sortBy = useState<HubSortKey>('review-hub-sort-by', () => 'checkout_date')
+  const sortDir = useState<'asc' | 'desc'>('review-hub-sort-dir', () => 'desc')
+
+  function setSort(key: HubSortKey) {
+    if (sortBy.value === key) {
+      sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+    }
+    else {
+      sortBy.value = key
+      sortDir.value = 'desc'
+    }
+  }
 
   // Unique listings from review records
   const uniqueListings = computed(() => {
@@ -140,7 +155,7 @@ export function useReviewHub() {
 
   // Filtered feed items
   const filteredFeedItems = computed(() => {
-    return feedItems.value.filter((item) => {
+    const result = feedItems.value.filter((item) => {
       const r = item.review_record
 
       if (filterStatus.value !== 'all' && getComputedStatus(r) !== filterStatus.value)
@@ -155,7 +170,28 @@ export function useReviewHub() {
           return false
       }
       return true
-    }).sort((a, b) => new Date(b.review_record.checkout_date).getTime() - new Date(a.review_record.checkout_date).getTime())
+    })
+
+    const dir = sortDir.value === 'asc' ? 1 : -1
+    const key = sortBy.value
+    return result.sort((a, b) => {
+      const ra = a.review_record
+      const rb = b.review_record
+      let cmp = 0
+      if (key === 'checkout_date') {
+        cmp = new Date(ra.checkout_date).getTime() - new Date(rb.checkout_date).getTime()
+      }
+      else if (key === 'guest_name') {
+        cmp = ra.guest_name.localeCompare(rb.guest_name)
+      }
+      else if (key === 'rating') {
+        cmp = (ra.guest_rating_overall ?? -1) - (rb.guest_rating_overall ?? -1)
+      }
+      else if (key === 'source') {
+        cmp = ra.source.localeCompare(rb.source)
+      }
+      return cmp * dir
+    })
   })
 
   // Stats
@@ -463,6 +499,9 @@ export function useReviewHub() {
     filterStatus,
     filterChannel,
     filterListing,
+    sortBy,
+    sortDir,
+    setSort,
     uniqueListings,
     updateReviewRecord,
     generateReplyDraft,
