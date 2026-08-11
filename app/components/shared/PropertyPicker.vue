@@ -98,6 +98,16 @@ function toggleProperty(name: string) {
   emit('update:modelValue', current)
 }
 
+function selectAll() {
+  if (!props.multiSelect)
+    return
+  emit('update:modelValue', props.options.map(l => l.name))
+}
+
+function unselectAll() {
+  emit('update:modelValue', props.multiSelect ? ['All Properties'] : [])
+}
+
 const displayLabel = computed(() => {
   if (isAllProperties.value) {
     return props.multiSelect ? 'All Properties' : 'Select property'
@@ -258,7 +268,16 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
       </ScrollArea>
 
       <!-- Footer -->
-      <div class="flex items-center justify-between border-t px-3 py-2">
+      <div class="flex items-center justify-between gap-2 border-t px-3 py-2">
+        <div v-if="multiSelect" class="flex items-center gap-1">
+          <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" @click="selectAll">
+            Select all
+          </Button>
+          <Button variant="ghost" size="sm" class="h-7 px-2 text-xs" @click="unselectAll">
+            Unselect all
+          </Button>
+        </div>
+        <div v-else class="flex-1" />
         <span class="text-xs text-muted-foreground">
           {{ selectedCount > 0 ? `${selectedCount} selected` : `${filteredListings.length} properties` }}
         </span>

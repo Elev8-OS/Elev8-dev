@@ -47,6 +47,10 @@ export function useCleaningJobs() {
     jobs.value = jobs.value.map(job => (job.id === id ? { ...job, ...patch } : job))
   }
 
+  function deleteJob(id: string) {
+    jobs.value = jobs.value.filter(job => job.id !== id)
+  }
+
   function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string, guestName?: string }) {
     const { createGuestActivityAlert } = useNotifications()
     const scheduledAt = `${reservation.checkOut}T11:00:00+08:00`
@@ -98,6 +102,7 @@ export function useCleaningJobs() {
     jobsForFilters,
     createJob,
     updateJob,
+    deleteJob,
     createFromCheckout,
     resolveCleanerNames,
     joinCleanerNames,
