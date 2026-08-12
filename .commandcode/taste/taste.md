@@ -3,10 +3,7 @@
 [cmd]: https://commandcode.ai/
 
 # communication
-- Always respond in English, even when the user writes in Indonesian. Confidence: 0.95
-- For UI changes, the user often conveys the desired design by attaching a reference screenshot plus a short sentence in Indonesian (e.g. "untuk cleaning event cardnya kaya di gambar", "buat cleaning card eventnya tambahin handle by extrasauber, ini pngnya") rather than writing detailed written specs. Treat the screenshot as the source of truth and read it via the vision tool before touching code — this includes extracting brand colors, taglines, and logo styling from the image. Confidence: 0.85
-- After completing a UI feature, proactively state where the user can see it (exact route/page) and how to reproduce it (e.g. which form field to pick, create vs. edit flow) — the user will otherwise ask "ceknya dimana" ("where do I check it?"). Offering to seed mock/demo data so the change is visible without manual setup is welcomed. Confidence: 0.6
-
+See [communication/taste.md](communication/taste.md)
 # finance
 - For Booking Revenue double-entry tables: each line item must have separate Debit and Credit account columns/selectors, not a single account with a pre-assigned debit/credit indicator. Confidence: 0.65
 - No charts or progress bars — use full data tables only. Confidence: 0.90
@@ -22,7 +19,8 @@ See [vue-nuxt/taste.md](vue-nuxt/taste.md)
 See [finance/taste.md](finance/taste.md)
 # workflow
 - Prefer `pnpm dev` over `pnpm build` during development to avoid browser crash from heavy builds. Confidence: 0.65
-- When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. Confidence: 0.88
+- As a dev-server smoke test, don't stop at HTTP status codes — grep the rendered HTML for expected content (guest names, section headings) and scan the dev log for Vue warnings/errors (e.g. `Failed to resolve component`); this catches component-resolution issues that typecheck and 200s miss. Confidence: 0.7
+- When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. If the user explicitly asked to run the dev server (e.g. a terse "run dev"), leave it running and say so — they want to click through the feature themselves; only stop the server after verification when the assistant started it solely as a smoke test, so no ports are left occupied. Confidence: 0.85
 
 # 3cx
 - For mock 3CX integration: skip the OAuth redirect page/callback flow and go directly to "connected" state. Confidence: 0.65
@@ -38,7 +36,10 @@ See [finance/taste.md](finance/taste.md)
 
 # data
 - Prefer real data from Elev8 Suite OS MCP over mock data when available. Confidence: 0.70
+- When a new feature needs mock data, prefer reusing/enriching existing dataset records (e.g. blending rich inbox records with the larger finance table, or seeding a new bookingNote field onto an existing seeded reservation like Emily's res-3) over authoring a large fresh dataset — the user chose the blended dataset option for the reservations feature, and the booking-note addition reused the existing record. Confidence: 0.65
 - Property hierarchy must support three levels: Property → Unit Type (e.g., Kingbed, Single Bed) → Unit (room with specific bed). Confidence: 0.75
+- Reservation bookings that contain multiple people should be modeled as per-guest occupant records — `GuestOccupant` (name, category adult/child/infant, email/phone, DOB, nationality, passport/ID-card type + number, isPrimary flag) — not just a numeric guestCount. Asked which fields a guest group needs, the user chose the "Lengkap + identitas" (full identity details) option. The UI mirrors the model: a party breakdown ("2 Adults · 1 Child · 1 Infant") + overlapping avatar stack (max 4 + "+N") in the Booking Info card, and a per-occupant list (avatar, Main badge, category, DOB, nationality, contact, ID number) in an accordion in the reservation detail sheet. In the detail sheet's guest block the user explicitly asked to show the adult/child/infant split instead of a bare "N guests" line ("munculin info adult berapa child infant berapa") — the breakdown is derived from the occupant records' categories and falls back to the total guestCount only when no occupant data exists. Confidence: 0.72
+- Keep aggregate reservation counts consistent with the occupant records when seeding/enriching mock data: adding an occupant (e.g. a child to Emily's booking) must bump `guestCount` to match, so the party breakdown, the count, and the per-guest list never contradict each other. Confidence: 0.5
 
 # data
 - Within a unit type, guest capacity settings (max adults, max children, max infants) must be uniform across all units — no per-unit capacity overrides. Confidence: 0.65
@@ -61,6 +62,9 @@ See [notifications/taste.md](notifications/taste.md)
 
 # operations-calendar
 - When selecting listing in cleaning/task/review forms, surface guest info automatically (name, stay length, has-pet) — don't require a separate lookup. Confidence: 0.80
+- Exclude INQUIRY-status bookings from operational views (operations calendar, cleaning lists) entirely — unconfirmed bookings have no cleaning, so they must not appear as calendar entries/strips ("jangan pernah munculin booking yang statusnya INQUIRY, karena belum booking jadinya ga ada cleaning"). Confidence: 0.8
 
 # cleaning
 - Cleaning job assignment (both create and edit flows) must offer external cleaning services (e.g. Extrasauber, "External cleaning service") as assignable options alongside internal staff — assignees are not limited to staff members. Confidence: 0.8
+- Cleaning job assignment is OPTIONAL: the add-cleaning flow includes an assignee selector with an explicit "Unassigned" option (never a required field), and every scheduled job — plus the "next cleaning" highlight — displays the assigned cleaner's name so it's visible at a glance. The user asked to show who's assigned ("munculin assignnya siapa") and marked it optional ("opsional"). Confidence: 0.6
+daily / check-out / custom / mid-stay), a pet indicator, and currently-staying guest details (adults, children, pet count, night stay, stay dates) — surface this info on the calendar card itself, not just in forms. Confidence: 0.65
