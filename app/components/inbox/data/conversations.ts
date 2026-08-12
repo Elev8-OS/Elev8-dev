@@ -41,6 +41,7 @@ export interface Conversation {
   propertyName: string
   otaSource: string
   reservationId: string
+  guestEmail?: string
   status: ConversationStatus | null
   lastMessage: string
   lastMessageAt: string
@@ -94,6 +95,9 @@ export interface Message {
   sendStatus?: 'sending' | 'sent' | 'failed'
   aiWritten?: boolean
   senderRole?: string
+  fromAddress?: string
+  toAddress?: string
+  messageId?: string
   upsellOffer?: UpsellOffer
   translatedContent?: string
   mediaUrl?: string
@@ -908,6 +912,111 @@ export const conversations: Conversation[] = [
     labels: ['unmatched'],
     sentiment: 'neutral',
     sentimentNote: '',
+    stayStatus: 'unmatched',
+    checkIn: '',
+    checkOut: '',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+  },
+  {
+    id: 'conv-em-1',
+    guestName: 'Sofia Martinez',
+    guestInitials: 'SM',
+    listingName: 'Villa Canggu',
+    propertyName: 'Canggu Properties',
+    otaSource: 'Email',
+    reservationId: 'res-8',
+    guestEmail: 'sofia.m@email.com',
+    status: 'action_needed',
+    lastMessage: 'Could you also arrange airport pickup for 4 people?',
+    lastMessageAt: '2026-08-11T09:12:00Z',
+    unreadCount: 1,
+    isAssignedToMe: true,
+    assignedTo: 'staff-2',
+    tags: ['Canggu', 'Direct'],
+    labels: [],
+    sentiment: 'positive',
+    sentimentNote: 'Booking direct via email, asks about airport pickup',
+    stayStatus: 'current',
+    checkIn: '2026-08-14T15:00:00Z',
+    checkOut: '2026-08-21T11:00:00Z',
+    verification: 'verified',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+    guestLanguage: 'Spanish',
+  },
+  {
+    id: 'conv-em-2',
+    guestName: 'Lukas Meier',
+    guestInitials: 'LM',
+    listingName: 'Garden Loft',
+    propertyName: 'Ubud Retreats',
+    otaSource: 'Email',
+    reservationId: 'res-em-2',
+    guestEmail: 'lukas.meier@email.com',
+    status: null,
+    lastMessage: 'We loved the stay! Sending our deposit photos shortly.',
+    lastMessageAt: '2026-08-10T16:45:00Z',
+    unreadCount: 0,
+    isAssignedToMe: false,
+    assignedTo: null,
+    tags: ['Ubud', 'Repeat'],
+    labels: ['repeat-guest'],
+    sentiment: 'positive',
+    sentimentNote: 'Past guest from May, booking again via email',
+    stayStatus: 'past',
+    checkIn: '2026-07-03T15:00:00Z',
+    checkOut: '2026-07-06T11:00:00Z',
+    verification: 'verified',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+    guestLanguage: 'German',
+  },
+  {
+    id: 'conv-em-3',
+    guestName: 'Hannah Lee',
+    guestInitials: 'HL',
+    listingName: 'Villa Ocean',
+    propertyName: 'Umalas Villas',
+    otaSource: 'Email',
+    reservationId: 'res-em-1',
+    guestEmail: 'hannah.lee@email.com',
+    status: 'action_needed',
+    lastMessage: 'Hi — checking if Villa Ocean is available for late August?',
+    lastMessageAt: '2026-08-12T08:30:00Z',
+    unreadCount: 1,
+    isAssignedToMe: false,
+    assignedTo: null,
+    tags: ['Umalas', 'Inquiry'],
+    labels: ['inquiry'],
+    sentiment: 'neutral',
+    sentimentNote: 'New direct inquiry via email, no reservation yet',
+    stayStatus: 'inquiry',
+    checkIn: '',
+    checkOut: '',
+    verification: 'unverified',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+    guestLanguage: 'English',
+  },
+  {
+    id: 'conv-em-um',
+    guestName: 'info@stayvilla.com',
+    guestInitials: '?',
+    listingName: 'Unknown',
+    propertyName: 'Unknown',
+    otaSource: 'Email',
+    reservationId: '',
+    status: 'action_needed',
+    lastMessage: 'Do you have availability for a wedding group in September?',
+    lastMessageAt: '2026-08-09T14:20:00Z',
+    unreadCount: 1,
+    isAssignedToMe: false,
+    assignedTo: null,
+    tags: [],
+    labels: ['unmatched'],
+    sentiment: 'neutral',
+    sentimentNote: 'Unmatched sender, no reservation linked',
     stayStatus: 'unmatched',
     checkIn: '',
     checkOut: '',
@@ -1788,6 +1897,22 @@ export const messages: Record<string, Message[]> = {
   ],
   'conv-um-3': [
     { id: 'msg-um-3-1', conversationId: 'conv-um-3', sender: 'guest', senderName: '+61 400 111222', content: 'Do you have availability in August?', channel: 'WhatsApp', timestamp: '2026-04-26T07:30:00Z' },
+  ],
+  'conv-em-1': [
+    { id: 'msg-em-1-1', conversationId: 'conv-em-1', sender: 'guest', senderName: 'Sofia Reyes', content: 'Hi! We stayed at Villa Sari last year and loved it. We\'re planning to return August 14–21 for 4 people. Is it available?', channel: 'Email', timestamp: '2026-08-10T10:00:00Z' },
+    { id: 'msg-em-1-2', conversationId: 'conv-em-1', sender: 'host', senderName: 'Komang Juliantara', senderRole: 'Guest Relations', content: 'Hi Sofia, lovely to hear from you again! Villa Sari is available for those dates. Would you like me to send a booking confirmation and a payment link?', channel: 'Email', timestamp: '2026-08-10T11:30:00Z' },
+    { id: 'msg-em-1-3', conversationId: 'conv-em-1', sender: 'guest', senderName: 'Sofia Reyes', content: 'Yes please! And could you also arrange airport pickup for 4 people?', channel: 'Email', timestamp: '2026-08-11T09:12:00Z' },
+  ],
+  'conv-em-2': [
+    { id: 'msg-em-2-1', conversationId: 'conv-em-2', sender: 'guest', senderName: 'Lukas Meier', content: 'Hi! We\'d love to book the Garden Loft again for July 3–6. Is it available?', channel: 'Email', timestamp: '2026-08-08T14:00:00Z' },
+    { id: 'msg-em-2-2', conversationId: 'conv-em-2', sender: 'host', senderName: 'Komang Juliantara', senderRole: 'Guest Relations', content: 'Hi Lukas, great to have you back! The Garden Loft is available. I\'ll send over the booking confirmation shortly.', channel: 'Email', timestamp: '2026-08-08T15:20:00Z' },
+    { id: 'msg-em-2-3', conversationId: 'conv-em-2', sender: 'guest', senderName: 'Lukas Meier', content: 'We loved the stay! Sending our deposit photos shortly.', channel: 'Email', timestamp: '2026-08-10T16:45:00Z' },
+  ],
+  'conv-em-3': [
+    { id: 'msg-em-3-1', conversationId: 'conv-em-3', sender: 'guest', senderName: 'Hannah Lee', content: 'Hi — checking if Villa Ocean is available for late August?', channel: 'Email', timestamp: '2026-08-12T08:30:00Z' },
+  ],
+  'conv-em-um': [
+    { id: 'msg-em-um-1', conversationId: 'conv-em-um', sender: 'guest', senderName: 'info@stayvilla.com', content: 'Do you have availability for a wedding group in September?', channel: 'Email', timestamp: '2026-08-09T14:20:00Z' },
   ],
 }
 
@@ -3072,8 +3197,8 @@ export const reservations: Record<string, Reservation> = {
     checkOut: '2026-06-12T11:00:00Z',
     nights: 2,
     guestCount: 2,
-    totalPrice: 280,
-    currency: 'USD',
+    totalPrice: 240,
+    currency: 'EUR',
     smartActions: [],
     guestDetails: { name: 'Marcel Weber', email: 'marcel.weber@email.com', phone: '+49 160 5556677', previousStays: 0, notes: 'Asked about early check-in.', language: 'German' },
     listingDetails: { name: 'Garden Loft', property: 'Ubud Retreats', room: 'Loft', amenities: ['WiFi', 'AC', 'Garden', 'Breakfast Included'] },
@@ -3082,12 +3207,53 @@ export const reservations: Record<string, Reservation> = {
       { id: 'act-wa-3-1', type: 'message', title: 'Early Check-in Request', description: 'Guest asked about early check-in', actor: 'Marcel Weber', timestamp: '2026-04-25T12:30:00Z', channel: 'WhatsApp', colorDot: 'blue' },
     ],
   },
+  'res-em-1': {
+    id: 'res-em-1',
+    propertyName: 'Umalas Villas',
+    roomName: 'Villa Ocean',
+    listingName: 'Villa Ocean',
+    otaSource: 'Email',
+    checkIn: '2026-08-25T15:00:00Z',
+    checkOut: '2026-08-30T11:00:00Z',
+    nights: 5,
+    guestCount: 2,
+    totalPrice: 900,
+    currency: 'USD',
+    smartActions: [],
+    guestDetails: { name: 'Hannah Lee', email: 'hannah.lee@email.com', phone: '+1 415 555-0199', previousStays: 0, notes: 'New direct email inquiry.', language: 'English' },
+    listingDetails: { name: 'Villa Ocean', property: 'Umalas Villas', room: 'Villa', amenities: ['Pool', 'WiFi', 'AC', 'Kitchen', 'Parking', 'Garden'] },
+    tasks: [],
+    activity: [
+      { id: 'act-em-1-1', type: 'message', title: 'Direct Email Inquiry', description: 'Guest asked about availability via email', actor: 'Hannah Lee', timestamp: '2026-08-12T08:30:00Z', channel: 'Email', colorDot: 'blue' },
+    ],
+  },
+  'res-em-2': {
+    id: 'res-em-2',
+    propertyName: 'Ubud Retreats',
+    roomName: 'Garden Loft',
+    listingName: 'Garden Loft',
+    otaSource: 'Email',
+    checkIn: '2026-07-03T15:00:00Z',
+    checkOut: '2026-07-06T11:00:00Z',
+    nights: 3,
+    guestCount: 2,
+    totalPrice: 360,
+    currency: 'EUR',
+    smartActions: [],
+    guestDetails: { name: 'Lukas Meier', email: 'lukas.meier@email.com', phone: '+49 160 5556677', previousStays: 1, notes: 'Repeat guest, books via email.', language: 'German' },
+    listingDetails: { name: 'Garden Loft', property: 'Ubud Retreats', room: 'Loft', amenities: ['WiFi', 'AC', 'Garden', 'Breakfast Included'] },
+    tasks: [],
+    activity: [
+      { id: 'act-em-2-1', type: 'message', title: 'Repeat Booking via Email', description: 'Returning guest booked the Garden Loft again via email', actor: 'Lukas Meier', timestamp: '2026-08-08T14:00:00Z', channel: 'Email', colorDot: 'blue' },
+    ],
+  },
 }
 
 export const otaSources = [
   { name: 'Airbnb', color: '#FF5A5F', icon: 'logos:airbnb' },
   { name: 'Booking.com', color: '#003580', icon: 'simple-icons:bookingdotcom' },
   { name: 'WhatsApp', color: '#25D366', icon: 'logos:whatsapp-icon' },
+  { name: 'Email', color: '#4285F4', icon: 'lucide:mail' },
 ]
 
 export interface UnmatchedMessage {

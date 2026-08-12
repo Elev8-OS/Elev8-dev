@@ -156,6 +156,119 @@ export function useInbox() {
     selectedConversationId.value = newId
   }
 
+  // ── Inbound email (mirrors the 3CX inbound-call pipeline) ──────────────
+  function findConversationByEmail(email: string): string | undefined {
+    const clean = email.trim().toLowerCase()
+    if (!clean)
+      return undefined
+    // 1) direct conversation match (guestEmail on an Email conversation)
+    const byGuestEmail = conversations.value.find(c =>
+      c.otaSource === 'Email'
+      && c.guestEmail
+      && c.guestEmail.toLowerCase() === clean,
+    )
+    if (byGuestEmail)
+      return byGuestEmail.id
+    // 2) reservation guest email match (thread to the matching reservation)
+    const resId = Object.keys(reservations).find((id) => {
+      const email = reservations[id]?.guestDetails?.email
+      return email && email.toLowerCase() === clean
+    })
+    if (resId) {
+      const conv = conversations.value.find(c => c.reservationId === resId && c.otaSource === 'Email')
+      return conv?.id
+    }
+    return undefined
+  }
+
+  function simulateInboundEmail(opts: {
+    from: string
+    to: string
+    subject?: string
+    content: string
+  }): { messageId: string, matched: boolean, conversationId?: string } {
+    const conversationId = findConversationByEmail(opts.from)
+
+    // Unmatched sender → create a new unmatched email conversation (mirrors
+    // the WhatsApp unmatched pattern), so the email always lands somewhere
+    // visible instead of being silently dropped.
+    if (!conversationId) {
+      const newId = `conv-em-new-${Date.now()}`
+      const guestName = opts.from.split('@')[0] || opts.from
+      const newConv: Conversation = {
+        id: newId,
+        guestName: opts.from,
+        guestInitials: guestName.slice(0, 2).toUpperCase() || '?',
+        listingName: 'Unknown',
+        propertyName: 'Unknown',
+        otaSource: 'Email',
+        reservationId: '',
+        guestEmail: opts.from.toLowerCase(),
+        status: 'action_needed',
+        lastMessage: opts.content,
+        lastMessageAt: new Date().toISOString(),
+        unreadCount: 1,
+        isAssignedToMe: false,
+        assignedTo: null,
+        tags: [],
+        labels: ['unmatched'],
+        sentiment: 'neutral',
+        sentimentNote: 'Unmatched sender, no reservation linked',
+        stayStatus: 'unmatched',
+        checkIn: '',
+        checkOut: '',
+        cleaningStatus: 'cleaning_finished',
+        linkedUpsellOrderIds: [],
+      }
+      const msg: Message = {
+        id: `msg-em-live-${Date.now()}`,
+        conversationId: newId,
+        sender: 'guest',
+        senderName: opts.from,
+        content: opts.content,
+        channel: 'Email',
+        timestamp: new Date().toISOString(),
+        fromAddress: opts.from,
+        toAddress: opts.to,
+        messageId: `em-${Date.now()}`,
+      }
+      conversations.value = [newConv, ...conversations.value]
+      messages.value = { ...messages.value, [newId]: [msg] }
+      return { messageId: msg.id!, matched: false }
+    }
+
+    // Matched → append the inbound message to the existing conversation.
+    const msg: Message = {
+      id: `msg-em-live-${Date.now()}`,
+      conversationId,
+      sender: 'guest',
+      senderName: conversations.value.find(c => c.id === conversationId)?.guestName || opts.from,
+      content: opts.content,
+      channel: 'Email',
+      timestamp: new Date().toISOString(),
+      fromAddress: opts.from,
+      toAddress: opts.to,
+      messageId: `em-${Date.now()}`,
+    }
+    const currentMessages = messages.value[conversationId] ?? []
+    messages.value = { ...messages.value, [conversationId]: [...currentMessages, msg] }
+
+    // Bump to action_needed + unread (mirrors markActionNeededForMissed).
+    conversations.value = conversations.value.map(c =>
+      c.id === conversationId
+        ? {
+            ...c,
+            status: 'action_needed',
+            unreadCount: Math.max(c.unreadCount, 1),
+            lastMessage: msg.content,
+            lastMessageAt: msg.timestamp,
+          }
+        : c,
+    )
+
+    return { messageId: msg.id!, matched: true, conversationId }
+  }
+
   const filteredConversations = computed(() => {
     let result = conversations.value
 
@@ -544,7 +657,7 @@ export function useInbox() {
     pendingSuggestion.value = content
   }
 
-  function sendMessage(conversationId: string, content: string, channel: string, upsellOffer?: Message['upsellOffer'], mediaUrl?: string, mediaDims?: string) {
+  function sendMessage(conversationId: string, content: string, channel: string, upsellOffer?: Message['upsellOffer'], mediaUrl?: string, mediaDims?: string, fromAddress?: string) {
     const conv = conversations.value.find(c => c.id === conversationId)
     if (!conv || (!content.trim() && !mediaUrl))
       return
@@ -561,6 +674,7 @@ export function useInbox() {
       timestamp: new Date().toISOString(),
       sendStatus: 'sending',
       upsellOffer,
+      ...(fromAddress ? { fromAddress } : {}),
       ...(mediaUrl ? { mediaUrl, mediaDims } : {}),
     }
 
@@ -719,5 +833,8 @@ export function useInbox() {
     dismissUnmatched,
     matchUnmatched,
     createFromUnmatched,
+    findConversationByEmail,
+    simulateInboundEmail,
+    messages,
   }
 }

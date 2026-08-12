@@ -83,13 +83,17 @@ function removeAttachedImage() {
 function send() {
   if (!replyText.value.trim() && !attachedImage.value)
     return
+  const channel = sendChannel.value === 'ota' ? props.channel : sendChannel.value
+  // Email replies are sent from the tenant's connected sending address.
+  const fromAddress = channel === 'email' ? getActiveEmailAddress() ?? undefined : undefined
   sendMessage(
     props.conversationId,
     replyText.value,
-    sendChannel.value === 'ota' ? props.channel : sendChannel.value,
+    channel,
     undefined,
     attachedImage.value ?? undefined,
     attachedImageDims.value ?? undefined,
+    fromAddress,
   )
   replyText.value = ''
   removeAttachedImage()

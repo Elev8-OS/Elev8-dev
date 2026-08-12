@@ -51,6 +51,8 @@ export type AlertType
     | 'LEXWARE_TAX_MAPPING_HOLD'
     | 'LEXWARE_CREDIT_NOTE_CREATED'
     | 'LEXWARE_NON_EUR_EXCLUDED'
+    | 'EMAIL_DOMAIN_VERIFIED'
+    | 'EMAIL_DNS_FAILING'
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -121,6 +123,8 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   LEXWARE_TAX_MAPPING_HOLD: 'Lexware - Tax Mapping Required',
   LEXWARE_CREDIT_NOTE_CREATED: 'Lexware - Credit Note Created',
   LEXWARE_NON_EUR_EXCLUDED: 'Lexware - Non-EUR Booking Excluded',
+  EMAIL_DOMAIN_VERIFIED: 'Email - Domain Verified',
+  EMAIL_DNS_FAILING: 'Email - DNS Verification Failing',
 }
 
 export const alertIcons: Record<AlertType, string> = {
@@ -176,6 +180,8 @@ export const alertIcons: Record<AlertType, string> = {
   LEXWARE_TAX_MAPPING_HOLD: 'i-lucide-percent',
   LEXWARE_CREDIT_NOTE_CREATED: 'i-lucide-file-minus-2',
   LEXWARE_NON_EUR_EXCLUDED: 'i-lucide-circle-dollar-sign',
+  EMAIL_DOMAIN_VERIFIED: 'i-lucide-mail-check',
+  EMAIL_DNS_FAILING: 'i-lucide-triangle-alert',
 }
 
 export const alertRouteMap: Partial<Record<AlertType, string>> = {
@@ -231,6 +237,8 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   LEXWARE_TAX_MAPPING_HOLD: '/finance?tab=integrations',
   LEXWARE_CREDIT_NOTE_CREATED: '/finance?tab=integrations',
   LEXWARE_NON_EUR_EXCLUDED: '/finance?tab=integrations',
+  EMAIL_DOMAIN_VERIFIED: '/settings/integrations',
+  EMAIL_DNS_FAILING: '/settings/integrations',
 }
 
 export function getDescription(type: AlertType, context: Record<string, any>): string {
@@ -329,6 +337,10 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `A credit note was automatically created in Lexware for a cancelled booking (${context.guest_name || 'guest'}).`
     case 'LEXWARE_NON_EUR_EXCLUDED':
       return `${context.excluded_count || 1} non-EUR booking(s) this week weren't eligible for Lexware export.`
+    case 'EMAIL_DOMAIN_VERIFIED':
+      return `${context.address || 'Sending address'} verified. New guest email now routes to the Unified Inbox.`
+    case 'EMAIL_DNS_FAILING':
+      return `${context.address || 'Sending address'} DNS re-check failed — records may have drifted or expired.`
     default:
       return ''
   }

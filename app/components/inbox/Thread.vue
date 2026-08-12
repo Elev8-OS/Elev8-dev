@@ -3,7 +3,7 @@ import type { PhoneCall } from '~/components/inbox/data/conversations'
 import { differenceInDays, format, isToday, isYesterday } from 'date-fns'
 import { toast } from 'vue-sonner'
 
-const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, getPhoneCalls, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations } = useInbox()
+const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations, simulateInboundEmail } = useInbox()
 const threeCX = useThreeCX()
 const threeCXCalls = useThreeCxCalls()
 
@@ -13,8 +13,24 @@ const editingNoteContent = ref('')
 const editingNoteVisibleToAI = ref(false)
 const templateOpen = ref(false)
 const { isConnected: whatsappConnected } = useWhatsApp()
+const { isConnected: emailConnected } = useEmailIntegration()
 const matchOpen = ref(false)
 const matchSearch = ref('')
+
+function handleSimulateInboundEmail() {
+  if (!selectedConversation.value)
+    return
+  const guestEmail = selectedConversation.value.guestEmail
+    ?? selectedReservation.value?.guestDetails?.email
+  const from = guestEmail || `guest${Date.now()}@mail.com`
+  const result = simulateInboundEmail({
+    from,
+    to: 'stay@villacanggu.com',
+    subject: 'Guest message',
+    content: 'Hi — thanks for the update! We\'re all set. Could you confirm the WiFi password?',
+  })
+  toast.success(result.matched ? 'Inbound email matched to conversation.' : 'Inbound email added as unmatched.')
+}
 
 const matchOptions = computed(() => {
   const q = matchSearch.value.trim().toLowerCase()
@@ -559,12 +575,41 @@ function formatCallDate(timestamp: string): string {
               </Button>
             </div>
           </div>
+          <div v-else-if="selectedConversation.otaSource === 'Email' && !emailConnected" class="p-3">
+            <div class="rounded-md border bg-muted p-3">
+              <p class="flex items-center gap-1.5 text-sm font-medium">
+                <Icon name="lucide:mail" class="size-4 text-muted-foreground" />
+                Email not connected
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                Connect a sending address to send and receive guest email.
+              </p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" class="gap-1" as-child>
+                  <NuxtLink to="/settings/integrations">
+                    Connect Email
+                    <Icon name="lucide:arrow-right" class="size-3.5" />
+                  </NuxtLink>
+                </Button>
+                <Button size="sm" variant="ghost" class="gap-1 text-muted-foreground" @click="handleSimulateInboundEmail">
+                  <Icon name="lucide:mail-down" class="size-3.5" />
+                  Simulate inbound
+                </Button>
+              </div>
+            </div>
+          </div>
           <InboxReplyBox
             v-else
             :channel="selectedConversation.otaSource"
             :conversation-id="selectedConversation.id"
             :stay-status="selectedConversation.stayStatus"
           />
+          <div v-if="selectedConversation.otaSource === 'Email' && emailConnected" class="border-t px-3 py-1.5">
+            <Button size="xs" variant="ghost" class="gap-1 h-6 text-[11px] text-muted-foreground" @click="handleSimulateInboundEmail">
+              <Icon name="lucide:mail-down" class="size-3" />
+              Simulate inbound email
+            </Button>
+          </div>
         </div>
       </div>
 

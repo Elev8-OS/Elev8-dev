@@ -103,6 +103,8 @@ const SYSTEM_TYPES: AlertType[] = [
   'CALL_INCOMING',
   'CALL_MISSED',
   'CALL_COMPLETED',
+  'EMAIL_DOMAIN_VERIFIED',
+  'EMAIL_DNS_FAILING',
 ]
 
 // Subsets of SYSTEM_TYPES re-used by roles that should NOT receive every
@@ -118,6 +120,11 @@ const GUEST_GUIDE_TYPES: AlertType[] = [
   'GUEST_GUIDE_NOT_SENT',
   'GUEST_GUIDE_OPENED',
   'GUEST_GUIDE_SUBMITTED',
+]
+
+const EMAIL_TYPES: AlertType[] = [
+  'EMAIL_DOMAIN_VERIFIED',
+  'EMAIL_DNS_FAILING',
 ]
 
 export const notificationCategories: NotificationCategoryDefinition[] = [
@@ -214,7 +221,7 @@ const ROLE_DEFAULTS: Record<RoleId, RoleNotifications> = {
     ['in_app', 'email'],
   ),
   'role-guest-experience-manager': buildPolicy(
-    [...GUEST_ACTIVITY_TYPES, ...CALL_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...GUEST_GUIDE_TYPES],
+    [...GUEST_ACTIVITY_TYPES, ...CALL_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...GUEST_GUIDE_TYPES, ...EMAIL_TYPES],
     ['in_app', 'email'],
   ),
   'role-quality-manager': buildPolicy(

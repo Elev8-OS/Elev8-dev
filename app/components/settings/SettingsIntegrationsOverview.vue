@@ -1,21 +1,23 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import SettingsWhatsAppIntegration from './WhatsAppIntegration.vue'
-import SettingsThreeCxIntegration from './ThreeCxIntegration.vue'
-import SettingsSmartLockIntegration from './SmartLockIntegration.vue'
+import SettingsEmailIntegration from './EmailIntegration.vue'
 import SettingsMinutIntegration from './MinutIntegration.vue'
+import SettingsSmartLockIntegration from './SmartLockIntegration.vue'
+import SettingsThreeCxIntegration from './ThreeCxIntegration.vue'
+import SettingsWhatsAppIntegration from './WhatsAppIntegration.vue'
 import { payoutAccounts } from './data/payouts'
 
 const { isConnected: whatsappConnected, whatsappAccounts } = useWhatsApp()
 const { isConnected: threeCxConnected, activeAccount: threeCxAccount } = useThreeCX()
 const smartLock = useSmartLock()
 const { isConnected: minutConnected, devices: minutDevices } = useMinut()
+const { isConnected: emailConnected, activeAccount: emailAccount, hasPendingCustom: emailPending } = useEmailIntegration()
 
-type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut'
+type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email'
 
 const openIntegration = ref<IntegrationId | null>(null)
 const sheetOpen = computed({
-  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut'].includes(openIntegration.value ?? ''),
+  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email'].includes(openIntegration.value ?? ''),
   set: (val) => {
     if (!val)
       openIntegration.value = null
@@ -27,6 +29,7 @@ const activeComponent = computed(() => {
   if (openIntegration.value === 'threecx') return SettingsThreeCxIntegration
   if (openIntegration.value === 'smartlock') return SettingsSmartLockIntegration
   if (openIntegration.value === 'minut') return SettingsMinutIntegration
+  if (openIntegration.value === 'email') return SettingsEmailIntegration
   return null
 })
 
@@ -35,6 +38,7 @@ const activeSheetTitle = computed(() => {
   if (openIntegration.value === 'threecx') return '3CX Telephony'
   if (openIntegration.value === 'smartlock') return 'Smart Lock (Seam)'
   if (openIntegration.value === 'minut') return 'Minut (Noise & Sensor Monitoring)'
+  if (openIntegration.value === 'email') return 'Email (Sending Domain)'
   return ''
 })
 
@@ -69,6 +73,14 @@ const minutPill = computed(() => {
     label: count > 0 ? `Connected · ${count} device${count !== 1 ? 's' : ''}` : 'Connected',
     tone: 'connected' as const,
   }
+})
+
+const emailPill = computed(() => {
+  if (!emailConnected.value || !emailAccount.value)
+    return { label: 'Not connected', tone: 'idle' as const }
+  if (emailPending.value)
+    return { label: 'Verifying…', tone: 'idle' as const }
+  return { label: emailAccount.value.address, tone: 'connected' as const }
 })
 
 const payoutPill = computed(() => {
@@ -167,6 +179,31 @@ function openSheet(id: IntegrationId) {
         </p>
         <Button variant="outline" size="sm" class="self-start" @click="openSheet('smartlock')">
           {{ smartLock.isConnected.value ? 'Manage' : 'Connect' }}
+        </Button>
+      </div>
+
+      <!-- Email (Sending Domain) -->
+      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+        <div class="mb-3 flex items-start justify-between">
+          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-sky-500/10">
+            <Icon name="lucide:mail" class="size-5 text-sky-600" />
+          </div>
+          <span
+            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+            :class="statusToneClass[emailPill.tone]"
+          >
+            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[emailPill.tone]" />
+            {{ emailPill.label }}
+          </span>
+        </div>
+        <p class="mb-1 text-sm font-medium">
+          Email (Sending Domain)
+        </p>
+        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+          Send and receive guest email as your own domain — connect a branded address or use the free default.
+        </p>
+        <Button variant="outline" size="sm" class="self-start" @click="openSheet('email')">
+          {{ emailConnected ? 'Manage' : 'Connect' }}
         </Button>
       </div>
 
