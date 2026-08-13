@@ -36,6 +36,8 @@ export interface ReviewRecord {
   private_feedback: string | null
   review_received_at: string | null
   language_detected: string | null
+  translated_content: string | null
+  translation_language: string | null
   reply_status: ReplyStatus // Elev8 computed: host_review_pending | needs_reply | replied
   reply_text: string | null
   reply_posted_at: string | null
