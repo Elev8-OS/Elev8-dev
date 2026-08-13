@@ -7,6 +7,21 @@ import { mockReviewRecords } from '~/components/review-hub/data/mock-review-reco
 import { mockSorRecords } from '~/components/review-hub/data/mock-sor'
 import { useAirbnbReviews } from '~/composables/useAirbnbReviews'
 
+
+// Mock translation lookup: original guest review text -> English translation.
+// Mirrors the Inbox module's mockTranslate pattern. V1 ships EN target only;
+// extend to per-language maps (Record<HostLanguage, ...>) when multi-target is needed.
+const mockReviewTranslations: Record<string, string> = {
+  'Perfekter Ort für einen Surf-Trip! Nur wenige Schritte vom Strand, großartiger Board-Stauraum und nachts ruhig. Der Gastgeber hatte tolle lokale Tipps.': 'Perfect spot for a surf trip! Steps from the beach, great board storage, and quiet at night. The host had great local tips.',
+  'Leider war unser Aufenthalt enttäuschend. Die Unterkunft hatte einen starken muffigen Geruch, die Bettwäsche war fleckig und ab 7 Uhr morgens begann Baulärm von nebenan. Der Gastgeber gab klare Anweisungen, aber die Unterkunft braucht dringend Instandhaltung.': 'Unfortunately our stay was disappointing. The unit had a strong damp smell, the sheets were stained, and construction noise from next door started at 7am. The host gave clear instructions but the property needs serious upkeep.',
+  "Malheureusement, notre séjour a été décevant. Le logement avait une forte odeur d'humidité, les draps étaient tachés et le bruit des travaux du voisin commençait à 7h du matin. L'hôte a donné des instructions claires mais le bien nécessite un sérieux entretien.": 'Unfortunately our stay was disappointing. The unit had a strong damp smell, the sheets were stained, and construction noise from next door started at 7am. The host gave clear instructions but the property needs serious upkeep.',
+}
+
+// Fallback label when the text has no map entry (same convention as Inbox).
+function mockTranslateFallback(text: string, targetLang: string): string {
+  return `[Translated to ${targetLang}] ${text}`
+}
+
 export type HubFilterStatus = 'all' | ReplyStatus
 export type HubFilterChannel = 'all' | ReviewSource
 export type HubSortKey = 'checkout_date' | 'guest_name' | 'rating' | 'source'
@@ -219,6 +234,44 @@ export function useReviewHub() {
     replied: reviewRecords.value.filter(r => getComputedStatus(r) === 'replied').length,
     total: reviewRecords.value.length,
   }))
+
+
+  // Resolve the target language for translations from the Review Automation
+  // config (same source as AI reply generation). One config point.
+  function resolveTargetLang(): string {
+    const { config } = useAirbnbReviews()
+    return config.value?.host_language ?? 'en'
+  }
+
+  // Translate the guest review text (mock). Persists on the record so a
+  // review is only translated once per target language.
+  async function translateReview(recordId: string): Promise<void> {
+    const record = reviewRecords.value.find(r => r.id === recordId)
+    if (!record || !record.guest_review_text) {
+      if (record) updateReviewRecord(recordId, { translated_content: null, translation_language: null })
+      return
+    }
+
+    // Already translated -> keep cached result.
+    if (record.translated_content) return
+
+    const targetLang = resolveTargetLang()
+    // Nothing to translate when the review is already in the target language.
+    if (record.language_detected === targetLang) {
+      updateReviewRecord(recordId, { translated_content: null, translation_language: null })
+      return
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 700))
+
+    const text = record.guest_review_text
+    const translated = mockReviewTranslations[text] ?? mockTranslateFallback(text, targetLang)
+    updateReviewRecord(recordId, {
+      translated_content: translated,
+      translation_language: targetLang,
+    })
+    toast.success('Review translated.')
+  }
 
   // Update a review record
   function updateReviewRecord(id: string, patch: Partial<ReviewRecord>) {
@@ -503,6 +556,8 @@ export function useReviewHub() {
     sortDir,
     setSort,
     uniqueListings,
+    resolveTargetLang,
+    translateReview,
     updateReviewRecord,
     generateReplyDraft,
     approveReply,
