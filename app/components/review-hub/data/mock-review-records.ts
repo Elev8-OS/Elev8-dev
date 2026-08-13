@@ -576,7 +576,7 @@ export const mockReviewRecords: ReviewRecord[] = [
       'guest_review_host_negative_needs_maintenance',
       'guest_review_host_positive_clear_instructions',
     ],
-    guest_review_text: "Malheureusement, notre séjour a été décevant. Le logement avait une forte odeur d'humidité, les draps étaient tachés et le bruit des travaux du voisin commençait à 7h du matin. L'hôte a donné des instructions claires mais le bien nécessite un sérieux entretien.",
+    guest_review_text: 'Malheureusement, notre séjour a été décevant. Le logement avait une forte odeur d\'humidité, les draps étaient tachés et le bruit des travaux du voisin commençait à 7h du matin. L\'hôte a donné des instructions claires mais le bien nécessite un sérieux entretien.',
     is_hidden: false,
     is_replied: false,
     private_feedback: null,

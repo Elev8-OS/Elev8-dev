@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { mockReviewRecords } from '~/components/review-hub/data/mock-review-records'
 import { useAirbnbReviews } from '~/composables/useAirbnbReviews'
 import { useReviewHub } from '~/composables/useReviewHub'
-import { mockReviewRecords } from '~/components/review-hub/data/mock-review-records'
 
 describe('useReviewHub translateReview', () => {
   beforeEach(() => {
@@ -49,7 +49,6 @@ describe('useReviewHub translateReview', () => {
   it('does nothing for a review with no guest review text', async () => {
     const { translateReview, reviewRecords } = useReviewHub()
     const record = reviewRecords.value.find(r => r.id === 'rr-001')!
-    const original = record.guest_review_text
     ;(record as any).guest_review_text = null
 
     await translateReview('rr-001')
