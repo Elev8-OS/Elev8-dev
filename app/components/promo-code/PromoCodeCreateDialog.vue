@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { PromoCodeDiscountType, PromoCodeWindow } from './data/promo-codes'
+import type { PromoCodeChannel, PromoCodeDiscountType, PromoCodeWindow } from './data/promo-codes'
 import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings as allListings, allTags } from '~/components/listings/data/listings'
 import { Switch } from '~/components/ui/switch'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
+import { websites as allWebsites } from '~/components/website-builder/data/websites'
 import { usePromoCodes } from '~/composables/usePromoCodes'
 
 const emit = defineEmits<{
@@ -26,11 +27,15 @@ const usageLimit = ref<number | null>(null)
 const active = ref(true)
 const freeUpsellItemIds = ref<string[]>([])
 const listingIds = ref<string[]>([])
+// Channel restriction — every code is pinned to one channel.
+const channel = ref<PromoCodeChannel>('widget')
+const websiteIds = ref<string[]>([])
 
 // Search-state refs must be declared before reset() because that
 // function clears them on entry.
 const freeUpsellSearch = ref('')
 const listingSearch = ref('')
+const websiteSearch = ref('')
 
 const codeError = ref('')
 const freeUpsellError = ref('')
@@ -54,10 +59,13 @@ function reset() {
   active.value = true
   freeUpsellItemIds.value = []
   listingIds.value = []
+  channel.value = 'widget'
+  websiteIds.value = []
   codeError.value = ''
   freeUpsellError.value = ''
   freeUpsellSearch.value = ''
   listingSearch.value = ''
+  websiteSearch.value = ''
 }
 
 watch(open, (isOpen) => {
@@ -273,6 +281,58 @@ watch(tagPopoverOpen, (open) => {
     tagSearch.value = ''
 })
 
+// ─── Channel restriction ────────────────────────────────────────────────────
+// Choose which channel the code can be redeemed on. Every code is pinned
+// to one channel. When channel === 'website' the website picker
+// underneath lets the host narrow down to specific websites — empty
+// `websiteIds` with channel === 'website' means "every website".
+const websitePickerOpen = ref(false)
+
+const isWebsiteChannel = computed(() => channel.value === 'website')
+
+const filteredWebsites = computed(() => {
+  const q = websiteSearch.value.trim().toLowerCase()
+  if (!q)
+    return allWebsites.value
+  return allWebsites.value.filter((w) => {
+    const haystack = `${w.name} ${w.url} ${w.template}`.toLowerCase()
+    return haystack.includes(q)
+  })
+})
+
+function selectChannel(next: PromoCodeChannel) {
+  channel.value = next
+  // If the host switched the channel away from website, drop any
+  // selected website IDs so we don't carry stale selections into the
+  // next save.
+  if (next !== 'website')
+    websiteIds.value = []
+}
+
+function toggleWebsite(id: string) {
+  websiteIds.value = websiteIds.value.includes(id)
+    ? websiteIds.value.filter(x => x !== id)
+    : [...websiteIds.value, id]
+}
+
+function clearWebsites() {
+  websiteIds.value = []
+}
+
+function websiteTriggerLabel() {
+  const n = websiteIds.value.length
+  if (n === 0)
+    return 'All websites'
+  if (n === 1)
+    return '1 website selected'
+  return `${n} websites selected`
+}
+
+watch(websitePickerOpen, (open) => {
+  if (!open)
+    websiteSearch.value = ''
+})
+
 // ─── Submit ────────────────────────────────────────────────────────────────
 function addBookingWindow() {
   bookingWindows.value = [...bookingWindows.value, { from: null, until: null }]
@@ -332,6 +392,10 @@ function submit() {
     usageLimit: usageLimit.value,
     freeUpsellItemIds: isFreeUpsell.value ? freeUpsellItemIds.value : [],
     listingIds: listingIds.value,
+    channelRestriction: {
+      channel: channel.value,
+      websiteIds: isWebsiteChannel.value ? [...websiteIds.value] : [],
+    },
   })
 
   toast.success(`Code ${created.code} created`)
@@ -565,6 +629,138 @@ function submit() {
             class="text-xs text-destructive"
           >
             {{ freeUpsellError }}
+          </p>
+        </div>
+
+        <!-- Channel restriction -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <Label>Restrict to property channel</Label>
+              <p class="text-xs text-muted-foreground">
+                Choose which channel this code can be redeemed on.
+              </p>
+            </div>
+          </div>
+          <RadioGroup
+            :model-value="channel"
+            class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+            @update:model-value="(v: string) => selectChannel(v as PromoCodeChannel)"
+          >
+            <label
+              class="flex cursor-pointer items-start gap-2 rounded-md border p-3 transition-colors hover:bg-muted/40"
+              :class="channel === 'widget' ? 'border-primary bg-primary/5' : ''"
+            >
+              <RadioGroupItem id="promo-create-channel-widget" value="widget" class="mt-0.5" />
+              <div class="min-w-0">
+                <p class="text-sm font-medium flex items-center gap-1.5">
+                  <Icon name="lucide:code-2" class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  Widget only
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  Embedded booking widgets on partner sites.
+                </p>
+              </div>
+            </label>
+            <label
+              class="flex cursor-pointer items-start gap-2 rounded-md border p-3 transition-colors hover:bg-muted/40"
+              :class="channel === 'website' ? 'border-primary bg-primary/5' : ''"
+            >
+              <RadioGroupItem id="promo-create-channel-website" value="website" class="mt-0.5" />
+              <div class="min-w-0">
+                <p class="text-sm font-medium flex items-center gap-1.5">
+                  <Icon name="lucide:globe" class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  Website only
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  Property websites built with the Website Builder.
+                </p>
+              </div>
+            </label>
+          </RadioGroup>
+        </div>
+
+        <!-- Website picker (only when Website channel is selected) -->
+        <div v-if="isWebsiteChannel" class="space-y-2">
+          <Label for="promo-create-websites-trigger">
+            Apply to websites
+            <span class="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <Popover v-model:open="websitePickerOpen">
+            <PopoverTrigger as-child>
+              <Button
+                id="promo-create-websites-trigger"
+                variant="outline"
+                class="w-full justify-between"
+              >
+                <span class="truncate">{{ websiteTriggerLabel() }}</span>
+                <div class="flex items-center gap-2">
+                  <Badge v-if="websiteIds.length > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[9px]" :aria-label="`${websiteIds.length} selected`">
+                    {{ websiteIds.length }}
+                  </Badge>
+                  <Icon name="i-lucide-chevron-down" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </div>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent class="w-[420px] p-0" align="start" :side-offset="4">
+              <div class="p-2 border-b">
+                <div class="relative">
+                  <Icon name="lucide:search" class="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input v-model="websiteSearch" placeholder="Search websites..." class="h-8 pl-7 text-sm" aria-label="Search websites" />
+                </div>
+              </div>
+              <div class="max-h-72 overflow-y-auto">
+                <p v-if="filteredWebsites.length === 0" class="px-3 py-6 text-center text-xs text-muted-foreground">
+                  No websites found.
+                </p>
+                <ul class="py-1">
+                  <li
+                    v-for="website in filteredWebsites"
+                    :key="website.id"
+                    class="flex items-start gap-2 px-2 py-1.5 hover:bg-muted/50"
+                  >
+                    <button
+                      type="button"
+                      class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                      :class="websiteIds.includes(website.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                      role="checkbox"
+                      :aria-checked="websiteIds.includes(website.id) ? 'true' : 'false'"
+                      :aria-label="`Toggle ${website.name}`"
+                      @click="toggleWebsite(website.id)"
+                    >
+                      <Icon v-if="websiteIds.includes(website.id)" name="lucide:check" class="size-3" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="flex-1 min-w-0 text-left"
+                      @click="toggleWebsite(website.id)"
+                    >
+                      <p class="text-sm font-medium truncate flex items-center gap-1.5">
+                        <Icon name="lucide:globe" class="size-3 text-muted-foreground" aria-hidden="true" />
+                        {{ website.name }}
+                      </p>
+                      <p class="text-xs text-muted-foreground truncate">
+                        {{ website.url }} · {{ website.template }}
+                      </p>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+              <div class="flex items-center justify-between gap-2 border-t p-2">
+                <Button v-if="websiteIds.length > 0" type="button" variant="ghost" size="sm" class="h-6 text-xs" @click="clearWebsites">
+                  Clear
+                </Button>
+                <span v-else class="text-xs text-muted-foreground" aria-live="polite">No websites = applies to all</span>
+                <Button type="button" size="sm" class="h-7" @click="websitePickerOpen = false">
+                  Done
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+          <p class="text-xs text-muted-foreground">
+            {{ websiteIds.length === 0
+              ? 'No specific websites selected — code applies to every website.'
+              : `Code applies to ${websiteIds.length} selected website${websiteIds.length === 1 ? '' : 's'}.` }}
           </p>
         </div>
 

@@ -124,6 +124,25 @@ function toggleListing(listingId: string) {
     : [...selectedListings.value, listingId]
 }
 
+const allVisibleSelected = computed(() => {
+  if (!assignableListings.value.length)
+    return false
+  return assignableListings.value.every(listing => selectedListings.value.includes(listing.id))
+})
+
+function toggleSelectAllVisible() {
+  if (allVisibleSelected.value) {
+    const visibleIds = new Set(assignableListings.value.map(l => l.id))
+    selectedListings.value = selectedListings.value.filter(id => !visibleIds.has(id))
+  }
+  else {
+    const merged = new Set(selectedListings.value)
+    for (const listing of assignableListings.value)
+      merged.add(listing.id)
+    selectedListings.value = Array.from(merged)
+  }
+}
+
 function buildAccountPayload(id: string): PayoutAccount {
   const provider = selectedProvider.value as PayoutProvider
   return {
@@ -212,6 +231,25 @@ function toggleUnassignedListing(listingId: string) {
   selectedUnassignedListings.value = selectedUnassignedListings.value.includes(listingId)
     ? selectedUnassignedListings.value.filter(id => id !== listingId)
     : [...selectedUnassignedListings.value, listingId]
+}
+
+const allUnassignedVisibleSelected = computed(() => {
+  if (!unassignedListings.value.length)
+    return false
+  return unassignedListings.value.every(listing => selectedUnassignedListings.value.includes(listing.id))
+})
+
+function toggleSelectAllUnassigned() {
+  if (allUnassignedVisibleSelected.value) {
+    const visibleIds = new Set(unassignedListings.value.map(l => l.id))
+    selectedUnassignedListings.value = selectedUnassignedListings.value.filter(id => !visibleIds.has(id))
+  }
+  else {
+    const merged = new Set(selectedUnassignedListings.value)
+    for (const listing of unassignedListings.value)
+      merged.add(listing.id)
+    selectedUnassignedListings.value = Array.from(merged)
+  }
 }
 
 function toggleUnassignedTag(tag: string) {
@@ -374,9 +412,21 @@ function bulkAssignSelected() {
         </div>
 
         <div class="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
-          <p class="text-sm text-muted-foreground">
-            {{ selectedUnassignedCount }} selected · {{ unassignedListings.length }} shown
-          </p>
+          <div class="flex items-center gap-3">
+            <p class="text-sm text-muted-foreground">
+              {{ selectedUnassignedCount }} selected · {{ unassignedListings.length }} shown
+            </p>
+            <Button
+              v-if="unassignedListings.length"
+              variant="outline"
+              size="sm"
+              class="h-7 text-xs"
+              @click="toggleSelectAllUnassigned"
+            >
+              {{ allUnassignedVisibleSelected ? 'Deselect all' : 'Select all' }}
+              <span v-if="!allUnassignedVisibleSelected" class="ml-1 text-muted-foreground">({{ unassignedListings.length }})</span>
+            </Button>
+          </div>
           <div class="flex items-center gap-2">
             <Select :model-value="selectedBulkAccountId" @update:model-value="setBulkAccountId">
               <SelectTrigger class="h-9 w-[220px]">
@@ -549,8 +599,15 @@ function bulkAssignSelected() {
 
             <div class="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-3 text-sm">
               <p class="text-muted-foreground">{{ selectedListings.length }} listing{{ selectedListings.length !== 1 ? 's' : '' }} selected</p>
-              <Button v-if="selectedListings.length" variant="ghost" class="h-8 text-xs text-destructive" @click="selectedListings = []">
-                Clear all
+              <Button
+                v-if="assignableListings.length"
+                variant="outline"
+                size="sm"
+                class="h-7 text-xs"
+                @click="toggleSelectAllVisible"
+              >
+                {{ allVisibleSelected ? 'Deselect all' : 'Select all' }}
+                <span v-if="!allVisibleSelected" class="ml-1 text-muted-foreground">({{ assignableListings.length }})</span>
               </Button>
             </div>
           </div>

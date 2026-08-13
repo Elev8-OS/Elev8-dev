@@ -1,8 +1,10 @@
 import type { PromoCode, PromoCodeStatus, WidgetPromoCodeLink } from '~/components/promo-code/data/promo-codes'
 import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import {
+  formatChannelRestrictionLabel,
   formatPromoDiscount,
   generatePromoId,
+  getChannelRestriction,
   getPromoCodeStatus,
   isPromoCodeExpired,
   widgetPromoCodeLinks as seedLinks,
@@ -21,6 +23,19 @@ export interface PromoCodeFilters {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+// Normalize a channel restriction draft before persisting. The channel
+// is required (no "all channels" state — every code is pinned to one
+// surface). Website IDs only matter when channel === 'website'. If the
+// host switches the channel away from website, drop the websiteIds list
+// so we don't leave stale IDs behind.
+function normalizeChannelRestriction(
+  draft: PromoCode['channelRestriction'],
+): PromoCode['channelRestriction'] {
+  const channel = draft?.channel ?? 'widget'
+  const websiteIds = channel === 'website' ? (draft?.websiteIds ?? []) : []
+  return { channel, websiteIds }
 }
 
 export function usePromoCodes() {
@@ -72,6 +87,7 @@ export function usePromoCodes() {
 
   function createPromoCode(draft: PromoCodeDraft): PromoCode {
     const now = nowIso()
+    const channelRestriction = normalizeChannelRestriction(draft.channelRestriction)
     const code: PromoCode = {
       id: generatePromoId(),
       code: draft.code.trim().toUpperCase(),
@@ -88,6 +104,7 @@ export function usePromoCodes() {
       updatedAt: now,
       freeUpsellItemIds: draft.discountType === 'free_upsell' ? (draft.freeUpsellItemIds ?? []) : undefined,
       listingIds: draft.listingIds ?? [],
+      channelRestriction,
     }
     codes.value = [code, ...codes.value]
     return code
@@ -107,6 +124,9 @@ export function usePromoCodes() {
       const nextStay = patch.stayWindows
         ? patch.stayWindows.map(w => ({ from: w.from ?? null, until: w.until ?? null }))
         : (c.stayWindows ?? [])
+      const nextChannelRestriction = patch.channelRestriction !== undefined
+        ? normalizeChannelRestriction(patch.channelRestriction)
+        : c.channelRestriction
       updated = {
         ...c,
         ...patch,
@@ -119,6 +139,7 @@ export function usePromoCodes() {
         usageLimit: patch.usageLimit ?? c.usageLimit ?? null,
         freeUpsellItemIds: nextType === 'free_upsell' ? (patch.freeUpsellItemIds ?? c.freeUpsellItemIds ?? []) : undefined,
         listingIds: patch.listingIds ?? c.listingIds ?? [],
+        channelRestriction: nextChannelRestriction,
         updatedAt: nowIso(),
       }
       return updated
@@ -135,6 +156,7 @@ export function usePromoCodes() {
     const original = getById(id)
     if (!original)
       return null
+    const originalChannel = getChannelRestriction(original)
     return createPromoCode({
       ...original,
       code: `${original.code} (Copy)`,
@@ -142,6 +164,10 @@ export function usePromoCodes() {
       redemptionCount: 0,
       freeUpsellItemIds: original.freeUpsellItemIds ? [...original.freeUpsellItemIds] : [],
       listingIds: original.listingIds ? [...original.listingIds] : [],
+      channelRestriction: {
+        channel: originalChannel.channel,
+        websiteIds: [...originalChannel.websiteIds],
+      },
     })
   }
 
@@ -202,6 +228,8 @@ export function usePromoCodes() {
     getPromoCodeStatus,
     isPromoCodeExpired,
     formatPromoDiscount,
+    getChannelRestriction,
+    formatChannelRestrictionLabel,
     createPromoCode,
     updatePromoCode,
     deletePromoCode,

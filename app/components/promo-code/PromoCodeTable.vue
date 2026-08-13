@@ -3,7 +3,7 @@ import type { PromoCode } from './data/promo-codes'
 import { computed } from 'vue'
 import { Switch } from '~/components/ui/switch'
 import { usePromoCodes } from '~/composables/usePromoCodes'
-import { formatPromoDiscount, formatPromoWindowCompact, getPromoCodeTypeLabel } from './data/promo-codes'
+import { formatPromoDiscount, formatPromoWindowCompact, getChannelRestriction, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const { codes } = defineProps<{
   codes: PromoCode[]
@@ -59,12 +59,15 @@ const decoratedCodes = computed(() => codes.map((code) => {
   const freeUpsellItemCount = code.freeUpsellItemIds?.length ?? 0
   const listingCount = code.listingIds?.length ?? 0
   const scopeLabel = listingCount === 0 ? 'All listings' : `${listingCount} listing${listingCount === 1 ? '' : 's'}`
+  const channel = getChannelRestriction(code)
   return {
     ...code,
     isFreeUpsell,
     freeUpsellItemCount,
     listingCount,
     scopeLabel,
+    channelChannel: channel.channel,
+    channelWebsiteCount: channel.websiteIds.length,
     bookingWindows: code.bookingWindows ?? [],
     stayWindows: code.stayWindows ?? [],
   }
@@ -127,6 +130,21 @@ const decoratedCodes = computed(() => codes.map((code) => {
               <span :class="code.listingCount === 0 ? 'text-muted-foreground' : 'font-medium'">
                 {{ code.scopeLabel }}
               </span>
+            </div>
+            <div class="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+              <template v-if="code.channelChannel === 'widget'">
+                <Icon name="lucide:code-2" class="size-3" aria-hidden="true" />
+                <span>Widget only</span>
+              </template>
+              <template v-else>
+                <Icon name="lucide:globe" class="size-3" aria-hidden="true" />
+                <span>
+                  Website only
+                  <template v-if="code.channelWebsiteCount > 0">
+                    · {{ code.channelWebsiteCount }} site{{ code.channelWebsiteCount === 1 ? '' : 's' }}
+                  </template>
+                </span>
+              </template>
             </div>
           </TableCell>
           <TableCell class="text-muted-foreground text-xs space-y-0.5">

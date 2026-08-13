@@ -4,6 +4,28 @@ export type PromoCodeDiscountType = '%' | 'fixed' | 'free_upsell'
 
 export type PromoCodeStatus = 'active' | 'inactive' | 'expired'
 
+// Channels where the promo code can be redeemed. Today the product
+// surfaces two redemption surfaces: booking widgets (embedded JS) and
+// standalone websites built with the Website Builder. A promo code is
+// limited to ONE of these (or unrestricted).
+export type PromoCodeChannel = 'widget' | 'website'
+
+// Restrict where the promo code can be redeemed.
+//
+// Every promo code is pinned to ONE channel — there is no "apply to
+// every surface" state. When `channel === 'website'`, `websiteIds`
+// narrows the code to specific websites; empty `websiteIds` with
+// channel === 'website' means the code applies to every website.
+// `widget` doesn't carry per-widget IDs here — per-widget linking is
+// already captured by `WidgetPromoCodeLink` (the per-widget multi-select
+// in the widget config). The two mechanisms are complementary: this
+// field restricts *which channel* the code is eligible to appear on,
+// the widget link indicates *which widgets* currently include it.
+export interface PromoCodeChannelRestriction {
+  channel: PromoCodeChannel
+  websiteIds: string[]
+}
+
 // A single date range — both ends are nullable so users can specify
 // only a start, only an end, both, or neither (always open).
 export interface PromoCodeWindow {
@@ -42,6 +64,8 @@ export interface PromoCode {
   freeUpsellItemIds?: string[]
   // Listings the promo code applies to. Empty = applies to all listings.
   listingIds?: string[]
+  // Channel restriction (widget / website). See `PromoCodeChannelRestriction`.
+  channelRestriction?: PromoCodeChannelRestriction
 }
 
 // Analytics scaffold — per-usage-site counter.
@@ -70,6 +94,9 @@ export const promoCodes = ref<PromoCode[]>([
     redemptionCount: 3,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
+    // WELCOME10 was originally wired into a widget (see the seeded
+    // WidgetPromoCodeLink), so it stays pinned to the widget channel.
+    channelRestriction: { channel: 'widget', websiteIds: [] },
   },
   {
     id: 'promo-freespa',
@@ -91,6 +118,9 @@ export const promoCodes = ref<PromoCode[]>([
     updatedAt: '2026-02-10T00:00:00Z',
     freeUpsellItemIds: ['itm-003a', 'itm-003b'],
     listingIds: ['lst-1', 'lst-4'],
+    // Restricted to the website channel only — FREESPA is a direct
+    // booking perk, not a widget promotion.
+    channelRestriction: { channel: 'website', websiteIds: [] },
   },
 ])
 
@@ -209,4 +239,22 @@ export function formatPromoWindowCompact(window: PromoCodeWindow): string | null
   if (u)
     return `until ${u}`
   return null
+}
+
+// Normalize a channel restriction read from the store. Every promo code
+// must be pinned to a channel; if the stored value is missing (older
+// data, manual draft), fall back to 'widget' which is the most common
+// scroll of redemption. Callers should always go through this helper
+// so they don't have to handle a missing field everywhere.
+export const DEFAULT_PROMO_CODE_CHANNEL: PromoCodeChannel = 'widget'
+
+export function getChannelRestriction(code: PromoCode): PromoCodeChannelRestriction {
+  return code.channelRestriction ?? { channel: DEFAULT_PROMO_CODE_CHANNEL, websiteIds: [] }
+}
+
+// "Widget only" / "Website only" — short label used in the table.
+// Every code is pinned to one channel, so there's no "All channels"
+// label to render.
+export function formatChannelRestrictionLabel(code: PromoCode): string {
+  return getChannelRestriction(code).channel === 'widget' ? 'Widget only' : 'Website only'
 }

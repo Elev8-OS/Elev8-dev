@@ -4,8 +4,9 @@ import { computed } from 'vue'
 import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import { listings as allListings } from '~/components/listings/data/listings'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
+import { websites as allWebsites } from '~/components/website-builder/data/websites'
 import { usePromoCodes } from '~/composables/usePromoCodes'
-import { formatPromoDiscount, formatPromoWindow, getPromoCodeStatus, getPromoCodeTypeLabel } from './data/promo-codes'
+import { formatPromoDiscount, formatPromoWindow, getChannelRestriction, getPromoCodeStatus, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const props = defineProps<{
   promoCode: PromoCode | null
@@ -84,6 +85,38 @@ const listingScopeLabel = computed(() => {
   if (assignedListings.value.length === 0)
     return `${props.promoCode.listingIds.length} listing(s) — not found`
   return `${assignedListings.value.length} listing${assignedListings.value.length === 1 ? '' : 's'}`
+})
+
+// Channel restriction display — show which channels the code is allowed
+// on and (if narrowed to websites) which website IDs it targets.
+const channelRestriction = computed(() => {
+  if (!props.promoCode)
+    return { channel: 'widget' as ('widget' | 'website'), websiteIds: [] as string[] }
+  return getChannelRestriction(props.promoCode)
+})
+
+const channelLabel = computed(() => {
+  return channelRestriction.value.channel === 'widget' ? 'Widget only' : 'Website only'
+})
+
+const assignedWebsites = computed(() => {
+  const { websiteIds } = channelRestriction.value
+  if (websiteIds.length === 0)
+    return []
+  return websiteIds
+    .map(id => allWebsites.value.find(w => w.id === id))
+    .filter((w): w is NonNullable<typeof w> => w !== undefined)
+})
+
+const websiteScopeLabel = computed(() => {
+  const { channel, websiteIds } = channelRestriction.value
+  if (channel !== 'website')
+    return null
+  if (websiteIds.length === 0)
+    return 'All websites'
+  if (assignedWebsites.value.length === 0)
+    return `${websiteIds.length} website(s) — not found`
+  return `${assignedWebsites.value.length} website${assignedWebsites.value.length === 1 ? '' : 's'}`
 })
 
 function formatDateTime(iso: string | null | undefined) {
@@ -182,6 +215,35 @@ function onRequestDelete() {
                   <Badge variant="outline" class="gap-1">
                     <Icon name="lucide:home" class="size-3" aria-hidden="true" />
                     <span class="truncate max-w-[200px]">{{ listing.name }}</span>
+                  </Badge>
+                </li>
+              </ul>
+            </div>
+            <div class="col-span-2">
+              <p class="text-muted-foreground text-xs">
+                Channels
+              </p>
+              <p class="font-medium">
+                {{ channelLabel }}
+              </p>
+              <div class="mt-1 flex flex-wrap gap-1.5">
+                <Badge v-if="channelRestriction.channel === 'widget'" variant="outline" class="gap-1">
+                  <Icon name="lucide:code-2" class="size-3" aria-hidden="true" />
+                  Widget
+                </Badge>
+                <Badge v-if="channelRestriction.channel === 'website'" variant="outline" class="gap-1">
+                  <Icon name="lucide:globe" class="size-3" aria-hidden="true" />
+                  Website
+                </Badge>
+              </div>
+              <p v-if="websiteScopeLabel" class="text-xs text-muted-foreground mt-1">
+                {{ websiteScopeLabel }}
+              </p>
+              <ul v-if="assignedWebsites.length > 0" class="mt-1 flex flex-wrap gap-1.5" role="list" aria-label="Assigned websites">
+                <li v-for="website in assignedWebsites" :key="website.id">
+                  <Badge variant="outline" class="gap-1">
+                    <Icon name="lucide:globe" class="size-3" aria-hidden="true" />
+                    <span class="truncate max-w-[200px]">{{ website.name }}</span>
                   </Badge>
                 </li>
               </ul>
