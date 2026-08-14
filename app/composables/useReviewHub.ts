@@ -243,6 +243,46 @@ export function useReviewHub() {
     return config.value?.host_language ?? 'en'
   }
 
+  // Translate any text (mock) to the target language. Generic version used
+  // for AI-generated drafts (reply, host review) which are not persisted on
+  // the record — the caller keeps the translated text in local state.
+  async function translateText(text: string): Promise<string> {
+    if (!text) return ''
+    const targetLang = resolveTargetLang()
+    await new Promise(resolve => setTimeout(resolve, 700))
+    return mockReviewTranslations[text] ?? mockTranslateFallback(text, targetLang)
+  }
+
+  // Rephrase any text (mock): swaps common words for synonyms so the draft
+  // reads as "rewritten" without changing the meaning.
+  async function rephraseText(text: string): Promise<string> {
+    if (!text) return ''
+    await new Promise(resolve => setTimeout(resolve, 900))
+
+    const synonyms: [RegExp, string][] = [
+      [/\bthank you\b/gi, 'many thanks'],
+      [/\bwonderful\b/gi, 'marvelous'],
+      [/\bdelighted\b/gi, 'thrilled'],
+      [/\benjoyed\b/gi, 'loved'],
+      [/\bappreciate\b/gi, 'value'],
+      [/\bfeedback\b/gi, 'input'],
+      [/\bhappy\b/gi, 'pleased'],
+      [/\bgreat\b/gi, 'excellent'],
+      [/\bsincerely apologize\b/gi, 'offer our sincere apologies'],
+      [/\bissues\b/gi, 'concerns'],
+      [/\bimproved\b/gi, 'enhanced'],
+      [/\bwelcome\b/gi, 'invite'],
+      [/\bhosting\b/gi, 'accommodating'],
+      [/\bexperience\b/gi, 'stay'],
+    ]
+
+    let result = text
+    for (const [pattern, replacement] of synonyms) {
+      result = result.replace(pattern, replacement)
+    }
+    return result
+  }
+
   // Translate the guest review text (mock). Persists on the record so a
   // review is only translated once per target language.
   async function translateReview(recordId: string): Promise<void> {
@@ -557,6 +597,8 @@ export function useReviewHub() {
     setSort,
     uniqueListings,
     resolveTargetLang,
+    translateText,
+    rephraseText,
     translateReview,
     updateReviewRecord,
     generateReplyDraft,

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { AutoReview } from '~/components/airbnb-reviews/data/reviews'
 import type { ReviewRecord, StayOperationalRecord } from '~/components/review-hub/data/types'
-import { hostReviewTagOptions } from '~/components/review-hub/data/types'
 import { toast } from 'vue-sonner'
+import { hostLanguageOptions } from '~/components/airbnb-reviews/data/reviews'
+import { hostReviewTagOptions } from '~/components/review-hub/data/types'
 
 const props = defineProps<{
   review: ReviewRecord
@@ -14,7 +15,7 @@ const emit = defineEmits<{
   reviewSubmitted: []
 }>()
 
-const { generateHostReviewDraft, submitHostReview, getHostReviewCountdown } = useReviewHub()
+const { generateHostReviewDraft, submitHostReview, getHostReviewCountdown, translateText, rephraseText, resolveTargetLang } = useReviewHub()
 
 // Only consider a host review "generated" if it has actual public_review text
 const hasGeneratedData = computed(() => !!props.hostReview?.public_review)
@@ -28,6 +29,19 @@ const selectedHostTags = ref<string[]>(props.review.host_review_tags ?? [])
 const isGenerating = ref(false)
 const isGenerated = ref(hasGeneratedData.value)
 const isSubmitted = computed(() => props.review.host_review_id !== null)
+
+// Translation state for the AI-generated draft
+const showTranslation = ref(false)
+const isTranslating = ref(false)
+const isRephrasing = ref(false)
+const originalDraft = ref('')
+
+const targetLangLabel = computed(() => {
+  const opt = hostLanguageOptions.find(o => o.value === resolveTargetLang())
+  return opt ? opt.label : (resolveTargetLang() ?? 'English')
+})
+
+const canTranslate = computed(() => isGenerated.value && draftText.value.trim().length > 0 && !isSubmitted.value)
 
 // Use saved review data from ReviewRecord for readonly view
 const savedReviewText = computed(() => props.review.host_review_text)
@@ -54,8 +68,44 @@ async function handleGenerate() {
   communication.value = result.ratings.communication
   respectHouseRules.value = result.ratings.respect_house_rules
   selectedHostTags.value = result.tags ?? []
+  originalDraft.value = result.text
+  showTranslation.value = false
   isGenerated.value = true
   isGenerating.value = false
+}
+
+async function handleTranslate() {
+  if (!canTranslate.value)
+    return
+  if (showTranslation.value) {
+    // Toggle back to the original draft
+    draftText.value = originalDraft.value
+    showTranslation.value = false
+    return
+  }
+  isTranslating.value = true
+  try {
+    draftText.value = await translateText(originalDraft.value)
+    showTranslation.value = true
+  }
+  finally {
+    isTranslating.value = false
+  }
+}
+
+async function handleRephrase() {
+  if (!canTranslate.value)
+    return
+  isRephrasing.value = true
+  try {
+    // Rephrase whatever is currently shown (original or translated draft)
+    draftText.value = await rephraseText(draftText.value)
+    originalDraft.value = draftText.value
+    showTranslation.value = false
+  }
+  finally {
+    isRephrasing.value = false
+  }
 }
 
 function handleSubmit() {
@@ -236,7 +286,50 @@ defineExpose({ autoGenerate })
               placeholder="Edit the review..."
               class="text-sm"
             />
-            <span class="text-xs text-muted-foreground">{{ draftText.length }}/1000</span>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-muted-foreground">{{ draftText.length }}/1000</span>
+                <Button
+                  v-if="canTranslate"
+                  variant="ghost"
+                  size="sm"
+                  class="gap-1.5"
+                  :disabled="isGenerating || isTranslating"
+                  @click="handleTranslate"
+                >
+                  <Icon :name="showTranslation ? 'lucide:undo-2' : 'lucide:languages'" class="size-3.5" />
+                  {{ showTranslation ? 'Show original' : 'Translate' }}
+                </Button>
+                <span v-if="isTranslating" class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Icon name="lucide:loader-2" class="size-3 animate-spin" />
+                  Translating...
+                </span>
+                <span
+                  v-else-if="showTranslation"
+                  class="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+                >
+                  <Icon name="lucide:languages" class="size-2.5" />
+                  Translated to {{ targetLangLabel }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <Button
+                  v-if="canTranslate"
+                  variant="ghost"
+                  size="sm"
+                  class="gap-1.5"
+                  :disabled="isGenerating || isRephrasing || isTranslating"
+                  @click="handleRephrase"
+                >
+                  <Icon name="lucide:refresh-cw" class="size-3.5" :class="isRephrasing && 'animate-spin'" />
+                  {{ isRephrasing ? 'Rephrasing...' : 'Rephrase' }}
+                </Button>
+                <Button variant="ghost" size="sm" class="gap-1.5" :disabled="isGenerating" @click="handleGenerate">
+                  <Icon name="lucide:refresh-cw" class="size-3.5" :class="isGenerating && 'animate-spin'" />
+                  Regenerate
+                </Button>
+              </div>
+            </div>
           </div>
 
           <template v-if="!isPublicOnly">

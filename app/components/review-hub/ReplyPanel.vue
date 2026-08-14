@@ -2,6 +2,7 @@
 import type { ReviewRecord, StayOperationalRecord } from '~/components/review-hub/data/types'
 import { format } from 'date-fns'
 import { toast } from 'vue-sonner'
+import { hostLanguageOptions } from '~/components/airbnb-reviews/data/reviews'
 
 const props = defineProps<{
   review: ReviewRecord
@@ -12,11 +13,22 @@ const emit = defineEmits<{
   replyPosted: []
 }>()
 
-const { generateReplyDraft, approveReply } = useReviewHub()
+const { generateReplyDraft, approveReply, translateText, rephraseText, resolveTargetLang } = useReviewHub()
 
 const draftText = ref('')
 const isGenerating = ref(false)
 const isGenerated = ref(false)
+const showTranslation = ref(false)
+const isTranslating = ref(false)
+const isRephrasing = ref(false)
+const originalText = ref('')
+
+const targetLangLabel = computed(() => {
+  const opt = hostLanguageOptions.find(o => o.value === resolveTargetLang())
+  return opt ? opt.label : (resolveTargetLang() ?? 'English')
+})
+
+const canTranslate = computed(() => isGenerated.value && draftText.value.trim().length > 0)
 
 // Check if already replied
 const isReplied = computed(() => props.review.reply_status === 'replied')
@@ -51,8 +63,43 @@ function formatDate(date: string) {
 async function handleGenerate() {
   isGenerating.value = true
   draftText.value = await generateReplyDraft(props.review.id)
+  originalText.value = draftText.value
+  showTranslation.value = false
   isGenerated.value = true
   isGenerating.value = false
+}
+
+async function handleTranslate() {
+  if (!canTranslate.value)
+    return
+  if (showTranslation.value) {
+    // Toggle back to the original draft
+    draftText.value = originalText.value
+    showTranslation.value = false
+    return
+  }
+  isTranslating.value = true
+  try {
+    draftText.value = await translateText(originalText.value)
+    showTranslation.value = true
+  }
+  finally {
+    isTranslating.value = false
+  }
+}
+
+async function handleRephrase() {
+  if (!canTranslate.value) return
+  isRephrasing.value = true
+  try {
+    // Rephrase whatever is currently shown (original or translated draft)
+    draftText.value = await rephraseText(draftText.value)
+    originalText.value = draftText.value
+    showTranslation.value = false
+  }
+  finally {
+    isRephrasing.value = false
+  }
 }
 
 function handleApprove() {
@@ -126,11 +173,48 @@ function handleCopy() {
           class="text-sm"
         />
         <div class="flex items-center justify-between">
-          <span class="text-xs text-muted-foreground">{{ draftText.length }}/{{ maxChars }}</span>
-          <Button variant="ghost" size="sm" class="gap-1.5" :disabled="isGenerating" @click="handleGenerate">
-            <Icon name="lucide:refresh-cw" class="size-3.5" :class="isGenerating && 'animate-spin'" />
-            Regenerate
-          </Button>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-muted-foreground">{{ draftText.length }}/{{ maxChars }}</span>
+            <Button
+              v-if="canTranslate"
+              variant="ghost"
+              size="sm"
+              class="gap-1.5"
+              :disabled="isGenerating || isTranslating"
+              @click="handleTranslate"
+            >
+              <Icon :name="showTranslation ? 'lucide:undo-2' : 'lucide:languages'" class="size-3.5" />
+              {{ showTranslation ? 'Show original' : 'Translate' }}
+            </Button>
+            <span v-if="isTranslating" class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Icon name="lucide:loader-2" class="size-3 animate-spin" />
+              Translating...
+            </span>
+            <span
+              v-else-if="showTranslation"
+              class="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+            >
+              <Icon name="lucide:languages" class="size-2.5" />
+              Translated to {{ targetLangLabel }}
+            </span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <Button
+              v-if="canTranslate"
+              variant="ghost"
+              size="sm"
+              class="gap-1.5"
+              :disabled="isGenerating || isRephrasing || isTranslating"
+              @click="handleRephrase"
+            >
+              <Icon name="lucide:refresh-cw" class="size-3.5" :class="isRephrasing && 'animate-spin'" />
+              {{ isRephrasing ? 'Rephrasing...' : 'Rephrase' }}
+            </Button>
+            <Button variant="ghost" size="sm" class="gap-1.5" :disabled="isGenerating" @click="handleGenerate">
+              <Icon name="lucide:refresh-cw" class="size-3.5" :class="isGenerating && 'animate-spin'" />
+              Regenerate
+            </Button>
+          </div>
         </div>
       </div>
 
