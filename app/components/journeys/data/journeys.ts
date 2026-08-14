@@ -222,8 +222,6 @@ export interface MessageStep extends BaseStep {
   fallbackText: string
   // Smart Template extras
   aiPersonalization?: boolean
-  discountPercent?: number
-  discountAbsolute?: number
   // WhatsApp Template Studio
   whatsappTemplateId?: string
 }

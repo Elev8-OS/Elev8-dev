@@ -1099,53 +1099,6 @@ const showAltTriggerPicker = ref(false)
               {{ v.label }}
             </button>
           </div>
-          <div class="mt-3">
-            <details class="group">
-              <summary class="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
-                <span class="inline-flex items-center gap-1">
-                  <Icon name="i-lucide-chevron-down" class="h-3 w-3 transition-transform group-open:rotate-180" />
-                  Advanced Options
-                </span>
-              </summary>
-              <div class="mt-2 flex flex-col gap-2">
-                <div class="flex items-center gap-2">
-                  <Label class="text-xs text-muted-foreground shrink-0">Discount %</Label>
-                  <Input
-                    type="number"
-                    :model-value="messageStep.discountPercent ?? 0"
-                    min="0"
-                    max="100"
-                    class="h-8 w-20 text-sm"
-                    @update:model-value="patch({ discountPercent: Number($event) } as any)"
-                  />
-                  <Label class="text-xs text-muted-foreground shrink-0">USD / night</Label>
-                  <Input
-                    type="number"
-                    :model-value="messageStep.discountAbsolute ?? 0"
-                    min="0"
-                    class="h-8 w-24 text-sm"
-                    @update:model-value="patch({ discountAbsolute: Number($event) } as any)"
-                  />
-                </div>
-                <div class="flex flex-wrap gap-1">
-                  <button
-                    v-for="v in [
-                      { key: 'discountPercent', label: 'Discount %' },
-                      { key: 'nightsAvailable', label: 'Nights available' },
-                      { key: 'totalDiscount', label: 'Total discount USD' },
-                      { key: 'totalBefore', label: 'Total before discount' },
-                      { key: 'totalAfter', label: 'Total after discount' },
-                    ]"
-                    :key="v.key"
-                    class="rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                    @click="patch({ templateText: `${messageStep.templateText}{{${v.key}}}` } as any)"
-                  >
-                    {{ v.label }}
-                  </button>
-                </div>
-              </div>
-            </details>
-          </div>
         </div>
         <div class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
           <div class="flex items-center justify-between">
