@@ -1,6 +1,6 @@
 import { computed } from 'vue'
-import { useNotifications } from '~/composables/useNotifications'
 import { useInbox } from '~/composables/useInbox'
+import { useNotifications } from '~/composables/useNotifications'
 
 export type EmailDnsRecordType = 'SPF' | 'DKIM' | 'TXT' | 'MX'
 export interface EmailDnsRecord {
