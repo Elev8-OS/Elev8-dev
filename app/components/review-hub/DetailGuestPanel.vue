@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import type { ReviewRecord } from '~/components/review-hub/data/types'
 import { format } from 'date-fns'
-import { channelIcons, channelLabels, getDisplayScore, getDisplayMax, getCategoryDisplayLabel, getTagLabel, getTagSentiment } from '~/components/review-hub/data/types'
+import { hostLanguageOptions } from '~/components/airbnb-reviews/data/reviews'
+import { channelIcons, channelLabels, getCategoryDisplayLabel, getDisplayMax, getDisplayScore, getTagLabel, getTagSentiment } from '~/components/review-hub/data/types'
 
 const props = defineProps<{
   review: ReviewRecord
 }>()
 
-const { isGuestReviewHidden } = useReviewHub()
+const { isGuestReviewHidden, resolveTargetLang, translateReview } = useReviewHub()
+useAirbnbReviews()
+
+const showTranslation = ref(false)
+const isTranslating = ref(false)
+
+const targetLang = computed(() => resolveTargetLang())
 
 const ratingsExpanded = ref(false)
-const tagsExpanded = ref(false)
 
 const sourceIcon = computed(() => channelIcons[props.review.source])
 const sourceLabel = computed(() => channelLabels[props.review.source])
@@ -22,25 +28,62 @@ const displayMax = computed(() => getDisplayMax(props.review.source))
 // Guest left a review?
 const hasGuestReview = computed(() => props.review.guest_rating_overall !== null || !!props.review.guest_review_text)
 
+// Whether a translation is meaningful for this review
+const translationNeeded = computed(() => {
+  if (!props.review.guest_review_text)
+    return false
+  const target = targetLang.value
+  return props.review.language_detected !== target || !!props.review.translated_content
+})
+
+const showTranslateButton = computed(() => translationNeeded.value)
+
+const translatedLabel = computed(() => {
+  const lang = props.review.translation_language
+  const opt = hostLanguageOptions.find(o => o.value === lang)
+  return opt ? opt.label : (lang ?? 'English')
+})
+
 // State label
 const stateLabel = computed(() => {
-  if (reviewHidden.value) return 'Review hidden (double-blind)'
-  if (!hasGuestReview.value) return 'Guest has not left a review yet'
+  if (reviewHidden.value)
+    return 'Review hidden (double-blind)'
+  if (!hasGuestReview.value)
+    return 'Guest has not left a review yet'
   return null
 })
 
 const stateIcon = computed(() => {
-  if (reviewHidden.value) return 'lucide:eye-off'
-  if (!hasGuestReview.value) return 'lucide:message-square-dashed'
+  if (reviewHidden.value)
+    return 'lucide:eye-off'
+  if (!hasGuestReview.value)
+    return 'lucide:message-square-dashed'
   return 'lucide:eye-off' // fallback, won't render
 })
+
+async function handleToggle() {
+  if (showTranslation.value)
+    return showTranslation.value = false
+
+  showTranslation.value = true
+  if (!props.review.translated_content) {
+    isTranslating.value = true
+    try {
+      await translateReview(props.review.id)
+    }
+    finally {
+      isTranslating.value = false
+    }
+  }
+}
 
 function formatDate(date: string) {
   return format(new Date(date), 'MMM d, yyyy h:mm a')
 }
 
 const categoryEntries = computed(() => {
-  if (!props.review.scores || props.review.scores.length === 0) return []
+  if (!props.review.scores || props.review.scores.length === 0)
+    return []
   return props.review.scores.map(s => ({
     key: s.category,
     label: getCategoryDisplayLabel(s.category),
@@ -65,9 +108,24 @@ const allTagsVisible = computed(() => visibleTagCount.value >= props.review.tags
         <Icon :name="sourceIcon" class="size-4" />
         <span class="text-sm font-medium">{{ sourceLabel }} Review</span>
       </div>
-      <span v-if="review.language_detected" class="text-xs text-muted-foreground">
-        Language: {{ review.language_detected.toUpperCase() }}
-      </span>
+      <div class="flex items-center gap-2">
+        <span
+          v-if="review.language_detected"
+          class="text-xs text-muted-foreground"
+        >
+          Language: {{ review.language_detected.toUpperCase() }}
+        </span>
+        <Button
+          v-if="showTranslateButton"
+          variant="outline"
+          size="sm"
+          class="gap-1"
+          @click="handleToggle"
+        >
+          <Icon :name="showTranslation ? 'lucide:undo-2' : 'lucide:languages'" class="size-3.5" />
+          {{ showTranslation ? 'Show original' : 'Translate' }}
+        </Button>
+      </div>
     </div>
 
     <!-- State indicator -->
@@ -85,8 +143,13 @@ const allTagsVisible = computed(() => visibleTagCount.value >= props.review.tags
         @click="ratingsExpanded = !ratingsExpanded"
       >
         <div class="flex items-center gap-3">
-          <span class="text-3xl font-bold">{{ getDisplayScore(review.guest_rating_overall, review.source) }}<span class="text-base font-normal text-muted-foreground">/{{ displayMax }}</span></span>
-          <p class="text-xs text-muted-foreground">Overall Rating</p>
+          <span class="text-3xl font-bold">
+            {{ getDisplayScore(review.guest_rating_overall, review.source) }}
+            <span class="text-base font-normal text-muted-foreground">/{{ displayMax }}</span>
+          </span>
+          <p class="text-xs text-muted-foreground">
+            Overall Rating
+          </p>
         </div>
         <Icon
           name="lucide:chevron-down"
@@ -122,9 +185,24 @@ const allTagsVisible = computed(() => visibleTagCount.value >= props.review.tags
     </template>
     <template v-else-if="hasGuestReview">
       <div v-if="review.guest_review_text" class="rounded-lg border bg-muted/30 p-4">
-        <p class="text-sm leading-relaxed">
-          "{{ review.guest_review_text }}"
-        </p>
+        <div v-if="isTranslating" class="flex items-center gap-1.5">
+          <Icon name="lucide:loader-2" class="size-3 animate-spin text-muted-foreground" />
+          <span class="text-xs text-muted-foreground">Translating...</span>
+        </div>
+        <template v-else-if="showTranslation && review.translated_content">
+          <p class="text-sm leading-relaxed">
+            "{{ review.translated_content }}"
+          </p>
+          <span class="mt-1.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Icon name="lucide:languages" class="size-2.5" />
+            Translated to {{ translatedLabel }}
+          </span>
+        </template>
+        <template v-else>
+          <p class="text-sm leading-relaxed">
+            "{{ review.guest_review_text }}"
+          </p>
+        </template>
         <p v-if="review.review_received_at" class="mt-2 text-xs text-muted-foreground">
           Received {{ formatDate(review.review_received_at) }}
         </p>

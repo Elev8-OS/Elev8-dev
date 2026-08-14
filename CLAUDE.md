@@ -836,6 +836,13 @@ interface ReviewRecord {
 - `generateHostReviewDraft(recordId)` — 1.5s mock, returns `{ text, privateFeedback, ratings, tags }`
 - `approveReply(recordId, text)` — sets is_replied + reply_status
 - `submitHostReview(recordId, text, ratings, isRecommended, tags)` — sets host_review_id + is_hidden: false
+- `translateReview(recordId)` — mock translate (700ms) of `guest_review_text`; target lang from `useAirbnbReviews().config.host_language`; persists `translated_content` + `translation_language` via `updateReviewRecord`; no-op when already translated, target == source, or no text; toast on success
+- `resolveTargetLang()` — returns current `host_language` (default `'en'`)
+
+**Translate Guest Review:**
+- `DetailGuestPanel` shows a per-review **Translate** toggle next to the `Language:` label when the review language differs from the configured target (or a translation already exists)
+- Toggle switches between original text and `translated_content`; "Translated to {language}" label (resolved via `hostLanguageOptions`) shown while translated
+- `language_detected` values: `de` (rr-012, German text) and `fr` (rr-015, French text) — both map to English in `mockReviewTranslations` in `useReviewHub.ts`
 
 **Mock Data (10 records):**
 - 3 Airbnb (1 double-blind hidden, 2 visible), 3 Booking.com (1 replied, 2 host_review_pending), 2 Direct (1 replied, 1 no review), 2 past Airbnb (>14d, auto-revealed)
