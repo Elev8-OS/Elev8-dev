@@ -234,7 +234,7 @@ export function useInbox() {
       }
       conversations.value = [newConv, ...conversations.value]
       messages.value = { ...messages.value, [newId]: [msg] }
-      return { messageId: msg.id!, matched: false }
+      return { messageId: msg.id!, matched: false, conversationId: newId }
     }
 
     // Matched → append the inbound message to the existing conversation.

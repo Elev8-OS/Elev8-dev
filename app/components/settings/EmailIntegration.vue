@@ -99,6 +99,19 @@ function handleDisconnect() {
   disconnectDialogOpen.value = false
 }
 
+function handleSimulateInbound() {
+  // Simulate a guest reply arriving at the connected address — lands in the
+  // Unified Inbox with a pop-up + Notification Center alert (demo of the
+  // inbound pipeline, mirrors the 3CX simulate-inbound-call pattern).
+  email.simulateInboundEmail({
+    from: 'emily.wilson@gmail.com',
+    to: email.activeAccount.value?.address ?? 'acme-inc@mail.elev8-suite.com',
+    subject: 'Re: Check-in details',
+    content: 'Hi! Thanks for the details — we arrive tomorrow at 2 PM. See you soon!',
+  })
+  toast.success('Inbound email simulated — check the Unified Inbox.')
+}
+
 function copyText(text: string, label: string) {
   navigator.clipboard.writeText(text)
   toast.success(`${label} copied.`)
@@ -169,6 +182,10 @@ function copyRecord(record: { host: string, value: string }) {
               <Button size="sm" variant="outline" class="h-8 gap-1.5" @click="copyText(activeAccount?.address ?? '', 'Address')">
                 <Icon name="lucide:copy" class="size-3.5" />
                 Copy address
+              </Button>
+              <Button size="sm" variant="outline" class="h-8 gap-1.5" @click="handleSimulateInbound">
+                <Icon name="lucide:mail-down" class="size-3.5" />
+                Simulate inbound
               </Button>
               <Button
                 v-if="hasPendingCustom"

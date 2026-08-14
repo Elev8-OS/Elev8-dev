@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { useEmailIntegration } from '~/composables/useEmailIntegration'
+import { useInbox } from '~/composables/useInbox'
+import { useNotifications } from '~/composables/useNotifications'
 
 describe('useEmailIntegration', () => {
   it('initializes disconnected with a synthesized default address', () => {
@@ -79,5 +81,62 @@ describe('useEmailIntegration', () => {
     expect(isConnected.value).toBe(true)
     disconnect()
     expect(isConnected.value).toBe(false)
+  })
+
+  it('simulateInboundEmail matches a known guest email and creates pop + alert', async () => {
+    const email = useEmailIntegration()
+    email.connectDefault()
+    const inbox = useInbox()
+
+    const before = inbox.conversations.value.length
+    const result = await email.simulateInboundEmail({
+      from: 'sofia.m@email.com',
+      to: 'acme-inc@mail.elev8-suite.com',
+      subject: 'Re: Check-in details',
+      content: 'Hi, we land at 2 PM tomorrow.',
+    })
+
+    expect(result.matched).toBe(true)
+    expect(result.conversationId).toBeTruthy()
+    // Conversation already existed → no new conversation, message appended.
+    expect(inbox.conversations.value.length).toBe(before)
+
+    // Pop-up was created
+    expect(email.getActiveEmailPop()).toBeTruthy()
+    expect(email.getActiveEmailPop()?.guestName).toBeTruthy()
+
+    // Notification Center alert was created
+    const notifications = useNotifications()
+    const replyAlert = notifications.alerts.value.find(a => a.type === 'EMAIL_REPLY_RECEIVED')
+    expect(replyAlert).toBeTruthy()
+  })
+
+  it('simulateInboundEmail with unknown sender creates an unmatched conversation + alert', async () => {
+    const email = useEmailIntegration()
+    email.connectDefault()
+    const inbox = useInbox()
+
+    const before = inbox.conversations.value.length
+    const unknownEmail = `new.guest${Date.now()}@gmail.com`
+    const result = await email.simulateInboundEmail({
+      from: unknownEmail,
+      to: 'acme-inc@mail.elev8-suite.com',
+      subject: 'New inquiry',
+      content: 'Hi, is the villa available next month?',
+    })
+
+    expect(result.matched).toBe(false)
+    expect(result.conversationId).toBeTruthy()
+    // New unmatched conversation created
+    expect(inbox.conversations.value.length).toBe(before + 1)
+    const newConv = inbox.conversations.value.find(c => c.id === result.conversationId)
+    expect(newConv?.stayStatus).toBe('unmatched')
+    expect(newConv?.otaSource).toBe('Email')
+
+    expect(email.getActiveEmailPop()?.conversationId).toBe(result.conversationId)
+
+    const notifications = useNotifications()
+    const replyAlert = notifications.alerts.value.find(a => a.type === 'EMAIL_REPLY_RECEIVED')
+    expect(replyAlert).toBeTruthy()
   })
 })

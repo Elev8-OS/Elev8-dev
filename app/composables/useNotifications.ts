@@ -87,6 +87,7 @@ export function useNotifications() {
     createAlert(type, type === 'UPSELL_ORDER_REQUESTED' || type === 'UPSELL_ORDER_DECLINED' ? 'WARNING' : 'INFO', context)
   }
   function createGuestActivityAlert(type: 'GUEST_CHECKED_IN' | 'GUEST_CHECKED_OUT' | 'GUEST_ARRIVAL_SOON', context: Record<string, any>) { createAlert(type, 'INFO', context) }
+  function createEmailReplyAlert(context: Record<string, any>) { createAlert('EMAIL_REPLY_RECEIVED', 'INFO', context) }
   function createLexwareAlert(type: 'LEXWARE_DRAFT_INVOICE_READY' | 'LEXWARE_CONNECTION_NEEDS_ATTENTION' | 'LEXWARE_TAX_MAPPING_HOLD' | 'LEXWARE_CREDIT_NOTE_CREATED' | 'LEXWARE_NON_EUR_EXCLUDED', context: Record<string, any>) {
     let severity: AlertSeverity = 'INFO'
     if (type === 'LEXWARE_CONNECTION_NEEDS_ATTENTION')
@@ -95,7 +96,7 @@ export function useNotifications() {
       severity = 'WARNING'
     createAlert(type, severity, context)
   }
-  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createLexwareAlert }
+  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createLexwareAlert }
 }
 
 export { getNotificationKind as getAlertKind }

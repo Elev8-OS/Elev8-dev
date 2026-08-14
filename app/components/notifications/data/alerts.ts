@@ -53,6 +53,7 @@ export type AlertType
     | 'LEXWARE_NON_EUR_EXCLUDED'
     | 'EMAIL_DOMAIN_VERIFIED'
     | 'EMAIL_DNS_FAILING'
+    | 'EMAIL_REPLY_RECEIVED'
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -125,6 +126,7 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   LEXWARE_NON_EUR_EXCLUDED: 'Lexware - Non-EUR Booking Excluded',
   EMAIL_DOMAIN_VERIFIED: 'Email - Domain Verified',
   EMAIL_DNS_FAILING: 'Email - DNS Verification Failing',
+  EMAIL_REPLY_RECEIVED: 'Email - Reply Received',
 }
 
 export const alertIcons: Record<AlertType, string> = {
@@ -182,6 +184,7 @@ export const alertIcons: Record<AlertType, string> = {
   LEXWARE_NON_EUR_EXCLUDED: 'i-lucide-circle-dollar-sign',
   EMAIL_DOMAIN_VERIFIED: 'i-lucide-mail-check',
   EMAIL_DNS_FAILING: 'i-lucide-triangle-alert',
+  EMAIL_REPLY_RECEIVED: 'i-lucide-mail-open',
 }
 
 export const alertRouteMap: Partial<Record<AlertType, string>> = {
@@ -239,6 +242,7 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   LEXWARE_NON_EUR_EXCLUDED: '/finance?tab=integrations',
   EMAIL_DOMAIN_VERIFIED: '/settings/integrations',
   EMAIL_DNS_FAILING: '/settings/integrations',
+  EMAIL_REPLY_RECEIVED: '/inbox',
 }
 
 export function getDescription(type: AlertType, context: Record<string, any>): string {
@@ -341,6 +345,8 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.address || 'Sending address'} verified. New guest email now routes to the Unified Inbox.`
     case 'EMAIL_DNS_FAILING':
       return `${context.address || 'Sending address'} DNS re-check failed — records may have drifted or expired.`
+    case 'EMAIL_REPLY_RECEIVED':
+      return `${context.guestName || 'Guest'} replied via email${context.subject ? `: “${context.subject}”` : ''}.`
     default:
       return ''
   }
