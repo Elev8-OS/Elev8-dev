@@ -3,7 +3,7 @@ import type { PhoneCall } from '~/components/inbox/data/conversations'
 import { differenceInDays, format, isToday, isYesterday } from 'date-fns'
 import { toast } from 'vue-sonner'
 
-const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations, simulateInboundEmail } = useInbox()
+const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations } = useInbox()
 const threeCX = useThreeCX()
 const threeCXCalls = useThreeCxCalls()
 
@@ -13,19 +13,20 @@ const editingNoteContent = ref('')
 const editingNoteVisibleToAI = ref(false)
 const templateOpen = ref(false)
 const { isConnected: whatsappConnected } = useWhatsApp()
-const { isConnected: emailConnected } = useEmailIntegration()
+const email = useEmailIntegration()
+const { isConnected: emailConnected } = email
 const matchOpen = ref(false)
 const matchSearch = ref('')
 
-function handleSimulateInboundEmail() {
+async function handleSimulateInboundEmail() {
   if (!selectedConversation.value)
     return
   const guestEmail = selectedConversation.value.guestEmail
     ?? selectedReservation.value?.guestDetails?.email
   const from = guestEmail || `guest${Date.now()}@mail.com`
-  const result = simulateInboundEmail({
+  const result = await email.simulateInboundEmail({
     from,
-    to: 'stay@villacanggu.com',
+    to: email.activeAccount.value?.address ?? 'acme-inc@mail.elev8-suite.com',
     subject: 'Guest message',
     content: 'Hi — thanks for the update! We\'re all set. Could you confirm the WiFi password?',
   })

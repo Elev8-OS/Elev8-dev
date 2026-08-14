@@ -67,7 +67,7 @@ const summaryText = computed(() => {
   if (s.type === 'context_check')
     return s.condition.length > 50 ? `${s.condition.slice(0, 50)}…` : s.condition
   if (s.type === 'action') {
-    const actionLabel: Record<string, string> = { create_task: 'Create Task', flag_reservation: 'Flag Reservation', staff_alert: 'Staff Alert', raise_action_item: 'Raise Action Item' }
+    const actionLabel: Record<string, string> = { create_task: 'Create Task', flag_reservation: 'Flag Reservation', staff_alert: 'Staff Alert', raise_action_item: 'Raise Action Item', send_guest_guide: 'Send Guest Guide', send_email: 'Send Email' }
     return actionLabel[(s as any).actionType] ?? ''
   }
   if (s.type === 'trigger') {

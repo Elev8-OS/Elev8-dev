@@ -18,6 +18,7 @@ import type {
   TriggerType,
   WaitStep,
 } from './data/journeys'
+import SendEmailAction from './actions/SendEmailAction.vue'
 import SendGuestGuideAction from './actions/SendGuestGuideAction.vue'
 import { conditionMeta, defaultTriggerSettings, primaryConditionTypes, triggerMeta } from './data/journeys'
 
@@ -104,6 +105,17 @@ const selectedWhatsAppTemplate = computed(() => {
   return getTemplateById(messageStep.value.whatsappTemplateId)
 })
 
+// WhatsApp only supports Template mode — lock the mode and clear
+// AI Personalization (irrelevant for approved template messages).
+watch(
+  () => (messageStep.value as any)?.channel,
+  (channel) => {
+    if (channel === 'whatsapp' && messageStep.value && messageStep.value.messageMode !== 'template') {
+      patch({ messageMode: 'template', aiPersonalization: false } as any)
+    }
+  },
+)
+
 const contextStep = computed(() => props.step?.type === 'context_check' ? props.step as ContextCheckStep : null)
 const actionStep = computed(() => props.step?.type === 'action' ? props.step as ActionStep : null)
 const ifElseStep = computed(() => props.step?.type === 'if_else' ? props.step as IfElseStep : null)
@@ -120,6 +132,7 @@ const conversationTriggers = computed(() => allTriggerOptions.filter(t => t.cate
 const reservationTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'reservation'))
 const calendarTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'calendar'))
 const { isConnected: minutConnected } = useMinut()
+const { isConnected: emailConnected } = useEmailIntegration()
 
 const triggerEntries = computed(() => (triggerStep.value?.triggers ?? []) as TriggerEntry[])
 
@@ -332,7 +345,7 @@ function triggerSettingsType(type: TriggerType) {
   if (type === 'sentiment_change')
     return 'sentiment'
   // Reservation Events with immediate checkbox + delay
-  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled', 'minut_event'].includes(type))
+  if (['inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled', 'minut_event', 'email_received'].includes(type))
     return 'immediate_delay'
   // Check-in / Check-out: before/on/after toggle + delay + optional time
   if (type === 'checkin' || type === 'checkout')
@@ -438,6 +451,25 @@ const showAltTriggerPicker = ref(false)
                           >
                             <span class="h-1 w-1 rounded-full" :class="minutConnected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
                             {{ minutConnected ? 'Connected' : 'Not connected' }}
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <!-- Email Received (direct trigger, gated by email connection) -->
+                      <SelectItem
+                        value="email_received"
+                        :disabled="!emailConnected"
+                      >
+                        <div class="flex w-full items-center justify-between">
+                          <span class="flex items-center gap-2">
+                            <Icon name="i-lucide-mail" class="h-3.5 w-3.5" />
+                            Email Received
+                          </span>
+                          <span
+                            class="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[9px] font-medium"
+                            :class="emailConnected ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'"
+                          >
+                            <span class="h-1 w-1 rounded-full" :class="emailConnected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
+                            {{ emailConnected ? 'Connected' : 'Not connected' }}
                           </span>
                         </div>
                       </SelectItem>
@@ -655,7 +687,8 @@ const showAltTriggerPicker = ref(false)
                           : entry.type === 'new_booking' ? 'Trigger at booking'
                             : entry.type === 'guest_checkout' ? 'Trigger at guest check-out'
                               : entry.type === 'minut_event' ? 'Trigger on Minut sensor event'
-                                : 'Trigger at cancellation' }}
+                                : entry.type === 'email_received' ? 'Trigger on email received'
+                                  : 'Trigger at cancellation' }}
                     </p>
                     <p class="mt-1 text-xs text-muted-foreground">
                       {{ entry.type === 'inquiry_received' ? 'Trigger as soon as the inquiry is received, with no delay'
@@ -663,7 +696,8 @@ const showAltTriggerPicker = ref(false)
                           : entry.type === 'new_booking' ? 'Trigger as soon as the booking is confirmed, with no delay'
                             : entry.type === 'guest_checkout' ? 'Trigger as soon as the guest marks themselves as checked-out, with no delay'
                               : entry.type === 'minut_event' ? 'Trigger as soon as a Minut sensor event is detected, with no delay'
-                                : 'Trigger as soon as the cancellation occurs, with no delay' }}
+                                : entry.type === 'email_received' ? 'Trigger as soon as a guest email is received, with no delay'
+                                  : 'Trigger as soon as the cancellation occurs, with no delay' }}
                     </p>
                   </div>
                 </label>
@@ -675,7 +709,8 @@ const showAltTriggerPicker = ref(false)
                           : entry.type === 'new_booking' ? 'Trigger after booking'
                             : entry.type === 'guest_checkout' ? 'Trigger after guest check-out'
                               : entry.type === 'minut_event' ? 'Trigger after Minut sensor event'
-                                : 'Trigger after cancellation' }}
+                                : entry.type === 'email_received' ? 'Trigger after email received'
+                                  : 'Trigger after cancellation' }}
                     </Label>
                     <div class="mt-2 grid grid-cols-3 gap-2">
                       <div v-for="unit in [{ key: 'delayDays', label: 'Days' }, { key: 'delayHours', label: 'Hours' }, { key: 'delayMinutes', label: 'Minutes' }]" :key="unit.key">
@@ -949,25 +984,8 @@ const showAltTriggerPicker = ref(false)
       <!-- Message -->
       <div v-else-if="messageStep" class="flex flex-col gap-4">
         <div>
-          <Label>Message Mode</Label>
-          <div class="mt-1 flex rounded-md border overflow-hidden">
-            <button
-              class="flex-1 px-3 py-1.5 text-sm transition-colors" :class="[messageStep.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted']"
-              @click="patch({ messageMode: 'directive' } as any)"
-            >
-              AI Directive
-            </button>
-            <button
-              class="flex-1 px-3 py-1.5 text-sm transition-colors border-l" :class="[messageStep.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted']"
-              @click="patch({ messageMode: 'template' } as any)"
-            >
-              Template
-            </button>
-          </div>
-        </div>
-        <div>
           <Label>Channel</Label>
-          <Select :model-value="messageStep.channel" @update:model-value="patch({ channel: $event } as any)">
+          <Select :model-value="messageStep.channel" @update:model-value="patch($event === 'whatsapp' ? { channel: $event, messageMode: 'template', aiPersonalization: false } as any : { channel: $event } as any)">
             <SelectTrigger class="mt-1">
               <SelectValue />
             </SelectTrigger>
@@ -985,7 +1003,30 @@ const showAltTriggerPicker = ref(false)
           </Select>
           <p v-if="messageStep.channel === 'whatsapp'" class="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
             <Icon name="i-lucide-triangle-alert" class="h-3 w-3" />
-            Requires WhatsApp Business API
+            Requires WhatsApp Business API. WhatsApp messages must use an approved template.
+          </p>
+        </div>
+        <div>
+          <Label>Message Mode</Label>
+          <div class="mt-1 flex rounded-md border overflow-hidden">
+            <button
+              class="flex-1 px-3 py-1.5 text-sm transition-colors" :class="[
+                messageStep.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+                messageStep.channel === 'whatsapp' && 'opacity-40 cursor-not-allowed pointer-events-none',
+              ]"
+              @click="patch({ messageMode: 'directive' } as any)"
+            >
+              AI Directive
+            </button>
+            <button
+              class="flex-1 px-3 py-1.5 text-sm transition-colors border-l" :class="[messageStep.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted']"
+              @click="patch({ messageMode: 'template' } as any)"
+            >
+              Template
+            </button>
+          </div>
+          <p v-if="messageStep.channel === 'whatsapp'" class="mt-1.5 text-xs text-muted-foreground">
+            WhatsApp only supports Template mode.
           </p>
         </div>
 
@@ -1034,7 +1075,7 @@ const showAltTriggerPicker = ref(false)
             @update:model-value="patch({ directive: $event as string } as any)"
           />
         </div>
-        <div v-else>
+        <div v-else-if="messageStep.channel !== 'whatsapp'">
           <Label>Message Template</Label>
           <Textarea
             :model-value="messageStep.templateText"
@@ -1058,53 +1099,6 @@ const showAltTriggerPicker = ref(false)
               {{ v.label }}
             </button>
           </div>
-          <div class="mt-3">
-            <details class="group">
-              <summary class="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
-                <span class="inline-flex items-center gap-1">
-                  <Icon name="i-lucide-chevron-down" class="h-3 w-3 transition-transform group-open:rotate-180" />
-                  Advanced Options
-                </span>
-              </summary>
-              <div class="mt-2 flex flex-col gap-2">
-                <div class="flex items-center gap-2">
-                  <Label class="text-xs text-muted-foreground shrink-0">Discount %</Label>
-                  <Input
-                    type="number"
-                    :model-value="messageStep.discountPercent ?? 0"
-                    min="0"
-                    max="100"
-                    class="h-8 w-20 text-sm"
-                    @update:model-value="patch({ discountPercent: Number($event) } as any)"
-                  />
-                  <Label class="text-xs text-muted-foreground shrink-0">USD / night</Label>
-                  <Input
-                    type="number"
-                    :model-value="messageStep.discountAbsolute ?? 0"
-                    min="0"
-                    class="h-8 w-24 text-sm"
-                    @update:model-value="patch({ discountAbsolute: Number($event) } as any)"
-                  />
-                </div>
-                <div class="flex flex-wrap gap-1">
-                  <button
-                    v-for="v in [
-                      { key: 'discountPercent', label: 'Discount %' },
-                      { key: 'nightsAvailable', label: 'Nights available' },
-                      { key: 'totalDiscount', label: 'Total discount USD' },
-                      { key: 'totalBefore', label: 'Total before discount' },
-                      { key: 'totalAfter', label: 'Total after discount' },
-                    ]"
-                    :key="v.key"
-                    class="rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                    @click="patch({ templateText: `${messageStep.templateText}{{${v.key}}}` } as any)"
-                  >
-                    {{ v.label }}
-                  </button>
-                </div>
-              </div>
-            </details>
-          </div>
         </div>
         <div class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
           <div class="flex items-center justify-between">
@@ -1127,7 +1121,7 @@ const showAltTriggerPicker = ref(false)
             @update:model-value="patch({ contextCheckInstruction: $event as string } as any)"
           />
         </div>
-        <div class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
+        <div v-if="messageStep.channel !== 'whatsapp'" class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
           <div class="flex items-center justify-between">
             <Label class="cursor-pointer text-sm" for="ai-personalize-toggle">AI Personalization</Label>
             <Switch
@@ -1199,11 +1193,19 @@ const showAltTriggerPicker = ref(false)
               <SelectItem value="send_guest_guide">
                 Send Guest Guide
               </SelectItem>
+              <SelectItem value="send_email">
+                Send Email
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
         <SendGuestGuideAction
           v-if="actionStep.actionType === 'send_guest_guide'"
+          :model-value="(actionStep as any).data ?? {}"
+          @update:model-value="patch({ data: $event } as any)"
+        />
+        <SendEmailAction
+          v-if="actionStep.actionType === 'send_email'"
           :model-value="(actionStep as any).data ?? {}"
           @update:model-value="patch({ data: $event } as any)"
         />
@@ -1576,17 +1578,26 @@ const showAltTriggerPicker = ref(false)
             <div>
               <Label>Message Mode</Label>
               <div class="mt-1 flex rounded-md border overflow-hidden">
-                <button class="flex-1 px-3 py-1.5 text-sm" :class="[(activeBranchStep as any)?.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground']" @click="patchActiveBranch({ messageMode: 'directive' })">
+                <button
+                  class="flex-1 px-3 py-1.5 text-sm" :class="[
+                    (activeBranchStep as any)?.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+                    (activeBranchStep as any)?.channel === 'whatsapp' && 'opacity-40 cursor-not-allowed pointer-events-none',
+                  ]"
+                  @click="patchActiveBranch({ messageMode: 'directive' })"
+                >
                   AI Directive
                 </button>
                 <button class="flex-1 px-3 py-1.5 text-sm border-l" :class="[(activeBranchStep as any)?.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground']" @click="patchActiveBranch({ messageMode: 'template' })">
                   Template
                 </button>
               </div>
+              <p v-if="(activeBranchStep as any)?.channel === 'whatsapp'" class="mt-1.5 text-xs text-muted-foreground">
+                WhatsApp only supports Template mode.
+              </p>
             </div>
             <div>
               <Label>Channel</Label>
-              <Select :model-value="(activeBranchStep as any)?.channel ?? 'ota'" @update:model-value="patchActiveBranch({ channel: $event })">
+              <Select :model-value="(activeBranchStep as any)?.channel ?? 'ota'" @update:model-value="patchActiveBranch($event === 'whatsapp' ? { channel: $event, messageMode: 'template' } : { channel: $event })">
                 <SelectTrigger class="mt-1">
                   <SelectValue />
                 </SelectTrigger>
@@ -1640,7 +1651,7 @@ const showAltTriggerPicker = ref(false)
               </div>
             </div>
 
-            <div>
+            <div v-if="(activeBranchStep as any)?.channel !== 'whatsapp'">
               <Label>{{ (activeBranchStep as any)?.messageMode === 'template' ? 'Template Text' : 'AI Directive' }}</Label>
               <Textarea
                 :model-value="(activeBranchStep as any)?.messageMode === 'template' ? (activeBranchStep as any)?.templateText : (activeBranchStep as any)?.directive"

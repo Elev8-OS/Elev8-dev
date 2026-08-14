@@ -125,6 +125,7 @@ const GUEST_GUIDE_TYPES: AlertType[] = [
 const EMAIL_TYPES: AlertType[] = [
   'EMAIL_DOMAIN_VERIFIED',
   'EMAIL_DNS_FAILING',
+  'EMAIL_REPLY_RECEIVED',
 ]
 
 export const notificationCategories: NotificationCategoryDefinition[] = [

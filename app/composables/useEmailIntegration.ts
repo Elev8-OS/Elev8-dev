@@ -1,8 +1,9 @@
 import { computed } from 'vue'
+import { useInbox } from '~/composables/useInbox'
+import { useJourneys } from '~/composables/useJourneys'
 import { useNotifications } from '~/composables/useNotifications'
 
 export type EmailDnsRecordType = 'SPF' | 'DKIM' | 'TXT' | 'MX'
-
 export interface EmailDnsRecord {
   type: EmailDnsRecordType
   host: string
@@ -24,6 +25,17 @@ export interface EmailAccount {
   verificationToken: string
   connectedAt: string
   verifiedAt: string | null
+}
+
+export interface EmailInboxPop {
+  id: string
+  conversationId: string
+  guestName: string
+  listingName: string
+  from: string
+  subject: string
+  timestamp: string
+  dismissed: boolean
 }
 
 const STORAGE_KEY = 'elev8-email-accounts'
@@ -87,6 +99,8 @@ export function useEmailIntegration() {
   const isConnected = computed(() => accounts.value.length > 0)
   const isVerified = computed(() => activeAccount.value.status === 'verified')
   const hasPendingCustom = computed(() => customAccount.value?.status === 'pending')
+
+  const emailInboxPops = useState<EmailInboxPop[]>('email-inbox-pops', () => [])
 
   function connectDefault(): { success: true, account: EmailAccount } | { success: false, error: string } {
     const account = buildDefaultAccount()
@@ -186,6 +200,57 @@ export function useEmailIntegration() {
     }
   }
 
+  // ── Inbound replies (mirrors the 3CX inbound-call pipeline) ─────────────
+  function getActiveEmailPop(): EmailInboxPop | undefined {
+    return emailInboxPops.value.find(p => !p.dismissed)
+  }
+
+  function dismissEmailPop(id: string) {
+    emailInboxPops.value = emailInboxPops.value.map(p => p.id === id ? { ...p, dismissed: true } : p)
+  }
+
+  async function simulateInboundEmail(opts: {
+    from: string
+    to: string
+    subject?: string
+    content: string
+  }): Promise<{ messageId: string, matched: boolean, conversationId?: string }> {
+    const inbox = useInbox()
+    const notifications = useNotifications()
+    const journeys = useJourneys()
+
+    const result = inbox.simulateInboundEmail(opts)
+
+    // Pop-up notification (mirrors 3CX screen-pop) + Notification Center alert.
+    const conv = result.conversationId
+      ? inbox.conversations.value.find(c => c.id === result.conversationId)
+      : undefined
+    const pop: EmailInboxPop = {
+      id: `email-pop-${Date.now()}`,
+      conversationId: result.conversationId ?? '',
+      guestName: conv?.guestName ?? (opts.from.split('@')[0] || opts.from),
+      listingName: conv?.listingName ?? 'Unknown',
+      from: opts.from,
+      subject: opts.subject ?? '',
+      timestamp: new Date().toISOString(),
+      dismissed: false,
+    }
+    emailInboxPops.value = [...emailInboxPops.value, pop]
+
+    notifications.createEmailReplyAlert({
+      guestName: pop.guestName,
+      from: opts.from,
+      subject: opts.subject ?? '',
+      conversationId: result.conversationId ?? null,
+      matched: result.matched,
+    })
+
+    // Fire any active journey listening on email_received (mirrors onMinutEvent).
+    journeys.onEmailReceived(opts)
+
+    return result
+  }
+
   return {
     accounts,
     defaultAccount,
@@ -194,10 +259,14 @@ export function useEmailIntegration() {
     isConnected,
     isVerified,
     hasPendingCustom,
+    emailInboxPops,
     connectDefault,
     connectCustom,
     verifyDomain,
     disconnect,
+    simulateInboundEmail,
+    dismissEmailPop,
+    getActiveEmailPop,
   }
 }
 

@@ -223,6 +223,8 @@ function setInboxView(view: 'conversations' | 'calls') {
           <SettingsWhatsAppIntegration />
           <Separator />
           <SettingsThreeCxIntegration />
+          <Separator />
+          <SettingsEmailIntegration />
         </div>
       </SheetContent>
     </Sheet>
@@ -232,5 +234,7 @@ function setInboxView(view: 'conversations' | 'calls') {
 
     <!-- 3CX screen-pop -->
     <InboxCallScreenPop />
+    <!-- Email inbound pop-up -->
+    <InboxEmailScreenPop />
   </TooltipProvider>
 </template>
