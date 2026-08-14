@@ -1,7 +1,7 @@
 import type { Journey, JourneyGroup, JourneyStatus, TriggerEntry, TriggerStep } from '~/components/journeys/data/journeys'
+import type { MinutEvent } from '~/composables/useMinut'
 import { toast } from 'vue-sonner'
 import { mockGroups, mockJourneys } from '~/components/journeys/data/journeys'
-import type { MinutEvent } from '~/composables/useMinut'
 
 export function useJourneys() {
   const journeys = useState<Journey[]>('journeys', () => mockJourneys)
@@ -121,6 +121,26 @@ export function useJourneys() {
     }
   }
 
+  function onEmailReceived(opts: { from: string, to: string, subject?: string, content: string }) {
+    for (const journey of journeys.value) {
+      if (journey.status !== 'active')
+        continue
+      const triggerStep = journey.steps.find((s): s is TriggerStep => s.type === 'trigger')
+      if (!triggerStep)
+        continue
+      const matches = triggerStep.triggers.some((t: TriggerEntry) => t.type === 'email_received')
+      if (!matches)
+        continue
+      const inScope = triggerStep.properties.includes('All Properties')
+        || triggerStep.properties.includes(opts.from)
+      if (!inScope)
+        continue
+      toast.info(`Journey "${journey.name}" triggered by email`, {
+        description: opts.subject ? `${opts.from} · ${opts.subject}` : `From ${opts.from}`,
+      })
+    }
+  }
+
   return {
     journeys,
     toggleStatus,
@@ -135,5 +155,6 @@ export function useJourneys() {
     moveJourneyToGroup,
     addJourneysToGroup,
     onMinutEvent,
+    onEmailReceived,
   }
 }

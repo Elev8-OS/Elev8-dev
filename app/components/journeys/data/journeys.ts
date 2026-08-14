@@ -34,6 +34,8 @@ export type TriggerType
     | 'yearly'
   // Minut sensor event (consolidated — fires for any Minut event subtype)
     | 'minut_event'
+  // Email integration — a guest email is received on the connected domain
+    | 'email_received'
 
 export type ChannelType = 'ota' | 'whatsapp' | 'email'
 
@@ -43,6 +45,7 @@ export type ActionType
     | 'staff_alert'
     | 'raise_action_item'
     | 'send_guest_guide'
+    | 'send_email'
 
 export type FailBehavior = 'skip' | 'stop'
 
@@ -161,7 +164,7 @@ export function defaultTriggerSettings(type: TriggerType): TriggerSettings {
   if (
     [
       'inquiry_received', 'new_message_received', 'new_booking', 'guest_checkout', 'booking_cancelled',
-      'minut_event',
+      'minut_event', 'email_received',
     ].includes(type)
   )
     return { triggerImmediately: true, delayDays: 0, delayHours: 0, delayMinutes: 0, specificTime: '' }
@@ -346,6 +349,7 @@ export const triggerMeta: Record<string, { label: string, category: TriggerCateg
   monthly: { label: 'Monthly', category: 'calendar' },
   yearly: { label: 'Yearly', category: 'calendar' },
   minut_event: { label: 'Trigger when Minut detects sensor events like noise or occupancy issues', category: 'integration' },
+  email_received: { label: 'Trigger when a guest email is received', category: 'integration' },
 }
 
 export const bookingChannelMeta: Record<BookingChannel, string> = {

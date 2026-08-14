@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { useInbox } from '~/composables/useInbox'
+import { useJourneys } from '~/composables/useJourneys'
 import { useNotifications } from '~/composables/useNotifications'
 
 export type EmailDnsRecordType = 'SPF' | 'DKIM' | 'TXT' | 'MX'
@@ -216,6 +217,7 @@ export function useEmailIntegration() {
   }): Promise<{ messageId: string, matched: boolean, conversationId?: string }> {
     const inbox = useInbox()
     const notifications = useNotifications()
+    const journeys = useJourneys()
 
     const result = inbox.simulateInboundEmail(opts)
 
@@ -242,6 +244,9 @@ export function useEmailIntegration() {
       conversationId: result.conversationId ?? null,
       matched: result.matched,
     })
+
+    // Fire any active journey listening on email_received (mirrors onMinutEvent).
+    journeys.onEmailReceived(opts)
 
     return result
   }
