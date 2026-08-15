@@ -7,6 +7,7 @@ import { useReservationsModule } from '~/composables/useReservationsModule'
 const props = defineProps<{
   reservation: ReservationEntry | null
   open: boolean
+  focusGuestIndex?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -48,6 +49,9 @@ watch(() => props.open, (open) => {
     guestNotes.value = props.reservation.guestNotes
     occupants.value = props.reservation.guests?.map(g => ({ ...g })) ?? []
     editingIndex.value = null
+    if (props.focusGuestIndex != null && occupants.value[props.focusGuestIndex]) {
+      startEdit(props.focusGuestIndex)
+    }
   }
 })
 

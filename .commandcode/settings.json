@@ -124,7 +124,8 @@
       "Shell(cat >> .superpowers/sdd/progress.md <<'EOF' - [x] Task 6: Verification + docs — complete (commit `bfa2e47`): 11/11 related tests pass (4 translate + 5 inbox email + 2 notifications); typecheck clean on touched files (mock-review-analytics.ts error is pre-existing baseline, verified at e144f33); lint: useReviewHub.ts 47 errors + types.ts 11 errors all pre-existing (verified via line mapping vs added code), DetailGuestPanel clean; fixed 2 test-file lint errors (import order, unused var) + French-text single-quote lint; CLAUDE.md updated EOF echo \"=== Final diff stats (merge-base to HEAD) ===\" && git log --oneline e144f33..HEAD && echo \"---\" && git diff --stat e144f33..HEAD)",
       "Shell(/usr/bin/time:*)",
       "Shell(which:*)",
-      "Shell(vercel:*)"
+      "Shell(vercel:*)",
+      "Shell(curl -s -o /dev/null -w \"%{http_code}\\n\" http://localhost:3000/dashboard/)"
     ],
     "deny": [],
     "defaultMode": "default"

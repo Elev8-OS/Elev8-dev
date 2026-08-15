@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
+import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
@@ -37,6 +39,7 @@ const reservationUpsells = computed(() => {
 })
 
 const editOpen = ref(false)
+const editGuestIndex = ref<number | null>(null)
 const priceView = ref<'guest' | 'payout'>('guest')
 
 // Party breakdown from occupants, e.g. "2 Adults · 1 Child · 1 Infant"
@@ -78,6 +81,29 @@ const bookingNoteBody = computed(() => {
   const idx = note.indexOf('BOOKING NOTE :')
   return idx >= 0 ? note.slice(idx + 'BOOKING NOTE :'.length).trim() : note
 })
+
+// --- Identity verification ---
+const docViewDoc = ref<GuestDocument | null>(null)
+
+const identityDocs = computed(() => reservation.value?.identity?.documents ?? [])
+
+const verifiedCount = computed(() => reservation.value?.guests?.filter(g => g.identityVerified).length ?? 0)
+
+function docKindMeta(kind: GuestDocument['kind']) {
+  const map: Record<GuestDocument['kind'], { label: string, icon: string }> = {
+    id: { label: 'ID Document', icon: 'lucide:credit-card' },
+    selfie: { label: 'Selfie', icon: 'lucide:camera' },
+    signature: { label: 'Signature', icon: 'lucide:pen-line' },
+    agreement: { label: 'House Rules Agreement', icon: 'lucide:file-check-2' },
+  }
+  return map[kind]
+}
+
+function fmtUploadTime(iso: string): string {
+  if (!iso)
+    return ''
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 function onStatusChange(value: unknown) {
   if (!reservation.value)
@@ -177,6 +203,11 @@ function categoryLabel(category: string): string {
 function idTypeLabel(type: string): string {
   const map: Record<string, string> = { passport: 'Passport', id_card: 'ID Card', drivers_license: 'Driver\'s License' }
   return map[type] ?? type
+}
+
+function editGuest(index: number) {
+  editGuestIndex.value = index
+  editOpen.value = true
 }
 
 function fmtDob(iso: string): string {
@@ -429,7 +460,7 @@ function fmtCleaningDate(iso: string): string {
               </div>
             </div>
 
-            <!-- Guests group (occupants) -->
+            <!-- Guests group (occupants) + identity & documents -->
             <Accordion v-if="reservation.guests?.length" type="single" collapsible class="w-full border-b px-2">
               <AccordionItem value="guests" class="border-b-0">
                 <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
@@ -437,59 +468,151 @@ function fmtCleaningDate(iso: string): string {
                     <Icon name="lucide:users" class="size-4" />
                     Guests
                     <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ reservation.guests.length }}
+                      {{ verifiedCount }}/{{ reservation.guests.length }} verified
                     </Badge>
                   </span>
                 </AccordionTrigger>
                 <AccordionContent class="px-3 pb-3">
-                  <div class="space-y-2">
-                    <div
-                      v-for="g in reservation.guests"
-                      :key="g.id"
-                      class="border p-3"
-                    >
-                      <div class="flex items-center gap-2.5">
-                        <Avatar class="size-9">
-                          <AvatarFallback class="bg-primary/10 text-primary text-xs">
-                            {{ initials(g.name) }}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-center gap-1.5">
-                            <p class="text-sm font-medium truncate">
-                              {{ g.name }}
-                            </p>
-                            <Badge v-if="g.isPrimary" variant="default" class="text-[9px] px-1 py-0">
-                              Main
-                            </Badge>
+                  <Tabs default-value="guests">
+                    <TabsList class="w-full">
+                      <TabsTrigger value="guests" class="flex-1">
+                        Guests
+                      </TabsTrigger>
+                      <TabsTrigger value="documents" class="flex-1">
+                        Identity & Documents
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="guests" class="mt-3">
+                      <div class="space-y-2">
+                        <div
+                          v-for="(g, index) in reservation.guests"
+                          :key="g.id"
+                          class="border p-3"
+                        >
+                          <div class="flex items-center gap-2.5">
+                            <Avatar class="size-9">
+                              <AvatarFallback class="bg-primary/10 text-primary text-xs">
+                                {{ initials(g.name) }}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div class="min-w-0 flex-1">
+                              <div class="flex items-center gap-1.5">
+                                <p class="text-sm font-medium truncate">
+                                  {{ g.name }}
+                                </p>
+                                <Badge v-if="g.isPrimary" variant="default" class="text-[9px] px-1 py-0">
+                                  Main
+                                </Badge>
+                                <Badge
+                                  v-if="g.identityVerified"
+                                  variant="outline"
+                                  class="border-green-500/40 bg-green-500/10 text-[9px] px-1 py-0 text-green-700 dark:text-green-400"
+                                >
+                                  <Icon name="lucide:badge-check" class="size-2.5" />
+                                  Verified
+                                </Badge>
+                                <Badge
+                                  v-else
+                                  variant="outline"
+                                  class="text-[9px] px-1 py-0 text-muted-foreground"
+                                >
+                                  Not verified
+                                </Badge>
+                              </div>
+                              <p class="text-[10px] text-muted-foreground">
+                                {{ categoryLabel(g.category) }}
+                                <template v-if="g.dob">
+                                  · {{ fmtDob(g.dob) }}
+                                </template>
+                                <template v-if="g.nationality">
+                                  · {{ g.nationality }}
+                                </template>
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              class="h-7 w-7 shrink-0 p-0"
+                              title="Edit guest info"
+                              @click="editGuest(index)"
+                            >
+                              <Icon name="lucide:pencil" class="size-3.5" />
+                              <span class="sr-only">Edit {{ g.name }}</span>
+                            </Button>
                           </div>
-                          <p class="text-[10px] text-muted-foreground">
-                            {{ categoryLabel(g.category) }}
-                            <template v-if="g.dob">
-                              · {{ fmtDob(g.dob) }}
-                            </template>
-                            <template v-if="g.nationality">
-                              · {{ g.nationality }}
-                            </template>
-                          </p>
+                          <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                            <p v-if="g.email" class="flex items-center gap-1.5 truncate">
+                              <Icon name="lucide:mail" class="size-3 shrink-0" />
+                              {{ g.email }}
+                            </p>
+                            <p v-if="g.phone" class="flex items-center gap-1.5 truncate">
+                              <Icon name="lucide:phone" class="size-3 shrink-0" />
+                              {{ g.phone }}
+                            </p>
+                            <p v-if="g.idType" class="flex items-center gap-1.5">
+                              <Icon name="lucide:credit-card" class="size-3 shrink-0" />
+                              {{ idTypeLabel(g.idType) }}: {{ g.idNumber }}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                      <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                        <p v-if="g.email" class="flex items-center gap-1.5 truncate">
-                          <Icon name="lucide:mail" class="size-3 shrink-0" />
-                          {{ g.email }}
-                        </p>
-                        <p v-if="g.phone" class="flex items-center gap-1.5 truncate">
-                          <Icon name="lucide:phone" class="size-3 shrink-0" />
-                          {{ g.phone }}
-                        </p>
-                        <p v-if="g.idType" class="flex items-center gap-1.5">
-                          <Icon name="lucide:credit-card" class="size-3 shrink-0" />
-                          {{ idTypeLabel(g.idType) }}: {{ g.idNumber }}
-                        </p>
+                    </TabsContent>
+                    <TabsContent value="documents" class="mt-3">
+                      <div v-if="identityDocs.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        No documents uploaded yet.
                       </div>
-                    </div>
-                  </div>
+
+                      <div v-else class="space-y-2">
+                        <div
+                          v-for="doc in identityDocs"
+                          :key="doc.id"
+                          class="flex items-center gap-3 border p-2.5"
+                        >
+                          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted/60">
+                            <Icon :name="docKindMeta(doc.kind).icon" class="size-4 text-muted-foreground" />
+                          </div>
+                          <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm font-medium">
+                              {{ doc.name }}
+                            </p>
+                            <p class="text-[10px] text-muted-foreground">
+                              {{ docKindMeta(doc.kind).label }}
+                              <template v-if="doc.fileName"> · {{ doc.fileName }}</template>
+                              <template v-if="doc.uploadedAt"> · {{ fmtUploadTime(doc.uploadedAt) }}</template>
+                            </p>
+                          </div>
+                          <div class="flex shrink-0 items-center gap-1">
+                            <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" @click="docViewDoc = doc">
+                              <Icon name="lucide:eye" class="size-3.5" />
+                            </Button>
+                            <a v-if="doc.url" :href="doc.url" :download="doc.fileName ?? doc.name" class="shrink-0">
+                              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Download">
+                                <Icon name="lucide:download" class="size-3.5" />
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <!-- Activity timeline -->
+            <Accordion type="single" collapsible class="w-full border-b px-2">
+              <AccordionItem value="activity" class="border-b-0">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                  <span class="flex items-center gap-2">
+                    <Icon name="lucide:activity" class="size-4" />
+                    Activity
+                    <Badge v-if="reservation.activity.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                      {{ reservation.activity.length }}
+                    </Badge>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="px-3 pb-3">
+                  <GuestActivityTimeline :events="reservation.activity" bare />
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -843,6 +966,45 @@ function fmtCleaningDate(iso: string): string {
   <EditReservationDialog
     :reservation="reservation"
     :open="editOpen"
-    @update:open="editOpen = $event"
+    :focus-guest-index="editGuestIndex"
+    @update:open="editOpen = $event; if (!$event) editGuestIndex = null"
   />
+
+  <!-- Document preview dialog -->
+  <Dialog :open="!!docViewDoc" @update:open="docViewDoc = null">
+    <DialogContent class="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>
+          {{ docViewDoc?.name }}
+        </DialogTitle>
+        <DialogDescription v-if="docViewDoc">
+          {{ docViewDoc?.kind ? docKindMeta(docViewDoc.kind).label : '' }}
+          <template v-if="docViewDoc?.uploadedAt"> · uploaded {{ fmtUploadTime(docViewDoc.uploadedAt) }}</template>
+        </DialogDescription>
+      </DialogHeader>
+      <div class="py-2">
+        <div v-if="docViewDoc?.url" class="flex items-center justify-center rounded-md border bg-muted/30 p-2">
+          <img
+            :src="docViewDoc.url"
+            :alt="docViewDoc.name"
+            class="max-h-80 w-auto rounded-sm object-contain"
+          >
+        </div>
+        <p v-else class="py-8 text-center text-sm text-muted-foreground">
+          No preview available for this document.
+        </p>
+      </div>
+      <DialogFooter>
+        <a v-if="docViewDoc?.url" :href="docViewDoc.url" :download="docViewDoc.fileName ?? docViewDoc.name">
+          <Button class="gap-1.5">
+            <Icon name="lucide:download" class="size-3.5" />
+            Download
+          </Button>
+        </a>
+        <Button variant="outline" @click="docViewDoc = null">
+          Close
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>

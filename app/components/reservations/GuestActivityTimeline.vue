@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 
-defineProps<{ events: ActivityEvent[] }>()
+const props = defineProps<{ events: ActivityEvent[], bare?: boolean }>()
 
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })
 
@@ -18,17 +18,19 @@ const typeMeta: Record<ActivityEvent['type'], { icon: string, tone: string }> = 
   task: { icon: 'lucide:check-square', tone: 'bg-slate-500/10 text-slate-700' },
   system: { icon: 'lucide:cpu', tone: 'bg-muted text-muted-foreground' },
 }
+
+const emptyPadding = computed(() => (props.bare ? 'py-8' : 'py-12'))
 </script>
 
 <template>
-  <Card>
+  <Card v-if="!bare">
     <CardHeader>
       <CardTitle class="text-base">
         Activity
       </CardTitle>
     </CardHeader>
     <CardContent class="px-6 pb-4">
-      <div v-if="events.length === 0" class="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
+      <div v-if="events.length === 0" class="flex flex-col items-center gap-2 text-sm text-muted-foreground" :class="emptyPadding">
         <Icon name="lucide:activity" class="size-8 opacity-50" />
         No activity recorded yet.
       </div>
@@ -61,4 +63,37 @@ const typeMeta: Record<ActivityEvent['type'], { icon: string, tone: string }> = 
       </ol>
     </CardContent>
   </Card>
+  <div v-else>
+    <div v-if="events.length === 0" class="flex flex-col items-center gap-2 text-sm text-muted-foreground" :class="emptyPadding">
+      <Icon name="lucide:activity" class="size-8 opacity-50" />
+      No activity recorded yet.
+    </div>
+    <ol v-else class="divide-y">
+      <li
+        v-for="e in events"
+        :key="e.id"
+        class="flex items-start gap-3 py-3"
+      >
+        <div class="flex size-9 items-center justify-center rounded-full shrink-0" :class="[typeMeta[e.type].tone]">
+          <Icon :name="typeMeta[e.type].icon" class="size-4" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="text-sm font-medium truncate">
+              {{ e.title }}
+            </div>
+            <div class="text-xs text-muted-foreground whitespace-nowrap">
+              {{ fmtTimestamp(e.timestamp) }}
+            </div>
+          </div>
+          <div v-if="e.description" class="text-xs text-muted-foreground mt-0.5">
+            {{ e.description }}
+          </div>
+          <div class="text-xs text-muted-foreground mt-0.5">
+            {{ e.actor }}
+          </div>
+        </div>
+      </li>
+    </ol>
+  </div>
 </template>

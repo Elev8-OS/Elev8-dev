@@ -19,8 +19,8 @@ See [vue-nuxt/taste.md](vue-nuxt/taste.md)
 See [finance/taste.md](finance/taste.md)
 # workflow
 - Prefer `pnpm dev` over `pnpm build` during development to avoid browser crash from heavy builds. Confidence: 0.65
-- As a dev-server smoke test, don't stop at HTTP status codes — grep the rendered HTML for expected content (guest names, section headings) and scan the dev log for Vue warnings/errors (e.g. `Failed to resolve component`); this catches component-resolution issues that typecheck and 200s miss. Confidence: 0.7
-- When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. If the user explicitly asked to run the dev server (e.g. a terse "run dev"), leave it running and say so — they want to click through the feature themselves; only stop the server after verification when the assistant started it solely as a smoke test, so no ports are left occupied. Confidence: 0.85
+- As a dev-server smoke test, don't stop at HTTP status codes — grep the rendered HTML for expected content (guest names, section headings) and scan the dev log for Vue warnings/errors (e.g. `Failed to resolve component`); this catches component-resolution issues that typecheck and 200s miss. Confidence: 0.72
+- When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. If the user explicitly asked to run the dev server (e.g. a terse "run dev"), leave it running and say so — they want to click through the feature themselves; only stop the server after verification when the assistant started it solely as a smoke test, so no ports are left occupied. The user may specify the exact port in the directive (e.g. "run dev 3000") — treat that port as a requirement: confirm the server actually listens on the requested port (Nuxt can fall back to the next free port like 3001) and state the port explicitly in the report. Confidence: 0.85
 
 # 3cx
 - For mock 3CX integration: skip the OAuth redirect page/callback flow and go directly to "connected" state. Confidence: 0.65
@@ -35,12 +35,7 @@ See [finance/taste.md](finance/taste.md)
 - Phone input must auto-prepend "+" and restrict input to digits and "+" only (no text characters allowed). Confidence: 0.65
 
 # data
-- Prefer real data from Elev8 Suite OS MCP over mock data when available. Confidence: 0.70
-- When a new feature needs mock data, prefer reusing/enriching existing dataset records (e.g. blending rich inbox records with the larger finance table, or seeding a new bookingNote field onto an existing seeded reservation like Emily's res-3) over authoring a large fresh dataset — the user chose the blended dataset option for the reservations feature, and the booking-note addition reused the existing record. Confidence: 0.65
-- Property hierarchy must support three levels: Property → Unit Type (e.g., Kingbed, Single Bed) → Unit (room with specific bed). Confidence: 0.75
-- Reservation bookings that contain multiple people should be modeled as per-guest occupant records — `GuestOccupant` (name, category adult/child/infant, email/phone, DOB, nationality, passport/ID-card type + number, isPrimary flag) — not just a numeric guestCount. Asked which fields a guest group needs, the user chose the "Lengkap + identitas" (full identity details) option. The UI mirrors the model: a party breakdown ("2 Adults · 1 Child · 1 Infant") + overlapping avatar stack (max 4 + "+N") in the Booking Info card, and a per-occupant list (avatar, Main badge, category, DOB, nationality, contact, ID number) in an accordion in the reservation detail sheet. In the detail sheet's guest block the user explicitly asked to show the adult/child/infant split instead of a bare "N guests" line ("munculin info adult berapa child infant berapa") — the breakdown is derived from the occupant records' categories and falls back to the total guestCount only when no occupant data exists. Confidence: 0.72
-- Keep aggregate reservation counts consistent with the occupant records when seeding/enriching mock data: adding an occupant (e.g. a child to Emily's booking) must bump `guestCount` to match, so the party breakdown, the count, and the per-guest list never contradict each other. Confidence: 0.5
-
+See [data/taste.md](data/taste.md)
 # data
 - Within a unit type, guest capacity settings (max adults, max children, max infants) must be uniform across all units — no per-unit capacity overrides. Confidence: 0.65
 
@@ -54,6 +49,7 @@ See [documentation/taste.md](documentation/taste.md)
 # integrations
 - Don't mention third-party integration provider brand names (e.g., Seam) anywhere in the UI except within the integration settings/configuration page itself. Confidence: 0.75
 - When a mock/demo action exists in an integration UI (e.g. "Simulate finalize"), model it on the real-world event it stands for — the provider's webhook and its state transition (e.g. Lexware `invoice.changed`: `draft_created` → `open_in_lexware`) — not on a generic "test connection" action. Users will question the semantics until they match the real flow. Confidence: 0.6
+- Integration-driven triggers in other modules (e.g. a "Email Received" trigger in Journeys) must be gated by the integration's connection state: the trigger is disabled and shows a "Not connected" badge until the integration is connected, mirroring the existing Minut trigger gate. The user confirmed this gate-by-connected behavior for the Journeys × email trigger. Confidence: 0.6
 
 # notifications
 See [notifications/taste.md](notifications/taste.md)
@@ -63,6 +59,9 @@ See [notifications/taste.md](notifications/taste.md)
 # operations-calendar
 - When selecting listing in cleaning/task/review forms, surface guest info automatically (name, stay length, has-pet) — don't require a separate lookup. Confidence: 0.80
 - Exclude INQUIRY-status bookings from operational views (operations calendar, cleaning lists) entirely — unconfirmed bookings have no cleaning, so they must not appear as calendar entries/strips ("jangan pernah munculin booking yang statusnya INQUIRY, karena belum booking jadinya ga ada cleaning"). Confidence: 0.8
+
+# security
+- Security-conscious handling of API keys: when the user pastes a provider API key inline, warn that the key is now exposed in the chat and recommend regenerating/rotating it after it's wired up and verified (the assistant recommended regenerating the Kimi/Moonshot key because it was shared in chat). Also verify key validity with an actual API call (never echoing the key) rather than assuming the config works — an inline key from a reseller can carry a non-standard prefix (e.g. `sk-kimi-`) and be rejected by the provider's real endpoint. Confidence: 0.7
 
 # cleaning
 - Cleaning job assignment (both create and edit flows) must offer external cleaning services (e.g. Extrasauber, "External cleaning service") as assignable options alongside internal staff — assignees are not limited to staff members. Confidence: 0.8
