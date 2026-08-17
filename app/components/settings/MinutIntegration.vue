@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { MinutDevice } from '~/composables/useMinut'
 
@@ -14,6 +14,50 @@ const isSyncing = ref(false)
 const mappingSearch = ref('')
 const mappingListingFilter = ref('all')
 const mappedOnly = ref(false)
+const listingFilterOpen = ref(false)
+const listingFilterSearch = ref('')
+
+const listingFilterLabel = computed(() => {
+  if (mappingListingFilter.value === 'all') return 'All listings'
+  if (mappingListingFilter.value === 'unassigned') return 'Unassigned'
+  return userListings.value.find(l => l.id === mappingListingFilter.value)?.name ?? 'All listings'
+})
+
+const filteredListingOptions = computed(() => {
+  const q = listingFilterSearch.value.trim().toLowerCase()
+  if (!q) return userListings.value
+  return userListings.value.filter(l => l.name.toLowerCase().includes(q))
+})
+
+function selectListingFilter(value: string) {
+  mappingListingFilter.value = value
+  listingFilterOpen.value = false
+  listingFilterSearch.value = ''
+}
+
+// Per-row searchable listing picker state, keyed by deviceId
+const devicePickers = reactive<Record<string, { open: boolean, search: string }>>({})
+
+function pickerState(deviceId: string) {
+  if (!devicePickers[deviceId]) {
+    devicePickers[deviceId] = { open: false, search: '' }
+  }
+  return devicePickers[deviceId]
+}
+
+function searchableListings(device: MinutDevice) {
+  const { search } = pickerState(device.deviceId)
+  const q = search.trim().toLowerCase()
+  if (!q) return userListings.value
+  return userListings.value.filter(l => `${l.name}`.toLowerCase().includes(q))
+}
+
+function pickDeviceListing(device: MinutDevice, listingId: string | null) {
+  minut.assignDeviceToListing(device.deviceId, listingId)
+  pickerState(device.deviceId).open = false
+  pickerState(device.deviceId).search = ''
+  toast.success(listingId ? 'Device mapped to listing.' : 'Device unmapped from listing.')
+}
 
 const connection = computed(() => minut.connection.value)
 const isConnected = computed(() => minut.isConnected.value)
@@ -97,18 +141,9 @@ async function handleSync() {
   toast.success(`Synced ${deviceCount.value} Minut devices. ${events.length} event${events.length !== 1 ? 's' : ''} generated.`)
 }
 
-function assignDevice(deviceId: string, listingId: string) {
-  minut.assignDeviceToListing(deviceId, listingId === 'unassigned' ? null : listingId)
-  toast.success('Device mapping saved.')
-}
-
 function clearDeviceMapping(deviceId: string) {
   minut.assignDeviceToListing(deviceId, null)
   toast.info('Device unmapped from listing.')
-}
-
-function setListingFilter(value: unknown) {
-  mappingListingFilter.value = value ? String(value) : 'all'
 }
 </script>
 
@@ -199,18 +234,71 @@ function setListingFilter(value: unknown) {
             <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input v-model="mappingSearch" placeholder="Search device or listing..." class="h-9 pl-9 text-xs" />
           </div>
-          <Select :model-value="mappingListingFilter" @update:model-value="(v) => setListingFilter(v)">
-            <SelectTrigger class="h-9 w-[200px]">
-              <SelectValue placeholder="All listings" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All listings</SelectItem>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              <SelectItem v-for="listing in userListings" :key="listing.id" :value="listing.id">
-                {{ listing.name }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover v-model:open="listingFilterOpen">
+            <PopoverTrigger as-child>
+              <Button variant="outline" class="h-9 w-[200px] justify-between gap-2 text-xs font-normal">
+                <span class="truncate">{{ listingFilterLabel }}</span>
+                <Icon name="lucide:chevrons-up-down" class="size-3.5 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent class="w-[240px] p-0" align="start" :side-offset="4">
+              <Command>
+                <CommandInput
+                  v-model="listingFilterSearch"
+                  placeholder="Search listing..."
+                  class="h-8 border-0 focus:ring-0"
+                />
+                <CommandList>
+                  <CommandEmpty class="py-3 text-center text-xs text-muted-foreground">
+                    No listing found.
+                  </CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="all"
+                      class="gap-2"
+                      @select="selectListingFilter('all')"
+                    >
+                      <Icon name="lucide:layout-grid" class="size-3.5 text-muted-foreground" />
+                      <span class="text-xs">All listings</span>
+                      <Icon
+                        v-if="mappingListingFilter === 'all'"
+                        name="lucide:check"
+                        class="ml-auto size-3.5 shrink-0"
+                      />
+                    </CommandItem>
+                    <CommandItem
+                      value="unassigned"
+                      class="gap-2"
+                      @select="selectListingFilter('unassigned')"
+                    >
+                      <Icon name="lucide:unlink" class="size-3.5 text-muted-foreground" />
+                      <span class="text-xs">Unassigned</span>
+                      <Icon
+                        v-if="mappingListingFilter === 'unassigned'"
+                        name="lucide:check"
+                        class="ml-auto size-3.5 shrink-0"
+                      />
+                    </CommandItem>
+                    <CommandItem
+                      v-for="listing in filteredListingOptions"
+                      :key="listing.id"
+                      :value="listing.name"
+                      class="gap-2"
+                      @select="selectListingFilter(listing.id)"
+                    >
+                      <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
+                      <span class="truncate text-xs">{{ listing.name }}</span>
+                      <Icon
+                        v-if="mappingListingFilter === listing.id"
+                        name="lucide:check"
+                        class="ml-auto size-3.5 shrink-0"
+                      />
+                    </CommandItem>
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <Button
             variant="outline"
             size="sm"
@@ -254,17 +342,53 @@ function setListingFilter(value: unknown) {
               </div>
               <div class="flex w-[240px] shrink-0 items-center gap-1.5">
                 <div class="min-w-0 flex-1">
-                  <Select :model-value="device.listingId ?? 'unassigned'" @update:model-value="(v) => assignDevice(device.deviceId, String(v))">
-                    <SelectTrigger class="h-8 w-full text-xs">
-                      <SelectValue :placeholder="listingNameFor(device) || 'Unassigned'" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned">Unassigned</SelectItem>
-                      <SelectItem v-for="listing in userListings" :key="listing.id" :value="listing.id">
-                        {{ listing.name }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Popover v-model:open="pickerState(device.deviceId).open">
+                    <PopoverTrigger as-child>
+                      <Button variant="outline" class="h-8 w-full justify-between gap-2 px-2 text-xs font-normal">
+                        <span class="truncate">{{ listingNameFor(device) || 'Unassigned' }}</span>
+                        <Icon name="lucide:chevrons-up-down" class="size-3.5 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent class="w-[280px] p-0" align="end" :side-offset="4">
+                      <Command>
+                        <CommandInput
+                          v-model="pickerState(device.deviceId).search"
+                          placeholder="Search listing..."
+                          class="h-8 border-0 focus:ring-0"
+                        />
+                        <CommandList>
+                          <CommandEmpty class="py-3 text-center text-xs text-muted-foreground">
+                            No listing found.
+                          </CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="unassigned"
+                              class="gap-2"
+                              @select="pickDeviceListing(device, null)"
+                            >
+                              <Icon name="lucide:unlink" class="size-3.5 text-muted-foreground" />
+                              <span class="text-xs">Unassigned</span>
+                            </CommandItem>
+                            <CommandItem
+                              v-for="listing in searchableListings(device)"
+                              :key="listing.id"
+                              :value="listing.name"
+                              class="gap-2"
+                              @select="pickDeviceListing(device, listing.id)"
+                            >
+                              <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
+                              <span class="truncate text-xs">{{ listing.name }}</span>
+                              <Icon
+                                v-if="device.listingId === listing.id"
+                                name="lucide:check"
+                                class="ml-auto size-3.5 shrink-0"
+                              />
+                            </CommandItem>
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <Button
                   v-if="device.listingId"
