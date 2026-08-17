@@ -180,22 +180,6 @@ function setListingFilter(value: unknown) {
         </div>
       </div>
 
-      <!-- Webhook status -->
-      <div class="rounded-lg border bg-muted/30 p-3">
-        <div class="flex items-center gap-2 text-xs">
-          <Icon name="lucide:webhook" class="size-3.5 text-muted-foreground" />
-          <span class="text-muted-foreground">Webhook</span>
-          <span class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
-            <span class="h-1 w-1 rounded-full bg-green-500" />
-            Registered
-          </span>
-        </div>
-        <p class="mt-1.5 text-xs text-muted-foreground">
-          Events are pushed automatically to Elev8. {{ connection?.webhookSubscriptions.length }} event type{{ connection?.webhookSubscriptions.length !== 1 ? 's' : '' }} subscribed
-          <span class="font-mono text-[11px] text-muted-foreground/70">{{ connection?.webhookSubscriptions.join(', ') }}</span>
-        </p>
-      </div>
-
       <!-- Device mapping -->
       <div class="space-y-3">
         <div class="flex items-center justify-between gap-3">
