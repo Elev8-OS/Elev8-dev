@@ -183,6 +183,29 @@ const isValid = computed(() => totalSelected.value > 0)
 
 const previewOpen = ref(false)
 
+// ── Property filter + collapse (scale for many properties) ───────
+const activePropertyFilter = ref<'all' | string>('all')
+const collapsedProperties = ref<Set<string>>(new Set())
+
+const filteredGroups = computed(() => {
+  if (activePropertyFilter.value === 'all')
+    return reviewGroups.value
+  return reviewGroups.value.filter(g => g.propertyId === activePropertyFilter.value)
+})
+
+function toggleGroupCollapsed(propertyId: string) {
+  const next = new Set(collapsedProperties.value)
+  if (next.has(propertyId))
+    next.delete(propertyId)
+  else next.add(propertyId)
+  collapsedProperties.value = next
+}
+
+function selectedCountFor(group: ReviewGroup): number {
+  const ids = new Set(selectedReviewIds.value)
+  return group.reviews.filter(r => ids.has(r.id)).length
+}
+
 function handleNext() {
   if (isValid.value)
     emit('next')
@@ -206,9 +229,23 @@ function handleBack() {
     <!-- Toolbar: filter + global actions -->
     <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
       <div class="flex items-center gap-3">
+        <Label class="text-sm font-medium shrink-0">Property</Label>
+        <Select :model-value="activePropertyFilter" @update:model-value="activePropertyFilter = $event as string">
+          <SelectTrigger class="w-48">
+            <SelectValue placeholder="All properties" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">
+              All properties
+            </SelectItem>
+            <SelectItem v-for="group in reviewGroups" :key="group.propertyId" :value="group.propertyId">
+              {{ group.propertyName }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
         <Label class="text-sm font-medium shrink-0">Min rating</Label>
         <Select :model-value="minRating" @update:model-value="minRating = $event as number">
-          <SelectTrigger class="w-24">
+          <SelectTrigger class="w-20">
             <SelectValue placeholder="Rating" />
           </SelectTrigger>
           <SelectContent>
@@ -257,22 +294,35 @@ function handleBack() {
     </div>
 
     <!-- Review list, grouped by property -->
-    <div v-if="candidateReviews.length > 0" class="space-y-3">
+    <div v-if="candidateReviews.length > 0" class="space-y-2">
       <div
-        v-for="group in reviewGroups"
+        v-for="group in filteredGroups"
         :key="group.propertyId"
-        class="space-y-1.5"
+        class="rounded-lg border"
+        :class="collapsedProperties.has(group.propertyId) ? 'bg-muted/20' : ''"
       >
-        <div class="flex items-center justify-between">
-          <Label class="text-sm font-medium">
-            {{ group.propertyName }}
-          </Label>
+        <!-- Group header (click to collapse/expand) -->
+        <div class="flex items-center justify-between gap-2 px-3 py-2">
+          <button
+            type="button"
+            class="flex items-center gap-2 min-w-0 flex-1 text-left"
+            @click="toggleGroupCollapsed(group.propertyId)"
+          >
+            <Icon
+              :name="collapsedProperties.has(group.propertyId) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'"
+              class="size-4 shrink-0 text-muted-foreground"
+            />
+            <span class="text-sm font-medium truncate">{{ group.propertyName }}</span>
+            <span class="text-xs text-muted-foreground shrink-0">
+              {{ selectedCountFor(group) }}/{{ group.reviews.length }} selected
+            </span>
+          </button>
           <Button
             v-if="group.reviews.length > 0"
             variant="ghost"
             size="sm"
-            class="text-xs h-6 px-2"
-            @click="toggleAllForGroup(group)"
+            class="text-xs h-6 px-2 shrink-0"
+            @click.stop="toggleAllForGroup(group)"
           >
             <Icon
               :name="allSelectedForGroup(group) ? 'i-lucide-square' : 'i-lucide-check-square'"
@@ -282,7 +332,8 @@ function handleBack() {
           </Button>
         </div>
 
-        <div class="space-y-1.5">
+        <!-- Group content (hidden when collapsed) -->
+        <div v-show="!collapsedProperties.has(group.propertyId)" class="space-y-1.5 border-t px-3 py-2">
           <div
             v-for="review in group.reviews"
             :key="review.id"
@@ -324,11 +375,11 @@ function handleBack() {
               Main Page
             </button>
           </div>
-        </div>
 
-        <p v-if="group.reviews.length === 0" class="text-xs text-muted-foreground">
-          No reviews for this property yet.
-        </p>
+          <p v-if="group.reviews.length === 0" class="text-xs text-muted-foreground py-1">
+            No reviews for this property yet.
+          </p>
+        </div>
       </div>
     </div>
 
