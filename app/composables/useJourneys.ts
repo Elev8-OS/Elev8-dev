@@ -111,6 +111,9 @@ export function useJourneys() {
       const matches = triggerStep.triggers.some((t: TriggerEntry) => t.type === 'minut_event')
       if (!matches)
         continue
+      // Devices must be mapped to a listing before their events can scope to a journey.
+      if (!event.listingId)
+        continue
       const inScope = triggerStep.properties.includes('All Properties')
         || triggerStep.properties.includes(event.listingId)
       if (!inScope)

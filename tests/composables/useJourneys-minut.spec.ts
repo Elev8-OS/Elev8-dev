@@ -102,6 +102,29 @@ describe('useJourneys.onMinutEvent', () => {
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
+  it('does NOT fire when event listingId is null (unmapped device)', () => {
+    const { onMinutEvent, saveJourney } = useJourneys()
+    saveJourney({
+      id: 'j-test-6',
+      name: 'All Properties Minut',
+      status: 'active',
+      triggerType: 'minut_event',
+      lastModified: '2026-07-30',
+      properties: ['All Properties'],
+      steps: [
+        {
+          id: 's-test-6',
+          type: 'trigger',
+          name: 'Minut Event',
+          triggers: [{ type: 'minut_event', settings: { triggerImmediately: true } }],
+          properties: ['All Properties'],
+        },
+      ],
+    })
+    onMinutEvent({ id: 'evt-6u', type: 'noise', deviceId: 'dev-001', listingId: null, timestamp: new Date().toISOString(), dbLevel: 85 })
+    expect(toastInfo).not.toHaveBeenCalled()
+  })
+
   it('fires when journey.properties includes "All Properties" regardless of listingId', () => {
     const { onMinutEvent, saveJourney } = useJourneys()
     saveJourney({

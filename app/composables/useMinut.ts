@@ -1,8 +1,8 @@
 import { computed } from 'vue'
+import { listings } from '~/components/listings/data/listings'
 
 export interface MinutConnection {
   id: string
-  apiKey: string
   workspaceName: string
   status: 'connected' | 'disconnected'
   webhookToken: string
@@ -18,8 +18,7 @@ export interface MinutDevice {
   deviceId: string
   name: string
   model: string
-  listingId: string
-  listingName: string
+  listingId: string | null
   batteryLevel: number
   online: boolean
   sensors: MinutSensor[]
@@ -32,7 +31,7 @@ export interface MinutEvent {
   id: string
   type: MinutEventType
   deviceId: string
-  listingId: string
+  listingId: string | null
   dbLevel?: number        // noise events
   temperatureC?: number   // temperature events
   batteryLevel?: number   // battery events
@@ -42,13 +41,13 @@ export interface MinutEvent {
 const CONNECTION_KEY = 'elev8-minut-connection'
 const DEVICES_KEY = 'elev8-minut-devices'
 
-const MOCK_DEVICES: MinutDevice[] = [
-  { deviceId: 'dev-001', name: 'Living Room Sensor', model: 'Minut Point', listingId: 'lst-1', listingName: 'Villa Kastila', batteryLevel: 87, online: true, sensors: ['noise'], lastEventAt: null },
-  { deviceId: 'dev-002', name: 'Bedroom Sensor', model: 'Minut Point', listingId: 'lst-2', listingName: 'Villa Canggu', batteryLevel: 62, online: true, sensors: ['noise'], lastEventAt: null },
-  { deviceId: 'dev-003', name: 'Kitchen Sensor', model: 'Minut Point Pro', listingId: 'lst-3', listingName: 'Ubud Treehouse', batteryLevel: 12, online: false, sensors: ['noise', 'smoke'], lastEventAt: null },
-  { deviceId: 'dev-004', name: 'Pool Deck Sensor', model: 'Minut Point', listingId: 'lst-4', listingName: 'Seminyak Loft', batteryLevel: 78, online: true, sensors: ['noise', 'smoke'], lastEventAt: null },
-  { deviceId: 'dev-005', name: 'Master Suite', model: 'Minut Point Pro', listingId: 'lst-2', listingName: 'Villa Canggu', batteryLevel: 95, online: true, sensors: ['noise', 'temperature', 'smoke'], lastEventAt: null },
-  { deviceId: 'dev-006', name: 'Garden Sensor', model: 'Minut Point', listingId: 'lst-1', listingName: 'Villa Kastila', batteryLevel: 43, online: true, sensors: ['noise'], lastEventAt: null },
+const MOCK_DEVICES: Omit<MinutDevice, 'listingId'>[] = [
+  { deviceId: 'dev-001', name: 'Living Room Sensor', model: 'Minut Point', batteryLevel: 87, online: true, sensors: ['noise'], lastEventAt: null },
+  { deviceId: 'dev-002', name: 'Bedroom Sensor', model: 'Minut Point', batteryLevel: 62, online: true, sensors: ['noise'], lastEventAt: null },
+  { deviceId: 'dev-003', name: 'Kitchen Sensor', model: 'Minut Point Pro', batteryLevel: 12, online: false, sensors: ['noise', 'smoke'], lastEventAt: null },
+  { deviceId: 'dev-004', name: 'Pool Deck Sensor', model: 'Minut Point', batteryLevel: 78, online: true, sensors: ['noise', 'smoke'], lastEventAt: null },
+  { deviceId: 'dev-005', name: 'Master Suite', model: 'Minut Point Pro', batteryLevel: 95, online: true, sensors: ['noise', 'temperature', 'smoke'], lastEventAt: null },
+  { deviceId: 'dev-006', name: 'Garden Sensor', model: 'Minut Point', batteryLevel: 43, online: true, sensors: ['noise'], lastEventAt: null },
 ]
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -75,6 +74,11 @@ function generateWebhookToken(): string {
   return `whsec_${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** Listing IDs the user actually owns — used as the mapping target pool. */
+function getUserListings(): { id: string, name: string }[] {
+  return listings.value.map(l => ({ id: l.id, name: l.name }))
+}
+
 export function useMinut() {
   const connection = useState<MinutConnection | null>('minut-connection', () => loadFromStorage<MinutConnection | null>(CONNECTION_KEY, null))
   const devices = useState<MinutDevice[]>('minut-devices', () => loadFromStorage<MinutDevice[]>(DEVICES_KEY, []))
@@ -91,26 +95,33 @@ export function useMinut() {
 
   const isConnected = computed(() => connection.value?.status === 'connected')
 
-  async function validateAndConnect(apiKey: string, workspaceName: string): Promise<{ success: boolean, error?: string }> {
+  const userListings = computed(() => getUserListings())
+
+  const unassignedDevices = computed(() => devices.value.filter(d => !d.listingId))
+
+  const assignedDeviceCount = computed(() => devices.value.filter(d => d.listingId).length)
+
+  /**
+   * Mock OAuth exchange: in production this would redirect to the Minut
+   * authorization page and exchange the returned code for tokens. V1 skips
+   * the redirect and goes straight to the connected state (same as 3CX).
+   */
+  async function completeOAuth(): Promise<{ success: true, workspaceName: string } | { success: false, error: string }> {
     await new Promise(r => setTimeout(r, 1500))
-    if (!apiKey.trim()) return { success: false, error: 'API key is required.' }
-    if (!apiKey.startsWith('mn_') && !apiKey.startsWith('minut_')) {
-      return { success: false, error: 'Invalid API key format. Keys start with "mn_" or "minut_".' }
-    }
+    const workspaceName = `Minut workspace ${Math.random().toString(36).slice(2, 6).toUpperCase()}`
     const webhookToken = generateWebhookToken()
     connection.value = {
       id: `minut-${Date.now()}`,
-      apiKey,
-      workspaceName: workspaceName.trim() || 'My Workspace',
+      workspaceName,
       status: 'connected',
       webhookToken,
       webhookUrl: `https://api.elev8.app/webhooks/minut/${webhookToken.slice(6)}`,
-      deviceCount: 0, // seeded in Task 2
+      deviceCount: 0,
       connectedAt: new Date().toISOString(),
       lastSyncAt: null,
     }
     seedDevices()
-    return { success: true }
+    return { success: true, workspaceName }
   }
 
   function disconnect() {
@@ -122,6 +133,7 @@ export function useMinut() {
     if (devices.value.length === 0) {
       devices.value = MOCK_DEVICES.map(d => ({
         ...d,
+        listingId: null,
         sensors: [...d.sensors],
         lastEventAt: d.lastEventAt ?? null,
       }))
@@ -129,6 +141,19 @@ export function useMinut() {
     if (connection.value) {
       connection.value = { ...connection.value, deviceCount: devices.value.length, lastSyncAt: new Date().toISOString() }
     }
+  }
+
+  /** Assign a device to one of the user's listings (or null to unassign). */
+  function assignDeviceToListing(deviceId: string, listingId: string | null) {
+    devices.value = devices.value.map(d =>
+      d.deviceId === deviceId ? { ...d, listingId } : d,
+    )
+  }
+
+  /** Assign a batch of device ids to a listing at once. */
+  function bulkAssignDevices(deviceIds: string[], listingId: string | null) {
+    const set = new Set(deviceIds)
+    devices.value = devices.value.map(d => (set.has(d.deviceId) ? { ...d, listingId } : d))
   }
 
   function syncDevices() {
@@ -179,5 +204,22 @@ export function useMinut() {
     return events.value.filter(e => e.type === type)
   }
 
-  return { connection, devices, events, isConnected, validateAndConnect, disconnect, seedDevices, syncDevices, emitMockEvents, getEventsByListing, getEventsByType }
+  return {
+    connection,
+    devices,
+    events,
+    isConnected,
+    userListings,
+    unassignedDevices,
+    assignedDeviceCount,
+    completeOAuth,
+    disconnect,
+    seedDevices,
+    assignDeviceToListing,
+    bulkAssignDevices,
+    syncDevices,
+    emitMockEvents,
+    getEventsByListing,
+    getEventsByType,
+  }
 }

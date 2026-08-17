@@ -8,34 +8,20 @@ describe('useMinut — connection', () => {
     expect(isConnected.value).toBe(false)
   })
 
-  it('validateAndConnect rejects empty API key', async () => {
-    const { validateAndConnect } = useMinut()
-    const result = await validateAndConnect('', 'My Workspace')
-    expect(result.success).toBe(false)
-    expect(result.error).toMatch(/required/i)
-  })
-
-  it('validateAndConnect rejects wrong-prefix API key', async () => {
-    const { validateAndConnect } = useMinut()
-    const result = await validateAndConnect('bad-key', 'My Workspace')
-    expect(result.success).toBe(false)
-    expect(result.error).toMatch(/mn_|minut_/)
-  })
-
-  it('validateAndConnect succeeds with valid mn_ prefix and seeds connection', async () => {
-    const { validateAndConnect, connection, isConnected } = useMinut()
-    const result = await validateAndConnect('mn_test_key', 'My Workspace')
+  it('completeOAuth connects and seeds a connection', async () => {
+    const { completeOAuth, connection, isConnected } = useMinut()
+    const result = await completeOAuth()
     expect(result.success).toBe(true)
     expect(connection.value).not.toBeNull()
     expect(connection.value!.status).toBe('connected')
-    expect(connection.value!.workspaceName).toBe('My Workspace')
+    expect(connection.value!.workspaceName).toMatch(/^Minut workspace /)
     expect(connection.value!.webhookToken).toMatch(/^whsec_/)
     expect(isConnected.value).toBe(true)
   })
 
   it('disconnect wipes connection', async () => {
-    const { validateAndConnect, disconnect, connection, isConnected } = useMinut()
-    await validateAndConnect('mn_seed', 'Seed')
+    const { completeOAuth, disconnect, connection, isConnected } = useMinut()
+    await completeOAuth()
     expect(isConnected.value).toBe(true)
     disconnect()
     expect(connection.value).toBeNull()
@@ -52,24 +38,23 @@ describe('useMinut — devices', () => {
       deviceId: expect.any(String),
       name: expect.any(String),
       model: expect.any(String),
-      listingId: expect.any(String),
+      listingId: null,
       batteryLevel: expect.any(Number),
       online: expect.any(Boolean),
       sensors: expect.any(Array),
     })
   })
 
-  it('refreshes connection metadata when reconnecting with persisted devices', async () => {
-    const { validateAndConnect, disconnect, connection, devices } = useMinut()
-    await validateAndConnect('mn_initial_connect', 'Initial')
+  it('completeOAuth seeds devices and refreshes connection metadata', async () => {
+    const { completeOAuth, disconnect, connection, devices } = useMinut()
+    await completeOAuth()
     expect(devices.value).toHaveLength(6)
 
     disconnect()
     expect(connection.value).toBeNull()
     expect(devices.value).toHaveLength(6)
 
-    const result = await validateAndConnect('mn_reconnect', 'Reconnected')
-    expect(result.success).toBe(true)
+    await completeOAuth()
     expect(connection.value!.deviceCount).toBe(6)
     expect(connection.value!.lastSyncAt).not.toBeNull()
   })
@@ -80,28 +65,66 @@ describe('useMinut — devices', () => {
 
     expect(devices.value.find(device => device.deviceId === 'dev-001')).toMatchObject({
       deviceId: 'dev-001',
-      listingId: 'lst-1',
+      listingId: null,
       sensors: ['noise'],
       model: 'Minut Point',
     })
     expect(devices.value.find(device => device.deviceId === 'dev-003')).toMatchObject({
       deviceId: 'dev-003',
-      listingId: 'lst-3',
+      listingId: null,
       sensors: ['noise', 'smoke'],
       model: 'Minut Point Pro',
     })
     expect(devices.value.find(device => device.deviceId === 'dev-005')).toMatchObject({
       deviceId: 'dev-005',
-      listingId: 'lst-2',
+      listingId: null,
       sensors: ['noise', 'temperature', 'smoke'],
       model: 'Minut Point Pro',
     })
   })
 
+  it('assignDeviceToListing maps a device to a user listing', () => {
+    const { seedDevices, assignDeviceToListing, devices, userListings } = useMinut()
+    seedDevices()
+    const target = userListings.value[0]
+    expect(target).toBeDefined()
+    assignDeviceToListing('dev-001', target!.id)
+    expect(devices.value.find(d => d.deviceId === 'dev-001')!.listingId).toBe(target!.id)
+    expect(devices.value.find(d => d.deviceId === 'dev-002')!.listingId).toBeNull()
+  })
+
+  it('assignDeviceToListing unassigns with null', () => {
+    const { seedDevices, assignDeviceToListing, devices, userListings } = useMinut()
+    seedDevices()
+    assignDeviceToListing('dev-001', userListings.value[0]!.id)
+    assignDeviceToListing('dev-001', null)
+    expect(devices.value.find(d => d.deviceId === 'dev-001')!.listingId).toBeNull()
+  })
+
+  it('bulkAssignDevices maps a batch of devices', () => {
+    const { seedDevices, bulkAssignDevices, devices, userListings } = useMinut()
+    seedDevices()
+    const target = userListings.value[0]
+    bulkAssignDevices(['dev-001', 'dev-002'], target!.id)
+    expect(devices.value.find(d => d.deviceId === 'dev-001')!.listingId).toBe(target!.id)
+    expect(devices.value.find(d => d.deviceId === 'dev-002')!.listingId).toBe(target!.id)
+    expect(devices.value.find(d => d.deviceId === 'dev-003')!.listingId).toBeNull()
+  })
+
+  it('unassignedDevices and assignedDeviceCount track mapping state', () => {
+    const { seedDevices, assignDeviceToListing, unassignedDevices, assignedDeviceCount, userListings } = useMinut()
+    seedDevices()
+    expect(unassignedDevices.value).toHaveLength(6)
+    expect(assignedDeviceCount.value).toBe(0)
+    assignDeviceToListing('dev-001', userListings.value[0]!.id)
+    expect(unassignedDevices.value).toHaveLength(5)
+    expect(assignedDeviceCount.value).toBe(1)
+  })
+
   it('syncDevices updates lastSyncAt on connection', async () => {
-    const { validateAndConnect, syncDevices, connection } = useMinut()
-    await validateAndConnect('mn_seed_sync', 'Sync')
-    expect(connection.value!.lastSyncAt).not.toBeNull() // validateAndConnect sets it
+    const { completeOAuth, syncDevices, connection } = useMinut()
+    await completeOAuth()
+    expect(connection.value!.lastSyncAt).not.toBeNull() // completeOAuth sets it
     const before = connection.value!.lastSyncAt
     await new Promise(r => setTimeout(r, 5))
     syncDevices()
@@ -133,7 +156,7 @@ describe('useMinut — events', () => {
       expect(e.id).toMatch(/^evt-/)
       expect(['noise', 'smoke', 'temperature', 'motion', 'battery', 'tamper', 'connectivity']).toContain(e.type)
       expect(e.deviceId).toMatch(/^dev-/)
-      expect(e.listingId).toMatch(/^lst-/)
+      expect(e.listingId).toBeNull()
       expect(e.timestamp).toMatch(/^\d{4}-/)
     }
   })
@@ -208,16 +231,18 @@ describe('useMinut — events', () => {
     }
   })
 
-  it('getEventsByListing returns emitted events for the listing', () => {
-    const { emitMockEvents, seedDevices, getEventsByListing } = useMinut()
+  it('getEventsByListing returns emitted events for the mapped listing', () => {
+    const { emitMockEvents, seedDevices, assignDeviceToListing, getEventsByListing, userListings } = useMinut()
     seedDevices()
-    const emitted = emitMockEvents()
-    const listingId = emitted[0]!.listingId
-    const listingEvents = getEventsByListing(listingId)
+    const target = userListings.value[0]
+    for (const device of [...Array(6)].map((_, i) => `dev-00${i + 1}`)) {
+      assignDeviceToListing(device, target!.id)
+    }
+    emitMockEvents()
+    const listingEvents = getEventsByListing(target!.id)
 
     expect(listingEvents.length).toBeGreaterThan(0)
-    expect(listingEvents.some(event => emitted.some(candidate => candidate.id === event.id))).toBe(true)
-    expect(listingEvents.every(event => event.listingId === listingId)).toBe(true)
+    expect(listingEvents.every(event => event.listingId === target!.id)).toBe(true)
   })
 
   it('getEventsByType returns emitted events of the requested type', () => {
