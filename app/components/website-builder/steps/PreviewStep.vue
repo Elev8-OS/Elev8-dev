@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import type { Website } from '~/components/website-builder/data/websites'
 import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
+import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { toast } from 'vue-sonner'
-import type { Website } from '~/components/website-builder/data/websites'
 import { websites } from '~/components/website-builder/data/websites'
 
 // Re-export for convenience
@@ -32,6 +33,7 @@ const props = defineProps<{
   template: Template | null
   settings: WebsiteSettings
   property: PropertySelection
+  reviews: ReviewSelection
 }>()
 
 const emit = defineEmits<{
@@ -152,6 +154,8 @@ function persistWebsite(status: Website['status'], message: string) {
           status,
           template: props.template?.name ?? existing.template,
           lastUpdated: new Date().toISOString(),
+          reviewIds: props.reviews.selectedReviewIds,
+          manualReviews: props.reviews.manualReviews,
         }
       }
     }
@@ -165,6 +169,8 @@ function persistWebsite(status: Website['status'], message: string) {
         visits: 0,
         lastUpdated: new Date().toISOString(),
         thumbnail: null,
+        reviewIds: props.reviews.selectedReviewIds,
+        manualReviews: props.reviews.manualReviews,
       })
     }
     toast.success(message)
@@ -388,6 +394,43 @@ function handleBack() {
           <Button variant="outline" size="sm" @click="emit('goToStep', 2)">
             Select Property
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Reviews Summary -->
+    <Card>
+      <CardHeader class="pb-3">
+        <div class="flex items-center justify-between">
+          <CardTitle class="text-base">
+            Guest Reviews
+          </CardTitle>
+          <Button variant="ghost" size="sm" class="text-xs h-7" @click="emit('goToStep', 3)">
+            <Icon name="i-lucide-pencil" class="size-3 mr-1" />
+            Edit
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        <div class="flex items-center gap-2 text-sm">
+          <Icon name="i-lucide-star" class="size-4 text-muted-foreground" />
+          <span class="font-medium">{{ reviews.selectedReviewIds.length + reviews.manualReviews.length }}</span>
+          <span class="text-muted-foreground">review{{ reviews.selectedReviewIds.length + reviews.manualReviews.length !== 1 ? 's' : '' }} selected</span>
+        </div>
+        <div v-if="reviews.manualReviews.length > 0" class="flex flex-wrap gap-2">
+          <div
+            v-for="m in reviews.manualReviews"
+            :key="m.id"
+            class="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
+          >
+            <Badge variant="secondary" class="text-[9px] px-1 py-0">
+              {{ m.rating }}/10
+            </Badge>
+            <span class="font-medium">{{ m.guestName }}</span>
+            <Badge variant="outline" class="text-[9px] px-1 py-0">
+              Manual
+            </Badge>
+          </div>
         </div>
       </CardContent>
     </Card>
