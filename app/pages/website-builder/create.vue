@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
+import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { websites } from '~/components/website-builder/data/websites'
@@ -15,6 +16,7 @@ const STEPS = [
   { key: 'template', label: 'Template', icon: 'i-lucide-layout-template' },
   { key: 'settings', label: 'Settings', icon: 'i-lucide-settings' },
   { key: 'property', label: 'Property', icon: 'i-lucide-home' },
+  { key: 'reviews', label: 'Reviews', icon: 'i-lucide-star' },
   { key: 'preview', label: 'Preview', icon: 'i-lucide-eye' },
 ] as const
 
@@ -33,6 +35,10 @@ const websiteSettings = ref<WebsiteSettings>({
 const propertySelection = ref<PropertySelection>({
   propertyId: null,
   roomIds: [],
+})
+const reviewSelection = ref<ReviewSelection>({
+  selectedReviewIds: [],
+  manualReviews: [],
 })
 
 // ── Edit mode: prefill from existing website ─────────────────────
@@ -59,6 +65,10 @@ if (import.meta.client && editingWebsite.value) {
     useDefaultFavicon: false,
   }
   selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
+  reviewSelection.value = {
+    selectedReviewIds: site.reviewIds ?? [],
+    manualReviews: site.manualReviews ?? [],
+  }
   currentStep.value = 1
 }
 
@@ -75,6 +85,9 @@ function goNext() {
   }
   else if (currentStep.value === 2 && propertySelection.value.propertyId && propertySelection.value.roomIds.length > 0) {
     currentStep.value = 3
+  }
+  else if (currentStep.value === 3 && (reviewSelection.value.selectedReviewIds.length > 0 || reviewSelection.value.manualReviews.length > 0)) {
+    currentStep.value = 4
   }
 }
 
@@ -161,12 +174,22 @@ function goBack() {
         @back="goBack"
       />
 
-      <!-- Step 4: Preview & Publish -->
-      <WebsiteBuilderStepsPreviewStep
+      <!-- Step 4: Reviews -->
+      <WebsiteBuilderStepsReviewStep
         v-else-if="currentStep === 3"
+        v-model="reviewSelection"
+        :property-id="propertySelection.propertyId"
+        @next="goNext"
+        @back="goBack"
+      />
+
+      <!-- Step 5: Preview & Publish -->
+      <WebsiteBuilderStepsPreviewStep
+        v-else-if="currentStep === 4"
         :template="selectedTemplate"
         :settings="websiteSettings"
         :property="propertySelection"
+        :reviews="reviewSelection"
         @back="goBack"
         @go-to-step="(s: number) => currentStep = s"
       />
