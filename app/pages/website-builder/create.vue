@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
+import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
+import { websites } from '~/components/website-builder/data/websites'
 
 definePageMeta({
   layout: 'default',
 })
 
 const router = useRouter()
+const route = useRoute()
 
 const STEPS = [
   { key: 'template', label: 'Template', icon: 'i-lucide-layout-template' },
   { key: 'settings', label: 'Settings', icon: 'i-lucide-settings' },
   { key: 'property', label: 'Property', icon: 'i-lucide-home' },
+  { key: 'reviews', label: 'Reviews', icon: 'i-lucide-star' },
   { key: 'preview', label: 'Preview', icon: 'i-lucide-eye' },
 ] as const
 
@@ -29,9 +33,48 @@ const websiteSettings = ref<WebsiteSettings>({
   useDefaultFavicon: false,
 })
 const propertySelection = ref<PropertySelection>({
-  propertyId: null,
+  propertyIds: [],
   roomIds: [],
 })
+const reviewSelection = ref<ReviewSelection>({
+  selectedReviewIds: [],
+  featuredReviewIds: [],
+  manualReviews: [],
+  featuredManualReviewIds: [],
+})
+
+// ── Edit mode: prefill from existing website ─────────────────────
+const editId = computed(() => route.query.edit as string | undefined)
+const editingWebsite = computed(() => websites.value.find(w => w.id === editId.value) ?? null)
+
+const templates: Template[] = [
+  { id: 'luxury-villa', name: 'Luxury Villa', description: 'Elegant design with full-screen hero, amenity showcases, and booking integration for premium properties.', gradient: 'from-amber-500/20 to-orange-600/20', icon: 'i-lucide-crown' },
+  { id: 'modern-tropical', name: 'Modern Tropical', description: 'Clean, airy layout with lush imagery and nature-inspired accents for tropical getaways.', gradient: 'from-emerald-500/20 to-teal-600/20', icon: 'i-lucide-palmtree' },
+  { id: 'beach-house', name: 'Beach House', description: 'Coastal vibes with ocean palettes, photo galleries, and weather widget for seaside stays.', gradient: 'from-sky-500/20 to-blue-600/20', icon: 'i-lucide-waves' },
+  { id: 'minimal-bali', name: 'Minimal Bali', description: 'Minimalist zen aesthetic with earthy tones and focused content for serene Bali retreats.', gradient: 'from-stone-400/20 to-stone-600/20', icon: 'i-lucide-flower-2' },
+]
+
+if (import.meta.client && editingWebsite.value) {
+  const site = editingWebsite.value
+  websiteSettings.value = {
+    name: site.name,
+    domain: site.url,
+    description: '',
+    brandColor: '#1a1a2e',
+    fontFamily: 'Inter',
+    logoFile: null,
+    faviconFile: null,
+    useDefaultFavicon: false,
+  }
+  selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
+  reviewSelection.value = {
+    selectedReviewIds: site.reviewIds ?? [],
+    featuredReviewIds: site.featuredReviewIds ?? [],
+    manualReviews: site.manualReviews ?? [],
+    featuredManualReviewIds: site.featuredManualReviewIds ?? [],
+  }
+  currentStep.value = 1
+}
 
 function onSelectTemplate(template: Template) {
   selectedTemplate.value = template
@@ -44,8 +87,11 @@ function goNext() {
   else if (currentStep.value === 1 && websiteSettings.value.name && websiteSettings.value.domain) {
     currentStep.value = 2
   }
-  else if (currentStep.value === 2 && propertySelection.value.propertyId && propertySelection.value.roomIds.length > 0) {
+  else if (currentStep.value === 2 && propertySelection.value.propertyIds.length > 0 && propertySelection.value.roomIds.length > 0) {
     currentStep.value = 3
+  }
+  else if (currentStep.value === 3 && (reviewSelection.value.selectedReviewIds.length > 0 || reviewSelection.value.manualReviews.length > 0)) {
+    currentStep.value = 4
   }
 }
 
@@ -71,7 +117,7 @@ function goBack() {
 
     <div>
       <h2 class="text-2xl font-bold tracking-tight">
-        Create Website
+        {{ editingWebsite ? 'Edit Website' : 'Create Website' }}
       </h2>
       <p class="text-muted-foreground mt-1">
         Set up your new property website in a few steps.
@@ -132,12 +178,22 @@ function goBack() {
         @back="goBack"
       />
 
-      <!-- Step 4: Preview & Publish -->
-      <WebsiteBuilderStepsPreviewStep
+      <!-- Step 4: Reviews -->
+      <WebsiteBuilderStepsReviewStep
         v-else-if="currentStep === 3"
+        v-model="reviewSelection"
+        :property-ids="propertySelection.propertyIds"
+        @next="goNext"
+        @back="goBack"
+      />
+
+      <!-- Step 5: Preview & Publish -->
+      <WebsiteBuilderStepsPreviewStep
+        v-else-if="currentStep === 4"
         :template="selectedTemplate"
         :settings="websiteSettings"
         :property="propertySelection"
+        :reviews="reviewSelection"
         @back="goBack"
         @go-to-step="(s: number) => currentStep = s"
       />

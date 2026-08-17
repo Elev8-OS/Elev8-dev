@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import type { Website } from '~/components/website-builder/data/websites'
 import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
+import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { toast } from 'vue-sonner'
+import { websites } from '~/components/website-builder/data/websites'
 
 // Re-export for convenience
 export type { PropertySelection, Template, WebsiteSettings }
@@ -30,6 +33,7 @@ const props = defineProps<{
   template: Template | null
   settings: WebsiteSettings
   property: PropertySelection
+  reviews: ReviewSelection
 }>()
 
 const emit = defineEmits<{
@@ -107,15 +111,13 @@ const allProperties: Property[] = [
 ]
 
 // ── Computed ─────────────────────────────────────────────────────
-const selectedProperty = computed(() =>
-  allProperties.find(p => p.id === props.property.propertyId) ?? null,
+const selectedProperties = computed(() =>
+  allProperties.filter(p => props.property.propertyIds.includes(p.id)),
 )
 
-const selectedRooms = computed(() => {
-  if (!selectedProperty.value)
-    return []
-  return selectedProperty.value.rooms.filter(r => props.property.roomIds.includes(r.id))
-})
+const selectedRooms = computed(() =>
+  selectedProperties.value.flatMap(p => p.rooms).filter(r => props.property.roomIds.includes(r.id)),
+)
 
 const totalPhotos = computed(() =>
   selectedRooms.value.reduce((sum, r) => sum + r.photos.length, 0),
@@ -132,23 +134,58 @@ const roomTypeConfig: Record<Room['type'], { label: string, variant: 'default' |
 
 // ── Actions ──────────────────────────────────────────────────────
 const isPublishing = ref(false)
+const route = useRoute()
+const editId = computed(() => route.query.edit as string | undefined)
 
-function saveDraft() {
+function persistWebsite(status: Website['status'], message: string) {
   isPublishing.value = true
   setTimeout(() => {
     isPublishing.value = false
-    toast.success('Website saved as draft')
+    if (editId.value) {
+      const index = websites.value.findIndex(w => w.id === editId.value)
+      const existing = websites.value[index]
+      if (existing) {
+        websites.value[index] = {
+          ...existing,
+          name: props.settings.name,
+          url: props.settings.domain,
+          status,
+          template: props.template?.name ?? existing.template,
+          lastUpdated: new Date().toISOString(),
+          reviewIds: props.reviews.selectedReviewIds,
+          featuredReviewIds: props.reviews.featuredReviewIds,
+          manualReviews: props.reviews.manualReviews,
+          featuredManualReviewIds: props.reviews.featuredManualReviewIds,
+        }
+      }
+    }
+    else {
+      websites.value.push({
+        id: String(Date.now()),
+        name: props.settings.name,
+        url: props.settings.domain,
+        status,
+        template: props.template?.name ?? 'Luxury Villa',
+        visits: 0,
+        lastUpdated: new Date().toISOString(),
+        thumbnail: null,
+        reviewIds: props.reviews.selectedReviewIds,
+        featuredReviewIds: props.reviews.featuredReviewIds,
+        manualReviews: props.reviews.manualReviews,
+        featuredManualReviewIds: props.reviews.featuredManualReviewIds,
+      })
+    }
+    toast.success(message)
     navigateTo('/website-builder')
   }, 800)
 }
 
+function saveDraft() {
+  persistWebsite('draft', 'Website saved as draft')
+}
+
 function publishWebsite() {
-  isPublishing.value = true
-  setTimeout(() => {
-    isPublishing.value = false
-    toast.success('Website published successfully!')
-    navigateTo('/website-builder')
-  }, 800)
+  persistWebsite('published', 'Website published successfully!')
 }
 
 function handleBack() {
@@ -309,15 +346,15 @@ function handleBack() {
       </CardHeader>
       <CardContent class="space-y-4">
         <!-- Property Info -->
-        <div v-if="selectedProperty">
+        <div v-if="selectedProperties.length > 0">
           <div class="flex items-center gap-2 mb-3">
             <Icon name="i-lucide-home" class="size-4 text-muted-foreground" />
             <div>
               <p class="text-sm font-medium">
-                {{ selectedProperty.title }}
+                {{ selectedProperties.length }} propert{{ selectedProperties.length !== 1 ? 'ies' : 'y' }} selected
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ selectedProperty.location }}
+                {{ selectedProperties.map(p => p.title).join(', ') }}
               </p>
             </div>
           </div>
@@ -359,6 +396,48 @@ function handleBack() {
           <Button variant="outline" size="sm" @click="emit('goToStep', 2)">
             Select Property
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Reviews Summary -->
+    <Card>
+      <CardHeader class="pb-3">
+        <div class="flex items-center justify-between">
+          <CardTitle class="text-base">
+            Guest Reviews
+          </CardTitle>
+          <Button variant="ghost" size="sm" class="text-xs h-7" @click="emit('goToStep', 3)">
+            <Icon name="i-lucide-pencil" class="size-3 mr-1" />
+            Edit
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        <div class="flex items-center gap-2 text-sm">
+          <Icon name="i-lucide-star" class="size-4 text-muted-foreground" />
+          <span class="font-medium">{{ reviews.selectedReviewIds.length + reviews.manualReviews.length }}</span>
+          <span class="text-muted-foreground">review{{ reviews.selectedReviewIds.length + reviews.manualReviews.length !== 1 ? 's' : '' }} selected</span>
+        </div>
+        <div v-if="reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length > 0" class="flex items-center gap-2 text-sm">
+          <Icon name="i-lucide-star" class="size-4 text-primary" />
+          <span class="font-medium">{{ reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length }}</span>
+          <span class="text-muted-foreground">featured on main page</span>
+        </div>
+        <div v-if="reviews.manualReviews.length > 0" class="flex flex-wrap gap-2">
+          <div
+            v-for="m in reviews.manualReviews"
+            :key="m.id"
+            class="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
+          >
+            <Badge variant="secondary" class="text-[9px] px-1 py-0">
+              {{ m.rating }}/10
+            </Badge>
+            <span class="font-medium">{{ m.guestName }}</span>
+            <Badge variant="outline" class="text-[9px] px-1 py-0">
+              Manual
+            </Badge>
+          </div>
         </div>
       </CardContent>
     </Card>

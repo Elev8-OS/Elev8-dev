@@ -1,9 +1,21 @@
+import type { ReviewSource } from '~/components/review-hub/data/types'
+
 // Shared website-builder data. Originally lived inline in
 // `app/pages/website-builder/index.vue` — extracted so other surfaces
 // (e.g. Promo Code channel restriction) can read the same list of
 // mock websites without forking the data.
 
 export type WebsiteStatus = 'published' | 'draft' | 'building'
+
+export interface ManualReview {
+  id: string
+  guestName: string
+  rating: number
+  text: string
+  source: 'manual'
+  listingId: string
+  channel: ReviewSource
+}
 
 export interface Website {
   id: string
@@ -14,6 +26,10 @@ export interface Website {
   visits: number
   lastUpdated: string
   thumbnail: string | null
+  reviewIds?: string[]
+  featuredReviewIds?: string[]
+  manualReviews?: ManualReview[]
+  featuredManualReviewIds?: string[]
 }
 
 export const websites = ref<Website[]>([
