@@ -5,6 +5,14 @@
 
 export type WebsiteStatus = 'published' | 'draft' | 'building'
 
+export interface ManualReview {
+  id: string
+  guestName: string
+  rating: number
+  text: string
+  source: 'manual'
+}
+
 export interface Website {
   id: string
   name: string
@@ -14,6 +22,8 @@ export interface Website {
   visits: number
   lastUpdated: string
   thumbnail: string | null
+  reviewIds?: string[]
+  manualReviews?: ManualReview[]
 }
 
 export const websites = ref<Website[]>([
