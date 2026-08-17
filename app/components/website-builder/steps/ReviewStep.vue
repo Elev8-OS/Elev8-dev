@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { ReviewRecord } from '~/components/review-hub/data/types'
 import type { ManualReview } from '~/components/website-builder/data/websites'
+import { toast } from 'vue-sonner'
 import { channelIcons, channelLabels, getDisplayMax, getDisplayScore } from '~/components/review-hub/data/types'
 import { getListingsForProperty } from '~/components/website-builder/data/property-listings'
-import { toast } from 'vue-sonner'
 import { useReviewHub } from '~/composables/useReviewHub'
 
 export interface ReviewSelection {
@@ -202,14 +202,20 @@ function handleBack() {
 
       <div v-else class="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 gap-2 text-muted-foreground">
         <Icon name="i-lucide-star" class="size-8" />
-        <p class="text-sm">No reviews match. Add a manual testimonial below.</p>
+        <p class="text-sm">
+          No reviews match. Add a manual testimonial below.
+        </p>
       </div>
     </div>
 
     <div class="flex items-center justify-between">
       <div>
-        <p class="text-sm font-medium">Manual Reviews</p>
-        <p class="text-xs text-muted-foreground">Testimonials you write yourself.</p>
+        <p class="text-sm font-medium">
+          Manual Reviews
+        </p>
+        <p class="text-xs text-muted-foreground">
+          Testimonials you write yourself.
+        </p>
       </div>
       <Button variant="outline" size="sm" @click="openManualDialog">
         <Icon name="i-lucide-plus" class="size-4 mr-1.5" />
@@ -223,9 +229,13 @@ function handleBack() {
         :key="m.id"
         class="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
       >
-        <Badge variant="secondary" class="text-[9px] px-1 py-0">{{ m.rating }}/10</Badge>
+        <Badge variant="secondary" class="text-[9px] px-1 py-0">
+          {{ m.rating }}/10
+        </Badge>
         <span class="font-medium">{{ m.guestName }}</span>
-        <Badge variant="outline" class="text-[9px] px-1 py-0">Manual</Badge>
+        <Badge variant="outline" class="text-[9px] px-1 py-0">
+          Manual
+        </Badge>
         <Button variant="ghost" size="icon-sm" class="size-5" @click="removeManualReview(m.id)">
           <Icon name="i-lucide-x" class="size-3" />
         </Button>
@@ -257,7 +267,9 @@ function handleBack() {
             <span class="text-sm font-medium">{{ m.guestName }}</span>
             <span class="text-sm font-semibold">{{ m.rating }}/10</span>
           </div>
-          <p class="text-sm text-muted-foreground line-clamp-3">{{ m.text }}</p>
+          <p class="text-sm text-muted-foreground line-clamp-3">
+            {{ m.text }}
+          </p>
           <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
             <Icon name="i-lucide-user-pen" class="size-3" />
             Manual
@@ -307,8 +319,12 @@ function handleBack() {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="manualDialogOpen = false">Cancel</Button>
-          <Button @click="saveManualReview">Save Review</Button>
+          <Button variant="outline" @click="manualDialogOpen = false">
+            Cancel
+          </Button>
+          <Button @click="saveManualReview">
+            Save Review
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
