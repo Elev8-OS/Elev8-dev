@@ -8,6 +8,7 @@ import { useReviewHub } from '~/composables/useReviewHub'
 
 export interface ReviewSelection {
   selectedReviewIds: string[]
+  featuredReviewIds: string[]
   manualReviews: ManualReview[]
 }
 
@@ -25,16 +26,19 @@ const emit = defineEmits<{
 const { reviewRecords } = useReviewHub()
 
 const selectedReviewIds = ref<string[]>([...props.modelValue.selectedReviewIds])
+const featuredReviewIds = ref<string[]>([...props.modelValue.featuredReviewIds])
 const manualReviews = ref<ManualReview[]>([...props.modelValue.manualReviews])
 const minRating = ref(8)
 
 watch(() => props.modelValue, (val) => {
   selectedReviewIds.value = [...val.selectedReviewIds]
+  featuredReviewIds.value = [...val.featuredReviewIds]
   manualReviews.value = [...val.manualReviews]
 }, { deep: true })
 
 watch(() => props.propertyIds, () => {
   selectedReviewIds.value = []
+  featuredReviewIds.value = []
   manualReviews.value = []
   emitUpdate()
 }, { deep: true })
@@ -42,8 +46,17 @@ watch(() => props.propertyIds, () => {
 function emitUpdate() {
   emit('update:modelValue', {
     selectedReviewIds: [...selectedReviewIds.value],
+    featuredReviewIds: [...featuredReviewIds.value],
     manualReviews: [...manualReviews.value],
   })
+}
+
+function toggleFeatured(id: string) {
+  const idx = featuredReviewIds.value.indexOf(id)
+  if (idx === -1)
+    featuredReviewIds.value.push(id)
+  else featuredReviewIds.value.splice(idx, 1)
+  emitUpdate()
 }
 
 const ratingOptions = [10, 9, 8, 7, 6]
@@ -92,6 +105,7 @@ function toggleAllForGroup(group: ReviewGroup) {
   if (allSelected) {
     const removeSet = new Set(ids)
     selectedReviewIds.value = selectedReviewIds.value.filter(id => !removeSet.has(id))
+    featuredReviewIds.value = featuredReviewIds.value.filter(id => !removeSet.has(id))
   }
   else {
     const currentSet = new Set(selectedReviewIds.value)
@@ -105,9 +119,15 @@ function toggleAllForGroup(group: ReviewGroup) {
 
 function toggleReview(id: string) {
   const idx = selectedReviewIds.value.indexOf(id)
-  if (idx === -1)
+  if (idx === -1) {
     selectedReviewIds.value.push(id)
-  else selectedReviewIds.value.splice(idx, 1)
+  }
+  else {
+    selectedReviewIds.value.splice(idx, 1)
+    const fIdx = featuredReviewIds.value.indexOf(id)
+    if (fIdx !== -1)
+      featuredReviewIds.value.splice(fIdx, 1)
+  }
   emitUpdate()
 }
 
@@ -122,6 +142,7 @@ function selectAll() {
 
 function deselectAll() {
   selectedReviewIds.value = []
+  featuredReviewIds.value = []
   emitUpdate()
 }
 
@@ -157,6 +178,7 @@ function removeManualReview(id: string) {
 }
 
 const totalSelected = computed(() => selectedReviewIds.value.length + manualReviews.value.length)
+const featuredCount = computed(() => featuredReviewIds.value.length)
 const isValid = computed(() => totalSelected.value > 0)
 
 function handleNext() {
@@ -262,6 +284,23 @@ function handleBack() {
                   {{ review.guest_review_text || 'No written review' }}
                 </p>
               </div>
+              <!-- Featured (main page) toggle — only for selected reviews -->
+              <button
+                v-if="selectedReviewIds.includes(review.id)"
+                type="button"
+                class="shrink-0 flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors"
+                :class="featuredReviewIds.includes(review.id)
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'text-muted-foreground hover:bg-muted/50'"
+                :title="featuredReviewIds.includes(review.id) ? 'Shown on main page' : 'Click to feature on main page'"
+                @click.stop="toggleFeatured(review.id)"
+              >
+                <Icon
+                  :name="featuredReviewIds.includes(review.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+                  class="size-3"
+                />
+                Main Page
+              </button>
             </div>
           </div>
 
@@ -318,6 +357,10 @@ function handleBack() {
         <Icon name="i-lucide-eye" class="size-4 text-muted-foreground" />
         <span class="text-sm font-medium">Website Preview</span>
         <span class="text-xs text-muted-foreground">{{ totalSelected }} testimonial{{ totalSelected !== 1 ? 's' : '' }}</span>
+        <span v-if="featuredCount > 0" class="flex items-center gap-1 text-xs font-medium text-primary">
+          <Icon name="i-lucide-star" class="size-3" />
+          {{ featuredCount }} on main page
+        </span>
       </div>
       <div class="grid grid-cols-1 gap-3 @xl/main:grid-cols-2">
         <div v-for="r in selectedRecords" :key="r.id" class="rounded-lg border bg-card p-4">
@@ -331,6 +374,13 @@ function handleBack() {
           <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
             <Icon :name="channelIcons[r.source]" class="size-3" />
             {{ channelLabels[r.source] }}
+            <Badge
+              v-if="featuredReviewIds.includes(r.id)"
+              class="ml-auto text-[9px] px-1.5 py-0"
+            >
+              <Icon name="i-lucide-star" class="size-2.5 mr-0.5" />
+              Main Page
+            </Badge>
           </div>
         </div>
         <div v-for="m in manualReviews" :key="m.id" class="rounded-lg border bg-card p-4">

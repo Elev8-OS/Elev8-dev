@@ -38,6 +38,7 @@ const propertySelection = ref<PropertySelection>({
 })
 const reviewSelection = ref<ReviewSelection>({
   selectedReviewIds: [],
+  featuredReviewIds: [],
   manualReviews: [],
 })
 
@@ -67,6 +68,7 @@ if (import.meta.client && editingWebsite.value) {
   selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
   reviewSelection.value = {
     selectedReviewIds: site.reviewIds ?? [],
+    featuredReviewIds: site.featuredReviewIds ?? [],
     manualReviews: site.manualReviews ?? [],
   }
   currentStep.value = 1

@@ -38,7 +38,7 @@ describe('propertyListingMap', () => {
 })
 
 describe('website type', () => {
-  it('accepts reviewIds and manualReviews', () => {
+  it('accepts reviewIds, featuredReviewIds and manualReviews', () => {
     const site: Website = {
       id: 'x',
       name: 'X',
@@ -49,9 +49,11 @@ describe('website type', () => {
       lastUpdated: '2026-01-01T00:00:00Z',
       thumbnail: null,
       reviewIds: ['rr-001'],
+      featuredReviewIds: ['rr-001'],
       manualReviews: [{ id: 'm1', guestName: 'G', rating: 9, text: 'Great', source: 'manual' }],
     }
     expect(site.reviewIds).toHaveLength(1)
+    expect(site.featuredReviewIds).toHaveLength(1)
     expect(site.manualReviews[0].guestName).toBe('G')
   })
 })

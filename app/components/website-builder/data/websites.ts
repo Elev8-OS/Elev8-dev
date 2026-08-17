@@ -23,6 +23,7 @@ export interface Website {
   lastUpdated: string
   thumbnail: string | null
   reviewIds?: string[]
+  featuredReviewIds?: string[]
   manualReviews?: ManualReview[]
 }
 

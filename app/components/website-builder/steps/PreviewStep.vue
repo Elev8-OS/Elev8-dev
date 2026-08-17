@@ -153,6 +153,7 @@ function persistWebsite(status: Website['status'], message: string) {
           template: props.template?.name ?? existing.template,
           lastUpdated: new Date().toISOString(),
           reviewIds: props.reviews.selectedReviewIds,
+          featuredReviewIds: props.reviews.featuredReviewIds,
           manualReviews: props.reviews.manualReviews,
         }
       }
@@ -168,6 +169,7 @@ function persistWebsite(status: Website['status'], message: string) {
         lastUpdated: new Date().toISOString(),
         thumbnail: null,
         reviewIds: props.reviews.selectedReviewIds,
+        featuredReviewIds: props.reviews.featuredReviewIds,
         manualReviews: props.reviews.manualReviews,
       })
     }
@@ -414,6 +416,11 @@ function handleBack() {
           <Icon name="i-lucide-star" class="size-4 text-muted-foreground" />
           <span class="font-medium">{{ reviews.selectedReviewIds.length + reviews.manualReviews.length }}</span>
           <span class="text-muted-foreground">review{{ reviews.selectedReviewIds.length + reviews.manualReviews.length !== 1 ? 's' : '' }} selected</span>
+        </div>
+        <div v-if="reviews.featuredReviewIds.length > 0" class="flex items-center gap-2 text-sm">
+          <Icon name="i-lucide-star" class="size-4 text-primary" />
+          <span class="font-medium">{{ reviews.featuredReviewIds.length }}</span>
+          <span class="text-muted-foreground">featured on main page</span>
         </div>
         <div v-if="reviews.manualReviews.length > 0" class="flex flex-wrap gap-2">
           <div
