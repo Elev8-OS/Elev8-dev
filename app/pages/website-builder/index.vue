@@ -6,6 +6,12 @@ definePageMeta({
   layout: 'default',
 })
 
+const router = useRouter()
+
+function openPreview(website: Website) {
+  window.open(`https://${website.url}`, '_blank', 'noopener,noreferrer')
+}
+
 function statusBadgeClass(status: Website['status']) {
   switch (status) {
     case 'published':
@@ -88,11 +94,11 @@ function formatVisits(num: number) {
           </div>
         </CardContent>
         <CardFooter class="gap-2 pt-0">
-          <Button variant="outline" size="sm" class="flex-1">
+          <Button variant="outline" size="sm" class="flex-1" @click="router.push(`/website-builder/create?edit=${website.id}`)">
             <Icon name="i-lucide-pencil" class="size-4 mr-1.5" />
             Edit
           </Button>
-          <Button variant="outline" size="sm" class="flex-1">
+          <Button variant="outline" size="sm" class="flex-1" @click="openPreview(website)">
             <Icon name="i-lucide-external-link" class="size-4 mr-1.5" />
             Preview
           </Button>

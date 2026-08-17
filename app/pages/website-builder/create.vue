@@ -2,12 +2,14 @@
 import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
+import { websites } from '~/components/website-builder/data/websites'
 
 definePageMeta({
   layout: 'default',
 })
 
 const router = useRouter()
+const route = useRoute()
 
 const STEPS = [
   { key: 'template', label: 'Template', icon: 'i-lucide-layout-template' },
@@ -32,6 +34,33 @@ const propertySelection = ref<PropertySelection>({
   propertyId: null,
   roomIds: [],
 })
+
+// ── Edit mode: prefill from existing website ─────────────────────
+const editId = computed(() => route.query.edit as string | undefined)
+const editingWebsite = computed(() => websites.value.find(w => w.id === editId.value) ?? null)
+
+const templates: Template[] = [
+  { id: 'luxury-villa', name: 'Luxury Villa', description: 'Elegant design with full-screen hero, amenity showcases, and booking integration for premium properties.', gradient: 'from-amber-500/20 to-orange-600/20', icon: 'i-lucide-crown' },
+  { id: 'modern-tropical', name: 'Modern Tropical', description: 'Clean, airy layout with lush imagery and nature-inspired accents for tropical getaways.', gradient: 'from-emerald-500/20 to-teal-600/20', icon: 'i-lucide-palmtree' },
+  { id: 'beach-house', name: 'Beach House', description: 'Coastal vibes with ocean palettes, photo galleries, and weather widget for seaside stays.', gradient: 'from-sky-500/20 to-blue-600/20', icon: 'i-lucide-waves' },
+  { id: 'minimal-bali', name: 'Minimal Bali', description: 'Minimalist zen aesthetic with earthy tones and focused content for serene Bali retreats.', gradient: 'from-stone-400/20 to-stone-600/20', icon: 'i-lucide-flower-2' },
+]
+
+if (import.meta.client && editingWebsite.value) {
+  const site = editingWebsite.value
+  websiteSettings.value = {
+    name: site.name,
+    domain: site.url,
+    description: '',
+    brandColor: '#1a1a2e',
+    fontFamily: 'Inter',
+    logoFile: null,
+    faviconFile: null,
+    useDefaultFavicon: false,
+  }
+  selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
+  currentStep.value = 1
+}
 
 function onSelectTemplate(template: Template) {
   selectedTemplate.value = template
@@ -71,7 +100,7 @@ function goBack() {
 
     <div>
       <h2 class="text-2xl font-bold tracking-tight">
-        Create Website
+        {{ editingWebsite ? 'Edit Website' : 'Create Website' }}
       </h2>
       <p class="text-muted-foreground mt-1">
         Set up your new property website in a few steps.

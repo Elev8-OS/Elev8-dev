@@ -3,6 +3,8 @@ import type { PropertySelection } from '~/components/website-builder/steps/Prope
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { toast } from 'vue-sonner'
+import type { Website } from '~/components/website-builder/data/websites'
+import { websites } from '~/components/website-builder/data/websites'
 
 // Re-export for convenience
 export type { PropertySelection, Template, WebsiteSettings }
@@ -132,23 +134,50 @@ const roomTypeConfig: Record<Room['type'], { label: string, variant: 'default' |
 
 // ── Actions ──────────────────────────────────────────────────────
 const isPublishing = ref(false)
+const route = useRoute()
+const editId = computed(() => route.query.edit as string | undefined)
 
-function saveDraft() {
+function persistWebsite(status: Website['status'], message: string) {
   isPublishing.value = true
   setTimeout(() => {
     isPublishing.value = false
-    toast.success('Website saved as draft')
+    if (editId.value) {
+      const index = websites.value.findIndex(w => w.id === editId.value)
+      const existing = websites.value[index]
+      if (existing) {
+        websites.value[index] = {
+          ...existing,
+          name: props.settings.name,
+          url: props.settings.domain,
+          status,
+          template: props.template?.name ?? existing.template,
+          lastUpdated: new Date().toISOString(),
+        }
+      }
+    }
+    else {
+      websites.value.push({
+        id: String(Date.now()),
+        name: props.settings.name,
+        url: props.settings.domain,
+        status,
+        template: props.template?.name ?? 'Luxury Villa',
+        visits: 0,
+        lastUpdated: new Date().toISOString(),
+        thumbnail: null,
+      })
+    }
+    toast.success(message)
     navigateTo('/website-builder')
   }, 800)
 }
 
+function saveDraft() {
+  persistWebsite('draft', 'Website saved as draft')
+}
+
 function publishWebsite() {
-  isPublishing.value = true
-  setTimeout(() => {
-    isPublishing.value = false
-    toast.success('Website published successfully!')
-    navigateTo('/website-builder')
-  }, 800)
+  persistWebsite('published', 'Website published successfully!')
 }
 
 function handleBack() {
