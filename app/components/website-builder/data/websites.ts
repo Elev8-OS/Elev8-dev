@@ -1,3 +1,5 @@
+import type { ReviewSource } from '~/components/review-hub/data/types'
+
 // Shared website-builder data. Originally lived inline in
 // `app/pages/website-builder/index.vue` — extracted so other surfaces
 // (e.g. Promo Code channel restriction) can read the same list of
@@ -12,6 +14,7 @@ export interface ManualReview {
   text: string
   source: 'manual'
   listingId: string
+  channel: ReviewSource
 }
 
 export interface Website {

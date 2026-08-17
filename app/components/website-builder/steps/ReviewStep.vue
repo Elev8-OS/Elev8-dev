@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ReviewRecord } from '~/components/review-hub/data/types'
+import type { ReviewRecord, ReviewSource } from '~/components/review-hub/data/types'
 import type { ManualReview } from '~/components/website-builder/data/websites'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
@@ -154,7 +154,7 @@ function deselectAll() {
 }
 
 const manualDialogOpen = ref(false)
-const manualForm = ref({ guestName: '', rating: 8, text: '', listingId: '' })
+const manualForm = ref({ guestName: '', rating: 8, text: '', listingId: '', channel: 'airbnb' as ReviewSource })
 
 // Listings available for manual reviews = those mapped to the selected properties
 const manualListingOptions = computed(() => {
@@ -162,8 +162,20 @@ const manualListingOptions = computed(() => {
   return listings.value.filter(l => listingIds.includes(l.id))
 })
 
+const channelOptions: { value: ReviewSource, label: string, icon: string }[] = [
+  { value: 'airbnb', label: 'Airbnb', icon: 'logos:airbnb' },
+  { value: 'booking_com', label: 'Booking.com', icon: 'simple-icons:bookingdotcom' },
+  { value: 'direct', label: 'Direct', icon: 'lucide:globe' },
+]
+
 function openManualDialog() {
-  manualForm.value = { guestName: '', rating: 8, text: '', listingId: manualListingOptions.value[0]?.id ?? '' }
+  manualForm.value = {
+    guestName: '',
+    rating: 8,
+    text: '',
+    listingId: manualListingOptions.value[0]?.id ?? '',
+    channel: 'airbnb',
+  }
   manualDialogOpen.value = true
 }
 
@@ -179,6 +191,7 @@ function saveManualReview() {
     text: manualForm.value.text.trim(),
     source: 'manual',
     listingId: manualForm.value.listingId,
+    channel: manualForm.value.channel,
   }
   manualReviews.value.push(manual)
   emitUpdate()
@@ -339,6 +352,10 @@ function handleBack() {
         </Badge>
         <span class="font-medium">{{ m.guestName }}</span>
         <span class="text-muted-foreground truncate max-w-[180px]">{{ listingName(m.listingId) }}</span>
+        <Badge variant="outline" class="text-[9px] px-1 py-0">
+          <Icon :name="channelIcons[m.channel]" class="size-3 mr-0.5" />
+          {{ channelLabels[m.channel] }}
+        </Badge>
         <Badge variant="outline" class="text-[9px] px-1 py-0">
           Manual
         </Badge>
@@ -521,8 +538,8 @@ function handleBack() {
             {{ m.text }}
           </p>
           <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-            <Icon name="i-lucide-user-pen" class="size-3" />
-            Manual · {{ listingName(m.listingId) }}
+            <Icon :name="channelIcons[m.channel]" class="size-3" />
+            {{ channelLabels[m.channel] }} · {{ listingName(m.listingId) }}
             <Badge
               v-if="featuredManualReviewIds.includes(m.id)"
               class="ml-auto text-[9px] px-1.5 py-0"
@@ -566,6 +583,22 @@ function handleBack() {
               <SelectContent>
                 <SelectItem v-for="l in manualListingOptions" :key="l.id" :value="l.id">
                   {{ l.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label for="manual-channel">Channel</Label>
+            <Select v-model="manualForm.channel">
+              <SelectTrigger id="manual-channel" class="w-full">
+                <SelectValue placeholder="Select channel" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="c in channelOptions" :key="c.value" :value="c.value">
+                  <span class="flex items-center gap-2">
+                    <Icon :name="c.icon" class="size-3.5" />
+                    {{ c.label }}
+                  </span>
                 </SelectItem>
               </SelectContent>
             </Select>
