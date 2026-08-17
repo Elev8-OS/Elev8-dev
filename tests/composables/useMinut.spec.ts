@@ -16,6 +16,9 @@ describe('useMinut — connection', () => {
     expect(connection.value!.status).toBe('connected')
     expect(connection.value!.workspaceName).toMatch(/^Minut workspace /)
     expect(connection.value!.webhookToken).toMatch(/^whsec_/)
+    expect(connection.value!.hookId).toMatch(/^hook_/)
+    expect(connection.value!.webhookSubscriptions).toContain('noise')
+    expect(connection.value!.webhookSubscriptions).toContain('tamper')
     expect(isConnected.value).toBe(true)
   })
 
@@ -144,6 +147,19 @@ describe('useMinut — events', () => {
     const { emitMockEvents } = useMinut()
     const events = emitMockEvents()
     expect(events).toEqual([])
+  })
+
+  it('testWebhook returns null when disconnected', async () => {
+    const { testWebhook } = useMinut()
+    expect(await testWebhook()).toBeNull()
+  })
+
+  it('testWebhook delivers a mock event when connected', async () => {
+    const { completeOAuth, testWebhook, events } = useMinut()
+    await completeOAuth()
+    const event = await testWebhook()
+    expect(event).not.toBeNull()
+    expect(events.value.some(e => e.id === event!.id)).toBe(true)
   })
 
   it('emitMockEvents generates 3-6 events with valid shape', () => {

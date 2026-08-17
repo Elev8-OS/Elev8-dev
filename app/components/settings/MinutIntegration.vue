@@ -72,10 +72,19 @@ function handleDisconnect() {
   disconnectDialogOpen.value = false
 }
 
-function copyWebhookUrl() {
-  if (!connection.value) return
-  navigator.clipboard.writeText(connection.value.webhookUrl)
-  toast.success('Webhook URL copied.')
+const isPinging = ref(false)
+
+async function handlePing() {
+  if (isPinging.value) return
+  isPinging.value = true
+  const event = await minut.testWebhook()
+  isPinging.value = false
+  if (event) {
+    toast.success(`Webhook delivered test event: ${event.type}`)
+  }
+  else {
+    toast.info('No devices available to send a test event.')
+  }
 }
 
 async function handleSync() {
@@ -153,9 +162,10 @@ function setListingFilter(value: unknown) {
               Last synced {{ new Date(connection.lastSyncAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) }}
             </p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" class="h-8 gap-1.5" @click="copyWebhookUrl">
-                <Icon name="lucide:copy" class="size-3.5" />
-                Copy webhook URL
+              <Button size="sm" variant="outline" class="h-8 gap-1.5" :disabled="isPinging" @click="handlePing">
+                <Icon v-if="isPinging" name="lucide:loader-circle" class="size-3.5 animate-spin" />
+                <Icon v-else name="lucide:radio-tower" class="size-3.5" />
+                {{ isPinging ? 'Pinging…' : 'Test ping' }}
               </Button>
               <Button size="sm" variant="outline" class="h-8 gap-1.5 text-destructive hover:text-destructive" @click="disconnectDialogOpen = true">
                 <Icon name="lucide:unplug" class="size-3.5" />
@@ -170,15 +180,19 @@ function setListingFilter(value: unknown) {
         </div>
       </div>
 
-      <!-- Webhook URL details -->
+      <!-- Webhook status -->
       <div class="rounded-lg border bg-muted/30 p-3">
         <div class="flex items-center gap-2 text-xs">
           <Icon name="lucide:webhook" class="size-3.5 text-muted-foreground" />
-          <span class="text-muted-foreground">Webhook URL</span>
+          <span class="text-muted-foreground">Webhook</span>
+          <span class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
+            <span class="h-1 w-1 rounded-full bg-green-500" />
+            Registered
+          </span>
         </div>
-        <p class="mt-1 font-mono text-xs break-all">{{ connection?.webhookUrl }}</p>
-        <p class="mt-1 text-[10px] text-muted-foreground/60">
-          Paste this URL in your Minut dashboard → Webhooks so Elev8 receives device events.
+        <p class="mt-1.5 text-xs text-muted-foreground">
+          Events are pushed automatically to Elev8. {{ connection?.webhookSubscriptions.length }} event type{{ connection?.webhookSubscriptions.length !== 1 ? 's' : '' }} subscribed
+          <span class="font-mono text-[11px] text-muted-foreground/70">{{ connection?.webhookSubscriptions.join(', ') }}</span>
         </p>
       </div>
 

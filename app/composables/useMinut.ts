@@ -7,6 +7,8 @@ export interface MinutConnection {
   status: 'connected' | 'disconnected'
   webhookToken: string
   webhookUrl: string
+  hookId: string
+  webhookSubscriptions: MinutEventType[]
   deviceCount: number
   connectedAt: string
   lastSyncAt: string | null
@@ -116,6 +118,8 @@ export function useMinut() {
       status: 'connected',
       webhookToken,
       webhookUrl: `https://api.elev8.app/webhooks/minut/${webhookToken.slice(6)}`,
+      hookId: `hook_${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`,
+      webhookSubscriptions: ['noise', 'smoke', 'temperature', 'motion', 'battery', 'tamper', 'connectivity'],
       deviceCount: 0,
       connectedAt: new Date().toISOString(),
       lastSyncAt: null,
@@ -159,6 +163,14 @@ export function useMinut() {
   function syncDevices() {
     if (!connection.value) return
     connection.value = { ...connection.value, lastSyncAt: new Date().toISOString() }
+  }
+
+  /** Mock Minut ping (`POST /webhooks/{hook_id}/ping`): delivers a test event. */
+  async function testWebhook(): Promise<MinutEvent | null> {
+    if (!connection.value) return null
+    await new Promise(r => setTimeout(r, 600))
+    const event = emitMockEvents().at(0) ?? null
+    return event
   }
 
   function emitMockEvents(): MinutEvent[] {
@@ -218,6 +230,7 @@ export function useMinut() {
     assignDeviceToListing,
     bulkAssignDevices,
     syncDevices,
+    testWebhook,
     emitMockEvents,
     getEventsByListing,
     getEventsByType,
