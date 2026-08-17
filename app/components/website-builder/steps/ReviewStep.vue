@@ -181,6 +181,8 @@ const totalSelected = computed(() => selectedReviewIds.value.length + manualRevi
 const featuredCount = computed(() => featuredReviewIds.value.length)
 const isValid = computed(() => totalSelected.value > 0)
 
+const previewOpen = ref(false)
+
 function handleNext() {
   if (isValid.value)
     emit('next')
@@ -201,23 +203,22 @@ function handleBack() {
       </p>
     </div>
 
-    <div class="flex items-center gap-3">
-      <Label class="text-sm font-medium shrink-0">Minimum rating</Label>
-      <Select :model-value="minRating" @update:model-value="minRating = $event as number">
-        <SelectTrigger class="w-28">
-          <SelectValue placeholder="Select rating" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem v-for="r in ratingOptions" :key="r" :value="r">
-            {{ r }}+
-          </SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-
-    <div class="space-y-3">
-      <div class="flex items-center justify-between">
-        <Label class="text-sm font-medium">Available Reviews</Label>
+    <!-- Toolbar: filter + global actions -->
+    <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
+      <div class="flex items-center gap-3">
+        <Label class="text-sm font-medium shrink-0">Min rating</Label>
+        <Select :model-value="minRating" @update:model-value="minRating = $event as number">
+          <SelectTrigger class="w-24">
+            <SelectValue placeholder="Rating" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="r in ratingOptions" :key="r" :value="r">
+              {{ r }}+
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="flex items-center gap-2">
         <Button
           v-if="candidateReviews.length > 0"
           variant="ghost"
@@ -225,114 +226,17 @@ function handleBack() {
           class="text-xs h-7"
           @click="allSelected ? deselectAll() : selectAll()"
         >
-          <Icon :name="allSelected ? 'i-lucide-square' : 'i-lucide-check-square'" class="size-3.5 mr-1.5" />
+          <Icon :name="allSelected ? 'i-lucide-square' : 'i-lucide-check-square'" class="size-3.5 mr-1" />
           {{ allSelected ? 'Deselect All' : 'Select All' }}
         </Button>
-      </div>
-
-      <!-- Grouped by property -->
-      <div v-if="candidateReviews.length > 0" class="space-y-4">
-        <div
-          v-for="group in reviewGroups"
-          :key="group.propertyId"
-          class="space-y-2"
-        >
-          <div class="flex items-center justify-between">
-            <Label class="text-sm font-medium">
-              {{ group.propertyName }}
-            </Label>
-            <Button
-              v-if="group.reviews.length > 0"
-              variant="ghost"
-              size="sm"
-              class="text-xs h-7"
-              @click="toggleAllForGroup(group)"
-            >
-              <Icon
-                :name="allSelectedForGroup(group) ? 'i-lucide-square' : 'i-lucide-check-square'"
-                class="size-3.5 mr-1.5"
-              />
-              {{ allSelectedForGroup(group) ? 'Deselect All' : 'Select All' }}
-            </Button>
-          </div>
-
-          <div class="grid grid-cols-1 gap-2 @xl/main:grid-cols-2">
-            <div
-              v-for="review in group.reviews"
-              :key="review.id"
-              class="flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer hover:bg-muted/50"
-              :class="{ 'bg-muted/30 border-primary/30': selectedReviewIds.includes(review.id) }"
-              @click="toggleReview(review.id)"
-            >
-              <Checkbox
-                :checked="selectedReviewIds.includes(review.id)"
-                class="mt-0.5"
-                @update:checked="toggleReview(review.id)"
-              />
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium">{{ review.guest_name }}</span>
-                  <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
-                    {{ getDisplayScore(review.guest_rating_overall, review.source) }}/{{ getDisplayMax(review.source) }}
-                  </Badge>
-                  <Badge variant="outline" class="text-[10px] px-1.5 py-0">
-                    <Icon :name="channelIcons[review.source]" class="size-3 mr-0.5" />
-                    {{ channelLabels[review.source] }}
-                  </Badge>
-                </div>
-                <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                  {{ review.guest_review_text || 'No written review' }}
-                </p>
-              </div>
-              <!-- Featured (main page) toggle — only for selected reviews -->
-              <button
-                v-if="selectedReviewIds.includes(review.id)"
-                type="button"
-                class="shrink-0 flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors"
-                :class="featuredReviewIds.includes(review.id)
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'text-muted-foreground hover:bg-muted/50'"
-                :title="featuredReviewIds.includes(review.id) ? 'Shown on main page' : 'Click to feature on main page'"
-                @click.stop="toggleFeatured(review.id)"
-              >
-                <Icon
-                  :name="featuredReviewIds.includes(review.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
-                  class="size-3"
-                />
-                Main Page
-              </button>
-            </div>
-          </div>
-
-          <p v-if="group.reviews.length === 0" class="text-xs text-muted-foreground">
-            No reviews for this property yet.
-          </p>
-        </div>
-      </div>
-
-      <div v-else class="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 gap-2 text-muted-foreground">
-        <Icon name="i-lucide-star" class="size-8" />
-        <p class="text-sm">
-          No reviews match. Add a manual testimonial below.
-        </p>
+        <Button variant="outline" size="sm" class="text-xs h-7" @click="openManualDialog">
+          <Icon name="i-lucide-plus" class="size-3.5 mr-1" />
+          Manual Review
+        </Button>
       </div>
     </div>
 
-    <div class="flex items-center justify-between">
-      <div>
-        <p class="text-sm font-medium">
-          Manual Reviews
-        </p>
-        <p class="text-xs text-muted-foreground">
-          Testimonials you write yourself.
-        </p>
-      </div>
-      <Button variant="outline" size="sm" @click="openManualDialog">
-        <Icon name="i-lucide-plus" class="size-4 mr-1.5" />
-        Add Manual Review
-      </Button>
-    </div>
-
+    <!-- Manual review chips (inline) -->
     <div v-if="manualReviews.length > 0" class="flex flex-wrap gap-2">
       <div
         v-for="m in manualReviews"
@@ -352,17 +256,109 @@ function handleBack() {
       </div>
     </div>
 
-    <div v-if="totalSelected > 0" class="rounded-lg border bg-muted/30 p-4">
-      <div class="flex items-center gap-2 mb-3">
+    <!-- Review list, grouped by property -->
+    <div v-if="candidateReviews.length > 0" class="space-y-3">
+      <div
+        v-for="group in reviewGroups"
+        :key="group.propertyId"
+        class="space-y-1.5"
+      >
+        <div class="flex items-center justify-between">
+          <Label class="text-sm font-medium">
+            {{ group.propertyName }}
+          </Label>
+          <Button
+            v-if="group.reviews.length > 0"
+            variant="ghost"
+            size="sm"
+            class="text-xs h-6 px-2"
+            @click="toggleAllForGroup(group)"
+          >
+            <Icon
+              :name="allSelectedForGroup(group) ? 'i-lucide-square' : 'i-lucide-check-square'"
+              class="size-3 mr-1"
+            />
+            {{ allSelectedForGroup(group) ? 'Deselect All' : 'Select All' }}
+          </Button>
+        </div>
+
+        <div class="space-y-1.5">
+          <div
+            v-for="review in group.reviews"
+            :key="review.id"
+            class="flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors hover:bg-muted/50"
+            :class="{ 'bg-muted/30 border-primary/30': selectedReviewIds.includes(review.id) }"
+            @click="toggleReview(review.id)"
+          >
+            <Checkbox
+              :checked="selectedReviewIds.includes(review.id)"
+              class="shrink-0"
+              @update:checked="toggleReview(review.id)"
+            />
+            <span class="text-sm font-medium min-w-0 truncate">{{ review.guest_name }}</span>
+            <Badge variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">
+              {{ getDisplayScore(review.guest_rating_overall, review.source) }}/{{ getDisplayMax(review.source) }}
+            </Badge>
+            <Badge variant="outline" class="shrink-0 text-[10px] px-1.5 py-0">
+              <Icon :name="channelIcons[review.source]" class="size-3 mr-0.5" />
+              {{ channelLabels[review.source] }}
+            </Badge>
+            <span class="text-xs text-muted-foreground flex-1 min-w-0 truncate hidden sm:inline">
+              {{ review.guest_review_text || 'No written review' }}
+            </span>
+            <!-- Featured (main page) toggle — only for selected reviews -->
+            <button
+              v-if="selectedReviewIds.includes(review.id)"
+              type="button"
+              class="shrink-0 flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+              :class="featuredReviewIds.includes(review.id)
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'text-muted-foreground hover:bg-muted/50'"
+              :title="featuredReviewIds.includes(review.id) ? 'Shown on main page' : 'Click to feature on main page'"
+              @click.stop="toggleFeatured(review.id)"
+            >
+              <Icon
+                :name="featuredReviewIds.includes(review.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+                class="size-3"
+              />
+              Main Page
+            </button>
+          </div>
+        </div>
+
+        <p v-if="group.reviews.length === 0" class="text-xs text-muted-foreground">
+          No reviews for this property yet.
+        </p>
+      </div>
+    </div>
+
+    <div v-else class="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 gap-2 text-muted-foreground">
+      <Icon name="i-lucide-star" class="size-8" />
+      <p class="text-sm">
+        No reviews match. Add a manual testimonial above.
+      </p>
+    </div>
+
+    <!-- Collapsible live preview -->
+    <div v-if="totalSelected > 0" class="rounded-lg border">
+      <button
+        type="button"
+        class="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium"
+        @click="previewOpen = !previewOpen"
+      >
         <Icon name="i-lucide-eye" class="size-4 text-muted-foreground" />
-        <span class="text-sm font-medium">Website Preview</span>
-        <span class="text-xs text-muted-foreground">{{ totalSelected }} testimonial{{ totalSelected !== 1 ? 's' : '' }}</span>
+        Website Preview
+        <span class="text-xs text-muted-foreground font-normal">{{ totalSelected }} selected</span>
         <span v-if="featuredCount > 0" class="flex items-center gap-1 text-xs font-medium text-primary">
           <Icon name="i-lucide-star" class="size-3" />
           {{ featuredCount }} on main page
         </span>
-      </div>
-      <div class="grid grid-cols-1 gap-3 @xl/main:grid-cols-2">
+        <Icon
+          :name="previewOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+          class="size-4 ml-auto text-muted-foreground"
+        />
+      </button>
+      <div v-if="previewOpen" class="grid grid-cols-1 gap-3 border-t p-4 @xl/main:grid-cols-2">
         <div v-for="r in selectedRecords" :key="r.id" class="rounded-lg border bg-card p-4">
           <div class="flex items-center justify-between mb-1">
             <span class="text-sm font-medium">{{ r.guest_name }}</span>
