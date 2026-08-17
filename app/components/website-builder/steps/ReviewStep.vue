@@ -3,7 +3,7 @@ import type { ReviewRecord } from '~/components/review-hub/data/types'
 import type { ManualReview } from '~/components/website-builder/data/websites'
 import { toast } from 'vue-sonner'
 import { channelIcons, channelLabels, getDisplayMax, getDisplayScore } from '~/components/review-hub/data/types'
-import { getListingsForProperties } from '~/components/website-builder/data/property-listings'
+import { getListingsForProperties, propertyNames } from '~/components/website-builder/data/property-listings'
 import { useReviewHub } from '~/composables/useReviewHub'
 
 export interface ReviewSelection {
@@ -63,6 +63,45 @@ const selectedRecords = computed(() => {
   const ids = new Set(selectedReviewIds.value)
   return candidateReviews.value.filter(r => ids.has(r.id))
 })
+
+// Group candidate reviews by property (a review's listing maps back to its property)
+interface ReviewGroup {
+  propertyId: string
+  propertyName: string
+  reviews: ReviewRecord[]
+}
+
+const reviewGroups = computed<ReviewGroup[]>(() => {
+  return props.propertyIds.map((propertyId) => {
+    const listings = getListingsForProperties([propertyId])
+    return {
+      propertyId,
+      propertyName: propertyNames[propertyId] ?? propertyId,
+      reviews: candidateReviews.value.filter(r => listings.includes(r.listing_id)),
+    }
+  })
+})
+
+function allSelectedForGroup(group: ReviewGroup): boolean {
+  return group.reviews.length > 0 && group.reviews.every(r => selectedReviewIds.value.includes(r.id))
+}
+
+function toggleAllForGroup(group: ReviewGroup) {
+  const ids = group.reviews.map(r => r.id)
+  const allSelected = allSelectedForGroup(group)
+  if (allSelected) {
+    const removeSet = new Set(ids)
+    selectedReviewIds.value = selectedReviewIds.value.filter(id => !removeSet.has(id))
+  }
+  else {
+    const currentSet = new Set(selectedReviewIds.value)
+    for (const id of ids) {
+      if (!currentSet.has(id))
+        selectedReviewIds.value.push(id)
+    }
+  }
+  emitUpdate()
+}
 
 function toggleReview(id: string) {
   const idx = selectedReviewIds.value.indexOf(id)
@@ -169,34 +208,66 @@ function handleBack() {
         </Button>
       </div>
 
-      <div v-if="candidateReviews.length > 0" class="grid grid-cols-1 gap-2 @xl/main:grid-cols-2">
+      <!-- Grouped by property -->
+      <div v-if="candidateReviews.length > 0" class="space-y-4">
         <div
-          v-for="review in candidateReviews"
-          :key="review.id"
-          class="flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer hover:bg-muted/50"
-          :class="{ 'bg-muted/30 border-primary/30': selectedReviewIds.includes(review.id) }"
-          @click="toggleReview(review.id)"
+          v-for="group in reviewGroups"
+          :key="group.propertyId"
+          class="space-y-2"
         >
-          <Checkbox
-            :checked="selectedReviewIds.includes(review.id)"
-            class="mt-0.5"
-            @update:checked="toggleReview(review.id)"
-          />
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">{{ review.guest_name }}</span>
-              <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
-                {{ getDisplayScore(review.guest_rating_overall, review.source) }}/{{ getDisplayMax(review.source) }}
-              </Badge>
-              <Badge variant="outline" class="text-[10px] px-1.5 py-0">
-                <Icon :name="channelIcons[review.source]" class="size-3 mr-0.5" />
-                {{ channelLabels[review.source] }}
-              </Badge>
-            </div>
-            <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-              {{ review.guest_review_text || 'No written review' }}
-            </p>
+          <div class="flex items-center justify-between">
+            <Label class="text-sm font-medium">
+              {{ group.propertyName }}
+            </Label>
+            <Button
+              v-if="group.reviews.length > 0"
+              variant="ghost"
+              size="sm"
+              class="text-xs h-7"
+              @click="toggleAllForGroup(group)"
+            >
+              <Icon
+                :name="allSelectedForGroup(group) ? 'i-lucide-square' : 'i-lucide-check-square'"
+                class="size-3.5 mr-1.5"
+              />
+              {{ allSelectedForGroup(group) ? 'Deselect All' : 'Select All' }}
+            </Button>
           </div>
+
+          <div class="grid grid-cols-1 gap-2 @xl/main:grid-cols-2">
+            <div
+              v-for="review in group.reviews"
+              :key="review.id"
+              class="flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer hover:bg-muted/50"
+              :class="{ 'bg-muted/30 border-primary/30': selectedReviewIds.includes(review.id) }"
+              @click="toggleReview(review.id)"
+            >
+              <Checkbox
+                :checked="selectedReviewIds.includes(review.id)"
+                class="mt-0.5"
+                @update:checked="toggleReview(review.id)"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium">{{ review.guest_name }}</span>
+                  <Badge variant="secondary" class="text-[10px] px-1.5 py-0">
+                    {{ getDisplayScore(review.guest_rating_overall, review.source) }}/{{ getDisplayMax(review.source) }}
+                  </Badge>
+                  <Badge variant="outline" class="text-[10px] px-1.5 py-0">
+                    <Icon :name="channelIcons[review.source]" class="size-3 mr-0.5" />
+                    {{ channelLabels[review.source] }}
+                  </Badge>
+                </div>
+                <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                  {{ review.guest_review_text || 'No written review' }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p v-if="group.reviews.length === 0" class="text-xs text-muted-foreground">
+            No reviews for this property yet.
+          </p>
         </div>
       </div>
 

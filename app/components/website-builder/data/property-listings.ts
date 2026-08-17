@@ -7,6 +7,13 @@ export const propertyListingMap: Record<string, string[]> = {
   'prop-4': ['lst-5'], // Cliffside Uluwatu
 }
 
+export const propertyNames: Record<string, string> = {
+  'prop-1': 'Villa Sunset Bay',
+  'prop-2': 'Ubud Jungle Retreat',
+  'prop-3': 'Beachfront Canggu Villa',
+  'prop-4': 'Cliffside Uluwatu',
+}
+
 export function getListingsForProperty(propertyId: string | null): string[] {
   if (!propertyId)
     return []

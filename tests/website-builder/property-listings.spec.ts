@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { getListingsForProperties, getListingsForProperty, propertyListingMap } from '../../app/components/website-builder/data/property-listings'
 import type { Website } from '../../app/components/website-builder/data/websites'
+import { describe, expect, it } from 'vitest'
+import { getListingsForProperties, getListingsForProperty, propertyListingMap, propertyNames } from '../../app/components/website-builder/data/property-listings'
 
 describe('propertyListingMap', () => {
   it('maps every property id to at least one listing id', () => {
@@ -29,9 +29,15 @@ describe('propertyListingMap', () => {
   it('returns an empty array for no properties', () => {
     expect(getListingsForProperties([])).toEqual([])
   })
+
+  it('maps every property id to a display name', () => {
+    for (const id of Object.keys(propertyListingMap)) {
+      expect(propertyNames[id]).toBeTruthy()
+    }
+  })
 })
 
-describe('Website type', () => {
+describe('website type', () => {
   it('accepts reviewIds and manualReviews', () => {
     const site: Website = {
       id: 'x',
