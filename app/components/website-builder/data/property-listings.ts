@@ -8,6 +8,7 @@ export const propertyListingMap: Record<string, string[]> = {
 }
 
 export function getListingsForProperty(propertyId: string | null): string[] {
-  if (!propertyId) return []
+  if (!propertyId)
+    return []
   return propertyListingMap[propertyId] ?? []
 }
