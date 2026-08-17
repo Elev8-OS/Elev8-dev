@@ -2,6 +2,7 @@
 import type { ReviewRecord } from '~/components/review-hub/data/types'
 import type { ManualReview } from '~/components/website-builder/data/websites'
 import { toast } from 'vue-sonner'
+import { listings } from '~/components/listings/data/listings'
 import { channelIcons, channelLabels, getDisplayMax, getDisplayScore } from '~/components/review-hub/data/types'
 import { getListingsForProperties, propertyNames } from '~/components/website-builder/data/property-listings'
 import { useReviewHub } from '~/composables/useReviewHub'
@@ -153,16 +154,22 @@ function deselectAll() {
 }
 
 const manualDialogOpen = ref(false)
-const manualForm = ref({ guestName: '', rating: 8, text: '' })
+const manualForm = ref({ guestName: '', rating: 8, text: '', listingId: '' })
+
+// Listings available for manual reviews = those mapped to the selected properties
+const manualListingOptions = computed(() => {
+  const listingIds = getListingsForProperties(props.propertyIds)
+  return listings.value.filter(l => listingIds.includes(l.id))
+})
 
 function openManualDialog() {
-  manualForm.value = { guestName: '', rating: 8, text: '' }
+  manualForm.value = { guestName: '', rating: 8, text: '', listingId: manualListingOptions.value[0]?.id ?? '' }
   manualDialogOpen.value = true
 }
 
 function saveManualReview() {
-  if (!manualForm.value.guestName.trim() || !manualForm.value.text.trim()) {
-    toast.error('Guest name and review text are required')
+  if (!manualForm.value.guestName.trim() || !manualForm.value.text.trim() || !manualForm.value.listingId) {
+    toast.error('Guest name, listing and review text are required')
     return
   }
   const manual: ManualReview = {
@@ -171,11 +178,16 @@ function saveManualReview() {
     rating: manualForm.value.rating,
     text: manualForm.value.text.trim(),
     source: 'manual',
+    listingId: manualForm.value.listingId,
   }
   manualReviews.value.push(manual)
   emitUpdate()
   manualDialogOpen.value = false
   toast.success('Manual review added')
+}
+
+function listingName(listingId: string): string {
+  return listings.value.find(l => l.id === listingId)?.name ?? listingId
 }
 
 function removeManualReview(id: string) {
@@ -326,6 +338,7 @@ function handleBack() {
           {{ m.rating }}/10
         </Badge>
         <span class="font-medium">{{ m.guestName }}</span>
+        <span class="text-muted-foreground truncate max-w-[180px]">{{ listingName(m.listingId) }}</span>
         <Badge variant="outline" class="text-[9px] px-1 py-0">
           Manual
         </Badge>
@@ -509,7 +522,7 @@ function handleBack() {
           </p>
           <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
             <Icon name="i-lucide-user-pen" class="size-3" />
-            Manual
+            Manual · {{ listingName(m.listingId) }}
             <Badge
               v-if="featuredManualReviewIds.includes(m.id)"
               class="ml-auto text-[9px] px-1.5 py-0"
@@ -543,6 +556,19 @@ function handleBack() {
           <div class="space-y-2">
             <Label for="manual-guest">Guest Name</Label>
             <Input id="manual-guest" v-model="manualForm.guestName" placeholder="e.g. Maria Schmidt" />
+          </div>
+          <div class="space-y-2">
+            <Label for="manual-listing">Listing</Label>
+            <Select v-model="manualForm.listingId">
+              <SelectTrigger id="manual-listing" class="w-full">
+                <SelectValue placeholder="Select listing" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="l in manualListingOptions" :key="l.id" :value="l.id">
+                  {{ l.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
             <Label for="manual-rating">Rating</Label>

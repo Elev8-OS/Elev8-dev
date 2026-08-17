@@ -11,6 +11,7 @@ export interface ManualReview {
   rating: number
   text: string
   source: 'manual'
+  listingId: string
 }
 
 export interface Website {

@@ -50,7 +50,7 @@ describe('website type', () => {
       thumbnail: null,
       reviewIds: ['rr-001'],
       featuredReviewIds: ['rr-001'],
-      manualReviews: [{ id: 'm1', guestName: 'G', rating: 9, text: 'Great', source: 'manual' }],
+      manualReviews: [{ id: 'm1', guestName: 'G', rating: 9, text: 'Great', source: 'manual', listingId: 'lst-1' }],
       featuredManualReviewIds: ['m1'],
     }
     expect(site.reviewIds).toHaveLength(1)
