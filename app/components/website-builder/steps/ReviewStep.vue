@@ -40,6 +40,7 @@ watch(() => props.propertyIds, () => {
   selectedReviewIds.value = []
   featuredReviewIds.value = []
   manualReviews.value = []
+  resetVisibleCounts()
   emitUpdate()
 }, { deep: true })
 
@@ -193,6 +194,10 @@ const filteredGroups = computed(() => {
   return reviewGroups.value.filter(g => g.propertyId === activePropertyFilter.value)
 })
 
+watch(activePropertyFilter, () => {
+  resetVisibleCounts()
+})
+
 function toggleGroupCollapsed(propertyId: string) {
   const next = new Set(collapsedProperties.value)
   if (next.has(propertyId))
@@ -204,6 +209,27 @@ function toggleGroupCollapsed(propertyId: string) {
 function selectedCountFor(group: ReviewGroup): number {
   const ids = new Set(selectedReviewIds.value)
   return group.reviews.filter(r => ids.has(r.id)).length
+}
+
+// Per-group "show more" pagination (scale for many reviews)
+const GROUP_PAGE_SIZE = 8
+const visibleCounts = ref<Record<string, number>>({})
+
+function visibleReviewsFor(group: ReviewGroup): ReviewRecord[] {
+  const limit = visibleCounts.value[group.propertyId] ?? GROUP_PAGE_SIZE
+  return group.reviews.slice(0, limit)
+}
+
+function showMoreFor(group: ReviewGroup) {
+  const current = visibleCounts.value[group.propertyId] ?? GROUP_PAGE_SIZE
+  visibleCounts.value = {
+    ...visibleCounts.value,
+    [group.propertyId]: current + GROUP_PAGE_SIZE,
+  }
+}
+
+function resetVisibleCounts() {
+  visibleCounts.value = {}
 }
 
 function handleNext() {
@@ -335,7 +361,7 @@ function handleBack() {
         <!-- Group content (hidden when collapsed) -->
         <div v-show="!collapsedProperties.has(group.propertyId)" class="space-y-1.5 border-t px-3 py-2">
           <div
-            v-for="review in group.reviews"
+            v-for="review in visibleReviewsFor(group)"
             :key="review.id"
             class="flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors hover:bg-muted/50"
             :class="{ 'bg-muted/30 border-primary/30': selectedReviewIds.includes(review.id) }"
@@ -375,6 +401,17 @@ function handleBack() {
               Main Page
             </button>
           </div>
+
+          <!-- Show more / hidden count -->
+          <button
+            v-if="visibleReviewsFor(group).length < group.reviews.length"
+            type="button"
+            class="w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed py-1.5 text-xs text-muted-foreground hover:bg-muted/50"
+            @click="showMoreFor(group)"
+          >
+            <Icon name="i-lucide-chevron-down" class="size-3" />
+            Show {{ group.reviews.length - visibleReviewsFor(group).length }} more
+          </button>
 
           <p v-if="group.reviews.length === 0" class="text-xs text-muted-foreground py-1">
             No reviews for this property yet.
