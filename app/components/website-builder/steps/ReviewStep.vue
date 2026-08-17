@@ -10,6 +10,7 @@ export interface ReviewSelection {
   selectedReviewIds: string[]
   featuredReviewIds: string[]
   manualReviews: ManualReview[]
+  featuredManualReviewIds: string[]
 }
 
 const props = defineProps<{
@@ -28,18 +29,21 @@ const { reviewRecords } = useReviewHub()
 const selectedReviewIds = ref<string[]>([...props.modelValue.selectedReviewIds])
 const featuredReviewIds = ref<string[]>([...props.modelValue.featuredReviewIds])
 const manualReviews = ref<ManualReview[]>([...props.modelValue.manualReviews])
+const featuredManualReviewIds = ref<string[]>([...props.modelValue.featuredManualReviewIds])
 const minRating = ref(8)
 
 watch(() => props.modelValue, (val) => {
   selectedReviewIds.value = [...val.selectedReviewIds]
   featuredReviewIds.value = [...val.featuredReviewIds]
   manualReviews.value = [...val.manualReviews]
+  featuredManualReviewIds.value = [...val.featuredManualReviewIds]
 }, { deep: true })
 
 watch(() => props.propertyIds, () => {
   selectedReviewIds.value = []
   featuredReviewIds.value = []
   manualReviews.value = []
+  featuredManualReviewIds.value = []
   resetVisibleCounts()
   emitUpdate()
 }, { deep: true })
@@ -49,6 +53,7 @@ function emitUpdate() {
     selectedReviewIds: [...selectedReviewIds.value],
     featuredReviewIds: [...featuredReviewIds.value],
     manualReviews: [...manualReviews.value],
+    featuredManualReviewIds: [...featuredManualReviewIds.value],
   })
 }
 
@@ -175,11 +180,22 @@ function saveManualReview() {
 
 function removeManualReview(id: string) {
   manualReviews.value = manualReviews.value.filter(m => m.id !== id)
+  const fIdx = featuredManualReviewIds.value.indexOf(id)
+  if (fIdx !== -1)
+    featuredManualReviewIds.value.splice(fIdx, 1)
+  emitUpdate()
+}
+
+function toggleFeaturedManual(id: string) {
+  const idx = featuredManualReviewIds.value.indexOf(id)
+  if (idx === -1)
+    featuredManualReviewIds.value.push(id)
+  else featuredManualReviewIds.value.splice(idx, 1)
   emitUpdate()
 }
 
 const totalSelected = computed(() => selectedReviewIds.value.length + manualReviews.value.length)
-const featuredCount = computed(() => featuredReviewIds.value.length)
+const featuredCount = computed(() => featuredReviewIds.value.length + featuredManualReviewIds.value.length)
 const isValid = computed(() => totalSelected.value > 0)
 
 const previewOpen = ref(false)
@@ -313,6 +329,22 @@ function handleBack() {
         <Badge variant="outline" class="text-[9px] px-1 py-0">
           Manual
         </Badge>
+        <!-- Featured (main page) toggle for manual reviews -->
+        <button
+          type="button"
+          class="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+          :class="featuredManualReviewIds.includes(m.id)
+            ? 'bg-primary text-primary-foreground border-primary'
+            : 'text-muted-foreground hover:bg-muted/50'"
+          :title="featuredManualReviewIds.includes(m.id) ? 'Shown on main page' : 'Click to feature on main page'"
+          @click="toggleFeaturedManual(m.id)"
+        >
+          <Icon
+            :name="featuredManualReviewIds.includes(m.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+            class="size-3"
+          />
+          Main Page
+        </button>
         <Button variant="ghost" size="icon-sm" class="size-5" @click="removeManualReview(m.id)">
           <Icon name="i-lucide-x" class="size-3" />
         </Button>
@@ -478,6 +510,13 @@ function handleBack() {
           <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
             <Icon name="i-lucide-user-pen" class="size-3" />
             Manual
+            <Badge
+              v-if="featuredManualReviewIds.includes(m.id)"
+              class="ml-auto text-[9px] px-1.5 py-0"
+            >
+              <Icon name="i-lucide-star" class="size-2.5 mr-0.5" />
+              Main Page
+            </Badge>
           </div>
         </div>
       </div>

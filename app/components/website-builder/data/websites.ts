@@ -25,6 +25,7 @@ export interface Website {
   reviewIds?: string[]
   featuredReviewIds?: string[]
   manualReviews?: ManualReview[]
+  featuredManualReviewIds?: string[]
 }
 
 export const websites = ref<Website[]>([

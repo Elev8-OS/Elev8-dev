@@ -155,6 +155,7 @@ function persistWebsite(status: Website['status'], message: string) {
           reviewIds: props.reviews.selectedReviewIds,
           featuredReviewIds: props.reviews.featuredReviewIds,
           manualReviews: props.reviews.manualReviews,
+          featuredManualReviewIds: props.reviews.featuredManualReviewIds,
         }
       }
     }
@@ -171,6 +172,7 @@ function persistWebsite(status: Website['status'], message: string) {
         reviewIds: props.reviews.selectedReviewIds,
         featuredReviewIds: props.reviews.featuredReviewIds,
         manualReviews: props.reviews.manualReviews,
+        featuredManualReviewIds: props.reviews.featuredManualReviewIds,
       })
     }
     toast.success(message)
@@ -417,9 +419,9 @@ function handleBack() {
           <span class="font-medium">{{ reviews.selectedReviewIds.length + reviews.manualReviews.length }}</span>
           <span class="text-muted-foreground">review{{ reviews.selectedReviewIds.length + reviews.manualReviews.length !== 1 ? 's' : '' }} selected</span>
         </div>
-        <div v-if="reviews.featuredReviewIds.length > 0" class="flex items-center gap-2 text-sm">
+        <div v-if="reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length > 0" class="flex items-center gap-2 text-sm">
           <Icon name="i-lucide-star" class="size-4 text-primary" />
-          <span class="font-medium">{{ reviews.featuredReviewIds.length }}</span>
+          <span class="font-medium">{{ reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length }}</span>
           <span class="text-muted-foreground">featured on main page</span>
         </div>
         <div v-if="reviews.manualReviews.length > 0" class="flex flex-wrap gap-2">

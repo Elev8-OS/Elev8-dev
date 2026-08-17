@@ -40,6 +40,7 @@ const reviewSelection = ref<ReviewSelection>({
   selectedReviewIds: [],
   featuredReviewIds: [],
   manualReviews: [],
+  featuredManualReviewIds: [],
 })
 
 // ── Edit mode: prefill from existing website ─────────────────────
@@ -70,6 +71,7 @@ if (import.meta.client && editingWebsite.value) {
     selectedReviewIds: site.reviewIds ?? [],
     featuredReviewIds: site.featuredReviewIds ?? [],
     manualReviews: site.manualReviews ?? [],
+    featuredManualReviewIds: site.featuredManualReviewIds ?? [],
   }
   currentStep.value = 1
 }
