@@ -1,6 +1,6 @@
 <script setup lang="ts">
 export interface PropertySelection {
-  propertyId: string | null
+  propertyIds: string[]
   roomIds: string[]
 }
 
@@ -33,17 +33,17 @@ const emit = defineEmits<{
   'back': []
 }>()
 
-const selectedPropertyId = ref<string | null>(props.modelValue.propertyId)
+const selectedPropertyIds = ref<string[]>([...props.modelValue.propertyIds])
 const selectedRoomIds = ref<string[]>([...props.modelValue.roomIds])
 
 watch(() => props.modelValue, (val) => {
-  selectedPropertyId.value = val.propertyId
+  selectedPropertyIds.value = [...val.propertyIds]
   selectedRoomIds.value = [...val.roomIds]
 }, { deep: true })
 
 function emitUpdate() {
   emit('update:modelValue', {
-    propertyId: selectedPropertyId.value,
+    propertyIds: [...selectedPropertyIds.value],
     roomIds: [...selectedRoomIds.value],
   })
 }
@@ -132,28 +132,21 @@ const properties: Property[] = [
 ]
 
 // ── Computed ─────────────────────────────────────────────────────
-const selectedProperty = computed(() =>
-  properties.find(p => p.id === selectedPropertyId.value) ?? null,
-)
-
-const allRoomIds = computed(() =>
-  selectedProperty.value?.rooms.map(r => r.id) ?? [],
-)
-
-const allSelected = computed(() =>
-  allRoomIds.value.length > 0 && allRoomIds.value.every(id => selectedRoomIds.value.includes(id)),
+const selectedProperties = computed(() =>
+  properties.filter(p => selectedPropertyIds.value.includes(p.id)),
 )
 
 const totalPhotos = computed(() => {
-  if (!selectedProperty.value)
+  if (selectedProperties.value.length === 0)
     return 0
-  return selectedProperty.value.rooms
+  return selectedProperties.value
+    .flatMap(p => p.rooms)
     .filter(r => selectedRoomIds.value.includes(r.id))
     .reduce((sum, r) => sum + r.photos.length, 0)
 })
 
 const isValid = computed(() =>
-  selectedPropertyId.value !== null && selectedRoomIds.value.length > 0,
+  selectedPropertyIds.value.length > 0 && selectedRoomIds.value.length > 0,
 )
 
 // ── Room type helpers ────────────────────────────────────────────
@@ -166,9 +159,40 @@ const roomTypeConfig: Record<Room['type'], { label: string, variant: 'default' |
 }
 
 // ── Actions ──────────────────────────────────────────────────────
-function selectProperty(property: Property) {
-  selectedPropertyId.value = property.id
-  selectedRoomIds.value = property.rooms.map(r => r.id)
+function toggleProperty(property: Property) {
+  const idx = selectedPropertyIds.value.indexOf(property.id)
+  if (idx === -1) {
+    selectedPropertyIds.value.push(property.id)
+    // Auto-select all rooms of newly added property
+    selectedRoomIds.value.push(...property.rooms.map(r => r.id))
+  }
+  else {
+    selectedPropertyIds.value.splice(idx, 1)
+    // Remove rooms that belong to the deselected property
+    const roomIdsToRemove = new Set(property.rooms.map(r => r.id))
+    selectedRoomIds.value = selectedRoomIds.value.filter(id => !roomIdsToRemove.has(id))
+  }
+  emitUpdate()
+}
+
+function allRoomsSelectedFor(property: Property): boolean {
+  return property.rooms.length > 0 && property.rooms.every(r => selectedRoomIds.value.includes(r.id))
+}
+
+function toggleAllRoomsFor(property: Property) {
+  const propertyRoomIds = property.rooms.map(r => r.id)
+  const allSelected = allRoomsSelectedFor(property)
+  if (allSelected) {
+    const removeSet = new Set(propertyRoomIds)
+    selectedRoomIds.value = selectedRoomIds.value.filter(id => !removeSet.has(id))
+  }
+  else {
+    const currentSet = new Set(selectedRoomIds.value)
+    for (const id of propertyRoomIds) {
+      if (!currentSet.has(id))
+        selectedRoomIds.value.push(id)
+    }
+  }
   emitUpdate()
 }
 
@@ -180,16 +204,6 @@ function toggleRoom(roomId: string) {
   else {
     selectedRoomIds.value.splice(idx, 1)
   }
-  emitUpdate()
-}
-
-function selectAllRooms() {
-  selectedRoomIds.value = [...allRoomIds.value]
-  emitUpdate()
-}
-
-function deselectAllRooms() {
-  selectedRoomIds.value = []
   emitUpdate()
 }
 
@@ -217,16 +231,16 @@ function handleBack() {
 
     <!-- Property Selector -->
     <div>
-      <Label class="text-sm font-medium mb-3 block">Select Property</Label>
+      <Label class="text-sm font-medium mb-3 block">Select Properties</Label>
       <div class="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
         <div
           v-for="property in properties"
           :key="property.id"
           class="group cursor-pointer rounded-lg border bg-card transition-all hover:shadow-md"
           :class="{
-            'ring-2 ring-primary border-primary': selectedPropertyId === property.id,
+            'ring-2 ring-primary border-primary': selectedPropertyIds.includes(property.id),
           }"
-          @click="selectProperty(property)"
+          @click="toggleProperty(property)"
         >
           <!-- Property Image -->
           <div class="relative aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
@@ -247,7 +261,7 @@ function handleBack() {
             </div>
             <!-- Selected indicator -->
             <div
-              v-if="selectedPropertyId === property.id"
+              v-if="selectedPropertyIds.includes(property.id)"
               class="absolute top-3 right-3 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground"
             >
               <Icon name="i-lucide-check" class="size-3.5" />
@@ -292,59 +306,67 @@ function handleBack() {
       </div>
     </div>
 
-    <!-- Room Selector (shown when property is selected) -->
-    <div v-if="selectedProperty" class="space-y-3">
-      <div class="flex items-center justify-between">
-        <Label class="text-sm font-medium">Select Rooms to Include</Label>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="text-xs h-7"
-          @click="allSelected ? deselectAllRooms() : selectAllRooms()"
-        >
-          <Icon
-            :name="allSelected ? 'i-lucide-square' : 'i-lucide-check-square'"
-            class="size-3.5 mr-1.5"
-          />
-          {{ allSelected ? 'Deselect All' : 'Select All' }}
-        </Button>
-      </div>
+    <!-- Room Selector (per selected property) -->
+    <div v-if="selectedProperties.length > 0" class="space-y-4">
+      <div
+        v-for="property in selectedProperties"
+        :key="property.id"
+        class="space-y-3"
+      >
+        <div class="flex items-center justify-between">
+          <Label class="text-sm font-medium">
+            {{ property.title }} — Rooms
+          </Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="text-xs h-7"
+            @click="toggleAllRoomsFor(property)"
+          >
+            <Icon
+              :name="allRoomsSelectedFor(property) ? 'i-lucide-square' : 'i-lucide-check-square'"
+              class="size-3.5 mr-1.5"
+            />
+            {{ allRoomsSelectedFor(property) ? 'Deselect All' : 'Select All' }}
+          </Button>
+        </div>
 
-      <div class="grid grid-cols-1 gap-2 @xl/main:grid-cols-2">
-        <div
-          v-for="room in selectedProperty.rooms"
-          :key="room.id"
-          class="flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer hover:bg-muted/50"
-          :class="{
-            'bg-muted/30 border-primary/30': selectedRoomIds.includes(room.id),
-          }"
-          @click="toggleRoom(room.id)"
-        >
-          <Checkbox
-            :checked="selectedRoomIds.includes(room.id)"
-            class="mt-0.5"
-            @update:checked="toggleRoom(room.id)"
-          />
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">{{ room.name }}</span>
-              <Badge :variant="roomTypeConfig[room.type].variant" class="text-[10px] px-1.5 py-0">
-                <Icon :name="roomTypeConfig[room.type].icon" class="size-3 mr-0.5" />
-                {{ roomTypeConfig[room.type].label }}
-              </Badge>
-            </div>
-            <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-              {{ room.description }}
-            </p>
-            <div class="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-              <span class="flex items-center gap-1">
-                <Icon name="i-lucide-image" class="size-3" />
-                {{ room.photos.length }} photo{{ room.photos.length !== 1 ? 's' : '' }}
-              </span>
-              <span class="flex items-center gap-1">
-                <Icon name="i-lucide-list" class="size-3" />
-                {{ room.amenities.length }} amenities
-              </span>
+        <div class="grid grid-cols-1 gap-2 @xl/main:grid-cols-2">
+          <div
+            v-for="room in property.rooms"
+            :key="room.id"
+            class="flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer hover:bg-muted/50"
+            :class="{
+              'bg-muted/30 border-primary/30': selectedRoomIds.includes(room.id),
+            }"
+            @click="toggleRoom(room.id)"
+          >
+            <Checkbox
+              :checked="selectedRoomIds.includes(room.id)"
+              class="mt-0.5"
+              @update:checked="toggleRoom(room.id)"
+            />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">{{ room.name }}</span>
+                <Badge :variant="roomTypeConfig[room.type].variant" class="text-[10px] px-1.5 py-0">
+                  <Icon :name="roomTypeConfig[room.type].icon" class="size-3 mr-0.5" />
+                  {{ roomTypeConfig[room.type].label }}
+                </Badge>
+              </div>
+              <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                {{ room.description }}
+              </p>
+              <div class="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                <span class="flex items-center gap-1">
+                  <Icon name="i-lucide-image" class="size-3" />
+                  {{ room.photos.length }} photo{{ room.photos.length !== 1 ? 's' : '' }}
+                </span>
+                <span class="flex items-center gap-1">
+                  <Icon name="i-lucide-list" class="size-3" />
+                  {{ room.amenities.length }} amenities
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -353,7 +375,7 @@ function handleBack() {
 
     <!-- Data Preview Summary -->
     <div
-      v-if="selectedProperty"
+      v-if="selectedProperties.length > 0"
       class="rounded-lg border bg-muted/30 p-4"
     >
       <div class="flex items-center gap-2 mb-2">
@@ -362,12 +384,12 @@ function handleBack() {
       </div>
       <div class="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div class="flex items-center gap-2">
-          <span class="text-muted-foreground">Property:</span>
-          <span class="font-medium">{{ selectedProperty.title }}</span>
+          <span class="text-muted-foreground">Properties:</span>
+          <span class="font-medium">{{ selectedProperties.length }}</span>
         </div>
         <div class="flex items-center gap-2">
           <span class="text-muted-foreground">Rooms:</span>
-          <span class="font-medium">{{ selectedRoomIds.length }} of {{ allRoomIds.length }}</span>
+          <span class="font-medium">{{ selectedRoomIds.length }} selected</span>
         </div>
         <div class="flex items-center gap-2">
           <span class="text-muted-foreground">Photos to pull:</span>

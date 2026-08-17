@@ -111,15 +111,13 @@ const allProperties: Property[] = [
 ]
 
 // ── Computed ─────────────────────────────────────────────────────
-const selectedProperty = computed(() =>
-  allProperties.find(p => p.id === props.property.propertyId) ?? null,
+const selectedProperties = computed(() =>
+  allProperties.filter(p => props.property.propertyIds.includes(p.id)),
 )
 
-const selectedRooms = computed(() => {
-  if (!selectedProperty.value)
-    return []
-  return selectedProperty.value.rooms.filter(r => props.property.roomIds.includes(r.id))
-})
+const selectedRooms = computed(() =>
+  selectedProperties.value.flatMap(p => p.rooms).filter(r => props.property.roomIds.includes(r.id)),
+)
 
 const totalPhotos = computed(() =>
   selectedRooms.value.reduce((sum, r) => sum + r.photos.length, 0),
@@ -344,15 +342,15 @@ function handleBack() {
       </CardHeader>
       <CardContent class="space-y-4">
         <!-- Property Info -->
-        <div v-if="selectedProperty">
+        <div v-if="selectedProperties.length > 0">
           <div class="flex items-center gap-2 mb-3">
             <Icon name="i-lucide-home" class="size-4 text-muted-foreground" />
             <div>
               <p class="text-sm font-medium">
-                {{ selectedProperty.title }}
+                {{ selectedProperties.length }} propert{{ selectedProperties.length !== 1 ? 'ies' : 'y' }} selected
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ selectedProperty.location }}
+                {{ selectedProperties.map(p => p.title).join(', ') }}
               </p>
             </div>
           </div>

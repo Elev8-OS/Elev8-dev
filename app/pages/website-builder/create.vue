@@ -33,7 +33,7 @@ const websiteSettings = ref<WebsiteSettings>({
   useDefaultFavicon: false,
 })
 const propertySelection = ref<PropertySelection>({
-  propertyId: null,
+  propertyIds: [],
   roomIds: [],
 })
 const reviewSelection = ref<ReviewSelection>({
@@ -83,7 +83,7 @@ function goNext() {
   else if (currentStep.value === 1 && websiteSettings.value.name && websiteSettings.value.domain) {
     currentStep.value = 2
   }
-  else if (currentStep.value === 2 && propertySelection.value.propertyId && propertySelection.value.roomIds.length > 0) {
+  else if (currentStep.value === 2 && propertySelection.value.propertyIds.length > 0 && propertySelection.value.roomIds.length > 0) {
     currentStep.value = 3
   }
   else if (currentStep.value === 3 && (reviewSelection.value.selectedReviewIds.length > 0 || reviewSelection.value.manualReviews.length > 0)) {
@@ -178,7 +178,7 @@ function goBack() {
       <WebsiteBuilderStepsReviewStep
         v-else-if="currentStep === 3"
         v-model="reviewSelection"
-        :property-id="propertySelection.propertyId"
+        :property-ids="propertySelection.propertyIds"
         @next="goNext"
         @back="goBack"
       />

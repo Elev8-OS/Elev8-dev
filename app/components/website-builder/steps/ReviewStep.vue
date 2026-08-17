@@ -3,7 +3,7 @@ import type { ReviewRecord } from '~/components/review-hub/data/types'
 import type { ManualReview } from '~/components/website-builder/data/websites'
 import { toast } from 'vue-sonner'
 import { channelIcons, channelLabels, getDisplayMax, getDisplayScore } from '~/components/review-hub/data/types'
-import { getListingsForProperty } from '~/components/website-builder/data/property-listings'
+import { getListingsForProperties } from '~/components/website-builder/data/property-listings'
 import { useReviewHub } from '~/composables/useReviewHub'
 
 export interface ReviewSelection {
@@ -13,7 +13,7 @@ export interface ReviewSelection {
 
 const props = defineProps<{
   modelValue: ReviewSelection
-  propertyId: string | null
+  propertyIds: string[]
 }>()
 
 const emit = defineEmits<{
@@ -33,11 +33,11 @@ watch(() => props.modelValue, (val) => {
   manualReviews.value = [...val.manualReviews]
 }, { deep: true })
 
-watch(() => props.propertyId, () => {
+watch(() => props.propertyIds, () => {
   selectedReviewIds.value = []
   manualReviews.value = []
   emitUpdate()
-})
+}, { deep: true })
 
 function emitUpdate() {
   emit('update:modelValue', {
@@ -49,7 +49,7 @@ function emitUpdate() {
 const ratingOptions = [10, 9, 8, 7, 6]
 
 const candidateReviews = computed<ReviewRecord[]>(() => {
-  const listingIds = getListingsForProperty(props.propertyId)
+  const listingIds = getListingsForProperties(props.propertyIds)
   if (listingIds.length === 0)
     return []
   return reviewRecords.value.filter(r =>

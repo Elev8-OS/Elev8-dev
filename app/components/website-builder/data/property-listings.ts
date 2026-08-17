@@ -12,3 +12,13 @@ export function getListingsForProperty(propertyId: string | null): string[] {
     return []
   return propertyListingMap[propertyId] ?? []
 }
+
+export function getListingsForProperties(propertyIds: string[]): string[] {
+  const seen = new Set<string>()
+  for (const id of propertyIds) {
+    for (const listingId of propertyListingMap[id] ?? []) {
+      seen.add(listingId)
+    }
+  }
+  return [...seen]
+}

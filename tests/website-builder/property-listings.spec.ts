@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getListingsForProperty, propertyListingMap } from '../../app/components/website-builder/data/property-listings'
+import { getListingsForProperties, getListingsForProperty, propertyListingMap } from '../../app/components/website-builder/data/property-listings'
 import type { Website } from '../../app/components/website-builder/data/websites'
 
 describe('propertyListingMap', () => {
@@ -16,6 +16,18 @@ describe('propertyListingMap', () => {
 
   it('returns an empty array for an unknown property', () => {
     expect(getListingsForProperty('unknown')).toEqual([])
+  })
+
+  it('returns the union of listings for multiple properties', () => {
+    expect(getListingsForProperties(['prop-1', 'prop-2'])).toEqual(['lst-1', 'lst-5', 'lst-12'])
+  })
+
+  it('deduplicates listings shared across properties', () => {
+    expect(getListingsForProperties(['prop-1', 'prop-3'])).toEqual(['lst-1', 'lst-5', 'lst-12'])
+  })
+
+  it('returns an empty array for no properties', () => {
+    expect(getListingsForProperties([])).toEqual([])
   })
 })
 
