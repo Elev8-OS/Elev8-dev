@@ -183,15 +183,25 @@ export function useOwners() {
 
     owners.value = [...owners.value, newOwner]
 
-    const newRules: CommissionRule[] = input.mappings.map(() => ({
-      id: generateRuleId(),
-      ownerId,
-      name: 'Custom management rule',
-      type: 'flat' as const,
-      rate: 0,
-      listingId: '',
-      effectiveFrom: new Date().toISOString().slice(0, 10),
-    } satisfies CommissionRule))
+    const newRules: CommissionRule[] = input.mappings.map((draft, index) => {
+      const configured = input.commissionRules[index]
+      if (!configured) {
+        return {
+          id: generateRuleId(),
+          ownerId,
+          name: 'Custom management rule',
+          type: 'flat' as const,
+          rate: 0,
+          listingId: draft.listingId,
+          effectiveFrom: new Date().toISOString().slice(0, 10),
+        } satisfies CommissionRule
+      }
+      return {
+        ...configured,
+        id: generateRuleId(),
+        ownerId,
+      } satisfies CommissionRule
+    })
     if (newRules.length > 0)
       commissionRules.value = [...commissionRules.value, ...newRules]
 

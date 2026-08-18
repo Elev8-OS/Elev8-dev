@@ -123,12 +123,23 @@ function patchMapping(index: number, partial: Partial<OwnerMappingDraft['mapping
     return
   let mappingPatch = partial
   // When the listing changes, auto-fill the remaining share for the newly
-  // selected scope. A fully allocated scope falls back to 0.
-  if (partial.listingId !== undefined && partial.listingId !== cur.mapping.listingId) {
-    const share = remainingShare(existingMappings.value, props.mappings, partial.listingId, cur.mapping.unitId, index)
-    mappingPatch = {
-      ...partial,
-      ownershipPercentage: share ?? 0,
+  // selected scope. A fully allocated scope falls back to 0. Clearing the
+  // listing (empty string) resets the share to 0.
+  const listingChanged = partial.listingId !== undefined && partial.listingId !== cur.mapping.listingId
+  if (listingChanged) {
+    if (partial.listingId === '') {
+      mappingPatch = {
+        ...partial,
+        ownershipPercentage: 0,
+      }
+    }
+    else {
+      const nextListingId = partial.listingId as string
+      const share = remainingShare(existingMappings.value, props.mappings, nextListingId, cur.mapping.unitId, index)
+      mappingPatch = {
+        ...partial,
+        ownershipPercentage: share ?? 0,
+      }
     }
   }
   const merged: OwnerMappingDraft = {
@@ -178,20 +189,30 @@ function selectListing(index: number, names: string[]) {
     patchMapping(index, { listingId })
 }
 
-// Aggregate ownership per (listingId, unitId) scope across the local draft.
+// Aggregate ownership per (listingId, unitId) scope across the local draft
+// PLUS the ownership already stored by other owners on the same scope.
 // Returns null when no scope exceeds 100%.
-const cumulativeOverflow = computed<{ scope: string, total: number } | null>(() => {
-  const totals = new Map<string, number>()
+const cumulativeOverflow = computed<{ scope: string, total: number, existing: number, draft: number } | null>(() => {
+  const draftTotals = new Map<string, number>()
   for (const m of props.mappings) {
     const key = `${m.mapping.listingId}::${m.mapping.unitId ?? ''}`
-    totals.set(key, (totals.get(key) ?? 0) + (m.mapping.ownershipPercentage ?? 0))
+    draftTotals.set(key, (draftTotals.get(key) ?? 0) + (m.mapping.ownershipPercentage ?? 0))
   }
-  for (const [key, total] of totals) {
+  for (const [key, draftTotal] of draftTotals) {
+    const [listingId, unitId] = key.split('::') as [string, string]
+    if (!listingId)
+      continue
+    const existingTotal = existingMappings.value
+      .filter(m => m.listingId === listingId && (m.unitId ?? '') === unitId)
+      .reduce((sum, m) => sum + m.ownershipPercentage, 0)
+    const total = existingTotal + draftTotal
     if (total > 100) {
-      const [listingId, unitId] = key.split('::')
+      const listingName = listingNameById(listingId) ?? listingId
       return {
-        scope: unitId ? `listing ${listingId} unit ${unitId}` : `listing ${listingId}`,
+        scope: unitId ? `listing ${listingName} unit ${unitId}` : `listing ${listingName}`,
         total,
+        existing: existingTotal,
+        draft: draftTotal,
       }
     }
   }
@@ -228,8 +249,10 @@ const cumulativeOverflow = computed<{ scope: string, total: number } | null>(() 
           Ownership exceeds 100%
         </AlertTitle>
         <AlertDescription>
-          {{ cumulativeOverflow.scope }} would total {{ cumulativeOverflow.total }}% across the
-          current draft. Reduce one or more ownership percentages to continue.
+          {{ cumulativeOverflow.scope }} would total {{ cumulativeOverflow.total }}%
+          ({{ cumulativeOverflow.existing }}% already held by existing owners
+          + {{ cumulativeOverflow.draft }}% for this owner).
+          Reduce one or more ownership percentages to continue.
         </AlertDescription>
       </Alert>
 

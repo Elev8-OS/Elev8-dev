@@ -163,6 +163,87 @@ describe('useOwners', () => {
       const ownerRules = commissionRules.value.filter(r => r.ownerId === result.ownerId)
       expect(ownerRules).toHaveLength(1)
       expect(ownerRules[0].type).toBe('flat')
+      expect(ownerRules[0].rate).toBe(18)
+      expect(ownerRules[0].listingId).toBe('lst-5')
+      expect(ownerRules[0].name).toBe('Standard 18% management')
+    })
+
+    it('persists tiered and hybrid commission rules with their full shape', () => {
+      const { createOwner, commissionRules } = useOwners()
+      const result = createOwner({
+        owner: {
+          name: 'Tier Hybrid',
+          email: 'tier.hybrid@example.com',
+          phone: '+6281234567301',
+          language: 'en',
+          statementCurrency: 'USD',
+          annualOwnerUseNightCap: undefined,
+        },
+        mappings: [
+          { listingId: 'lst-5', ownershipPercentage: 50, commissionRuleId: 'cr-x', effectiveFrom: '2026-08-01' },
+          { listingId: 'lst-6', ownershipPercentage: 50, commissionRuleId: 'cr-y', effectiveFrom: '2026-08-01' },
+        ],
+        commissionRules: [
+          {
+            type: 'tiered',
+            tiers: [
+              { upTo: 50_000_000, rate: 18 },
+              { upTo: null, rate: 22 },
+            ],
+            listingId: 'lst-5',
+            name: 'Tiered — 18% / 22%',
+            effectiveFrom: '2026-08-01',
+          },
+          {
+            type: 'hybrid',
+            fixedAmount: 250,
+            rate: 15,
+            listingId: 'lst-6',
+            name: 'Hybrid — 250 USD + 15%',
+            effectiveFrom: '2026-08-01',
+          },
+        ],
+        permissions: buildOwnerPermissionTemplate('financial_summary', 'placeholder', new Date().toISOString()),
+        inviteNow: false,
+      })
+      expect(result.success).toBe(true)
+      const ownerRules = commissionRules.value.filter(r => r.ownerId === result.ownerId)
+      expect(ownerRules).toHaveLength(2)
+      const tiered = ownerRules.find(r => r.type === 'tiered')
+      expect(tiered).toBeTruthy()
+      expect((tiered as { tiers: Array<{ upTo: number | null, rate: number }> }).tiers).toEqual([
+        { upTo: 50_000_000, rate: 18 },
+        { upTo: null, rate: 22 },
+      ])
+      const hybrid = ownerRules.find(r => r.type === 'hybrid')
+      expect(hybrid).toBeTruthy()
+      expect((hybrid as { fixedAmount: number, rate: number }).fixedAmount).toBe(250)
+      expect((hybrid as { fixedAmount: number, rate: number }).rate).toBe(15)
+    })
+
+    it('defaults to a placeholder rule when a mapping has no matching commission rule', () => {
+      const { createOwner, commissionRules } = useOwners()
+      const result = createOwner({
+        owner: {
+          name: 'No Rule',
+          email: 'no.rule@example.com',
+          phone: '+6281234567302',
+          language: 'en',
+          statementCurrency: 'IDR',
+          annualOwnerUseNightCap: undefined,
+        },
+        mappings: [
+          { listingId: 'lst-5', ownershipPercentage: 100, commissionRuleId: 'cr-x', effectiveFrom: '2026-08-01' },
+        ],
+        commissionRules: [],
+        permissions: buildOwnerPermissionTemplate('financial_summary', 'placeholder', new Date().toISOString()),
+        inviteNow: false,
+      })
+      expect(result.success).toBe(true)
+      const ownerRules = commissionRules.value.filter(r => r.ownerId === result.ownerId)
+      expect(ownerRules).toHaveLength(1)
+      // Fallback keeps the mapping's listingId so the detail sheet can match them.
+      expect(ownerRules[0].listingId).toBe('lst-5')
     })
 
     it('rejects a batch that cumulatively exceeds 100% on the same (listingId, unitId) scope', () => {

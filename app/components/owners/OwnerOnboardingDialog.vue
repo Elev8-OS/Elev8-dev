@@ -156,6 +156,9 @@ function validateStep2(): boolean {
   if (draft.value.mappings.length === 0) {
     e.mappings = 'Add at least one property mapping.'
   }
+  else if (draft.value.mappings.some(m => !m.mapping.listingId)) {
+    e.mappings = 'Select a property for every mapping.'
+  }
   else if (!cumulativeOwnershipByScope.value.valid) {
     e.mappings = 'Cumulative ownership above 100% on a single scope.'
   }

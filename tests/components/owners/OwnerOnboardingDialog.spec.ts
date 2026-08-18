@@ -85,6 +85,19 @@ async function pickProperty(triggerText: string, optionText: string) {
   await tick()
 }
 
+/**
+ * Advance through step 1 (basics) and step 2 (assignments), picking the
+ * given property in step 2 so the new listingId guard passes.
+ */
+async function goToStep3(name: string, email: string) {
+  await setBasics(name, email)
+  await clickButtonByText('Next')
+  await tick()
+  await pickProperty('Select property', 'Apartments Pool')
+  await clickButtonByText('Next')
+  await tick()
+}
+
 describe('ownerOnboardingDialog', () => {
   beforeEach(() => {
     useOwners()
@@ -193,11 +206,7 @@ describe('ownerOnboardingDialog', () => {
     mountDialog()
     await tick()
 
-    await setBasics('Template Test', 'template.test@example.com')
-    await clickButtonByText('Next')
-    await tick()
-    await clickButtonByText('Next')
-    await tick()
+    await goToStep3('Template Test', 'template.test@example.com')
 
     const body = document.body.textContent ?? ''
     expect(body).toMatch(/permissions/i)
@@ -209,11 +218,7 @@ describe('ownerOnboardingDialog', () => {
     mountDialog()
     await tick()
 
-    await setBasics('Custom Test', 'custom.test@example.com')
-    await clickButtonByText('Next')
-    await tick()
-    await clickButtonByText('Next')
-    await tick()
+    await goToStep3('Custom Test', 'custom.test@example.com')
 
     const ok = await clickButtonByText(/customize/i)
     expect(ok).toBe(true)
@@ -225,11 +230,7 @@ describe('ownerOnboardingDialog', () => {
     mountDialog()
     await tick()
 
-    await setBasics('Invite Now', 'invite.now@example.com')
-    await clickButtonByText('Next')
-    await tick()
-    await clickButtonByText('Next')
-    await tick()
+    await goToStep3('Invite Now', 'invite.now@example.com')
 
     // Toggle invite-now switch.
     const switches = Array.from(document.body.querySelectorAll('[role="switch"]')) as HTMLElement[]
@@ -361,5 +362,48 @@ describe('ownerOnboardingDialog', () => {
     const rebalanced = rebalanceSiblings(existing, rows, 1, 50)
     expect(rebalanced[0]!.mapping.ownershipPercentage).toBe(50)
     expect(rebalanced[1]!.mapping.ownershipPercentage).toBe(50)
+  })
+
+  it('step 2: a mapping without a selected property blocks Next', async () => {
+    mountDialog()
+    await tick()
+
+    await setBasics('No Property', 'no.property@example.com')
+    await clickButtonByText('Next')
+    await tick()
+
+    // Default draft row has no property selected — this must block advancing.
+    await clickButtonByText('Next')
+
+    const body = document.body.textContent ?? ''
+    expect(body).toMatch(/select a property/i)
+  })
+
+  it('step 2: clearing a selected property resets ownership to 0', async () => {
+    mountDialog()
+    await tick()
+
+    await setBasics('Clear Prop', 'clear.prop@example.com')
+    await clickButtonByText('Next')
+    await tick()
+
+    // Pick Apartments Pool (lst-2) — free scope, auto-fills 100%.
+    await pickProperty('Select property', 'Apartments Pool')
+    const ownershipInputs = Array.from(document.body.querySelectorAll('input[type="number"]')) as HTMLInputElement[]
+    const filtered = ownershipInputs.filter(i => i.id.startsWith('ownership-'))
+    expect(filtered[0]?.value).toBe('100')
+
+    // Clear the selection via the picker footer "Clear" button.
+    const clearBtn = Array.from(document.body.querySelectorAll('button'))
+      .find(b => b.textContent?.trim() === 'Clear') as HTMLButtonElement | null
+    expect(clearBtn).toBeTruthy()
+    clearBtn!.click()
+    await tick()
+    await tick()
+
+    // Ownership must reset to 0, not jump to 100.
+    const afterInputs = Array.from(document.body.querySelectorAll('input[type="number"]')) as HTMLInputElement[]
+    const afterFiltered = afterInputs.filter(i => i.id.startsWith('ownership-'))
+    expect(afterFiltered[0]?.value).toBe('0')
   })
 })
