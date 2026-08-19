@@ -101,6 +101,17 @@ export function useReservationsModule() {
     reservations.value = reservations.value.map(r =>
       r.id === id ? { ...r, status } : r,
     )
+    // When a stay is checked in, feed any connected government registration
+    // provider (APOA / AVS) so guest reports become due automatically.
+    if (status === 'checked_in') {
+      const updated = reservations.value.find(r => r.id === id)
+      if (updated) {
+        try {
+          useGuestRegistration().syncForReservation(updated)
+        }
+        catch { /* provider may be unavailable during SSR */ }
+      }
+    }
   }
 
   function updateReservation(id: string, patch: Partial<ReservationEntry>) {

@@ -88,6 +88,14 @@ export function useNotifications() {
   }
   function createGuestActivityAlert(type: 'GUEST_CHECKED_IN' | 'GUEST_CHECKED_OUT' | 'GUEST_ARRIVAL_SOON', context: Record<string, any>) { createAlert(type, 'INFO', context) }
   function createEmailReplyAlert(context: Record<string, any>) { createAlert('EMAIL_REPLY_RECEIVED', 'INFO', context) }
+  function createGuestRegistrationAlert(type: 'GUEST_REGISTRATION_DUE' | 'GUEST_REGISTRATION_OVERDUE' | 'GUEST_REGISTRATION_SUBMITTED' | 'GUEST_REGISTRATION_FAILED', context: Record<string, any>) {
+    let severity: AlertSeverity = 'INFO'
+    if (type === 'GUEST_REGISTRATION_OVERDUE')
+      severity = 'CRITICAL'
+    else if (type === 'GUEST_REGISTRATION_DUE' || type === 'GUEST_REGISTRATION_FAILED')
+      severity = 'WARNING'
+    createAlert(type, severity, context)
+  }
   function createLexwareAlert(type: 'LEXWARE_DRAFT_INVOICE_READY' | 'LEXWARE_CONNECTION_NEEDS_ATTENTION' | 'LEXWARE_TAX_MAPPING_HOLD' | 'LEXWARE_CREDIT_NOTE_CREATED' | 'LEXWARE_NON_EUR_EXCLUDED', context: Record<string, any>) {
     let severity: AlertSeverity = 'INFO'
     if (type === 'LEXWARE_CONNECTION_NEEDS_ATTENTION')
@@ -96,7 +104,7 @@ export function useNotifications() {
       severity = 'WARNING'
     createAlert(type, severity, context)
   }
-  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createLexwareAlert }
+  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createGuestRegistrationAlert, createLexwareAlert }
 }
 
 export { getNotificationKind as getAlertKind }

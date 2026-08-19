@@ -115,6 +115,31 @@ function onStatusChange(value: unknown) {
 
 const smartLock = useSmartLock()
 
+// --- Guest registration (APOA / AVS Meldeschein) ---
+const guestRegistration = useGuestRegistration()
+
+const reservationRegistrations = computed(() => {
+  const r = reservation.value
+  if (!r)
+    return []
+  return guestRegistration.getRegistrationsForReservation(r.id)
+})
+
+function registrationStatusVariant(status: string) {
+  switch (status) {
+    case 'submitted': return 'default'
+    case 'pending': return 'secondary'
+    case 'failed': return 'destructive'
+    case 'void': return 'outline'
+    case 'incomplete': return 'secondary'
+    default: return 'secondary'
+  }
+}
+
+function registrationProviderLabel(provider: string) {
+  return provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'
+}
+
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
 
 function fmtDate(iso: string): string {
@@ -577,8 +602,12 @@ function fmtCleaningDate(iso: string): string {
                             </p>
                             <p class="text-[10px] text-muted-foreground">
                               {{ docKindMeta(doc.kind).label }}
-                              <template v-if="doc.fileName"> · {{ doc.fileName }}</template>
-                              <template v-if="doc.uploadedAt"> · {{ fmtUploadTime(doc.uploadedAt) }}</template>
+                              <template v-if="doc.fileName">
+                                · {{ doc.fileName }}
+                              </template>
+                              <template v-if="doc.uploadedAt">
+                                · {{ fmtUploadTime(doc.uploadedAt) }}
+                              </template>
                             </p>
                           </div>
                           <div class="flex shrink-0 items-center gap-1">
@@ -595,6 +624,64 @@ function fmtCleaningDate(iso: string): string {
                       </div>
                     </TabsContent>
                   </Tabs>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            <!-- Guest registration (APOA / AVS Meldeschein) -->
+            <Accordion type="single" collapsible class="w-full border-b px-2">
+              <AccordionItem value="guest-registration" class="border-b-0">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                  <span class="flex items-center gap-2">
+                    <Icon name="lucide:file-badge" class="size-4" />
+                    Guest registration
+                    <Badge v-if="reservationRegistrations.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                      {{ reservationRegistrations.length }}
+                    </Badge>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="px-3 pb-3">
+                  <div
+                    v-if="!guestRegistration.isConnected('apoa') && !guestRegistration.isConnected('avs')"
+                    class="border border-dashed p-3 text-center"
+                  >
+                    <p class="text-xs text-muted-foreground">
+                      No government registration provider connected.
+                    </p>
+                    <NuxtLink to="/settings/integrations" class="mt-1 inline-block text-xs text-primary underline">
+                      Connect in Settings
+                    </NuxtLink>
+                  </div>
+
+                  <div v-else-if="reservationRegistrations.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                    No guest registrations for this reservation yet. They're created automatically after check-in.
+                  </div>
+
+                  <div v-else class="space-y-2">
+                    <div
+                      v-for="reg in reservationRegistrations"
+                      :key="reg.id"
+                      class="flex items-center justify-between gap-2 border p-3"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <p class="text-sm font-medium truncate">
+                          {{ reg.guestName }}
+                        </p>
+                        <p class="text-[10px] text-muted-foreground">
+                          {{ registrationProviderLabel(reg.provider) }}
+                          <template v-if="reg.submissionId">
+                            · {{ reg.submissionId }}
+                          </template>
+                        </p>
+                      </div>
+                      <Badge :variant="registrationStatusVariant(reg.status)" class="shrink-0 text-[10px]">
+                        {{ reg.status }}
+                      </Badge>
+                    </div>
+                    <NuxtLink to="/guest-registration" class="block text-center text-xs text-primary underline">
+                      View all in Guest Registration
+                    </NuxtLink>
+                  </div>
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -979,7 +1066,9 @@ function fmtCleaningDate(iso: string): string {
         </DialogTitle>
         <DialogDescription v-if="docViewDoc">
           {{ docViewDoc?.kind ? docKindMeta(docViewDoc.kind).label : '' }}
-          <template v-if="docViewDoc?.uploadedAt"> · uploaded {{ fmtUploadTime(docViewDoc.uploadedAt) }}</template>
+          <template v-if="docViewDoc?.uploadedAt">
+            · uploaded {{ fmtUploadTime(docViewDoc.uploadedAt) }}
+          </template>
         </DialogDescription>
       </DialogHeader>
       <div class="py-2">

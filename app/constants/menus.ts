@@ -61,6 +61,12 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
+        title: 'Guest Registration',
+        icon: 'i-lucide-file-badge',
+        link: '/guest-registration',
+        new: true,
+      },
+      {
         title: 'Procurement',
         icon: 'i-lucide-shopping-cart',
         link: '/procurement',

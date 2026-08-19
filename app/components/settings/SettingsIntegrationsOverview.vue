@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import SettingsApoaIntegration from './ApoaIntegration.vue'
+import SettingsAvsMeldescheinIntegration from './AvsMeldescheinIntegration.vue'
+import { payoutAccounts } from './data/payouts'
 import SettingsEmailIntegration from './EmailIntegration.vue'
 import SettingsMinutIntegration from './MinutIntegration.vue'
 import SettingsSmartLockIntegration from './SmartLockIntegration.vue'
 import SettingsThreeCxIntegration from './ThreeCxIntegration.vue'
 import SettingsWhatsAppIntegration from './WhatsAppIntegration.vue'
-import { payoutAccounts } from './data/payouts'
 
 const { isConnected: whatsappConnected, whatsappAccounts } = useWhatsApp()
 const { isConnected: threeCxConnected, activeAccount: threeCxAccount } = useThreeCX()
 const smartLock = useSmartLock()
 const { isConnected: minutConnected, devices: minutDevices } = useMinut()
 const { isConnected: emailConnected, activeAccount: emailAccount, hasPendingCustom: emailPending } = useEmailIntegration()
+const gr = useGuestRegistration()
 
-type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email'
+type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email' | 'apoa' | 'avs'
 
 const openIntegration = ref<IntegrationId | null>(null)
 const sheetOpen = computed({
-  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email'].includes(openIntegration.value ?? ''),
+  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs'].includes(openIntegration.value ?? ''),
   set: (val) => {
     if (!val)
       openIntegration.value = null
@@ -25,25 +28,44 @@ const sheetOpen = computed({
 })
 
 const activeComponent = computed(() => {
-  if (openIntegration.value === 'whatsapp') return SettingsWhatsAppIntegration
-  if (openIntegration.value === 'threecx') return SettingsThreeCxIntegration
-  if (openIntegration.value === 'smartlock') return SettingsSmartLockIntegration
-  if (openIntegration.value === 'minut') return SettingsMinutIntegration
-  if (openIntegration.value === 'email') return SettingsEmailIntegration
+  if (openIntegration.value === 'whatsapp')
+    return SettingsWhatsAppIntegration
+  if (openIntegration.value === 'threecx')
+    return SettingsThreeCxIntegration
+  if (openIntegration.value === 'smartlock')
+    return SettingsSmartLockIntegration
+  if (openIntegration.value === 'minut')
+    return SettingsMinutIntegration
+  if (openIntegration.value === 'email')
+    return SettingsEmailIntegration
+  if (openIntegration.value === 'apoa')
+    return SettingsApoaIntegration
+  if (openIntegration.value === 'avs')
+    return SettingsAvsMeldescheinIntegration
   return null
 })
 
 const activeSheetTitle = computed(() => {
-  if (openIntegration.value === 'whatsapp') return 'WhatsApp Business'
-  if (openIntegration.value === 'threecx') return '3CX Telephony'
-  if (openIntegration.value === 'smartlock') return 'Smart Lock (Seam)'
-  if (openIntegration.value === 'minut') return 'Minut (Noise & Sensor Monitoring)'
-  if (openIntegration.value === 'email') return 'Email (Sending Domain)'
+  if (openIntegration.value === 'whatsapp')
+    return 'WhatsApp Business'
+  if (openIntegration.value === 'threecx')
+    return '3CX Telephony'
+  if (openIntegration.value === 'smartlock')
+    return 'Smart Lock (Seam)'
+  if (openIntegration.value === 'minut')
+    return 'Minut (Noise & Sensor Monitoring)'
+  if (openIntegration.value === 'email')
+    return 'Email (Sending Domain)'
+  if (openIntegration.value === 'apoa')
+    return 'APOA (Indonesian Immigration)'
+  if (openIntegration.value === 'avs')
+    return 'AVS Meldeschein (Germany)'
   return ''
 })
 
 const whatsappPill = computed(() => {
-  if (!whatsappConnected.value) return { label: 'Not connected', tone: 'idle' as const }
+  if (!whatsappConnected.value)
+    return { label: 'Not connected', tone: 'idle' as const }
   const count = whatsappAccounts.value.length
   return {
     label: count > 1 ? `${count} accounts connected` : 'Connected',
@@ -58,7 +80,8 @@ const threeCxPill = computed(() => {
 })
 
 const smartLockPill = computed(() => {
-  if (!smartLock.isConnected.value) return { label: 'Not connected', tone: 'idle' as const }
+  if (!smartLock.isConnected.value)
+    return { label: 'Not connected', tone: 'idle' as const }
   const count = smartLock.locks.value.length
   return {
     label: count > 0 ? `Connected · ${count} lock${count !== 1 ? 's' : ''}` : 'Connected',
@@ -67,7 +90,8 @@ const smartLockPill = computed(() => {
 })
 
 const minutPill = computed(() => {
-  if (!minutConnected.value) return { label: 'Not connected', tone: 'idle' as const }
+  if (!minutConnected.value)
+    return { label: 'Not connected', tone: 'idle' as const }
   const count = minutDevices.value.length
   return {
     label: count > 0 ? `Connected · ${count} device${count !== 1 ? 's' : ''}` : 'Connected',
@@ -83,9 +107,22 @@ const emailPill = computed(() => {
   return { label: emailAccount.value.address, tone: 'connected' as const }
 })
 
+const apoaPill = computed(() => {
+  if (!gr.isConnected('apoa'))
+    return { label: 'Not connected', tone: 'idle' as const }
+  return { label: 'Connected', tone: 'connected' as const }
+})
+
+const avsPill = computed(() => {
+  if (!gr.isConnected('avs'))
+    return { label: 'Not connected', tone: 'idle' as const }
+  return { label: 'Connected', tone: 'connected' as const }
+})
+
 const payoutPill = computed(() => {
   const count = payoutAccounts.value.length
-  if (count === 0) return { label: 'Not configured', tone: 'idle' as const }
+  if (count === 0)
+    return { label: 'Not configured', tone: 'idle' as const }
   return { label: `${count} account${count !== 1 ? 's' : ''}`, tone: 'connected' as const }
 })
 
@@ -258,6 +295,56 @@ function openSheet(id: IntegrationId) {
           {{ minutConnected ? 'Manage' : 'Connect' }}
         </Button>
       </div>
+
+      <!-- APOA (Indonesian Immigration) -->
+      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+        <div class="mb-3 flex items-start justify-between">
+          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-emerald-500/10">
+            <Icon name="lucide:stamp" class="size-5 text-emerald-600" />
+          </div>
+          <span
+            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+            :class="statusToneClass[apoaPill.tone]"
+          >
+            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[apoaPill.tone]" />
+            {{ apoaPill.label }}
+          </span>
+        </div>
+        <p class="mb-1 text-sm font-medium">
+          APOA (Indonesian Immigration)
+        </p>
+        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+          Report foreign guests to Ditjen Imigrasi (Aplikasi Pelaporan Orang Asing) after every check-in.
+        </p>
+        <Button variant="outline" size="sm" class="self-start" @click="openSheet('apoa')">
+          {{ gr.isConnected('apoa') ? 'Manage' : 'Connect' }}
+        </Button>
+      </div>
+
+      <!-- AVS Meldeschein (Germany) -->
+      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+        <div class="mb-3 flex items-start justify-between">
+          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-indigo-500/10">
+            <Icon name="lucide:file-badge" class="size-5 text-indigo-600" />
+          </div>
+          <span
+            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+            :class="statusToneClass[avsPill.tone]"
+          >
+            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[avsPill.tone]" />
+            {{ avsPill.label }}
+          </span>
+        </div>
+        <p class="mb-1 text-sm font-medium">
+          AVS Meldeschein (Germany)
+        </p>
+        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+          Generate municipal Meldeschein guest registrations for German properties.
+        </p>
+        <Button variant="outline" size="sm" class="self-start" @click="openSheet('avs')">
+          {{ gr.isConnected('avs') ? 'Manage' : 'Connect' }}
+        </Button>
+      </div>
     </div>
 
     <!-- Integration config sheet (WhatsApp + 3CX) -->
@@ -265,10 +352,12 @@ function openSheet(id: IntegrationId) {
       <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-3xl" side="right">
         <SheetHeader class="border-b px-6 py-4">
           <div class="flex items-center gap-3">
-            <SheetTitle class="text-base">{{ activeSheetTitle }}</SheetTitle>
+            <SheetTitle class="text-base">
+              {{ activeSheetTitle }}
+            </SheetTitle>
           </div>
         </SheetHeader>
-        <ScrollArea class="flex-1">
+        <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
           <div class="p-6">
             <component :is="activeComponent" v-if="activeComponent" />
           </div>

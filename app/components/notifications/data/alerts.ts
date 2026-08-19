@@ -54,6 +54,10 @@ export type AlertType
     | 'EMAIL_DOMAIN_VERIFIED'
     | 'EMAIL_DNS_FAILING'
     | 'EMAIL_REPLY_RECEIVED'
+    | 'GUEST_REGISTRATION_DUE'
+    | 'GUEST_REGISTRATION_OVERDUE'
+    | 'GUEST_REGISTRATION_SUBMITTED'
+    | 'GUEST_REGISTRATION_FAILED'
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -127,6 +131,10 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   EMAIL_DOMAIN_VERIFIED: 'Email - Domain Verified',
   EMAIL_DNS_FAILING: 'Email - DNS Verification Failing',
   EMAIL_REPLY_RECEIVED: 'Email - Reply Received',
+  GUEST_REGISTRATION_DUE: 'Guest Registration - Report Due',
+  GUEST_REGISTRATION_OVERDUE: 'Guest Registration - Report Overdue',
+  GUEST_REGISTRATION_SUBMITTED: 'Guest Registration - Report Submitted',
+  GUEST_REGISTRATION_FAILED: 'Guest Registration - Submission Failed',
 }
 
 export const alertIcons: Record<AlertType, string> = {
@@ -185,6 +193,10 @@ export const alertIcons: Record<AlertType, string> = {
   EMAIL_DOMAIN_VERIFIED: 'i-lucide-mail-check',
   EMAIL_DNS_FAILING: 'i-lucide-triangle-alert',
   EMAIL_REPLY_RECEIVED: 'i-lucide-mail-open',
+  GUEST_REGISTRATION_DUE: 'i-lucide-file-clock',
+  GUEST_REGISTRATION_OVERDUE: 'i-lucide-alert-octagon',
+  GUEST_REGISTRATION_SUBMITTED: 'i-lucide-file-check',
+  GUEST_REGISTRATION_FAILED: 'i-lucide-file-x',
 }
 
 export const alertRouteMap: Partial<Record<AlertType, string>> = {
@@ -243,6 +255,10 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   EMAIL_DOMAIN_VERIFIED: '/settings/integrations',
   EMAIL_DNS_FAILING: '/settings/integrations',
   EMAIL_REPLY_RECEIVED: '/inbox',
+  GUEST_REGISTRATION_DUE: '/guest-registration',
+  GUEST_REGISTRATION_OVERDUE: '/guest-registration',
+  GUEST_REGISTRATION_SUBMITTED: '/guest-registration',
+  GUEST_REGISTRATION_FAILED: '/guest-registration',
 }
 
 export function getDescription(type: AlertType, context: Record<string, any>): string {
@@ -347,6 +363,14 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.address || 'Sending address'} DNS re-check failed — records may have drifted or expired.`
     case 'EMAIL_REPLY_RECEIVED':
       return `${context.guestName || 'Guest'} replied via email${context.subject ? `: “${context.subject}”` : ''}.`
+    case 'GUEST_REGISTRATION_DUE':
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} report due.`
+    case 'GUEST_REGISTRATION_OVERDUE':
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} report overdue (check-in ${context.check_in || '?'}).`
+    case 'GUEST_REGISTRATION_SUBMITTED':
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} report submitted${context.submission_id ? ` (${context.submission_id})` : ''}.`
+    case 'GUEST_REGISTRATION_FAILED':
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} submission failed. ${context.error || ''}`
     default:
       return ''
   }
