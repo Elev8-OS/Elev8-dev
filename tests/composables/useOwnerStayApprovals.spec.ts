@@ -2,6 +2,7 @@ import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { mockOwnerStayApprovals } from '~/components/owners/data/owner-stay-approvals'
+import { mockOwnerBookingModes, mockOwnerSeasonalQuotas } from '~/components/owners/data/owner-quotas'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 
 // Mock notifications + downstream ops so the approval flow can be tested in
@@ -57,6 +58,10 @@ function resetState() {
   stays.value = structuredClone(mockOwnerStays)
   const requests = useState('elev8-owner-stay-approvals')
   requests.value = structuredClone(mockOwnerStayApprovals)
+  const quotas = useState('elev8-owner-seasonal-quotas')
+  quotas.value = structuredClone(mockOwnerSeasonalQuotas)
+  const modes = useState('elev8-owner-booking-modes')
+  modes.value = structuredClone(mockOwnerBookingModes)
   notificationsMock.callLog.length = 0
   cleaningMock.createJob.mockClear()
   smartLockMock.getLocksForListing.mockClear()
@@ -67,7 +72,11 @@ describe('useOwnerStayApprovals', () => {
     resetState()
   })
 
-  function lowSeasonInput() {
+  function lowSeasonInput(overrides: Partial<ReturnType<typeof baseInput>> = {}) {
+    return { ...baseInput(), ...overrides }
+  }
+
+  function baseInput() {
     return {
       ownerId: 'own-1',
       listingId: 'lst-1',
@@ -79,7 +88,7 @@ describe('useOwnerStayApprovals', () => {
     }
   }
 
-  it('auto-approves a stay request outside high season (Rule A)', () => {
+  it('auto-approves a direct-mode stay outside high season (Rule A)', () => {
     const { requestStay } = useOwnerStayApprovals()
     const result = requestStay(lowSeasonInput())
 
@@ -93,14 +102,15 @@ describe('useOwnerStayApprovals', () => {
     expect(notificationsMock.callLog.some(call => call.type === 'OWNER_STAY_REQUESTED')).toBe(false)
   })
 
-  it('routes a high-season request into the manual approval queue (Rule B)', () => {
+  it('routes a request-mode booking into the manual approval queue (Rule B)', () => {
     const { requestStay, pendingRequests } = useOwnerStayApprovals()
-    // lst-1 has a Peak Season window 2026-07-01 → 2026-08-31.
-    const result = requestStay({
-      ...lowSeasonInput(),
+    // own-2 / lst-8 is configured with booking mode 'request'.
+    const result = requestStay(lowSeasonInput({
+      ownerId: 'own-2',
+      listingId: 'lst-8',
       checkIn: '2026-08-20',
       checkOut: '2026-08-24',
-    })
+    }))
 
     expect(result.ok).toBe(true)
     if (result.ok) {
@@ -115,11 +125,12 @@ describe('useOwnerStayApprovals', () => {
 
   it('approving a request promotes the stay to active and provisions operations', async () => {
     const { requestStay, approveRequest } = useOwnerStayApprovals()
-    const request = requestStay({
-      ...lowSeasonInput(),
+    const request = requestStay(lowSeasonInput({
+      ownerId: 'own-2',
+      listingId: 'lst-8',
       checkIn: '2026-08-20',
       checkOut: '2026-08-24',
-    })
+    }))
     if (!request.ok || !request.requestId)
       throw new Error('expected pending request')
 
@@ -138,11 +149,12 @@ describe('useOwnerStayApprovals', () => {
 
   it('rejecting a request records the stay as rejected with the decision reason', () => {
     const { requestStay, rejectRequest } = useOwnerStayApprovals()
-    const request = requestStay({
-      ...lowSeasonInput(),
+    const request = requestStay(lowSeasonInput({
+      ownerId: 'own-2',
+      listingId: 'lst-8',
       checkIn: '2026-08-20',
       checkOut: '2026-08-24',
-    })
+    }))
     if (!request.ok || !request.requestId)
       throw new Error('expected pending request')
 
@@ -158,11 +170,12 @@ describe('useOwnerStayApprovals', () => {
 
   it('rejects double decisions on the same request', () => {
     const { requestStay, approveRequest, rejectRequest } = useOwnerStayApprovals()
-    const request = requestStay({
-      ...lowSeasonInput(),
+    const request = requestStay(lowSeasonInput({
+      ownerId: 'own-2',
+      listingId: 'lst-8',
       checkIn: '2026-08-20',
       checkOut: '2026-08-24',
-    })
+    }))
     if (!request.ok || !request.requestId)
       throw new Error('expected pending request')
 

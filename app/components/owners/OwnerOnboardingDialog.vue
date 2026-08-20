@@ -24,6 +24,7 @@ import { toast } from 'vue-sonner'
 import { ownerPermissionTemplates } from '~/components/owners/data/owner-permissions'
 import { Button } from '~/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
+import { useOwnerOperationalFees } from '~/composables/useOwnerOperationalFees'
 import { useOwners } from '~/composables/useOwners'
 import OwnerOnboardingAssignments from './OwnerOnboardingAssignments.vue'
 import OwnerOnboardingBasics from './OwnerOnboardingBasics.vue'
@@ -78,6 +79,7 @@ function makeEmptyDraft(): OwnerOnboardingDraft {
           name: 'Standard 20% management',
           effectiveFrom: today,
         },
+        operationalFeePercentage: 100,
       },
     ],
     permissionTemplateId: 'financial_summary',
@@ -231,6 +233,17 @@ async function handleSubmit() {
     if (!result.success) {
       toast.error(result.error ?? 'Failed to create owner.')
       return
+    }
+    // PRD 5.1.3 — persist the operational cost share per (owner, listing).
+    const { saveFee } = useOwnerOperationalFees()
+    for (const m of draft.value.mappings) {
+      if (!m.mapping.listingId)
+        continue
+      saveFee({
+        ownerId: result.ownerId!,
+        listingId: m.mapping.listingId,
+        percentage: m.operationalFeePercentage,
+      })
     }
     toast.success(`Owner ${ownerPayload.name} ${draft.value.inviteNow ? 'invited' : 'created as draft'}.`)
     emit('created', result.ownerId!)

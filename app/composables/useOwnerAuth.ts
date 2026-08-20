@@ -34,6 +34,7 @@ import { computed } from 'vue'
 import { mockPortalAccessLogs } from '~/components/owners/data/owner-portal-access'
 import { mockOwners } from '~/components/owners/data/owners'
 import { useNotifications } from '~/composables/useNotifications'
+import { useOwnerContracts } from '~/composables/useOwnerContracts'
 
 const SESSION_KEY = 'elev8-owner-portal-session'
 const PENDING_EMAIL_KEY = 'elev8-owner-pending-email'
@@ -86,6 +87,7 @@ export function useOwnerAuth() {
   // "refuses an inactive owner" fixture — stay observable.
   const ownerDirectory = useState<typeof mockOwners>('elev8-tenant-owners', () => mockOwners)
   const isAuthenticated = computed(() => Boolean(session.value?.ownerId))
+  const { hasSignedContract, getContractForOwner } = useOwnerContracts()
 
   function nowIso(): string {
     return new Date().toISOString()
@@ -130,9 +132,10 @@ export function useOwnerAuth() {
    * Promote the pending email into a real session.
    *
    * Looks up the seeded owner by case-insensitive email match and refuses
-   * to authenticate inactive accounts or owners whose magic link has been
-   * revoked. Returns a discriminated union so the caller can branch on the
-   * outcome without throwing.
+   * to authenticate inactive accounts, owners whose magic link has been
+   * revoked, or owners who have NOT e-signed their contract (PRD 5.3 — the
+   * hard gate before portal access). Returns a discriminated union so the
+   * caller can branch on the outcome without throwing.
    */
   function acceptDemoLink(): AcceptDemoLinkResult {
     const target = pendingEmail.value
@@ -145,6 +148,10 @@ export function useOwnerAuth() {
 
     // Flow 8 — a revoked link can never mint a session, even for an active owner.
     if (owner.magicLinkStatus === 'revoked')
+      return { ok: false }
+
+    // PRD 5.3 — no portal access until the contract is e-signed.
+    if (!hasSignedContract(owner.id))
       return { ok: false }
 
     session.value = {
@@ -241,6 +248,30 @@ export function useOwnerAuth() {
   }
 
   /**
+   * Returns the owner + their contract when the pending email maps to a real
+   * owner whose contract is awaiting signature. Only contracts in 'sent'
+   * status qualify (PRD 5.3): a 'draft' has not been sent to the owner yet,
+   * and a 'signed' contract means access is already granted. The login
+   * screen uses this to route the owner to the contract e-sign page.
+   */
+  function getPendingContract(): { ownerId: string, ownerName: string, contractId: string } | null {
+    const target = pendingEmail.value
+    if (!target)
+      return null
+    const owner = ownerDirectory.value.find(
+      item => item.email.toLowerCase() === target && item.status !== 'inactive',
+    )
+    if (!owner || hasSignedContract(owner.id))
+      return null
+    const contract = getContractForOwner(owner.id)
+    // Draft contracts are not yet sent to the owner — only 'sent' ones can
+    // be reviewed and signed from the portal.
+    if (!contract || contract.status !== 'sent')
+      return null
+    return { ownerId: owner.id, ownerName: owner.name, contractId: contract.id }
+  }
+
+  /**
    * Clear both the active session and the pending email. Safe to call
    * when already logged out (idempotent — both refs are already null in
    * that case).
@@ -257,6 +288,7 @@ export function useOwnerAuth() {
     isAuthenticated,
     requestMagicLink,
     acceptDemoLink,
+    getPendingContract,
     logout,
     revokeAccess,
     regenerateAccess,

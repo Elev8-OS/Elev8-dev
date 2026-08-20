@@ -1,8 +1,31 @@
 // Barrel exports for the Owner domain data layer.
 // Keep this file as the single import surface for downstream consumers.
 
-export type { CommissionRule, CommissionTier } from './commission-rules'
-export { mockCommissionRules } from './commission-rules'
+export type {
+  CommissionBasis,
+  CommissionCalculationOptions,
+  CommissionCalculationRule,
+  CommissionRule,
+  CommissionTier,
+} from './commission-rules'
+export {
+  calculateCommission,
+  commissionBasisLabel,
+  findEffectiveCommissionRule,
+  mockCommissionRules,
+} from './commission-rules'
+
+export type {
+  GenerateContractInput,
+  OwnerContract,
+  OwnerContractSignature,
+  OwnerContractStatus,
+  OwnerContractTerms,
+} from './owner-contracts'
+export {
+  mockOwnerContracts,
+  OWNER_CONTRACT_STATUS_LABELS,
+} from './owner-contracts'
 
 export type {
   OwnerDocument,
@@ -39,6 +62,13 @@ export {
 } from './owner-maintenance'
 
 export type {
+  OwnerOperationalFee,
+} from './owner-operational-fees'
+export {
+  mockOwnerOperationalFees,
+} from './owner-operational-fees'
+
+export type {
   OwnerDashboardField,
   OwnerPermissionConfig,
   OwnerPermissionTemplateId,
@@ -63,6 +93,19 @@ export {
   mockPortalAccessLogs,
   portalAccessActionLabels,
 } from './owner-portal-access'
+
+export type {
+  OwnerBookingMode,
+  OwnerBookingModeConfig,
+  OwnerSeasonalQuota,
+  QuotaCheckResult,
+  QuotaWindowUsage,
+} from './owner-quotas'
+export {
+  mockOwnerBookingModes,
+  mockOwnerSeasonalQuotas,
+  OWNER_BOOKING_MODE_LABELS,
+} from './owner-quotas'
 
 export type {
   OwnerReservation,

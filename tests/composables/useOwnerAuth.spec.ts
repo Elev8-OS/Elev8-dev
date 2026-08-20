@@ -99,13 +99,15 @@ describe('useOwnerAuth', () => {
       expect(isAuthenticated.value).toBe(true)
     })
 
-    it('promotes a seeded invited owner to an authenticated session', async () => {
+    it('refuses a seeded owner who has not signed their contract (PRD 5.3 gate)', async () => {
+      // own-3 (Ni Kadek) is invited but her contract is still a draft —
+      // the portal must refuse login until she e-signs.
       const { requestMagicLink, acceptDemoLink, session, isAuthenticated } = useOwnerAuth()
       await requestMagicLink('kadek.deviani@example.com')
       const result = acceptDemoLink()
-      expect(result).toEqual({ ok: true, ownerId: 'own-3' })
-      expect(session.value?.ownerId).toBe('own-3')
-      expect(isAuthenticated.value).toBe(true)
+      expect(result).toEqual({ ok: false })
+      expect(session.value).toBeNull()
+      expect(isAuthenticated.value).toBe(false)
     })
 
     it('refuses an unseeded email (the magic-link endpoint never confirms identity)', async () => {

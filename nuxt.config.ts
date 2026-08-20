@@ -84,6 +84,7 @@ export default defineNuxtConfig({
     '/components': { redirect: '/components/accordion' },
     '/settings': { redirect: '/settings/profile' },
     '/messages': { redirect: '/inbox' },
+    '/owners': { redirect: '/users' },
   },
 
   imports: {

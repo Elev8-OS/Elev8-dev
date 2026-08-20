@@ -10,7 +10,7 @@
 import type { StatementInput } from './owner-ledger'
 import { roundCurrency } from './owner-ledger'
 
-export type OwnerStatementStatus = 'draft' | 'published'
+export type OwnerStatementStatus = 'draft' | 'in_preview' | 'published'
 
 export type OwnerStatementLineCategory
   = | 'revenue'
@@ -29,6 +29,23 @@ export interface OwnerStatementLine {
   ledgerEntryId?: string
 }
 
+export interface OwnerIssueMessage {
+  id: string
+  author: 'owner' | 'staff'
+  at: string
+  message: string
+}
+
+export interface OwnerIssueResolution {
+  /** 'explained' = staff clarified without changing the amount; 'adjusted' = amount changed. */
+  type: 'explained' | 'adjusted'
+  resolvedBy: string
+  resolvedAt: string
+  note?: string
+  /** Set when the resolution produced an adjustment line (next-period). */
+  adjustmentId?: string
+}
+
 export interface OwnerStatementIssue {
   id: string
   statementId: string
@@ -44,6 +61,10 @@ export interface OwnerStatementIssue {
   amount: number
   createdAt: string
   resolvedAt?: string
+  /** Per-line dispute thread (PRD 5.5.6) — ordered messages, preserved after resolution. */
+  thread?: OwnerIssueMessage[]
+  /** How the dispute was closed — 'explained' or 'adjusted' (PRD 5.5.6). */
+  resolution?: OwnerIssueResolution
 }
 
 export interface OwnerStatement {

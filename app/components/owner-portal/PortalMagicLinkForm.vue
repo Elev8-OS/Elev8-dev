@@ -7,7 +7,7 @@ const email = ref('')
 const isSending = ref(false)
 const isSent = ref(false)
 const secureLinkError = ref('')
-const { requestMagicLink, acceptDemoLink } = useOwnerAuth()
+const { requestMagicLink, acceptDemoLink, getPendingContract } = useOwnerAuth()
 
 async function handleSubmit() {
   if (isSending.value || !email.value.trim())
@@ -28,6 +28,12 @@ async function openDemoSecureLink() {
   secureLinkError.value = ''
   const result = acceptDemoLink()
   if (!result.ok) {
+    // Maybe the owner exists but hasn't e-signed their contract (PRD 5.3).
+    const pending = getPendingContract()
+    if (pending) {
+      await navigateTo('/owner-portal/contract')
+      return
+    }
     secureLinkError.value = 'This secure link could not be opened. Request a new link and try again.'
     return
   }

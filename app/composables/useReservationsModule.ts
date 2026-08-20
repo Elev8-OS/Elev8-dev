@@ -75,7 +75,7 @@ export function useReservationsModule() {
       .sort((a, b) => (a.checkIn < b.checkIn ? 1 : -1))
   }
 
-  function createReservation(draft: ReservationDraft): { success: boolean, id?: string } {
+  function createReservation(draft: ReservationDraft & { status?: ReservationStatus }): { success: boolean, id?: string } {
     if (!draft.guestName.trim() || !draft.listingId.trim() || !draft.checkIn.trim() || !draft.checkOut.trim())
       return { success: false }
 
@@ -84,7 +84,7 @@ export function useReservationsModule() {
       id,
       guestId: '',
       ...draft,
-      status: 'verified',
+      status: draft.status ?? 'verified',
       activity: [],
     }
     reservations.value = [entry, ...reservations.value]

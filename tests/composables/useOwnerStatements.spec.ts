@@ -30,6 +30,18 @@ const ownerAlertTypes: AlertType[] = [
   'OWNER_STAY_CONFLICT',
   'OWNER_ISSUE_RAISED',
   'OWNER_USE_CAP_EXCEEDED',
+  'OWNER_STAY_REQUESTED',
+  'OWNER_STAY_REJECTED',
+  'OWNER_STAY_CANCELLED',
+  'OWNER_STAY_APPROACHING',
+  'DOCUMENT_UPLOADED',
+  'MAINTENANCE_APPROVAL_REQUESTED',
+  'MAINTENANCE_COMPLETED',
+  'OWNER_LINK_REVOKED',
+  'OWNER_CONTRACT_SENT',
+  'OWNER_CONTRACT_SIGNED',
+  'OWNER_ISSUE_RESPONDED',
+  'OWNER_BOOKING_MODE_CHANGED',
 ]
 
 // Snapshot of the seed before each test so we can detect leaks across the suite.
@@ -92,9 +104,13 @@ describe('owner notification contracts', () => {
   it('registers labels, icons, routes, and descriptions for every owner alert', () => {
     const validRoutes = new Set([
       '/owner-statements',
-      '/owners',
+      '/users',
+      '/cockpit',
       '/owner-portal/statements',
       '/owner-portal/stays',
+      '/owner-portal/contract',
+      '/owner-portal/documents',
+      '/owner-portal/maintenance',
     ])
     const context = {
       statementId: 'stmt-1',
@@ -364,8 +380,9 @@ describe('useOwnerStatements', () => {
 
         const hybrid = statements.value.find(s => s.ownerId === 'own-2' && s.listingId === 'lst-8' && s.period === period)!
         expect(hybrid.currency).toBe('USD')
-        expect(hybrid.totalAmount).toBe(5_926)
-        expect(hybrid.lines.find(line => line.category === 'commission')?.amount).toBe(-1_660)
+        // cr-3 is basis 'net': 250 + 15% of (9400 − 780 − 470 − 564) = 250 + 1137.9 = 1387.9
+        expect(hybrid.totalAmount).toBe(6_198.1)
+        expect(hybrid.lines.find(line => line.category === 'commission')?.amount).toBe(-1_387.9)
       }
       finally {
         ledgerSpy.mockRestore()
@@ -1055,6 +1072,128 @@ describe('useOwnerStatements', () => {
       finally {
         findSpy.mockRestore()
       }
+    })
+  })
+
+  describe('PRD 5.5 — preview, pre-publish adjustments, dispute thread', () => {
+    it('moves a draft into preview and back', () => {
+      const { moveToPreview, backToDraft, statements } = useOwnerStatements()
+      const target = statements.value.find(s => s.id === 'stmt-1')!
+      expect(target.status).toBe('draft')
+
+      expect(moveToPreview('stmt-1')).toEqual({ ok: true })
+      expect(statements.value.find(s => s.id === 'stmt-1')?.status).toBe('in_preview')
+      expect(moveToPreview('stmt-1')).toEqual({ ok: false }) // already in preview
+
+      expect(backToDraft('stmt-1')).toEqual({ ok: true })
+      expect(statements.value.find(s => s.id === 'stmt-1')?.status).toBe('draft')
+    })
+
+    it('publishes from preview state', () => {
+      const { moveToPreview, publish, statements } = useOwnerStatements()
+      moveToPreview('stmt-1')
+      const result = publish('stmt-1', 'staff-1')
+      expect(result).toEqual({ ok: true })
+      expect(statements.value.find(s => s.id === 'stmt-1')?.status).toBe('published')
+    })
+
+    it('supports pre-publish adjustments with positive and negative amounts', () => {
+      const { updateStatementLines, statements } = useOwnerStatements()
+      const draft = statements.value.find(s => s.id === 'stmt-1')!
+      const lines = [
+        ...draft.lines,
+        { id: 'line-adj-pre', category: 'adjustment' as const, label: 'Lost key charge', amount: -250_000 },
+        { id: 'line-adj-pos', category: 'adjustment' as const, label: 'Replacement key refund', amount: 250_000 },
+      ]
+      const result = updateStatementLines('stmt-1', lines)
+      expect(result.ok).toBe(true)
+      const updated = statements.value.find(s => s.id === 'stmt-1')!
+      expect(updated.lines.filter(l => l.category === 'adjustment')).toHaveLength(2)
+      // totalAmount recomputed from the signed sum.
+      expect(updated.totalAmount).toBe(draft.totalAmount)
+    })
+
+    it('appends dispute messages to a thread and notifies', () => {
+      const { raiseIssue, addIssueMessage } = useOwnerStatements()
+      const raised = raiseIssue({
+        statementId: 'stmt-2',
+        lineId: 'sl-9',
+        description: 'Why is utilities higher this month?',
+        amount: -1_500_000,
+      })
+      if (!raised.ok || !raised.issue.id)
+        throw new Error('expected issue')
+
+      const reply = addIssueMessage(raised.issue.id, 'staff', 'Pool pump ran longer — corrected for next month.')
+      expect(reply.ok).toBe(true)
+      if (reply.ok) {
+        expect(reply.issue.thread).toHaveLength(1)
+        expect(reply.issue.thread?.[0]?.author).toBe('staff')
+      }
+      // Staff reply notifies the owner.
+      expect(notificationsMock.callLog.some(call => call.type === 'OWNER_ISSUE_RESPONDED')).toBe(true)
+    })
+
+    it('resolves a dispute as explained without an amount change', () => {
+      const { raiseIssue, resolveIssueWithResolution, issues } = useOwnerStatements()
+      const raised = raiseIssue({
+        statementId: 'stmt-2',
+        lineId: 'sl-10',
+        description: 'Commission seems high',
+        amount: -8_400_000,
+      })
+      if (!raised.ok || !raised.issue.id)
+        throw new Error('expected issue')
+
+      const result = resolveIssueWithResolution({
+        issueId: raised.issue.id,
+        type: 'explained',
+        resolvedBy: 'staff-1',
+        note: 'Commission is 20% of gross — correct per contract.',
+      })
+      expect(result.ok).toBe(true)
+      const resolved = issues.value.find(i => i.id === raised.issue.id)!
+      expect(resolved.resolution?.type).toBe('explained')
+      expect(resolved.resolvedAt).toBeTruthy()
+    })
+
+    it('resolves a dispute as adjusted with an adjustment reference', () => {
+      const { raiseIssue, resolveIssueWithResolution, issues } = useOwnerStatements()
+      const raised = raiseIssue({
+        statementId: 'stmt-2',
+        lineId: 'sl-8',
+        description: 'Cleaning charged twice',
+        amount: -2_300_000,
+      })
+      if (!raised.ok || !raised.issue.id)
+        throw new Error('expected issue')
+
+      const result = resolveIssueWithResolution({
+        issueId: raised.issue.id,
+        type: 'adjusted',
+        resolvedBy: 'staff-1',
+        adjustmentId: 'osa-future-1',
+      })
+      expect(result.ok).toBe(true)
+      const resolved = issues.value.find(i => i.id === raised.issue.id)!
+      expect(resolved.resolution?.type).toBe('adjusted')
+      expect(resolved.resolution?.adjustmentId).toBe('osa-future-1')
+    })
+
+    it('refuses to re-resolve an already-resolved dispute', () => {
+      const { raiseIssue, resolveIssueWithResolution } = useOwnerStatements()
+      const raised = raiseIssue({
+        statementId: 'stmt-2',
+        lineId: 'sl-11',
+        description: 'Tax question',
+        amount: -2_100_000,
+      })
+      if (!raised.ok || !raised.issue.id)
+        throw new Error('expected issue')
+
+      resolveIssueWithResolution({ issueId: raised.issue.id, type: 'explained', resolvedBy: 'staff-1' })
+      const second = resolveIssueWithResolution({ issueId: raised.issue.id, type: 'adjusted', resolvedBy: 'staff-1' })
+      expect(second).toEqual({ ok: false, reason: 'already_resolved' })
     })
   })
 })

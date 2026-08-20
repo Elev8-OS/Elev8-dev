@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
+import StatementPublishDialog from '~/components/owner-statements/StatementPublishDialog.vue'
 import { mockOwners } from '~/components/owners/data/owners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
 

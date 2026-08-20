@@ -13,6 +13,7 @@ import type {
 } from '~/components/owners/data/owner-maintenance'
 import { mockMaintenanceRecords, ownerMaintenanceConfig } from '~/components/owners/data/owner-maintenance'
 import { useNotifications } from '~/composables/useNotifications'
+import { useTaskStore } from '~/composables/useTaskStore'
 
 export type CreateMaintenanceRecordResult
   = | { ok: true, record: MaintenanceRecord, requiresApproval: boolean }
@@ -84,6 +85,20 @@ export function useOwnerMaintenance() {
       updatedAt: timestamp,
     }
     records.value = [...records.value, record]
+
+    // PRD 5.4.3 — mirror the maintenance item into the Tasks module so staff
+    // manage it through the existing lifecycle, tagged with the owner id.
+    const { addTask } = useTaskStore()
+    addTask({
+      title: record.title,
+      status: requiresApproval ? 'todo' : 'in progress',
+      priority: 'high',
+      listing: record.listingId,
+      description: record.description,
+      ownerId: record.ownerId,
+      ownerVisible: true,
+      source: 'manual',
+    })
 
     if (requiresApproval) {
       emitMaintenanceAlert('MAINTENANCE_APPROVAL_REQUESTED', 'WARNING', {

@@ -54,6 +54,10 @@ export type AlertType
     | 'MAINTENANCE_APPROVAL_REQUESTED'
     | 'MAINTENANCE_COMPLETED'
     | 'OWNER_LINK_REVOKED'
+    | 'OWNER_CONTRACT_SENT'
+    | 'OWNER_CONTRACT_SIGNED'
+    | 'OWNER_ISSUE_RESPONDED'
+    | 'OWNER_BOOKING_MODE_CHANGED'
     | 'LEXWARE_DRAFT_INVOICE_READY'
     | 'LEXWARE_CONNECTION_NEEDS_ATTENTION'
     | 'LEXWARE_TAX_MAPPING_HOLD'
@@ -139,6 +143,10 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   MAINTENANCE_APPROVAL_REQUESTED: 'Maintenance Cost Approval',
   MAINTENANCE_COMPLETED: 'Maintenance Completed',
   OWNER_LINK_REVOKED: 'Owner Access Revoked',
+  OWNER_CONTRACT_SENT: 'Contract Sent for Signature',
+  OWNER_CONTRACT_SIGNED: 'Contract Signed by Owner',
+  OWNER_ISSUE_RESPONDED: 'Statement Dispute Response',
+  OWNER_BOOKING_MODE_CHANGED: 'Owner Booking Mode Changed',
   LEXWARE_DRAFT_INVOICE_READY: 'Lexware - Draft Invoice Ready',
   LEXWARE_CONNECTION_NEEDS_ATTENTION: 'Lexware - Connection Needs Attention',
   LEXWARE_TAX_MAPPING_HOLD: 'Lexware - Tax Mapping Required',
@@ -209,6 +217,10 @@ export const alertIcons: Record<AlertType, string> = {
   MAINTENANCE_APPROVAL_REQUESTED: 'i-lucide-wrench',
   MAINTENANCE_COMPLETED: 'i-lucide-circle-check',
   OWNER_LINK_REVOKED: 'i-lucide-shield-x',
+  OWNER_CONTRACT_SENT: 'i-lucide-file-signature',
+  OWNER_CONTRACT_SIGNED: 'i-lucide-file-check',
+  OWNER_ISSUE_RESPONDED: 'i-lucide-message-square-text',
+  OWNER_BOOKING_MODE_CHANGED: 'i-lucide-toggle-right',
   LEXWARE_DRAFT_INVOICE_READY: 'i-lucide-file-text',
   LEXWARE_CONNECTION_NEEDS_ATTENTION: 'i-lucide-unplug',
   LEXWARE_TAX_MAPPING_HOLD: 'i-lucide-percent',
@@ -270,15 +282,19 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   OWNER_STAY_CONFIRMED: '/owner-portal/stays',
   OWNER_STAY_CONFLICT: '/owner-portal/stays',
   OWNER_ISSUE_RAISED: '/owner-statements',
-  OWNER_USE_CAP_EXCEEDED: '/owners',
-  OWNER_STAY_REQUESTED: '/owners',
+  OWNER_USE_CAP_EXCEEDED: '/users',
+  OWNER_STAY_REQUESTED: '/cockpit',
   OWNER_STAY_REJECTED: '/owner-portal/stays',
-  OWNER_STAY_CANCELLED: '/owners',
+  OWNER_STAY_CANCELLED: '/cockpit',
   OWNER_STAY_APPROACHING: '/owner-portal/stays',
   DOCUMENT_UPLOADED: '/owner-portal/documents',
   MAINTENANCE_APPROVAL_REQUESTED: '/owner-portal/maintenance',
   MAINTENANCE_COMPLETED: '/owner-portal/maintenance',
-  OWNER_LINK_REVOKED: '/owners',
+  OWNER_LINK_REVOKED: '/users',
+  OWNER_CONTRACT_SENT: '/owner-portal/contract',
+  OWNER_CONTRACT_SIGNED: '/users',
+  OWNER_ISSUE_RESPONDED: '/owner-portal/statements',
+  OWNER_BOOKING_MODE_CHANGED: '/users',
   LEXWARE_DRAFT_INVOICE_READY: '/finance?tab=integrations',
   LEXWARE_CONNECTION_NEEDS_ATTENTION: '/finance?tab=integrations',
   LEXWARE_TAX_MAPPING_HOLD: '/finance?tab=integrations',
@@ -395,6 +411,14 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.title || 'Maintenance'} completed${context.actualCost !== undefined ? ` — final cost ${(context.actualCost ?? 0).toLocaleString()}` : ''}.`
     case 'OWNER_LINK_REVOKED':
       return `Owner access was revoked for ${context.ownerName || context.ownerId || 'an owner'}.`
+    case 'OWNER_CONTRACT_SENT':
+      return `Contract sent to the owner for e-signature — portal access unlocks once signed.`
+    case 'OWNER_CONTRACT_SIGNED':
+      return `${context.signedBy || 'The owner'} signed the management agreement — portal access is now enabled.`
+    case 'OWNER_ISSUE_RESPONDED':
+      return `${context.author === 'owner' ? 'The owner' : 'Staff'} replied on a statement dispute${context.message ? `: "${context.message}"` : ''}.`
+    case 'OWNER_BOOKING_MODE_CHANGED':
+      return `Owner self-booking mode was updated.`
     case 'KEY_NOT_RETURNED':
       return `${context.key_label || 'Key'} at ${context.listing_name || 'property'} held by ${context.staff_name || 'staff'} is ${context.overdue_hours ?? '?'}h overdue.`
     case 'LEXWARE_DRAFT_INVOICE_READY':

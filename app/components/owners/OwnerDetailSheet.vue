@@ -6,20 +6,29 @@
 -->
 <script setup lang="ts">
 import type { CommissionRule } from '~/components/owners/data/commission-rules'
+import type { OwnerBookingMode } from '~/components/owners/data/owner-quotas'
 import type { Owner, OwnerStatus } from '~/components/owners/data/owners'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { Input } from '~/components/ui/input'
+import { Label } from '~/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
+import { useOwnerContracts } from '~/composables/useOwnerContracts'
+import { useOwnerOperationalFees } from '~/composables/useOwnerOperationalFees'
 import { useOwnerPermissions } from '~/composables/useOwnerPermissions'
+import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import { useOwners } from '~/composables/useOwners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
+import { buildOwnerContractPdf } from '~/lib/owner-contract-pdf'
 import OwnerPermissionMatrix from './OwnerPermissionMatrix.vue'
 
 interface Props {
@@ -136,6 +145,109 @@ function handleRegenerate() {
   else
     toast.error(result.error ?? 'Failed to regenerate link.')
 }
+
+// --- Self-booking mode + seasonal quotas (PRD 5.2) ---
+
+const { getBookingMode, setBookingMode, quotasForOwnerListing, upsertQuota, removeQuota } = useOwnerQuotas()
+const { getContractForOwner, generateContract, sendContract } = useOwnerContracts()
+
+const modeDrafts = ref<Record<string, OwnerBookingMode>>({})
+const quotaInput = ref<{ ownerId: string, listingId: string, startDate: string, endDate: string, maxNights: number } | null>(null)
+
+const ownerContract = computed(() => owner.value ? getContractForOwner(owner.value.id) : undefined)
+
+function currentMode(listingId: string): OwnerBookingMode {
+  if (!owner.value)
+    return 'direct'
+  return modeDrafts.value[listingId] ?? getBookingMode(owner.value.id, listingId)
+}
+
+function applyMode(listingId: string, mode: OwnerBookingMode) {
+  if (!owner.value)
+    return
+  setBookingMode(owner.value.id, listingId, mode)
+  modeDrafts.value[listingId] = mode
+  toast.success(`${OWNER_BOOKING_MODE_LABELS[mode]} enabled for this property.`)
+}
+
+function openAddQuota() {
+  if (!owner.value || ownerMappings.value.length === 0)
+    return
+  quotaInput.value = {
+    ownerId: owner.value.id,
+    listingId: ownerMappings.value[0]!.listingId,
+    startDate: '',
+    endDate: '',
+    maxNights: 0,
+  }
+}
+
+function saveQuota() {
+  if (!quotaInput.value)
+    return
+  const result = upsertQuota(quotaInput.value)
+  if (result.success) {
+    toast.success('Seasonal quota saved.')
+    quotaInput.value = null
+  }
+  else {
+    toast.error(result.error ?? 'Failed to save quota.')
+  }
+}
+
+function deleteQuota(quotaId: string) {
+  removeQuota(quotaId)
+  toast.info('Seasonal quota removed.')
+}
+
+// --- Contract (PRD 5.3) ---
+
+const { getFeeFor } = useOwnerOperationalFees()
+
+function handleGenerateContract() {
+  if (!owner.value || ownerMappings.value.length === 0)
+    return
+  const rule = ownerRules.value[0]
+  // Use the FIRST listing's configured operational cost share for the
+  // contract (contracts are owner-level; multi-listing shares default to
+  // the first listing's percentage).
+  const firstListing = ownerMappings.value[0]!.listingId
+  const fee = getFeeFor(owner.value.id, firstListing)
+  const operationalFee = fee?.percentage ?? 100
+  const result = generateContract({
+    ownerId: owner.value.id,
+    listingIds: ownerMappings.value.map(m => m.listingId),
+    terms: {
+      commissionType: rule?.basis === 'net' ? 'fixed_net' : 'gross',
+      rate: rule && 'rate' in rule ? rule.rate : 20,
+      fixedAmount: rule && 'fixedAmount' in rule ? rule.fixedAmount : undefined,
+      basis: rule?.basis ?? 'gross',
+      includedServices: ['Channel management', 'Guest communication'],
+      operationalFee,
+    },
+  })
+  if (result.ok)
+    toast.success('Contract generated from commission terms.')
+  else
+    toast.error(result.error ?? 'Failed to generate contract.')
+}
+
+function handleSendContract() {
+  if (!ownerContract.value)
+    return
+  const result = sendContract(ownerContract.value.id)
+  if (result.ok)
+    toast.success('Contract sent — owner can now sign via the magic link.')
+  else
+    toast.error('Could not send the contract.')
+}
+
+function handleDownloadContractPdf() {
+  if (!ownerContract.value || !owner.value)
+    return
+  buildOwnerContractPdf(ownerContract.value, owner.value, { download: true })
+  toast.success('Contract PDF downloaded.')
+}
 </script>
 
 <template>
@@ -184,6 +296,14 @@ function handleRegenerate() {
             <TabsTrigger value="statements" class="flex-1">
               <Icon name="lucide:file-text" class="mr-1.5 size-4" />
               Statements
+            </TabsTrigger>
+            <TabsTrigger value="booking" class="flex-1">
+              <Icon name="lucide:calendar-check-2" class="mr-1.5 size-4" />
+              Self-booking
+            </TabsTrigger>
+            <TabsTrigger value="contract" class="flex-1">
+              <Icon name="lucide:file-signature" class="mr-1.5 size-4" />
+              Contract
             </TabsTrigger>
             <TabsTrigger value="access" class="flex-1">
               <Icon name="lucide:key-round" class="mr-1.5 size-4" />
@@ -332,6 +452,196 @@ function handleRegenerate() {
                 <Badge :variant="stmt.status === 'published' ? 'default' : 'secondary'">
                   {{ stmt.status }}
                 </Badge>
+              </div>
+            </div>
+          </TabsContent>
+
+          <!-- Self-booking mode + seasonal quotas (PRD 5.2) -->
+          <TabsContent value="booking" class="space-y-3 pt-3">
+            <div v-if="ownerMappings.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              Assign a property first to configure self-booking.
+            </div>
+
+            <template v-else>
+              <div class="space-y-3">
+                <div
+                  v-for="m in ownerMappings"
+                  :key="m.id"
+                  class="rounded-md border p-3"
+                >
+                  <div class="flex items-center justify-between">
+                    <div class="text-sm font-medium">
+                      {{ listingById.get(m.listingId)?.name ?? m.listingId }}
+                    </div>
+                    <Select
+                      :model-value="currentMode(m.listingId)"
+                      @update:model-value="(v) => applyMode(m.listingId, String(v) as OwnerBookingMode)"
+                    >
+                      <SelectTrigger class="w-44">
+                        <SelectValue placeholder="Booking mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="direct">
+                          Direct booking
+                        </SelectItem>
+                        <SelectItem value="request">
+                          Request to book
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    {{ currentMode(m.listingId) === 'direct'
+                      ? 'Owner dates are blocked immediately.'
+                      : 'Owner dates need management approval.' }}
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div class="flex items-center justify-between">
+                <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Seasonal quotas (non-accumulating)
+                </div>
+                <Button size="sm" variant="outline" @click="openAddQuota">
+                  <Icon name="lucide:plus" class="mr-1.5 size-3.5" />
+                  Add window
+                </Button>
+              </div>
+
+              <div v-if="!owner || quotasForOwnerListing(owner.id, ownerMappings[0]?.listingId ?? '').length === 0" class="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                No quota windows for this owner's properties yet.
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="q in owner ? ownerMappings.flatMap(m => quotasForOwnerListing(owner!.id, m.listingId)) : []"
+                  :key="q.id"
+                  class="flex items-center justify-between rounded-md border p-2.5 text-sm"
+                >
+                  <div>
+                    <span class="font-medium">{{ q.startDate }} → {{ q.endDate }}</span>
+                    <span class="ml-2 text-muted-foreground">{{ q.maxNights }} nights</span>
+                  </div>
+                  <Button variant="ghost" size="icon-sm" @click="deleteQuota(q.id)">
+                    <Icon name="lucide:trash-2" class="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </template>
+
+            <Dialog :open="!!quotaInput" @update:open="(v: boolean) => { if (!v) quotaInput = null }">
+              <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Add seasonal quota</DialogTitle>
+                  <DialogDescription>
+                    Max self-booked nights in this window. Unused nights do not roll over.
+                  </DialogDescription>
+                </DialogHeader>
+                <div v-if="quotaInput" class="space-y-3">
+                  <div class="space-y-1.5">
+                    <Label>Listing</Label>
+                    <Select v-model="quotaInput.listingId">
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick a listing" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="m in ownerMappings" :key="m.listingId" :value="m.listingId">
+                          {{ listingById.get(m.listingId)?.name ?? m.listingId }}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                      <Label for="quota-start">Start date</Label>
+                      <Input id="quota-start" v-model="quotaInput.startDate" type="date" />
+                    </div>
+                    <div class="space-y-1.5">
+                      <Label for="quota-end">End date</Label>
+                      <Input id="quota-end" v-model="quotaInput.endDate" type="date" />
+                    </div>
+                  </div>
+                  <div class="space-y-1.5">
+                    <Label for="quota-max">Max nights (0 = blocked)</Label>
+                    <Input id="quota-max" v-model.number="quotaInput.maxNights" type="number" min="0" />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" @click="quotaInput = null">
+                    Cancel
+                  </Button>
+                  <Button @click="saveQuota">
+                    Save quota
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <!-- Contract (PRD 5.3) -->
+          <TabsContent value="contract" class="space-y-3 pt-3">
+            <!-- Operational cost share (PRD 5.1.3) — set at owner creation, shown read-only here -->
+            <div v-if="ownerMappings.length > 0" class="rounded-md border p-3">
+              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Operational costs covered by owner
+              </div>
+              <div class="space-y-1.5 text-sm">
+                <div
+                  v-for="m in ownerMappings"
+                  :key="m.listingId"
+                  class="flex items-center justify-between"
+                >
+                  <span class="text-muted-foreground">
+                    {{ listingById.get(m.listingId)?.name ?? m.listingId }}
+                  </span>
+                  <span class="font-medium">
+                    {{ getFeeFor(owner!.id, m.listingId)?.percentage ?? 100 }}%
+                  </span>
+                </div>
+              </div>
+              <p class="mt-2 text-xs text-muted-foreground">
+                Set during owner creation. 100% = owner covers all cleaning &amp; utilities; 0% = management absorbs them.
+              </p>
+            </div>
+
+            <div v-if="!ownerContract" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No contract yet. Generate one from the owner's commission terms.
+            </div>
+            <div v-else class="space-y-3">
+              <div class="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div class="text-sm font-medium">
+                    Management agreement
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {{ ownerContract.terms.basis === 'net'
+                      ? `Fixed ${ownerContract.terms.fixedAmount ?? 0} + ${ownerContract.terms.rate}% of Net`
+                      : `${ownerContract.terms.rate}% of Gross` }}
+                    · {{ ownerContract.listingIds.length }} listing(s)
+                  </div>
+                </div>
+                <Badge :variant="ownerContract.status === 'signed' ? 'default' : ownerContract.status === 'sent' ? 'secondary' : 'outline'">
+                  {{ ownerContract.status }}
+                </Badge>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <Button v-if="ownerContract.status === 'draft'" size="sm" @click="handleSendContract">
+                  Send magic link to sign
+                </Button>
+                <Button v-if="ownerContract.status !== 'signed'" size="sm" variant="outline" @click="handleGenerateContract">
+                  Regenerate from terms
+                </Button>
+                <Button v-if="ownerContract.status === 'signed'" size="sm" variant="outline" @click="handleDownloadContractPdf">
+                  <Icon name="lucide:file-down" class="mr-1.5 size-3.5" />
+                  Download PDF
+                </Button>
+                <Button size="sm" variant="outline" as-child>
+                  <NuxtLink to="/owner-documents">
+                    View in Document Center
+                  </NuxtLink>
+                </Button>
               </div>
             </div>
           </TabsContent>

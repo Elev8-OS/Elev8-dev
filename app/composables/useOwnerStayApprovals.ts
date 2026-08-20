@@ -1,21 +1,28 @@
-// Owner stay approval flow — the "Book My Stay" submission path (Flow 4).
+// Owner stay approval flow — the "Book My Stay" submission path (Flow 4 / PRD 5.2).
 //
-// When an owner submits a stay request from the portal:
-//   - Dates outside the listing's high season → auto-approved immediately.
-//   - Dates overlapping high season (or flagged for revenue risk) → land in
-//     the GM/Admin approval queue as `pending_approval`.
+// When an owner submits a stay request from the portal, the booking mode
+// decides the path:
+//   - mode 'direct'  → the stay is created immediately (subject to quota).
+//   - mode 'request' → the stay lands in the GM/Admin approval queue as
+//     `pending_approval`.
+//
+// Seasonal quotas (non-accumulating windows) block direct bookings that
+// exceed a window's remaining nights and warn request-mode bookings.
 //
 // Approving promotes the stay to `active` and provisions downstream
 // operations (cleaning jobs + smart-lock code via `useOwnerStayOperations`).
 // Rejecting records a reason that the owner sees in the portal.
 
 import type { AlertType } from '~/components/notifications/data/alerts'
+import type { QuotaCheckResult } from '~/components/owners/data/owner-quotas'
 import type { OwnerStayApprovalRequest } from '~/components/owners/data/owner-stay-approvals'
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
-import { isHighSeasonRange, mockOwnerStayApprovals } from '~/components/owners/data/owner-stay-approvals'
+import { mockOwnerStayApprovals } from '~/components/owners/data/owner-stay-approvals'
 import { useNotifications } from '~/composables/useNotifications'
+import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import { useOwnerStayOperations } from '~/composables/useOwnerStayOperations'
 import { useOwnerStays } from '~/composables/useOwnerStays'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 export interface OwnerStayRequestInput {
   ownerId: string
@@ -34,7 +41,7 @@ export interface OwnerStayRequestInput {
 
 export type OwnerStayRequestResult
   = | { ok: true, stay: OwnerStay, requiredApproval: boolean, autoApproved: boolean, requestId?: string }
-    | { ok: false, reason: 'conflict' | 'invalid_dates', conflicts?: unknown[] }
+    | { ok: false, reason: 'conflict' | 'invalid_dates' | 'quota_exceeded', conflicts?: unknown[], quota?: QuotaCheckResult }
 
 export type DecideStayApprovalResult
   = | { ok: true, stay: OwnerStay }
@@ -75,16 +82,51 @@ export function useOwnerStayApprovals() {
   )
   const { createStay, detectConflicts } = useOwnerStays()
   const { provisionOwnerStayOperations } = useOwnerStayOperations()
+  const { getBookingMode, checkQuota } = useOwnerQuotas()
+  const { createReservation } = useReservationsModule()
+
+  /**
+   * Mirror a pending owner stay request into the Reservations module as an
+   * `owner_request` reservation (PRD 5.4.2) so staff see it in Reservations
+   * and the Cockpit queue.
+   */
+  function syncOwnerRequestReservation(stay: OwnerStay, listingName: string): string | undefined {
+    const result = createReservation({
+      guestName: stay.guestName,
+      guestEmail: '',
+      guestPhone: '',
+      guestLanguage: 'en',
+      guestNotes: '',
+      listingId: stay.listingId,
+      listingName,
+      channel: 'Direct',
+      checkIn: stay.checkIn,
+      checkOut: stay.checkOut,
+      nights: stay.nights,
+      guestCount: stay.guestCount ?? 1,
+      totalPrice: 0,
+      currency: 'IDR',
+      status: 'owner_request',
+      blockReason: 'Owner stay — pending approval',
+      bookingNote: `Owner request ${stay.id}`,
+    })
+    return result.id
+  }
 
   function requestIdTaken(id: string): boolean {
     return requests.value.some(r => r.id === id)
   }
 
   /**
-   * Submit an owner stay request from the portal (Flow 4).
+   * Submit an owner stay request from the portal (PRD 5.2).
    *
-   * Evaluates the auto-approval rule: dates fully outside high season
-   * auto-approve; overlapping high-season dates go to the GM/Admin queue.
+   * Booking mode decides the path:
+   *   - 'direct' → create stay immediately (active), subject to seasonal quota.
+   *   - 'request' → create stay pending_approval + queue row for GM/Admin.
+   *
+   * Seasonal quota windows are checked first: a direct booking that would
+   * exceed a window's remaining nights is blocked; a request-mode booking
+   * is still queued (staff decides).
    */
   function requestStay(input: OwnerStayRequestInput): OwnerStayRequestResult {
     const conflictResult = detectConflicts({
@@ -98,11 +140,17 @@ export function useOwnerStayApprovals() {
     if (conflictResult.length > 0)
       return { ok: false, reason: 'conflict', conflicts: conflictResult }
 
-    const isHighSeason = isHighSeasonRange(input.listingId, input.checkIn, input.checkOut)
+    const mode = getBookingMode(input.ownerId, input.listingId)
+    const quota = checkQuota(input.ownerId, input.listingId, input.checkIn, input.checkOut)
+
+    // Direct mode: quota exceeded blocks the booking outright.
+    if (mode === 'direct' && quota.exceeded)
+      return { ok: false, reason: 'quota_exceeded', quota }
+
+    // Request mode: quota is advisory — the request still queues, staff decides.
     const timestamp = nowIso()
 
-    if (!isHighSeason) {
-      // Rule A — auto-approve.
+    if (mode === 'direct') {
       const result = createStay({
         ownerId: input.ownerId,
         listingId: input.listingId,
@@ -121,12 +169,12 @@ export function useOwnerStayApprovals() {
       })
       if (!result.ok)
         return result
-      // Provision ops for auto-approved stays too (Flow 5).
+      // Provision ops for direct bookings too (Flow 5).
       void provisionOwnerStayOperations(result.stay)
       return { ok: true, stay: result.stay, requiredApproval: false, autoApproved: true }
     }
 
-    // Rule B — manual approval queue.
+    // Request mode — manual approval queue.
     const stayResult = createStay({
       ownerId: input.ownerId,
       listingId: input.listingId,
@@ -161,6 +209,9 @@ export function useOwnerStayApprovals() {
     }
     requests.value = [...requests.value, request]
 
+    // PRD 5.4.2 — mirror the request into Reservations with an owner_request status.
+    syncOwnerRequestReservation(stayResult.stay, input.listingId)
+
     emitApprovalAlert('OWNER_STAY_REQUESTED', 'WARNING', {
       requestId: request.id,
       stayId: stayResult.stay.id,
@@ -186,6 +237,11 @@ export function useOwnerStayApprovals() {
     const { updateStayStatus } = useOwnerStayOperations()
     const result = updateStayStatus(request.stayId, 'active', { decidedBy, decidedAt: timestamp })
 
+    // Flip the mirrored reservation to a confirmed block (PRD 5.4.2).
+    const { reservations } = useReservationsModule()
+    reservations.value = reservations.value.map(r =>
+      r.bookingNote === `Owner request ${request.stayId}` ? { ...r, status: 'verified' } : r)
+
     requests.value = requests.value.map(r => r.id === requestId
       ? { ...r, status: 'approved' as const, decidedBy, decidedAt: timestamp }
       : r)
@@ -204,6 +260,11 @@ export function useOwnerStayApprovals() {
     const timestamp = nowIso()
     const { updateStayStatus } = useOwnerStayOperations()
     const result = updateStayStatus(request.stayId, 'rejected', { decidedBy, decidedAt: timestamp, reason })
+
+    // Mirror the rejection onto the reservation (PRD 5.4.2).
+    const { reservations } = useReservationsModule()
+    reservations.value = reservations.value.map(r =>
+      r.bookingNote === `Owner request ${request.stayId}` ? { ...r, status: 'cancelled' } : r)
 
     requests.value = requests.value.map(r => r.id === requestId
       ? { ...r, status: 'rejected' as const, decidedBy, decidedAt: timestamp, decisionReason: reason }

@@ -69,6 +69,7 @@
     "embla-carousel": "^8.6.0",
     "embla-carousel-vue": "^8.6.0",
     "h3": "^1.15.4",
+    "jspdf": "^4.2.1",
     "libphonenumber-js": "^1.13.8",
     "media-chrome": "^4.19.2",
     "motion-v": "^2.3.0",

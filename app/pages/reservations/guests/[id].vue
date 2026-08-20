@@ -137,6 +137,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
     cancelled: 'bg-muted text-muted-foreground border-border',
     blocked: 'bg-black/80 text-white border-black/80',
     inquiry: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+    owner_request: 'bg-violet-500/10 text-violet-700 border-violet-500/40',
   }
   return status ? map[status] : ''
 }

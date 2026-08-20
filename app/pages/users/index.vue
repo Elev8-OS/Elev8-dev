@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import type { Owner } from '~/components/owners/data/owners'
+import type { Role, RoleId } from '~/components/users/data/roles'
+import type { User } from '~/components/users/data/users'
+import OwnerDetailSheet from '~/components/owners/OwnerDetailSheet.vue'
+import OwnerOnboardingDialog from '~/components/owners/OwnerOnboardingDialog.vue'
+import OwnersKpis from '~/components/owners/OwnersKpis.vue'
+import OwnersTable from '~/components/owners/OwnersTable.vue'
+import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
-import { Badge } from '~/components/ui/badge'
 import { Skeleton } from '~/components/ui/skeleton'
-import UsersTable from '~/components/users/UsersTable.vue'
-import UserDetailSheet from '~/components/users/UserDetailSheet.vue'
-import RolesGrid from '~/components/users/RolesGrid.vue'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import RoleDetailSheet from '~/components/users/RoleDetailSheet.vue'
-import { useUsers } from '~/composables/useUsers'
+import RolesGrid from '~/components/users/RolesGrid.vue'
+import UserDetailSheet from '~/components/users/UserDetailSheet.vue'
+import UsersTable from '~/components/users/UsersTable.vue'
+import { useOwners } from '~/composables/useOwners'
 import { useRoles } from '~/composables/useRoles'
-import type { User } from '~/components/users/data/users'
-import type { Role, RoleId } from '~/components/users/data/roles'
+import { useUsers } from '~/composables/useUsers'
 
 definePageMeta({
   layout: 'default',
@@ -19,6 +25,7 @@ definePageMeta({
 
 const { totalCount, activeUsers, inactiveUsers } = useUsers()
 const { roles } = useRoles()
+const { owners } = useOwners()
 
 // Sheet state
 const userSheetOpen = ref(false)
@@ -26,6 +33,11 @@ const editingUserId = ref<string | undefined>(undefined)
 
 const roleSheetOpen = ref(false)
 const editingRoleId = ref<RoleId | undefined>(undefined)
+
+// Owner tab state (PRD 5.4 — Owners page retired, roster moved here)
+const ownerOnboardingOpen = ref(false)
+const ownerSheetOpen = ref(false)
+const selectedOwnerId = ref<string | undefined>(undefined)
 
 function openAddUser() {
   editingUserId.value = undefined
@@ -41,6 +53,20 @@ function openEditRole(role: Role) {
   editingRoleId.value = role.id
   roleSheetOpen.value = true
 }
+
+function openAddOwner() {
+  ownerOnboardingOpen.value = true
+}
+
+function onOwnerCreated(ownerId: string) {
+  selectedOwnerId.value = ownerId
+  ownerSheetOpen.value = true
+}
+
+function onSelectOwner(owner: Owner) {
+  selectedOwnerId.value = owner.id
+  ownerSheetOpen.value = true
+}
 </script>
 
 <template>
@@ -53,7 +79,7 @@ function openEditRole(role: Role) {
             Users
           </h1>
           <p class="text-sm text-muted-foreground">
-            Manage your team — create users, assign roles and listings.
+            Manage your team — create users and owners, assign roles and listings.
           </p>
         </div>
         <Button @click="openAddUser">
@@ -103,6 +129,13 @@ function openEditRole(role: Role) {
             <Icon name="lucide:users-round" class="mr-2 size-4" />
             Users
           </TabsTrigger>
+          <TabsTrigger value="owners">
+            <Icon name="lucide:building-2" class="mr-2 size-4" />
+            Owners
+            <Badge variant="secondary" class="ml-2">
+              {{ owners.length }}
+            </Badge>
+          </TabsTrigger>
           <TabsTrigger value="roles">
             <Icon name="lucide:shield-check" class="mr-2 size-4" />
             Roles
@@ -114,6 +147,18 @@ function openEditRole(role: Role) {
 
         <TabsContent value="users" class="space-y-4">
           <UsersTable @edit="openEditUser" />
+        </TabsContent>
+
+        <!-- PRD 5.4 — owner roster lives on the Users page now -->
+        <TabsContent value="owners" class="space-y-3">
+          <div class="flex justify-end">
+            <Button size="sm" @click="openAddOwner">
+              <Icon name="lucide:plus" class="mr-2 size-4" />
+              Create owner
+            </Button>
+          </div>
+          <OwnersKpis />
+          <OwnersTable @select-owner="onSelectOwner" />
         </TabsContent>
 
         <TabsContent value="roles">
@@ -130,6 +175,14 @@ function openEditRole(role: Role) {
     <RoleDetailSheet
       v-model:open="roleSheetOpen"
       :role-id="editingRoleId"
+    />
+    <OwnerOnboardingDialog
+      v-model="ownerOnboardingOpen"
+      @created="onOwnerCreated"
+    />
+    <OwnerDetailSheet
+      v-model:open="ownerSheetOpen"
+      :owner-id="selectedOwnerId"
     />
 
     <template #fallback>

@@ -1,6 +1,6 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 
-export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked'
+export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
 export type GuestCategory = 'adult' | 'child' | 'infant'
 
@@ -121,6 +121,9 @@ export interface ReservationDraft {
   guestCount: number
   totalPrice: number
   currency: string
+  /** Owner stay requests / blocked reservations carry extra context. */
+  blockReason?: string
+  bookingNote?: string
 }
 
 export function generateReservationId(): string {
@@ -135,6 +138,7 @@ export const reservationStatusLabels: Record<ReservationStatus, string> = {
   checked_out: 'Checked out',
   cancelled: 'Cancelled',
   blocked: 'Blocked',
+  owner_request: 'Owner Request',
 }
 
 export const initialReservations: ReservationEntry[] = [

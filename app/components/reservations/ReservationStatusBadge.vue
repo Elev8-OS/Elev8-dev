@@ -12,6 +12,7 @@ const classes: Record<ReservationStatus, string> = {
   cancelled: 'bg-muted text-muted-foreground border-border line-through',
   blocked: 'bg-black/80 text-white border-black/80',
   inquiry: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+  owner_request: 'border-dashed bg-violet-500/10 text-violet-700 border-violet-500/40',
 }
 </script>
 
@@ -19,6 +20,10 @@ const classes: Record<ReservationStatus, string> = {
   <Badge variant="outline" :class="classes[props.status]">
     <template v-if="props.status === 'blocked'">
       <Icon name="lucide:calendar-off" class="mr-1 size-3" />
+      {{ reservationStatusLabels[props.status] }}
+    </template>
+    <template v-else-if="props.status === 'owner_request'">
+      <Icon name="lucide:user-round-check" class="mr-1 size-3" />
       {{ reservationStatusLabels[props.status] }}
     </template>
     <template v-else>

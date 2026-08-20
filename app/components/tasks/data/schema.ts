@@ -32,6 +32,12 @@ export const taskSchema = z.object({
   source: z.enum(['manual', 'from_finding']).optional(),
   /** When source === 'from_finding', the id of the originating finding. */
   sourceRef: z.string().optional(),
+  /** Owner-related maintenance task (PRD 5.4.3) — the linked owner id. */
+  ownerId: z.string().optional(),
+  /** True when this task is visible to the owner in their portal (read-only). */
+  ownerVisible: z.boolean().optional(),
+  /** Final invoice amount after the repair completes (feeds the statement). */
+  finalInvoiceAmount: z.number().optional(),
 })
 
 export type Task = z.infer<typeof taskSchema>

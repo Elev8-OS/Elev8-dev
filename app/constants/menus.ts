@@ -85,9 +85,9 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
-        title: 'Owners',
-        icon: 'i-lucide-building-2',
-        link: '/owners',
+        title: 'Cockpit',
+        icon: 'i-lucide-calendar-days',
+        link: '/cockpit',
         new: true,
       },
       {

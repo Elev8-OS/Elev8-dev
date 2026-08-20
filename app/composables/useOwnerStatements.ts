@@ -49,6 +49,8 @@ import type {
   StatementInput,
 } from '~/components/owners/data/owner-ledger'
 import type {
+  OwnerIssueMessage,
+  OwnerIssueResolution,
   OwnerStatement,
   OwnerStatementIssue,
   OwnerStatementLine,
@@ -57,6 +59,7 @@ import type { Owner, OwnerPropertyMapping } from '~/components/owners/data/owner
 import { toRaw } from 'vue'
 import {
   calculateCommission,
+  commissionBasisLabel,
   findEffectiveCommissionRule,
   mockCommissionRules,
 } from '~/components/owners/data/commission-rules'
@@ -127,6 +130,25 @@ export interface RaiseIssueInput {
 export type RaiseIssueResult
   = | { ok: true, issue: OwnerStatementIssue, existing: boolean }
     | { ok: false, reason: 'statement_not_found' | 'invalid_line' }
+
+// --- Dispute thread (PRD 5.5.6) ------------------------------------------
+
+export type AddIssueMessageResult
+  = | { ok: true, issue: OwnerStatementIssue }
+    | { ok: false, reason: 'issue_not_found' }
+
+export interface ResolveIssueWithResolutionInput {
+  issueId: string
+  type: 'explained' | 'adjusted'
+  resolvedBy: string
+  note?: string
+  /** When 'adjusted' and an adjustment record was created. */
+  adjustmentId?: string
+}
+
+export type ResolveIssueWithResolutionResult
+  = | { ok: true, issue: OwnerStatementIssue }
+    | { ok: false, reason: 'issue_not_found' | 'already_resolved' }
 
 /**
  * `recordAdjustment` derives `ownerId`, `listingId`, and `period` from the
@@ -222,6 +244,7 @@ type OwnerStatementAlertType
   = | 'OWNER_STATEMENT_DRAFT_READY'
     | 'OWNER_STATEMENT_PUBLISHED'
     | 'OWNER_ISSUE_RAISED'
+    | 'OWNER_ISSUE_RESPONDED'
 
 function emitOwnerAlert(
   type: OwnerStatementAlertType,
@@ -423,7 +446,7 @@ export function useOwnerStatements() {
   // --- Publish -----------------------------------------------------------
 
   /**
-   * Freeze a draft into a published statement.
+   * Freeze a statement into a published statement (from draft or preview).
    *   Rejects when the statement is missing or already published.
    *   Replaces `lines`/`totalAmount`/`currency` in `publishedSnapshot`
    *     via the schema-safe `clonePlain` helper — mutating the live lines
@@ -434,7 +457,7 @@ export function useOwnerStatements() {
    */
   function publish(statementId: string, publishedBy: string): PublishResult {
     const current = findStatement(statementId)
-    if (!current || current.status !== 'draft') {
+    if (!current || (current.status !== 'draft' && current.status !== 'in_preview')) {
       return { ok: false, reason: 'not_publishable' }
     }
 
@@ -467,6 +490,31 @@ export function useOwnerStatements() {
     return { ok: true }
   }
 
+  /**
+   * Move a draft into preview (PRD 5.5.1). Staff review the statement exactly
+   * as the owner will see it, add pre-publish adjustments, then publish.
+   */
+  function moveToPreview(statementId: string): { ok: boolean } {
+    const current = findStatement(statementId)
+    if (!current || current.status !== 'draft')
+      return { ok: false }
+    statements.value = statements.value.map(item => item.id === statementId
+      ? { ...item, status: 'in_preview' as const }
+      : item)
+    return { ok: true }
+  }
+
+  /** Back out of preview into draft (adjustment edits only allowed in draft). */
+  function backToDraft(statementId: string): { ok: boolean } {
+    const current = findStatement(statementId)
+    if (!current || current.status !== 'in_preview')
+      return { ok: false }
+    statements.value = statements.value.map(item => item.id === statementId
+      ? { ...item, status: 'draft' as const }
+      : item)
+    return { ok: true }
+  }
+
   // --- Edit guard --------------------------------------------------------
 
   /**
@@ -479,7 +527,7 @@ export function useOwnerStatements() {
     lines: OwnerStatementLine[],
   ): UpdateStatementLinesResult {
     const current = findStatement(statementId)
-    if (!current || current.status !== 'draft') {
+    if (!current || (current.status !== 'draft' && current.status !== 'in_preview')) {
       return { ok: false, reason: 'not_editable' }
     }
     const clonedLines = lines.map(l => ({ ...l }))
@@ -563,6 +611,75 @@ export function useOwnerStatements() {
         : issue),
     }))
     return { ok: true }
+  }
+
+  // --- Dispute thread (PRD 5.5.6) ---------------------------------------
+
+  /**
+   * Append a message to a line-item dispute thread (PRD 5.5.6). The thread
+   * stays attached to the issue after resolution — it is never deleted.
+   */
+  function addIssueMessage(issueId: string, author: 'owner' | 'staff', message: string): AddIssueMessageResult {
+    const target = issues.value.find(i => i.id === issueId)
+    if (!target)
+      return { ok: false, reason: 'issue_not_found' }
+
+    const entry: OwnerIssueMessage = {
+      id: deriveUniqueId('ist', issueIdTaken),
+      author,
+      at: nowIso(),
+      message,
+    }
+    const thread = [...(target.thread ?? []), entry]
+    const updated = { ...target, thread }
+    issues.value = issues.value.map(i => i.id === issueId ? updated : i)
+    statements.value = statements.value.map(statement => ({
+      ...statement,
+      issues: statement.issues.map(issue => issue.id === issueId
+        ? { ...issue, thread }
+        : issue),
+    }))
+
+    // Notify the other party (PRD 5.5.7) — owner → staff, staff → owner.
+    emitOwnerAlert('OWNER_ISSUE_RESPONDED', 'INFO', {
+      issueId,
+      statementId: target.statementId,
+      author,
+      message,
+    })
+
+    return { ok: true, issue: updated }
+  }
+
+  /**
+   * Close a dispute with an explicit resolution type (PRD 5.5.6):
+   * 'explained' = staff clarified, no amount change; 'adjusted' = the amount
+   * was corrected (optionally via an adjustment record).
+   */
+  function resolveIssueWithResolution(input: ResolveIssueWithResolutionInput): ResolveIssueWithResolutionResult {
+    const target = issues.value.find(i => i.id === input.issueId)
+    if (!target)
+      return { ok: false, reason: 'issue_not_found' }
+    if (target.resolvedAt)
+      return { ok: false, reason: 'already_resolved' }
+
+    const resolvedAt = nowIso()
+    const resolution: OwnerIssueResolution = {
+      type: input.type,
+      resolvedBy: input.resolvedBy,
+      resolvedAt,
+      note: input.note,
+      adjustmentId: input.adjustmentId,
+    }
+    const updated = { ...target, resolvedAt, resolution }
+    issues.value = issues.value.map(i => i.id === input.issueId ? updated : i)
+    statements.value = statements.value.map(statement => ({
+      ...statement,
+      issues: statement.issues.map(issue => issue.id === input.issueId
+        ? { ...issue, resolvedAt, resolution }
+        : issue),
+    }))
+    return { ok: true, issue: updated }
   }
 
   // --- Next-period adjustments ------------------------------------------
@@ -650,7 +767,7 @@ export function useOwnerStatements() {
    */
   function computeDrafts(): OwnerStatement[] {
     return statements.value
-      .filter(s => s.status === 'draft')
+      .filter(s => s.status === 'draft' || s.status === 'in_preview')
       .slice()
       .sort((a, b) => {
         if (a.period === b.period)
@@ -669,11 +786,15 @@ export function useOwnerStatements() {
     exportActivity,
     // Lifecycle
     generateForPeriod,
+    moveToPreview,
+    backToDraft,
     publish,
     updateStatementLines,
     // Issues
     raiseIssue,
     resolveIssue,
+    addIssueMessage,
+    resolveIssueWithResolution,
     // Corrections
     recordAdjustment,
     // Exports
@@ -706,15 +827,25 @@ function buildDraftFromLedger(
   createdAt: string,
   nextStatementId: () => string,
 ): OwnerStatement {
-  const commission = calculateCommission(rule, entry.grossRevenue)
+  // PRD 5.1 — commission basis: 'net' rules apply the rate to net revenue
+  // (gross − expenses − taxes − platform fees), 'gross' rules to gross.
+  const netRevenue = entry.grossRevenue - entry.expenses - entry.taxes - entry.platformFees
+  const commission = calculateCommission(rule, entry.grossRevenue, { netRevenue })
   const input: StatementInput = ledgerEntryToStatementInput(entry, commission)
   const lines = buildStatementLines(input)
   const totals = calculateStatementTotals(input)
   // Round line amounts so what the UI displays is the source of truth.
-  const roundedLines: OwnerStatementLine[] = lines.map(line => ({
-    ...line,
-    amount: roundCurrency(line.amount),
-  }))
+  const roundedLines: OwnerStatementLine[] = lines.map((line) => {
+    // Label the commission line with its basis so the owner never has to
+    // ask "20% from what?" (PRD 5.6 correction #1).
+    if (line.category === 'commission' && rule.type !== 'tiered') {
+      return {
+        ...line,
+        label: `Management commission (${commissionBasisLabel(rule)})`,
+      }
+    }
+    return { ...line, amount: roundCurrency(line.amount) }
+  })
   const totalAmount = roundCurrency(totals.netPayout)
   return {
     id: nextStatementId(),

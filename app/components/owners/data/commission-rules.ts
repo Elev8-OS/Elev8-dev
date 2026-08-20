@@ -2,10 +2,18 @@
 // handling their listing. Each rule is scoped to a single (owner, listing)
 // pair so it can be edited independently for shared properties.
 //
+// Two basis models are supported (PRD 5.1):
+//   - gross:  the percentage/fixed fee is taken from gross booking revenue
+//             (the OTA commission is already absorbed by the manager).
+//   - net:    a fixed monthly fee plus a percentage of NET revenue
+//             (gross − operating expenses − taxes − platform fees).
+//
 // Three flavours are supported:
 //   - flat:     a single percentage of revenue.
 //   - tiered:   a marginal rate (e.g. 20% on the first 1,000 USD, 12% above).
 //   - hybrid:   a fixed management fee plus a percentage of revenue.
+
+export type CommissionBasis = 'gross' | 'net'
 
 export interface CommissionTier {
   /** Inclusive upper bound of this tier in the listing's statement currency. `null` = open-ended top tier. */
@@ -21,6 +29,8 @@ interface CommissionRuleBase {
   name: string
   effectiveFrom: string
   effectiveTo?: string
+  /** Which base the rate/fixed fee is computed against. Defaults to 'gross' for backward compatibility. */
+  basis?: CommissionBasis
 }
 
 export type CommissionRule
@@ -47,31 +57,48 @@ export type CommissionRuleDraft
  * so callers can pass a live rule or a lightweight literal (e.g. a draft in a form).
  */
 export type CommissionCalculationRule
-  = | Pick<Extract<CommissionRule, { type: 'flat' }>, 'type' | 'rate'>
-    | Pick<Extract<CommissionRule, { type: 'tiered' }>, 'type' | 'tiers'>
-    | Pick<Extract<CommissionRule, { type: 'hybrid' }>, 'type' | 'fixedAmount' | 'rate'>
+  = | Pick<Extract<CommissionRule, { type: 'flat' }>, 'type' | 'rate' | 'basis'>
+    | Pick<Extract<CommissionRule, { type: 'tiered' }>, 'type' | 'tiers' | 'basis'>
+    | Pick<Extract<CommissionRule, { type: 'hybrid' }>, 'type' | 'fixedAmount' | 'rate' | 'basis'>
 
 /** Round a currency amount to two decimals at the domain boundary. */
 function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
+export interface CommissionCalculationOptions {
+  /**
+   * Net revenue (gross − operating expenses − taxes − platform fees).
+   * Required when the rule's basis is 'net'; falls back to `revenue` when absent.
+   */
+  netRevenue?: number
+}
+
 /**
  * Compute the management commission for a given revenue.
  *
- * - flat:   `revenue * rate%`
- * - hybrid: `fixedAmount + revenue * rate%`
+ * - flat:   `base * rate%`
+ * - hybrid: `fixedAmount + base * rate%`
  * - tiered: progressive (marginal) — each band of revenue is charged at that
  *   tier's rate. Revenue above the top capped tier is not charged.
+ *
+ * The `base` is `revenue` (gross) by default; when the rule declares
+ * `basis: 'net'` the base is `opts.netRevenue ?? revenue`.
  */
-export function calculateCommission(rule: CommissionCalculationRule, revenue: number): number {
+export function calculateCommission(
+  rule: CommissionCalculationRule,
+  revenue: number,
+  opts: CommissionCalculationOptions = {},
+): number {
+  const base = rule.basis === 'net' ? (opts.netRevenue ?? revenue) : revenue
+
   if (rule.type === 'flat')
-    return roundCurrency(revenue * (rule.rate / 100))
+    return roundCurrency(base * (rule.rate / 100))
 
   if (rule.type === 'hybrid')
-    return roundCurrency(rule.fixedAmount + revenue * (rule.rate / 100))
+    return roundCurrency(rule.fixedAmount + base * (rule.rate / 100))
 
-  let remaining = revenue
+  let remaining = base
   let lowerBound = 0
   let total = 0
 
@@ -123,7 +150,7 @@ function endOfPeriod(period: string): string {
 // --- Seed fixtures ----------------------------------------------------------
 
 export const mockCommissionRules: CommissionRule[] = [
-  // Wayan (lst-1): flat 20% management commission.
+  // Wayan (lst-1): flat 20% management commission on gross revenue.
   {
     id: 'cr-1',
     ownerId: 'own-1',
@@ -131,6 +158,7 @@ export const mockCommissionRules: CommissionRule[] = [
     name: 'Standard 20% management',
     type: 'flat',
     rate: 20,
+    basis: 'gross',
     effectiveFrom: '2026-01-15',
   },
   // I Putu (lst-3): tiered — cheaper on the first 50M IDR, then standard.
@@ -144,17 +172,19 @@ export const mockCommissionRules: CommissionRule[] = [
       { upTo: 50_000_000, rate: 18 },
       { upTo: null, rate: 22 },
     ],
+    basis: 'gross',
     effectiveFrom: '2025-12-01',
   },
-  // I Putu (lst-8): hybrid — fixed base fee + 15% on revenue above.
+  // I Putu (lst-8): hybrid — fixed base fee + 15% on NET revenue (PRD 5.1 model).
   {
     id: 'cr-3',
     ownerId: 'own-2',
     listingId: 'lst-8',
-    name: 'Hybrid — 250 USD + 15%',
+    name: 'Hybrid — 250 USD + 15% of Net',
     type: 'hybrid',
     fixedAmount: 250,
     rate: 15,
+    basis: 'net',
     effectiveFrom: '2025-12-01',
   },
   // Ni Kadek (lst-3): flat 18% (slightly lower than I Putu because of higher projected volume).
@@ -165,6 +195,20 @@ export const mockCommissionRules: CommissionRule[] = [
     name: 'Standard 18% management',
     type: 'flat',
     rate: 18,
+    basis: 'gross',
     effectiveFrom: '2026-07-01',
   },
 ]
+
+/**
+ * Human-readable basis label for a commission rule, e.g. "20% of Gross"
+ * or "250 USD + 15% of Net". Used in statement lines and the editor.
+ */
+export function commissionBasisLabel(rule: { type: 'flat' | 'tiered' | 'hybrid', rate?: number, fixedAmount?: number, basis?: CommissionBasis }): string {
+  const basis = rule.basis === 'net' ? 'Net' : 'Gross'
+  if (rule.type === 'flat')
+    return `${rule.rate}% of ${basis}`
+  if (rule.type === 'hybrid')
+    return `${rule.fixedAmount} + ${rule.rate}% of ${basis}`
+  return `Tiered of ${basis}`
+}

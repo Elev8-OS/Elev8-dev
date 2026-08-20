@@ -5,6 +5,7 @@ import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
+import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -72,6 +73,7 @@ const statusDotClass = computed(() => {
     cancelled: 'bg-neutral-400',
     blocked: 'bg-black',
     inquiry: 'bg-amber-500',
+    owner_request: 'bg-violet-500',
   }
   return reservation.value ? map[reservation.value.status] : 'bg-neutral-400'
 })

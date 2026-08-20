@@ -4,8 +4,8 @@ import { Icon } from '#components'
 import { h } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { assigneeOptions, priorities, statuses } from '../data/data'
 import { selectedTaskRef } from '~/composables/useTaskDetail'
+import { assigneeOptions, priorities, statuses } from '../data/data'
 import DataTableColumnHeader from './DataTableColumnHeader.vue'
 import DataTableRowActions from './DataTableRowActions.vue'
 
@@ -72,9 +72,9 @@ export const columns: ColumnDef<Task>[] = [
       }, [
         assignee
           ? h(Badge, {
-            variant: task.assigneeType === 'role' ? 'secondary' : 'outline',
-            class: 'shrink-0 text-xs font-normal',
-          }, () => assignee.label)
+              variant: task.assigneeType === 'role' ? 'secondary' : 'outline',
+              class: 'shrink-0 text-xs font-normal',
+            }, () => assignee.label)
           : null,
         h('span', { class: 'max-w-[300px] truncate font-medium' }, row.getValue('title')),
       ])
@@ -134,6 +134,16 @@ export const columns: ColumnDef<Task>[] = [
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
+  },
+  {
+    accessorKey: 'ownerVisible',
+    header: () => h('span', { class: 'sr-only' }, 'Owner maintenance'),
+    cell: ({ row }) => {
+      if (!row.original.ownerVisible)
+        return null
+      return h(Badge, { variant: 'secondary', class: 'text-xs font-normal' }, 'Owner')
+    },
+    filterFn: (row, _id, value: string[]) => value.includes('true') === !!row.original.ownerVisible,
   },
   {
     id: 'actions',

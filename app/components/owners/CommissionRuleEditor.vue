@@ -128,6 +128,33 @@ function removeTier(index: number) {
       </div>
     </div>
 
+    <div class="space-y-1.5">
+      <Label>
+        Commission basis
+      </Label>
+      <div class="inline-flex rounded-md border p-0.5">
+        <button
+          type="button"
+          class="rounded px-3 py-1 text-xs font-medium transition-colors"
+          :class="(draft.basis ?? 'gross') === 'gross' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+          @click="patch({ basis: 'gross' } as Partial<CommissionRuleDraft>)"
+        >
+          % of Gross
+        </button>
+        <button
+          type="button"
+          class="rounded px-3 py-1 text-xs font-medium transition-colors"
+          :class="(draft.basis ?? 'gross') === 'net' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+          @click="patch({ basis: 'net' } as Partial<CommissionRuleDraft>)"
+        >
+          Fixed + % of Net
+        </button>
+      </div>
+      <p class="text-xs text-muted-foreground">
+        Net = gross revenue after operating expenses, taxes, and platform fees.
+      </p>
+    </div>
+
     <!-- Flat -->
     <div v-if="draft.type === 'flat'" class="space-y-1.5">
       <Label for="commission-rate">
@@ -143,7 +170,7 @@ function removeTier(index: number) {
         @update:model-value="(v: string | number) => patch({ rate: Number(v) } as Partial<CommissionRuleDraft>)"
       />
       <p class="text-xs text-muted-foreground">
-        {{ draft.rate }}% of revenue.
+        {{ draft.rate }}% of {{ (draft.basis ?? 'gross') === 'net' ? 'net revenue' : 'gross revenue' }}.
       </p>
     </div>
 

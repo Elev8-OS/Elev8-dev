@@ -27,6 +27,8 @@ import { rebalanceSiblings, remainingShare } from './lib/ownership-rebalance'
 export interface OwnerMappingDraft {
   mapping: Omit<OwnerPropertyMapping, 'id' | 'ownerId' | 'commissionRuleId'>
   commissionRule: CommissionRuleDraft
+  /** 0–100 — share of operational costs borne by the owner (PRD 5.1.3). */
+  operationalFeePercentage: number
 }
 
 interface Props {
@@ -105,6 +107,7 @@ function addMapping() {
         effectiveFrom: new Date().toISOString().slice(0, 10),
       },
       commissionRule: makeEmptyRule(nextListing.id),
+      operationalFeePercentage: 100,
     },
   ])
   toast.success(`${nextListing.name} added.`)
@@ -148,6 +151,7 @@ function patchMapping(index: number, partial: Partial<OwnerMappingDraft['mapping
     commissionRule: partial.listingId !== undefined
       ? { ...cur.commissionRule, listingId: partial.listingId }
       : cur.commissionRule,
+    operationalFeePercentage: cur.operationalFeePercentage,
   }
   next[index] = merged
   // Rebalance sibling rows in the same scope so the total stays at 100%.
@@ -169,6 +173,20 @@ function patchRule(index: number, rule: CommissionRuleDraft) {
   next[index] = {
     mapping: { ...current.mapping },
     commissionRule: rule,
+    operationalFeePercentage: current.operationalFeePercentage,
+  }
+  emit('update:mappings', next)
+}
+
+function patchOperationalFee(index: number, percentage: number) {
+  const next = [...props.mappings]
+  const current = next[index]
+  if (!current)
+    return
+  next[index] = {
+    mapping: { ...current.mapping },
+    commissionRule: current.commissionRule,
+    operationalFeePercentage: percentage,
   }
   emit('update:mappings', next)
 }
@@ -291,6 +309,24 @@ const cumulativeOverflow = computed<{ scope: string, total: number, existing: nu
                     :model-value="draft.mapping.ownershipPercentage.toString()"
                     @update:model-value="(v: string | number) => patchMapping(index, { ownershipPercentage: Number(v) })"
                   />
+                </div>
+
+                <div class="space-y-1.5">
+                  <Label :for="`op-fee-${index}`">
+                    Operational costs covered (%)
+                  </Label>
+                  <Input
+                    :id="`op-fee-${index}`"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="5"
+                    :model-value="draft.operationalFeePercentage.toString()"
+                    @update:model-value="(v: string | number) => patchOperationalFee(index, Number(v))"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    100% = owner covers all cleaning &amp; utilities
+                  </p>
                 </div>
 
                 <div class="space-y-1.5 sm:col-span-2">

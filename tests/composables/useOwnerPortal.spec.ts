@@ -19,6 +19,7 @@ import { mockOwnerStatements } from '~/components/owners/data/owner-statements'
 import { mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
+import { useOwnerContracts } from '~/composables/useOwnerContracts'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 
@@ -33,6 +34,12 @@ async function loginAs(ownerEmail: string): Promise<void> {
   const auth = useOwnerAuth()
   auth.logout()
   await auth.requestMagicLink(ownerEmail)
+  // PRD 5.3: owners must e-sign their contract before login. Sign any
+  // pending contract first so portal isolation tests can proceed.
+  const pending = auth.getPendingContract()
+  if (pending) {
+    useOwnerContracts().signContract(pending.contractId, pending.ownerName)
+  }
   auth.acceptDemoLink()
 }
 
