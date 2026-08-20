@@ -3,6 +3,8 @@ const links = [
   { label: 'Overview', to: '/owner-portal', icon: 'lucide:layout-dashboard' },
   { label: 'Statements', to: '/owner-portal/statements', icon: 'lucide:file-text' },
   { label: 'My Stays', to: '/owner-portal/stays', icon: 'lucide:calendar-days' },
+  { label: 'Documents', to: '/owner-portal/documents', icon: 'lucide:folder-open' },
+  { label: 'Maintenance', to: '/owner-portal/maintenance', icon: 'lucide:wrench' },
 ]
 
 const route = useRoute()

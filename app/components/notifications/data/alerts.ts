@@ -46,6 +46,14 @@ export type AlertType
     | 'OWNER_STAY_CONFLICT'
     | 'OWNER_ISSUE_RAISED'
     | 'OWNER_USE_CAP_EXCEEDED'
+    | 'OWNER_STAY_REQUESTED'
+    | 'OWNER_STAY_REJECTED'
+    | 'OWNER_STAY_CANCELLED'
+    | 'OWNER_STAY_APPROACHING'
+    | 'DOCUMENT_UPLOADED'
+    | 'MAINTENANCE_APPROVAL_REQUESTED'
+    | 'MAINTENANCE_COMPLETED'
+    | 'OWNER_LINK_REVOKED'
     | 'LEXWARE_DRAFT_INVOICE_READY'
     | 'LEXWARE_CONNECTION_NEEDS_ATTENTION'
     | 'LEXWARE_TAX_MAPPING_HOLD'
@@ -123,6 +131,14 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   OWNER_STAY_CONFLICT: 'Owner Stay Conflict',
   OWNER_ISSUE_RAISED: 'Owner Statement Issue Raised',
   OWNER_USE_CAP_EXCEEDED: 'Owner Use Cap Exceeded',
+  OWNER_STAY_REQUESTED: 'Owner Stay Requested',
+  OWNER_STAY_REJECTED: 'Owner Stay Rejected',
+  OWNER_STAY_CANCELLED: 'Owner Stay Cancellation Requested',
+  OWNER_STAY_APPROACHING: 'Owner Stay Approaching',
+  DOCUMENT_UPLOADED: 'New Owner Document',
+  MAINTENANCE_APPROVAL_REQUESTED: 'Maintenance Cost Approval',
+  MAINTENANCE_COMPLETED: 'Maintenance Completed',
+  OWNER_LINK_REVOKED: 'Owner Access Revoked',
   LEXWARE_DRAFT_INVOICE_READY: 'Lexware - Draft Invoice Ready',
   LEXWARE_CONNECTION_NEEDS_ATTENTION: 'Lexware - Connection Needs Attention',
   LEXWARE_TAX_MAPPING_HOLD: 'Lexware - Tax Mapping Required',
@@ -185,6 +201,14 @@ export const alertIcons: Record<AlertType, string> = {
   OWNER_STAY_CONFLICT: 'i-lucide-calendar-x',
   OWNER_ISSUE_RAISED: 'i-lucide-message-square-warning',
   OWNER_USE_CAP_EXCEEDED: 'i-lucide-triangle-alert',
+  OWNER_STAY_REQUESTED: 'i-lucide-calendar-clock',
+  OWNER_STAY_REJECTED: 'i-lucide-calendar-x-2',
+  OWNER_STAY_CANCELLED: 'i-lucide-calendar-off',
+  OWNER_STAY_APPROACHING: 'i-lucide-bell-ring',
+  DOCUMENT_UPLOADED: 'i-lucide-file-up',
+  MAINTENANCE_APPROVAL_REQUESTED: 'i-lucide-wrench',
+  MAINTENANCE_COMPLETED: 'i-lucide-circle-check',
+  OWNER_LINK_REVOKED: 'i-lucide-shield-x',
   LEXWARE_DRAFT_INVOICE_READY: 'i-lucide-file-text',
   LEXWARE_CONNECTION_NEEDS_ATTENTION: 'i-lucide-unplug',
   LEXWARE_TAX_MAPPING_HOLD: 'i-lucide-percent',
@@ -247,6 +271,14 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   OWNER_STAY_CONFLICT: '/owner-portal/stays',
   OWNER_ISSUE_RAISED: '/owner-statements',
   OWNER_USE_CAP_EXCEEDED: '/owners',
+  OWNER_STAY_REQUESTED: '/owners',
+  OWNER_STAY_REJECTED: '/owner-portal/stays',
+  OWNER_STAY_CANCELLED: '/owners',
+  OWNER_STAY_APPROACHING: '/owner-portal/stays',
+  DOCUMENT_UPLOADED: '/owner-portal/documents',
+  MAINTENANCE_APPROVAL_REQUESTED: '/owner-portal/maintenance',
+  MAINTENANCE_COMPLETED: '/owner-portal/maintenance',
+  OWNER_LINK_REVOKED: '/owners',
   LEXWARE_DRAFT_INVOICE_READY: '/finance?tab=integrations',
   LEXWARE_CONNECTION_NEEDS_ATTENTION: '/finance?tab=integrations',
   LEXWARE_TAX_MAPPING_HOLD: '/finance?tab=integrations',
@@ -345,6 +377,24 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `An issue was raised on owner statement ${context.statementId || 'statement'}.`
     case 'OWNER_USE_CAP_EXCEEDED':
       return `Owner use is projected at ${context.projectedNights ?? 0} nights, above the ${context.cap ?? 0}-night annual cap.`
+    case 'OWNER_STAY_REQUESTED':
+      return `Owner requested a stay${context.checkIn && context.checkOut ? ` from ${context.checkIn} to ${context.checkOut}` : ''}${context.guestCount ? ` for ${context.guestCount} guests` : ''} — pending your review.`
+    case 'OWNER_STAY_REJECTED':
+      return `Owner stay${context.checkIn && context.checkOut ? ` for ${context.checkIn} to ${context.checkOut}` : ''} was rejected${context.reason ? `: ${context.reason}` : ''}.`
+    case 'OWNER_STAY_CANCELLED':
+      return context.requiresApproval
+        ? `Owner requested cancellation of a stay — management approval needed.`
+        : `Owner stay was cancelled${context.checkIn ? ` (check-in ${context.checkIn})` : ''}.`
+    case 'OWNER_STAY_APPROACHING':
+      return `Owner stay for ${context.guestName || 'owner'} starts ${context.checkIn || ''} — pre-arrival ops are ready.`
+    case 'DOCUMENT_UPLOADED':
+      return `A new ${context.category || 'document'} was uploaded${context.documentTitle ? `: ${context.documentTitle}` : ''}${context.version ? ` (v${context.version})` : ''}.`
+    case 'MAINTENANCE_APPROVAL_REQUESTED':
+      return `${context.title || 'Maintenance'} needs owner approval — estimated cost ${context.currency ?? 'IDR'} ${(context.estimatedCost ?? 0).toLocaleString()}.`
+    case 'MAINTENANCE_COMPLETED':
+      return `${context.title || 'Maintenance'} completed${context.actualCost !== undefined ? ` — final cost ${(context.actualCost ?? 0).toLocaleString()}` : ''}.`
+    case 'OWNER_LINK_REVOKED':
+      return `Owner access was revoked for ${context.ownerName || context.ownerId || 'an owner'}.`
     case 'KEY_NOT_RETURNED':
       return `${context.key_label || 'Key'} at ${context.listing_name || 'property'} held by ${context.staff_name || 'staff'} is ${context.overdue_hours ?? '?'}h overdue.`
     case 'LEXWARE_DRAFT_INVOICE_READY':

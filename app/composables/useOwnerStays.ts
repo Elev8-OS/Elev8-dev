@@ -1,11 +1,13 @@
 import type { AlertType } from '~/components/notifications/data/alerts'
 import type {
   OwnerStay,
+  OwnerStayCancelRequest,
+  OwnerStaySource,
   OwnerStayStatus,
   OwnerStaySyncState,
   OwnerStaySyncTarget,
 } from '~/components/owners/data/owner-stays'
-import { mockOwnerStays } from '~/components/owners/data/owner-stays'
+import { CANCEL_CUTOFF_HOURS, mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { useNotifications } from '~/composables/useNotifications'
 
 export type OwnerStayConflictType = 'guest_reservation' | 'blocked_date' | 'owner_stay'
@@ -63,9 +65,15 @@ export interface OwnerStayCreateInput extends OwnerStaySyncOptions {
   guestName: string
   checkIn: string
   checkOut: string
+  guestCount?: number
   countsAgainstOwnerUseCap?: boolean
   notes?: string
   annualCap?: number
+  /** How the stay was created — portal requests are approval-gated, staff blocks are direct. */
+  source?: OwnerStaySource
+  /** Initial status — defaults to 'active' (direct create). Approval flow passes 'pending_approval'. */
+  status?: OwnerStayStatus
+  reservationId?: string
   guestReservations?: GuestReservationConflictInput[]
   reservations?: GuestReservationConflictInput[]
   blockedDates?: Array<string | BlockedDateConflictInput>
@@ -78,6 +86,7 @@ export interface OwnerStayUpdateInput extends OwnerStaySyncOptions {
   guestName?: string
   checkIn?: string
   checkOut?: string
+  guestCount?: number
   countsAgainstOwnerUseCap?: boolean
   notes?: string | null
   annualCap?: number
@@ -105,8 +114,12 @@ export type UpdateOwnerStayResult
     | { ok: false, reason: 'not_found' | 'conflict' | 'invalid_dates', conflicts?: OwnerStayConflict[] }
 
 export type CancelOwnerStayResult
+  = | { ok: true, requiresApproval: boolean }
+    | { ok: false, reason: 'not_found' | 'already_cancelled' | 'pending_approval' }
+
+export type DecideCancelRequestResult
   = | { ok: true }
-    | { ok: false, reason: 'not_found' | 'already_cancelled' }
+    | { ok: false, reason: 'not_found' | 'no_cancel_request' | 'already_decided' }
 
 export type RetryOwnerStaySyncResult
   = | { ok: true }
@@ -114,6 +127,20 @@ export type RetryOwnerStaySyncResult
 
 export const DEFAULT_ANNUAL_OWNER_USE_CAP = 30
 const DAY_MS = 86_400_000
+const HOUR_MS = 3_600_000
+
+/** Hours between now and the stay check-in. Negative when check-in is in the past. */
+export function hoursUntilCheckIn(checkIn: string): number {
+  const checkInMs = Date.parse(`${checkIn}T00:00:00Z`)
+  if (!Number.isFinite(checkInMs))
+    return Number.POSITIVE_INFINITY
+  return Math.round((checkInMs - Date.now()) / HOUR_MS)
+}
+
+/** True when the stay is within the cancellation window (≤ cutoff hours before check-in). */
+export function isWithinCancelWindow(checkIn: string): boolean {
+  return hoursUntilCheckIn(checkIn) <= CANCEL_CUTOFF_HOURS
+}
 
 interface DateRange {
   checkIn: string
@@ -212,6 +239,7 @@ function syncStateFor(failures: OwnerStaySyncTarget[] = []): Record<OwnerStaySyn
 type OwnerStayAlertType
   = | 'OWNER_STAY_CONFIRMED'
     | 'OWNER_STAY_CONFLICT'
+    | 'OWNER_STAY_CANCELLED'
     | 'OWNER_USE_CAP_EXCEEDED'
 
 function emitOwnerStayAlert(
@@ -388,21 +416,29 @@ export function useOwnerStays() {
       checkIn: input.checkIn,
       checkOut: input.checkOut,
       nights: countNights(input.checkIn, input.checkOut),
+      guestCount: input.guestCount,
       countsAgainstOwnerUseCap: input.countsAgainstOwnerUseCap ?? true,
-      status: 'active',
+      status: input.status ?? 'active',
+      source: input.source ?? 'owner_request',
+      reservationId: input.reservationId,
       notes: input.notes,
       syncState,
       createdAt: timestamp,
       updatedAt: timestamp,
     }
     stays.value = [...stays.value, stay]
-    emitOwnerStayAlert('OWNER_STAY_CONFIRMED', 'INFO', {
-      stayId: stay.id,
-      ownerId: stay.ownerId,
-      listingId: stay.listingId,
-      checkIn: stay.checkIn,
-      checkOut: stay.checkOut,
-    })
+
+    // Only fully-confirmed stays fire the confirmation notification; pending
+    // ones are notified by the approval flow (OWNER_STAY_REQUESTED).
+    if (stay.status === 'active') {
+      emitOwnerStayAlert('OWNER_STAY_CONFIRMED', 'INFO', {
+        stayId: stay.id,
+        ownerId: stay.ownerId,
+        listingId: stay.listingId,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+      })
+    }
 
     const capWarning = stay.countsAgainstOwnerUseCap
       ? getCapWarning(stay.ownerId, stay.checkIn, stay.checkOut, input.annualCap ?? DEFAULT_ANNUAL_OWNER_USE_CAP, stay.id)
@@ -422,6 +458,8 @@ export function useOwnerStays() {
     const current = stays.value.find(stay => stay.id === stayId)
     if (!current)
       return { ok: false, reason: 'not_found' }
+    // Only fully-confirmed stays are directly editable by the owner; pending
+    // ones are amended via the approval request, rejected/cancelled are frozen.
     if (current.status !== 'active')
       return { ok: false, reason: 'not_found' }
 
@@ -433,6 +471,7 @@ export function useOwnerStays() {
       guestName: input.guestName ?? current.guestName,
       checkIn: input.checkIn ?? current.checkIn,
       checkOut: input.checkOut ?? current.checkOut,
+      guestCount: input.guestCount ?? current.guestCount,
       countsAgainstOwnerUseCap: input.countsAgainstOwnerUseCap ?? current.countsAgainstOwnerUseCap,
       notes: input.notes === null ? undefined : input.notes ?? current.notes,
       id: current.id,
@@ -496,6 +535,15 @@ export function useOwnerStays() {
     return { ok: true, stay: updated, ...(capWarning ? { capWarning } : {}) }
   }
 
+  /**
+   * Cancel an owner stay (Flow 7).
+   *
+   * Outside the 72h cutoff (more than 72h before check-in) the owner can
+   * self-serve: the stay is cancelled immediately, cleaning jobs are
+   * released and the smart-lock code is revoked. Inside the cutoff the
+   * cancellation becomes a request that GM/Admin must approve — ops may
+   * already have scheduled cleaning, so we don't let it happen silently.
+   */
   function cancelStay(
     stayId: string,
     cancellationReason?: string,
@@ -506,16 +554,108 @@ export function useOwnerStays() {
       return { ok: false, reason: 'not_found' }
     if (current.status === 'cancelled')
       return { ok: false, reason: 'already_cancelled' }
+    if (current.status === 'pending_approval')
+      return { ok: false, reason: 'pending_approval' }
 
-    const cancelledAt = nowIso()
+    const timestamp = nowIso()
+
+    // Inside the cutoff → request manual approval from GM/Admin.
+    if (isWithinCancelWindow(current.checkIn)) {
+      const cancelRequest: OwnerStayCancelRequest = {
+        requestedAt: timestamp,
+        reason: cancellationReason ?? 'Cancelled by owner',
+        status: 'pending',
+      }
+      stays.value = stays.value.map(stay => stay.id === stayId
+        ? { ...stay, cancelRequest, updatedAt: timestamp }
+        : stay)
+      emitOwnerStayAlert('OWNER_STAY_CANCELLED', 'WARNING', {
+        stayId,
+        ownerId: current.ownerId,
+        listingId: current.listingId,
+        checkIn: current.checkIn,
+        checkOut: current.checkOut,
+        requiresApproval: true,
+      })
+      return { ok: true, requiresApproval: true }
+    }
+
+    // Outside the cutoff → immediate cancellation.
     stays.value = stays.value.map(stay => stay.id === stayId
       ? {
           ...stay,
           status: 'cancelled' as OwnerStayStatus,
-          cancelledAt,
+          cancelledAt: timestamp,
           cancellationReason,
+          cancelRequest: undefined,
           syncState: syncStateFor(options.syncFailureTargets),
-          updatedAt: cancelledAt,
+          updatedAt: timestamp,
+        }
+      : stay)
+    emitOwnerStayAlert('OWNER_STAY_CANCELLED', 'WARNING', {
+      stayId,
+      ownerId: current.ownerId,
+      listingId: current.listingId,
+      checkIn: current.checkIn,
+      checkOut: current.checkOut,
+      requiresApproval: false,
+    })
+    return { ok: true, requiresApproval: false }
+  }
+
+  /**
+   * GM/Admin approves a pending cancellation request → the stay is cancelled
+   * and downstream ops (cleaning + access code) are released.
+   */
+  function approveCancelRequest(stayId: string, decidedBy: string): DecideCancelRequestResult {
+    const current = stays.value.find(stay => stay.id === stayId)
+    if (!current)
+      return { ok: false, reason: 'not_found' }
+    if (!current.cancelRequest)
+      return { ok: false, reason: 'no_cancel_request' }
+    if (current.cancelRequest.status !== 'pending')
+      return { ok: false, reason: 'already_decided' }
+
+    const timestamp = nowIso()
+    stays.value = stays.value.map(stay => stay.id === stayId
+      ? {
+          ...stay,
+          status: 'cancelled' as OwnerStayStatus,
+          cancelledAt: timestamp,
+          cancellationReason: current.cancelRequest?.reason,
+          cancelRequest: {
+            ...(current.cancelRequest as OwnerStayCancelRequest),
+            status: 'approved',
+            decidedBy,
+            decidedAt: timestamp,
+          },
+          updatedAt: timestamp,
+        }
+      : stay)
+    return { ok: true }
+  }
+
+  /** GM/Admin denies a pending cancellation request → the stay stays active. */
+  function denyCancelRequest(stayId: string, decidedBy: string): DecideCancelRequestResult {
+    const current = stays.value.find(stay => stay.id === stayId)
+    if (!current)
+      return { ok: false, reason: 'not_found' }
+    if (!current.cancelRequest)
+      return { ok: false, reason: 'no_cancel_request' }
+    if (current.cancelRequest.status !== 'pending')
+      return { ok: false, reason: 'already_decided' }
+
+    const timestamp = nowIso()
+    stays.value = stays.value.map(stay => stay.id === stayId
+      ? {
+          ...stay,
+          cancelRequest: {
+            ...(current.cancelRequest as OwnerStayCancelRequest),
+            status: 'denied',
+            decidedBy,
+            decidedAt: timestamp,
+          },
+          updatedAt: timestamp,
         }
       : stay)
     return { ok: true }
@@ -544,6 +684,8 @@ export function useOwnerStays() {
     createStay,
     updateStay,
     cancelStay,
+    approveCancelRequest,
+    denyCancelRequest,
     retrySync,
     ownerUseNightsForYear,
     getCapWarning,

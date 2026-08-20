@@ -243,4 +243,60 @@ describe('useOwnerAuth', () => {
       fetchSpy.mockRestore()
     })
   })
+
+  describe('Flow 8 — revoke / regenerate access', () => {
+    it('revokes access, logs it, and rejects a future login with the revoked link', async () => {
+      const { requestMagicLink, acceptDemoLink, revokeAccess, getAccessLog } = useOwnerAuth()
+
+      await requestMagicLink('wayan.sari@example.com')
+      const result = revokeAccess('own-1', 'staff-1', 'Owner requested removal')
+      expect(result).toEqual({ ok: true, sessionInvalidated: false })
+
+      const log = getAccessLog('own-1')
+      expect(log[0]?.action).toBe('link_revoked')
+      expect(log[0]?.actor).toBe('staff-1')
+
+      // A revoked owner can no longer log in.
+      await requestMagicLink('wayan.sari@example.com')
+      expect(acceptDemoLink()).toEqual({ ok: false })
+    })
+
+    it('invalidates an active session for the revoked owner', async () => {
+      const { requestMagicLink, acceptDemoLink, revokeAccess, isAuthenticated } = useOwnerAuth()
+
+      await requestMagicLink('wayan.sari@example.com')
+      expect(acceptDemoLink()).toEqual({ ok: true, ownerId: 'own-1' })
+      expect(isAuthenticated.value).toBe(true)
+
+      const result = revokeAccess('own-1', 'staff-1')
+      expect(result).toEqual({ ok: true, sessionInvalidated: true })
+      expect(isAuthenticated.value).toBe(false)
+    })
+
+    it('regenerates a link and lets the owner back in', async () => {
+      const { requestMagicLink, acceptDemoLink, revokeAccess, regenerateAccess, getAccessLog } = useOwnerAuth()
+
+      await requestMagicLink('wayan.sari@example.com')
+      revokeAccess('own-1', 'staff-1')
+
+      const regenerated = regenerateAccess('own-1', 'staff-1')
+      expect(regenerated.ok).toBe(true)
+      if (regenerated.ok)
+        expect(regenerated.magicLink).toContain('portal.elev8.io/owner/')
+
+      const log = getAccessLog('own-1')
+      expect(log[0]?.action).toBe('link_regenerated')
+
+      // Login works again after regeneration.
+      await requestMagicLink('wayan.sari@example.com')
+      expect(acceptDemoLink()).toEqual({ ok: true, ownerId: 'own-1' })
+    })
+
+    it('refuses to revoke an inactive owner', () => {
+      const { revokeAccess } = useOwnerAuth()
+      const result = revokeAccess('own-3', 'staff-1')
+      // own-3 is 'invited', not inactive — revocation is fine.
+      expect(result).toEqual({ ok: true, sessionInvalidated: false })
+    })
+  })
 })

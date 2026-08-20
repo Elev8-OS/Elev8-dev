@@ -12,6 +12,8 @@ export type OwnerLanguage = 'en' | 'id'
 
 export type StatementCurrency = 'IDR' | 'USD' | 'AUD' | 'SGD' | 'EUR'
 
+export type OwnerMagicLinkStatus = 'active' | 'revoked' | 'regenerated'
+
 export interface Owner {
   id: string
   name: string
@@ -22,6 +24,10 @@ export interface Owner {
   status: OwnerStatus
   /** How many nights per year the owner is allowed to stay at their own property for free. */
   annualOwnerUseNightCap?: number
+  /** Portal magic-link lifecycle (Flow 8) — 'revoked' blocks future logins. */
+  magicLinkStatus?: OwnerMagicLinkStatus
+  magicLinkLastGeneratedAt?: string
+  accessRevokedAt?: string
   invitedAt?: string
   activatedAt?: string
   createdAt: string
@@ -58,6 +64,8 @@ export const mockOwners: Owner[] = [
     statementCurrency: 'IDR',
     status: 'active',
     annualOwnerUseNightCap: 14,
+    magicLinkStatus: 'active',
+    magicLinkLastGeneratedAt: '2026-01-10T08:05:00.000Z',
     invitedAt: '2026-01-10T08:00:00.000Z',
     activatedAt: '2026-01-15T08:00:00.000Z',
     createdAt,
@@ -71,6 +79,8 @@ export const mockOwners: Owner[] = [
     language: 'en',
     statementCurrency: 'USD',
     status: 'active',
+    magicLinkStatus: 'active',
+    magicLinkLastGeneratedAt: '2025-11-20T08:00:00.000Z',
     invitedAt: '2025-11-20T08:00:00.000Z',
     activatedAt: '2025-12-01T08:00:00.000Z',
     createdAt: '2025-11-20T08:00:00.000Z',

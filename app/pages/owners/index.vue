@@ -6,11 +6,14 @@
 import type { Owner } from '~/components/owners/data/owners'
 import OwnerDetailSheet from '~/components/owners/OwnerDetailSheet.vue'
 import OwnerFilters from '~/components/owners/OwnerFilters.vue'
+import OwnerMaintenancePanel from '~/components/owners/OwnerMaintenancePanel.vue'
 import OwnerOnboardingDialog from '~/components/owners/OwnerOnboardingDialog.vue'
 import OwnersKpis from '~/components/owners/OwnersKpis.vue'
 import OwnersTable from '~/components/owners/OwnersTable.vue'
+import OwnerStayApprovalsPanel from '~/components/owners/OwnerStayApprovalsPanel.vue'
 import { Button } from '~/components/ui/button'
 import { Skeleton } from '~/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 
 definePageMeta({
   layout: 'default',
@@ -19,6 +22,7 @@ definePageMeta({
 const onboardingOpen = ref(false)
 const detailOpen = ref(false)
 const selectedOwnerId = ref<string | undefined>(undefined)
+const activeTab = ref<'owners' | 'stay-requests' | 'maintenance'>('owners')
 
 function onSelectOwner(owner: Owner) {
   selectedOwnerId.value = owner.id
@@ -49,12 +53,36 @@ function onCreated(ownerId: string) {
         </Button>
       </div>
 
-      <OwnersKpis />
+      <Tabs v-model="activeTab" default-value="owners">
+        <TabsList>
+          <TabsTrigger value="owners">
+            Owners
+          </TabsTrigger>
+          <TabsTrigger value="stay-requests">
+            Stay Requests
+          </TabsTrigger>
+          <TabsTrigger value="maintenance">
+            Maintenance
+          </TabsTrigger>
+        </TabsList>
 
-      <div class="space-y-3">
-        <OwnerFilters />
-        <OwnersTable @select-owner="onSelectOwner" />
-      </div>
+        <TabsContent value="owners" class="space-y-3">
+          <OwnersKpis />
+
+          <div class="space-y-3">
+            <OwnerFilters />
+            <OwnersTable @select-owner="onSelectOwner" />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="stay-requests">
+          <OwnerStayApprovalsPanel />
+        </TabsContent>
+
+        <TabsContent value="maintenance">
+          <OwnerMaintenancePanel />
+        </TabsContent>
+      </Tabs>
     </div>
 
     <OwnerOnboardingDialog

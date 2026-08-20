@@ -291,13 +291,13 @@ describe('useOwnerPortal', () => {
     it('returns only the stays owned by the logged-in owner', async () => {
       await loginAs('wayan.sari@example.com')
       const { myStays } = useOwnerPortal()
-      // own-1 has ost-1 (active) + ost-4 (cancelled).
+      // own-1 has ost-1 (active) + ost-4 (cancelled) + ost-5 (pending approval).
       const ids = myStays.value.map(s => s.id).sort()
-      expect(ids).toEqual(['ost-1', 'ost-4'])
+      expect(ids).toEqual(['ost-1', 'ost-4', 'ost-5'])
     })
 
     it('does not leak stays owned by another owner on the same co-owned listing', async () => {
-      // own-2 (I Putu) has ost-2 (lst-8) + ost-3 (lst-3).
+      // own-2 (I Putu) has ost-2 (lst-8) + ost-3 (lst-3) + ost-6 (rejected).
       // own-3 (Ni Kadek) has no stays in the seed — listing lst-3 is co-owned
       // but stays belong to the owner who filed them, not the co-owner.
       await loginAs('kadek.deviani@example.com')
@@ -311,7 +311,7 @@ describe('useOwnerPortal', () => {
       await loginAs('putu.antara@example.com')
       const { myStays } = useOwnerPortal()
       const ids = myStays.value.map(s => s.id).sort()
-      expect(ids).toEqual(['ost-2', 'ost-3'])
+      expect(ids).toEqual(['ost-2', 'ost-3', 'ost-6'])
     })
 
     it('matches the data-layer seed length when not logged in (empty, not the full seed)', () => {
@@ -383,13 +383,25 @@ describe('useOwnerPortal', () => {
     it('a stay cancelled via useOwnerStays is reflected in myStays as cancelled', async () => {
       await loginAs('wayan.sari@example.com')
       const portal = useOwnerPortal()
-      const seed = portal.myStays.value.find(stay => stay.id === 'ost-1')
-      expect(seed?.status).toBe('active')
 
-      const result = useOwnerStays().cancelStay('ost-1', 'Task 7 reactivity test')
-      expect(result).toEqual({ ok: true })
+      // Create a far-future stay (outside the 72h cutoff) so the cancellation
+      // goes through immediately and the propagation can be asserted.
+      const created = useOwnerStays().createStay({
+        ownerId: 'own-1',
+        listingId: 'lst-1',
+        guestName: 'Wayan Sari',
+        checkIn: '2027-03-01',
+        checkOut: '2027-03-04',
+      })
+      if (!created.ok)
+        throw new Error('expected stay to be created')
+      const stayId = created.stay.id
+      expect(portal.myStays.value.find(stay => stay.id === stayId)?.status).toBe('active')
 
-      const live = portal.myStays.value.find(stay => stay.id === 'ost-1')
+      const result = useOwnerStays().cancelStay(stayId, 'Task 7 reactivity test')
+      expect(result).toEqual({ ok: true, requiresApproval: false })
+
+      const live = portal.myStays.value.find(stay => stay.id === stayId)
       expect(live?.status).toBe('cancelled')
       expect(live?.cancellationReason).toBe('Task 7 reactivity test')
       // And it must still belong to the current owner — cancelled stays
@@ -493,8 +505,8 @@ describe('useOwnerPortal', () => {
       expect(kadekRuleIds).not.toContain('cr-2')
       expect(kadekRuleIds).not.toContain('cr-3')
 
-      // Stays: own-2 has ost-2 (lst-8) + ost-3 (lst-3); own-3 has nothing.
-      expect(putuStayIds).toEqual(['ost-2', 'ost-3'])
+      // Stays: own-2 has ost-2 (lst-8) + ost-3 (lst-3) + ost-6 (rejected); own-3 has nothing.
+      expect(putuStayIds).toEqual(['ost-2', 'ost-3', 'ost-6'])
       expect(kadekStayIds).toEqual([])
       expect(kadekStayIds).not.toContain('ost-3')
 

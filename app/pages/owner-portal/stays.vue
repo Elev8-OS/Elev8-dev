@@ -3,42 +3,82 @@
 // personal-use blocks. Renders the redesigned PortalReservationCalendar
 // (single-property month grid with property info, occupancy stats, and
 // room-type selector) plus the dialog for creating owner blocks.
+//
+// Flow 4/7 wiring: submitting a stay goes through `requestStay` (auto-approve
+// or the GM/Admin queue), and cancelling inside the 72h cutoff becomes a
+// management request instead of an immediate cancellation.
 
 import type { OwnerReservation } from '~/components/owners/data/owner-reservations'
+import type { OwnerStay, OwnerStayStatus } from '~/components/owners/data/owner-stays'
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
 import PortalOwnerReservationPopover from '~/components/owner-portal/PortalOwnerReservationPopover.vue'
 import PortalReservationCalendar from '~/components/owner-portal/PortalReservationCalendar.vue'
+import PortalStayDialog from '~/components/owner-portal/PortalStayDialog.vue'
 import { mockOwnerReservations } from '~/components/owners/data/owner-reservations-seed'
+import { ownerStayStatusLabels } from '~/components/owners/data/owner-stays'
+import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
-import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
+import { Textarea } from '~/components/ui/textarea'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
+import { useOwnerStays } from '~/composables/useOwnerStays'
 
 definePageMeta({
   layout: 'owner-portal',
 })
 
-const { currentOwner, myOwnerIds, listings } = useOwnerPortal()
-void currentOwner
-void myOwnerIds
-void listings
+const { currentOwner, myStays } = useOwnerPortal()
+const { cancelStay } = useOwnerStays()
 
 const calendarAnchor = ref<Date>(new Date())
-const selectedListingId = ref<string | null>(null)
+const selectedListingId = ref<string | undefined>(undefined)
 const createOpen = ref(false)
-const createListingId = ref<string | null>(null)
+const createListingId = ref<string | undefined>(undefined)
 const createCheckIn = ref('')
 const createCheckOut = ref('')
 const createNote = ref('')
 const localReservations = ref<OwnerReservation[]>([])
 
+const statusFilter = ref<'all' | OwnerStayStatus>('all')
+
+const stays = computed(() => {
+  if (statusFilter.value === 'all')
+    return myStays.value
+  return myStays.value.filter(stay => stay.status === statusFilter.value)
+})
+
 const reservations = computed<OwnerReservation[]>(() => {
   const base = mockOwnerReservations
   return [...base, ...localReservations.value]
 })
+
+// Owner stays rendered as owner_block reservations so the calendar shows
+// pending/active stays with status badges.
+const stayReservations = computed<OwnerReservation[]>(() =>
+  myStays.value.map(stay => ({
+    id: `stay-${stay.id}`,
+    type: 'owner_block' as const,
+    listingId: stay.listingId,
+    guestName: stay.guestName,
+    note: stay.notes,
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    status: stay.status === 'active' ? 'confirmed' : stay.status === 'pending_approval' ? 'pending' : 'cancelled',
+    ownerStayStatus: stay.status,
+  })))
+
+const allReservations = computed<OwnerReservation[]>(() => [...stayReservations.value, ...reservations.value])
+
+const statusTabs: Array<{ value: 'all' | OwnerStayStatus, label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'pending_approval', label: 'Pending approval' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'cancelled', label: 'Cancelled' },
+]
 
 function startCreate(payload: { checkIn: string, checkOut: string, listingId?: string }) {
   if (!payload.listingId) {
@@ -50,32 +90,6 @@ function startCreate(payload: { checkIn: string, checkOut: string, listingId?: s
   createCheckOut.value = payload.checkOut ?? addDaysISO(createCheckIn.value, 2)
   createNote.value = ''
   createOpen.value = true
-}
-
-function confirmCreate() {
-  if (!createCheckIn.value || !createCheckOut.value || !createListingId.value) {
-    toast.error('Pick a check-in and check-out date.')
-    return
-  }
-  if (createCheckOut.value <= createCheckIn.value) {
-    toast.error('Check-out must be after check-in.')
-    return
-  }
-  const id = `or-local-${Date.now().toString(36)}`
-  localReservations.value = [
-    ...localReservations.value,
-    {
-      id,
-      type: 'owner_block',
-      listingId: createListingId.value,
-      note: createNote.value.trim() || 'Owner block',
-      checkIn: createCheckIn.value,
-      checkOut: createCheckOut.value,
-      status: 'confirmed',
-    },
-  ]
-  toast.success('Owner block created.')
-  createOpen.value = false
 }
 
 function todayISO() {
@@ -95,6 +109,40 @@ function openReservation(reservation: OwnerReservation) {
   selectedReservation.value = reservation
   popoverOpen.value = true
 }
+
+// --- Flow 7 cancellation ---
+
+const cancelTarget = ref<OwnerStay | null>(null)
+const cancelReason = ref('')
+
+function requestCancel(stay: OwnerStay) {
+  cancelTarget.value = stay
+  cancelReason.value = ''
+}
+
+function confirmCancel() {
+  if (!cancelTarget.value)
+    return
+  const result = cancelStay(cancelTarget.value.id, cancelReason.value || 'Cancelled by owner')
+  if (result.ok) {
+    if (result.requiresApproval)
+      toast.info('This stay is within the 72h management window — your cancellation has been sent to management for approval.')
+    else
+      toast.success('Stay cancelled.')
+    cancelTarget.value = null
+    cancelReason.value = ''
+  }
+  else if (result.reason === 'pending_approval') {
+    toast.info('This stay is still pending approval — wait for the decision or contact management.')
+  }
+  else {
+    toast.error('Could not cancel this stay.')
+  }
+}
+
+function saved(_stay: OwnerStay) {
+  createOpen.value = false
+}
 </script>
 
 <template>
@@ -104,17 +152,35 @@ function openReservation(reservation: OwnerReservation) {
         My Stays
       </h1>
       <p class="text-sm text-muted-foreground">
-        See upcoming guest reservations and block out dates for your own personal stays.
+        See upcoming guest reservations and book your own personal stays. High-season dates go to management for approval.
       </p>
     </header>
 
+    <div class="flex items-center justify-between">
+      <div class="flex flex-wrap gap-2">
+        <Badge
+          v-for="tab in statusTabs"
+          :key="tab.value"
+          :variant="statusFilter === tab.value ? 'default' : 'outline'"
+          class="cursor-pointer"
+          @click="statusFilter = tab.value"
+        >
+          {{ tab.label }}
+        </Badge>
+      </div>
+      <Button @click="startCreate({ checkIn: todayISO(), checkOut: addDaysISO(todayISO(), 2) })">
+        <Icon name="lucide:plus" class="mr-2 size-4" />
+        Book my stay
+      </Button>
+    </div>
+
     <div class="flex min-h-0 flex-1 flex-col">
-      <Card v-if="!reservations.length" class="flex-1">
+      <Card v-if="!allReservations.length" class="flex-1">
         <CardContent class="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
           <Icon name="lucide:calendar-off" class="size-8 opacity-50" />
           <p>No reservations on your properties yet.</p>
           <Button size="sm" @click="startCreate({ checkIn: todayISO(), checkOut: addDaysISO(todayISO(), 2) })">
-            Block your first dates
+            Book your first stay
           </Button>
         </CardContent>
       </Card>
@@ -123,7 +189,7 @@ function openReservation(reservation: OwnerReservation) {
         v-else
         v-model:anchor="calendarAnchor"
         v-model:listing-id="selectedListingId"
-        :reservations="reservations"
+        :reservations="allReservations"
         class="flex-1"
         @create-owner-reservation="startCreate"
         @edit-owner-reservation="openReservation"
@@ -131,50 +197,92 @@ function openReservation(reservation: OwnerReservation) {
       />
     </div>
 
-    <Dialog v-model:open="createOpen">
+    <div v-if="stays.length" class="overflow-auto rounded-md border">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-left text-muted-foreground">
+            <th class="p-3 font-medium">
+              Dates
+            </th>
+            <th class="p-3 font-medium">
+              Guest
+            </th>
+            <th class="p-3 font-medium">
+              Status
+            </th>
+            <th class="p-3 font-medium">
+              Guests
+            </th>
+            <th class="p-3 font-medium">
+              Notes
+            </th>
+            <th class="p-3 text-right font-medium">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="stay in stays" :key="stay.id" class="border-b last:border-0">
+            <td class="p-3">
+              {{ stay.checkIn }} → {{ stay.checkOut }}
+            </td>
+            <td class="p-3 font-medium">
+              {{ stay.guestName }}
+            </td>
+            <td class="p-3">
+              <Badge variant="outline">
+                {{ ownerStayStatusLabels[stay.status] }}
+              </Badge>
+            </td>
+            <td class="p-3">
+              {{ stay.guestCount ?? 1 }}
+            </td>
+            <td class="max-w-40 truncate p-3 text-muted-foreground">
+              {{ stay.notes ?? '—' }}
+            </td>
+            <td class="p-3 text-right">
+              <Button
+                v-if="stay.status === 'active'"
+                size="sm"
+                variant="ghost"
+                @click="requestCancel(stay)"
+              >
+                Cancel
+              </Button>
+              <span v-else-if="stay.status === 'rejected' && stay.approval?.reason" class="text-xs text-muted-foreground">
+                {{ stay.approval.reason }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <PortalStayDialog
+      v-model="createOpen"
+      :owner-id="currentOwner?.id ?? 'own-1'"
+      :listing-id="createListingId"
+      :default-check-in="createCheckIn"
+      @saved="saved"
+    />
+    <Dialog :open="!!cancelTarget" @update:open="(v: boolean) => { if (!v) cancelTarget = null }">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            New owner reservation
-          </DialogTitle>
+          <DialogTitle>Cancel stay?</DialogTitle>
           <DialogDescription>
-            Block out dates for your own personal stay. These nights will be removed from guest availability.
+            {{ cancelTarget?.checkIn }} → {{ cancelTarget?.checkOut }}. If this stay is within 72 hours of check-in, management must approve the cancellation.
           </DialogDescription>
         </DialogHeader>
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1.5">
-              <Label for="owner-stay-checkin">Check-in</Label>
-              <Input
-                id="owner-stay-checkin"
-                v-model="createCheckIn"
-                type="date"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <Label for="owner-stay-checkout">Check-out</Label>
-              <Input
-                id="owner-stay-checkout"
-                v-model="createCheckOut"
-                type="date"
-              />
-            </div>
-          </div>
-          <div class="space-y-1.5">
-            <Label for="owner-stay-note">Note (optional)</Label>
-            <Input
-              id="owner-stay-note"
-              v-model="createNote"
-              placeholder="e.g. Family visit"
-            />
-          </div>
+        <div class="space-y-1.5">
+          <Label for="cancel-reason">Reason (optional)</Label>
+          <Textarea id="cancel-reason" v-model="cancelReason" placeholder="e.g. Plans changed" />
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="createOpen = false">
-            Cancel
+          <Button variant="outline" @click="cancelTarget = null">
+            Keep stay
           </Button>
-          <Button @click="confirmCreate">
-            Create block
+          <Button variant="destructive" @click="confirmCancel">
+            Cancel stay
           </Button>
         </DialogFooter>
       </DialogContent>

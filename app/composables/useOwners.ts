@@ -24,11 +24,26 @@ export { mockOwnerPermissions } from '~/components/owners/data/owner-permissions
 export type {
   Owner,
   OwnerLanguage,
+  OwnerMagicLinkStatus,
   OwnerPropertyMapping,
   OwnerStatus,
   StatementCurrency,
 } from '~/components/owners/data/owners'
 export { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
+
+export type {
+  OwnerStay,
+  OwnerStayApproval,
+  OwnerStayCancelRequest,
+  OwnerStayCleaningTaskIds,
+  OwnerStaySource,
+  OwnerStayStatus,
+} from '~/components/owners/data/owner-stays'
+export {
+  CANCEL_CUTOFF_HOURS,
+  mockOwnerStays,
+  ownerStayStatusLabels,
+} from '~/components/owners/data/owner-stays'
 
 /**
  * Input shape for the owner onboarding save form.

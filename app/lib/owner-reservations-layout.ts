@@ -150,6 +150,7 @@ function pushBar(
     channel: reservation.channel,
     note: reservation.note,
     status: reservation.status,
+    ownerStayStatus: reservation.ownerStayStatus,
     startDay: trimmedStart,
     endDay: trimmedEnd,
     row: 0,

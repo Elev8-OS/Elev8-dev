@@ -42,6 +42,8 @@ export interface OwnerReservation {
   /** Owner blocks: free-text label. */
   note?: string
   status: OwnerReservationStatus
+  /** When the reservation is an owner block that went through the approval flow. */
+  ownerStayStatus?: 'pending_approval' | 'active' | 'rejected' | 'cancelled'
 }
 
 export interface OwnerReservationDay {
@@ -62,6 +64,8 @@ export interface OwnerReservationBar {
   channel?: OwnerReservationChannel
   note?: string
   status: OwnerReservationStatus
+  /** When the reservation is an owner block that went through the approval flow. */
+  ownerStayStatus?: 'pending_approval' | 'active' | 'rejected' | 'cancelled'
   startDay: number
   endDay: number
   /** 1-based row index inside the listing's mini-grid (multi-row allowed for overlap). */

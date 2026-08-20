@@ -12,9 +12,11 @@ import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { Separator } from '~/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerPermissions } from '~/composables/useOwnerPermissions'
 import { useOwners } from '~/composables/useOwners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
@@ -43,6 +45,7 @@ const {
 } = useOwners()
 const { statements } = useOwnerStatements()
 const { applyTemplate } = useOwnerPermissions()
+const { revokeAccess, regenerateAccess, getAccessLog } = useOwnerAuth()
 
 const owner = computed<Owner | undefined>(() => props.ownerId ? byId(props.ownerId) : undefined)
 
@@ -99,6 +102,40 @@ function handleMatrixUpdate(config: typeof ownerPermissions.value) {
 const totalOwnership = computed(() =>
   ownerMappings.value.reduce((sum, m) => sum + m.ownershipPercentage, 0),
 )
+
+// --- Portal access (Flow 8) ---
+
+const revokeOpen = ref(false)
+const accessLogEntries = computed(() => owner.value ? getAccessLog(owner.value.id) : [])
+
+const magicLinkStatusLabel: Record<string, string> = {
+  active: 'Active',
+  revoked: 'Revoked',
+  regenerated: 'Regenerated',
+}
+
+function handleRevoke() {
+  if (!owner.value)
+    return
+  const result = revokeAccess(owner.value.id, 'staff-1')
+  if (result.ok) {
+    revokeOpen.value = false
+    toast.warning('Owner access revoked. Any active session was invalidated.')
+  }
+  else {
+    toast.error(result.error ?? 'Failed to revoke access.')
+  }
+}
+
+function handleRegenerate() {
+  if (!owner.value)
+    return
+  const result = regenerateAccess(owner.value.id, 'staff-1', 'Regenerated from owner detail sheet')
+  if (result.ok)
+    toast.success('New magic link generated.')
+  else
+    toast.error(result.error ?? 'Failed to regenerate link.')
+}
 </script>
 
 <template>
@@ -147,6 +184,10 @@ const totalOwnership = computed(() =>
             <TabsTrigger value="statements" class="flex-1">
               <Icon name="lucide:file-text" class="mr-1.5 size-4" />
               Statements
+            </TabsTrigger>
+            <TabsTrigger value="access" class="flex-1">
+              <Icon name="lucide:key-round" class="mr-1.5 size-4" />
+              Portal Access
             </TabsTrigger>
           </TabsList>
 
@@ -293,6 +334,88 @@ const totalOwnership = computed(() =>
                 </Badge>
               </div>
             </div>
+          </TabsContent>
+
+          <!-- Portal Access (Flow 8) -->
+          <TabsContent value="access" class="space-y-3 pt-3">
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+              <div>
+                <div class="text-sm font-medium">
+                  Magic link status
+                </div>
+                <div class="text-xs text-muted-foreground">
+                  {{ magicLinkStatusLabel[owner.magicLinkStatus ?? 'active'] ?? 'Active' }}
+                  <template v-if="owner.accessRevokedAt">
+                    · revoked {{ new Date(owner.accessRevokedAt).toLocaleString() }}
+                  </template>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <Button
+                  v-if="owner.magicLinkStatus !== 'revoked'"
+                  variant="destructive"
+                  size="sm"
+                  @click="revokeOpen = true"
+                >
+                  Revoke access
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="owner.status === 'inactive'"
+                  @click="handleRegenerate"
+                >
+                  Regenerate link
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Access history
+            </div>
+            <div v-if="!accessLogEntries.length" class="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+              No access activity yet.
+            </div>
+            <div v-else class="space-y-2">
+              <div
+                v-for="entry in accessLogEntries"
+                :key="entry.id"
+                class="flex items-center justify-between rounded-md border p-2.5 text-sm"
+              >
+                <div>
+                  <div class="font-medium">
+                    {{ entry.action.replace(/_/g, ' ') }}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {{ entry.actor }} · {{ entry.note ?? '' }}
+                  </div>
+                </div>
+                <div class="text-xs text-muted-foreground">
+                  {{ new Date(entry.at).toLocaleString() }}
+                </div>
+              </div>
+            </div>
+
+            <Dialog :open="revokeOpen" @update:open="(v: boolean) => { if (!v) revokeOpen = false }">
+              <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Revoke portal access?</DialogTitle>
+                  <DialogDescription>
+                    {{ owner.name }} will be logged out immediately and can no longer enter the portal until a new link is sent.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" @click="revokeOpen = false">
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" @click="handleRevoke">
+                    Revoke access
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         </Tabs>
       </div>

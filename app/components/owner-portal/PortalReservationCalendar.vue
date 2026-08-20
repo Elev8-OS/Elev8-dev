@@ -568,7 +568,11 @@ function propertyTypeChip(listingId: string | null) {
               class="flex h-full w-full items-center gap-1.5 overflow-hidden rounded px-2 text-[11px] font-medium"
               :class="bar.type === 'guest'
                 ? (bar.status === 'cancelled' ? 'bg-emerald-900/40 text-white line-through' : 'bg-emerald-800 text-white')
-                : 'bg-amber-400 text-amber-950'"
+                : bar.ownerStayStatus === 'pending_approval'
+                  ? 'bg-amber-200 text-amber-950'
+                  : bar.ownerStayStatus === 'rejected'
+                    ? 'bg-zinc-300 text-zinc-600 line-through'
+                    : 'bg-amber-400 text-amber-950'"
               :style="{
                 clipPath: bar.wrapsBackward && bar.wrapsForward
                   ? 'polygon(6px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 6px 100%, 0 calc(100% - 10px), 0 10px)'
@@ -593,6 +597,12 @@ function propertyTypeChip(listingId: string | null) {
               </span>
               <span class="truncate">
                 {{ bar.type === 'guest' ? bar.guestName : (bar.note || 'Owner stay') }}
+                <span v-if="bar.ownerStayStatus === 'pending_approval'" class="ml-1 font-bold">
+                  · Pending approval
+                </span>
+                <span v-else-if="bar.ownerStayStatus === 'rejected'" class="ml-1">
+                  · Rejected
+                </span>
               </span>
             </button>
           </div>
