@@ -1,17 +1,17 @@
 <!-- app/components/users/UsersTable.vue -->
 <script setup lang="ts">
-import { Avatar, AvatarFallback } from '~/components/ui/avatar'
-import { Badge } from '~/components/ui/badge'
-import { Switch } from '~/components/ui/switch'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
-import { Button } from '~/components/ui/button'
-import { Input } from '~/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
-import { useUsers } from '~/composables/useUsers'
-import { useRoles } from '~/composables/useRoles'
+import type { User } from '~/components/users/data/users'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
-import type { User } from '~/components/users/data/users'
+import { Avatar, AvatarFallback } from '~/components/ui/avatar'
+import { Badge } from '~/components/ui/badge'
+import { Button } from '~/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
+import { Input } from '~/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import { Switch } from '~/components/ui/switch'
+import { useRoles } from '~/composables/useRoles'
+import { useUsers } from '~/composables/useUsers'
 
 const emit = defineEmits<{
   edit: [user: User]
@@ -44,17 +44,22 @@ const filtered = computed(() => {
   const optionById = new Map(options.map(o => [o.id, o]))
   return users.value
     .filter((u) => {
-      if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false
-      if (roleFilter.value !== 'all' && u.roleId !== roleFilter.value) return false
-      if (listingFilter.value !== 'all' && !u.listingIds.includes(listingFilter.value)) return false
-      if (statusFilter.value !== 'all' && u.status !== statusFilter.value) return false
+      if (q && !u.name.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q))
+        return false
+      if (roleFilter.value !== 'all' && u.roleId !== roleFilter.value)
+        return false
+      if (listingFilter.value !== 'all' && !u.listingIds.includes(listingFilter.value))
+        return false
+      if (statusFilter.value !== 'all' && u.status !== statusFilter.value)
+        return false
       return true
     })
     .map((u) => {
       const listingNames: { name: string, id: string }[] = []
       for (const id of u.listingIds) {
         const o = optionById.get(id)
-        if (o) listingNames.push({ name: o.name, id: o.id })
+        if (o)
+          listingNames.push({ name: o.name, id: o.id })
       }
       return { user: u, listingNames }
     })
@@ -71,6 +76,38 @@ function handleToggleActive(user: User) {
   const willActivate = user.status !== 'active'
   toggleActive(user.id)
   toast.info(willActivate ? `User ${user.name} activated` : `User ${user.name} deactivated`)
+}
+
+// Pagination
+const PAGE_SIZE = 8
+const page = ref(1)
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
+
+const pagedUsers = computed(() => {
+  const start = (page.value - 1) * PAGE_SIZE
+  return filtered.value.slice(start, start + PAGE_SIZE)
+})
+
+watch([search, roleFilter, listingFilter, statusFilter], () => {
+  page.value = 1
+})
+
+function pageNumbers(): (number | 'ellipsis')[] {
+  const total = totalPages.value
+  if (total <= 5)
+    return Array.from({ length: total }, (_, i) => i + 1)
+  const current = page.value
+  const pages = new Set<number>([1, total, current - 1, current, current + 1])
+  const sorted = Array.from(pages).filter(p => p >= 1 && p <= total).sort((a, b) => a - b)
+  const result: (number | 'ellipsis')[] = []
+  let prev = 0
+  for (const p of sorted) {
+    if (p - prev > 1)
+      result.push('ellipsis')
+    result.push(p)
+    prev = p
+  }
+  return result
 }
 </script>
 
@@ -153,7 +190,7 @@ function handleToggleActive(user: User) {
         </thead>
         <tbody>
           <tr
-            v-for="{ user: u, listingNames } in filtered"
+            v-for="{ user: u, listingNames } in pagedUsers"
             :key="u.id"
             class="border-t hover:bg-muted/30 transition-colors cursor-pointer"
             tabindex="0"
@@ -196,7 +233,7 @@ function handleToggleActive(user: User) {
               </div>
               <div v-else class="flex flex-wrap gap-1">
                 <Badge
-                  v-for="(p, i) in listingNames.slice(0, 2)"
+                  v-for="p in listingNames.slice(0, 2)"
                   :key="p.id"
                   variant="outline"
                   class="text-xs"
@@ -259,7 +296,44 @@ function handleToggleActive(user: User) {
       </table>
     </div>
 
-    <div class="text-xs text-muted-foreground">
+    <div v-if="filtered.length > PAGE_SIZE" class="flex flex-wrap items-center justify-between gap-4">
+      <div class="text-xs text-muted-foreground">
+        Showing {{ (page - 1) * PAGE_SIZE + 1 }}–{{ Math.min(page * PAGE_SIZE, filtered.length) }} of {{ filtered.length }} users
+      </div>
+      <div class="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="page === 1"
+          @click="page > 1 && page--"
+        >
+          <Icon name="lucide:chevron-left" class="size-4" />
+        </Button>
+        <template v-for="(p, i) in pageNumbers()" :key="p === 'ellipsis' ? `ellipsis-${i}` : p">
+          <span v-if="p === 'ellipsis'" class="px-1 text-sm text-muted-foreground">…</span>
+          <Button
+            v-else
+            variant="ghost"
+            size="sm"
+            class="min-w-8 data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
+            :data-active="page === p || undefined"
+            @click="page = p"
+          >
+            {{ p }}
+          </Button>
+        </template>
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="page === totalPages"
+          @click="page < totalPages && page++"
+        >
+          <Icon name="lucide:chevron-right" class="size-4" />
+        </Button>
+      </div>
+    </div>
+
+    <div v-else class="text-xs text-muted-foreground">
       Showing {{ filtered.length }} of {{ users.length }} users
     </div>
   </div>

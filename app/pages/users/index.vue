@@ -3,12 +3,14 @@ import type { Owner } from '~/components/owners/data/owners'
 import type { Role, RoleId } from '~/components/users/data/roles'
 import type { User } from '~/components/users/data/users'
 import OwnerDetailSheet from '~/components/owners/OwnerDetailSheet.vue'
+import OwnerDocumentsPanel from '~/components/owners/OwnerDocumentsPanel.vue'
 import OwnerOnboardingDialog from '~/components/owners/OwnerOnboardingDialog.vue'
-import OwnersKpis from '~/components/owners/OwnersKpis.vue'
 import OwnersTable from '~/components/owners/OwnersTable.vue'
+import OwnerStatementsPanel from '~/components/owners/OwnerStatementsPanel.vue'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { Skeleton } from '~/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import RoleDetailSheet from '~/components/users/RoleDetailSheet.vue'
@@ -82,10 +84,25 @@ function onSelectOwner(owner: Owner) {
             Manage your team — create users and owners, assign roles and listings.
           </p>
         </div>
-        <Button @click="openAddUser">
-          <Icon name="lucide:plus" class="mr-2 size-4" />
-          Add user
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <Button>
+              <Icon name="lucide:plus" class="mr-2 size-4" />
+              Create
+              <Icon name="lucide:chevron-down" class="ml-1 size-4 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem @click="openAddUser">
+              <Icon name="lucide:user-plus" class="mr-2 size-4" />
+              User
+            </DropdownMenuItem>
+            <DropdownMenuItem @click="openAddOwner">
+              <Icon name="lucide:building-2" class="mr-2 size-4" />
+              Owner
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <!-- KPI strip -->
@@ -149,16 +166,30 @@ function onSelectOwner(owner: Owner) {
           <UsersTable @edit="openEditUser" />
         </TabsContent>
 
-        <!-- PRD 5.4 — owner roster lives on the Users page now -->
+        <!-- PRD 5.4 — owner roster + statements + documents live here -->
         <TabsContent value="owners" class="space-y-3">
-          <div class="flex justify-end">
-            <Button size="sm" @click="openAddOwner">
-              <Icon name="lucide:plus" class="mr-2 size-4" />
-              Create owner
-            </Button>
-          </div>
-          <OwnersKpis />
-          <OwnersTable @select-owner="onSelectOwner" />
+          <Tabs default-value="roster" class="space-y-3">
+            <TabsList>
+              <TabsTrigger value="roster">
+                Owners
+              </TabsTrigger>
+              <TabsTrigger value="statements">
+                Statements
+              </TabsTrigger>
+              <TabsTrigger value="documents">
+                Documents
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="roster">
+              <OwnersTable @select-owner="onSelectOwner" />
+            </TabsContent>
+            <TabsContent value="statements">
+              <OwnerStatementsPanel />
+            </TabsContent>
+            <TabsContent value="documents">
+              <OwnerDocumentsPanel />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="roles">

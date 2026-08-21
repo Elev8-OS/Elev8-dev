@@ -58,6 +58,42 @@ const { revokeAccess, regenerateAccess, getAccessLog } = useOwnerAuth()
 
 const owner = computed<Owner | undefined>(() => props.ownerId ? byId(props.ownerId) : undefined)
 
+// Tab scroll fade indicators — show a gradient on the side that still has
+// hidden tabs, hide it once that edge is reached.
+const tabsScrollRef = ref<HTMLElement | null>(null)
+const canScrollLeft = ref(false)
+const canScrollRight = ref(false)
+
+function updateTabFades() {
+  const el = tabsScrollRef.value
+  if (!el)
+    return
+  canScrollLeft.value = el.scrollLeft > 4
+  canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 4
+}
+
+onMounted(() => {
+  nextTick(updateTabFades)
+  const el = tabsScrollRef.value
+  if (el) {
+    el.addEventListener('scroll', updateTabFades, { passive: true })
+    window.addEventListener('resize', updateTabFades)
+  }
+})
+
+watch(() => props.open, (value) => {
+  if (value)
+    nextTick(updateTabFades)
+})
+
+onBeforeUnmount(() => {
+  const el = tabsScrollRef.value
+  if (el) {
+    el.removeEventListener('scroll', updateTabFades)
+    window.removeEventListener('resize', updateTabFades)
+  }
+})
+
 const ownerMappings = computed(() => owner.value ? mappings.value.filter(m => m.ownerId === owner.value!.id) : [])
 const ownerRules = computed<CommissionRule[]>(() => owner.value ? commissionRules.value.filter(r => r.ownerId === owner.value!.id) : [])
 const ownerStatements = computed(() => owner.value ? statements.value.filter(s => s.ownerId === owner.value!.id) : [])
@@ -280,36 +316,52 @@ function handleDownloadContractPdf() {
         <Separator class="my-4" />
 
         <Tabs default-value="overview" class="w-full">
-          <TabsList class="w-full">
-            <TabsTrigger value="overview" class="flex-1">
-              <Icon name="lucide:user" class="mr-1.5 size-4" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="properties" class="flex-1">
-              <Icon name="lucide:building-2" class="mr-1.5 size-4" />
-              Properties & Commission
-            </TabsTrigger>
-            <TabsTrigger value="permissions" class="flex-1">
-              <Icon name="lucide:shield-check" class="mr-1.5 size-4" />
-              Permissions
-            </TabsTrigger>
-            <TabsTrigger value="statements" class="flex-1">
-              <Icon name="lucide:file-text" class="mr-1.5 size-4" />
-              Statements
-            </TabsTrigger>
-            <TabsTrigger value="booking" class="flex-1">
-              <Icon name="lucide:calendar-check-2" class="mr-1.5 size-4" />
-              Self-booking
-            </TabsTrigger>
-            <TabsTrigger value="contract" class="flex-1">
-              <Icon name="lucide:file-signature" class="mr-1.5 size-4" />
-              Contract
-            </TabsTrigger>
-            <TabsTrigger value="access" class="flex-1">
-              <Icon name="lucide:key-round" class="mr-1.5 size-4" />
-              Portal Access
-            </TabsTrigger>
-          </TabsList>
+          <div class="relative">
+            <div
+              ref="tabsScrollRef"
+              class="no-scrollbar w-full overflow-x-auto"
+            >
+              <TabsList class="w-max min-w-full justify-start">
+                <TabsTrigger value="overview" class="shrink-0">
+                  <Icon name="lucide:user" class="mr-1.5 size-4" />
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="properties" class="shrink-0">
+                  <Icon name="lucide:building-2" class="mr-1.5 size-4" />
+                  Properties
+                </TabsTrigger>
+                <TabsTrigger value="permissions" class="shrink-0">
+                  <Icon name="lucide:shield-check" class="mr-1.5 size-4" />
+                  Permissions
+                </TabsTrigger>
+                <TabsTrigger value="statements" class="shrink-0">
+                  <Icon name="lucide:file-text" class="mr-1.5 size-4" />
+                  Statements
+                </TabsTrigger>
+                <TabsTrigger value="booking" class="shrink-0">
+                  <Icon name="lucide:calendar-check-2" class="mr-1.5 size-4" />
+                  Self-booking
+                </TabsTrigger>
+                <TabsTrigger value="contract" class="shrink-0">
+                  <Icon name="lucide:file-signature" class="mr-1.5 size-4" />
+                  Contract
+                </TabsTrigger>
+                <TabsTrigger value="access" class="shrink-0">
+                  <Icon name="lucide:key-round" class="mr-1.5 size-4" />
+                  Access
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            <!-- Fade indicators: show only on sides that still have hidden tabs -->
+            <div
+              v-if="canScrollLeft"
+              class="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent"
+            />
+            <div
+              v-if="canScrollRight"
+              class="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent"
+            />
+          </div>
 
           <!-- Overview -->
           <TabsContent value="overview" class="space-y-3 pt-3">
