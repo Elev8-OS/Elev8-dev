@@ -1,13 +1,17 @@
 <!-- app/components/owners/OwnerDetailSheet.vue -->
 <!--
-  Read-mostly sheet for an individual owner — Overview, Properties &
-  Commission, Permissions, and Statements tabs. Uses the same Sheet +
-  Tabs pattern as RoleDetailSheet.
+  Read-mostly sheet for an individual owner — Overview (Account + Portal
+  permissions sections, each with its own Edit button), Properties
+  (ownership + commission, with an Edit dialog per mapping that also edits
+  the operational cost share and commission rule), Financials (statements),
+  and Booking & Access (self-booking modes, seasonal quotas).
+  Uses the same Sheet + Tabs pattern as RoleDetailSheet. Reduced from
+  7 tabs to 4 to simplify the layout.
 -->
 <script setup lang="ts">
-import type { CommissionRule } from '~/components/owners/data/commission-rules'
+import type { CommissionRule, CommissionRuleDraft } from '~/components/owners/data/commission-rules'
 import type { OwnerBookingMode, OwnerSeasonalQuota } from '~/components/owners/data/owner-quotas'
-import type { Owner, OwnerStatus } from '~/components/owners/data/owners'
+import type { Owner, OwnerPropertyMapping, OwnerStatus } from '~/components/owners/data/owners'
 import { CalendarDate, getLocalTimeZone } from '@internationalized/date'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
@@ -23,7 +27,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Separator } from '~/components/ui/separator'
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerContracts } from '~/composables/useOwnerContracts'
 import { useOwnerOperationalFees } from '~/composables/useOwnerOperationalFees'
 import { useOwnerPermissions } from '~/composables/useOwnerPermissions'
@@ -31,6 +34,8 @@ import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import { useOwners } from '~/composables/useOwners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
 import { buildOwnerContractPdf } from '~/lib/owner-contract-pdf'
+import CommissionRuleEditor from './CommissionRuleEditor.vue'
+import { remainingShare } from './lib/ownership-rebalance'
 import OwnerPermissionMatrix from './OwnerPermissionMatrix.vue'
 
 interface Props {
@@ -69,10 +74,14 @@ const {
   updatePermissions,
   updateOwner,
   findPermissions,
+  updateMapping,
+  addMapping,
+  addRule,
+  updateRule,
 } = useOwners()
 const { statements } = useOwnerStatements()
 const { applyTemplate } = useOwnerPermissions()
-const { revokeAccess, regenerateAccess, getAccessLog } = useOwnerAuth()
+const { getFeeFor, saveFee } = useOwnerOperationalFees()
 
 const owner = computed<Owner | undefined>(() => props.ownerId ? byId(props.ownerId) : undefined)
 
@@ -119,6 +128,132 @@ const ownerPermissions = computed(() => owner.value ? findPermissions(owner.valu
 
 const listingById = computed(() => new Map(listings.value.map(l => [l.id, l])))
 
+// --- Property mapping + commission rule add/edit (Properties tab) ---
+
+interface MappingEditState {
+  /** Present when editing an existing mapping; undefined when adding a new one. */
+  mappingId?: string
+  listingId: string
+  ownershipPercentage: number
+  effectiveFrom: string
+  operationalFeePercentage: number
+  /** Existing rule id when editing; null when adding (new rule minted on save). */
+  commissionRuleId: string | null
+  ruleDraft: CommissionRuleDraft
+}
+
+const mappingEdit = ref<MappingEditState | null>(null)
+
+function ruleDraftFromRule(rule?: CommissionRule): CommissionRuleDraft {
+  if (!rule) {
+    return {
+      type: 'flat',
+      rate: 0,
+      listingId: '',
+      name: '',
+      effectiveFrom: new Date().toISOString().slice(0, 10),
+    }
+  }
+  const { id: _id, ownerId: _ownerId, ...draft } = rule
+  return draft as CommissionRuleDraft
+}
+
+function startEditMapping(mapping: OwnerPropertyMapping) {
+  const rule = commissionRules.value.find(r => r.id === mapping.commissionRuleId)
+  mappingEdit.value = {
+    mappingId: mapping.id,
+    listingId: mapping.listingId,
+    ownershipPercentage: mapping.ownershipPercentage,
+    effectiveFrom: mapping.effectiveFrom,
+    operationalFeePercentage: getFeeFor(owner.value!.id, mapping.listingId)?.percentage ?? 100,
+    commissionRuleId: mapping.commissionRuleId ?? null,
+    ruleDraft: ruleDraftFromRule(rule),
+  }
+}
+
+function startAddMapping() {
+  // Auto-pick the first listing this owner doesn't already own, mirroring
+  // the create-owner flow.
+  const usedListingIds = new Set(ownerMappings.value.map(m => m.listingId))
+  const nextListing = listings.value.find(l => !usedListingIds.has(l.id))
+  const listingId = nextListing?.id ?? ''
+  const ownerRows = ownerMappings.value.map(m => ({ mapping: m }))
+  mappingEdit.value = {
+    listingId,
+    ownershipPercentage: listingId
+      ? remainingShare(mappings.value, ownerRows, listingId, undefined) ?? 0
+      : 0,
+    effectiveFrom: new Date().toISOString().slice(0, 10),
+    operationalFeePercentage: 100,
+    commissionRuleId: null,
+    ruleDraft: ruleDraftFromRule(undefined),
+  }
+}
+
+/** Recompute the suggested ownership share when the picked property changes. */
+function onEditListingChange(listingId: string) {
+  if (!mappingEdit.value)
+    return
+  const ownerRows = ownerMappings.value.map(m => ({ mapping: m }))
+  const share = listingId
+    ? remainingShare(mappings.value, ownerRows, listingId, undefined)
+    : null
+  mappingEdit.value = {
+    ...mappingEdit.value,
+    listingId,
+    ownershipPercentage: share ?? 0,
+  }
+}
+
+function saveMappingEdit() {
+  const edit = mappingEdit.value
+  if (!edit || !owner.value)
+    return
+
+  // Create a rule first when adding, so the mapping can reference it.
+  let ruleId: string | null | undefined = edit.commissionRuleId
+  const draftFields = { ...edit.ruleDraft, listingId: edit.listingId }
+  if (!ruleId) {
+    const ruleResult = addRule({ ...draftFields, ownerId: owner.value.id })
+    if (!ruleResult.success) {
+      toast.error(ruleResult.error ?? 'Failed to create commission rule.')
+      return
+    }
+    ruleId = ruleResult.ruleId
+  }
+  else {
+    updateRule(ruleId, draftFields)
+  }
+
+  const mappingResult = edit.mappingId
+    ? updateMapping(edit.mappingId, {
+        listingId: edit.listingId,
+        ownershipPercentage: edit.ownershipPercentage,
+        effectiveFrom: edit.effectiveFrom,
+        commissionRuleId: ruleId,
+      })
+    : addMapping({
+        ownerId: owner.value.id,
+        listingId: edit.listingId,
+        ownershipPercentage: edit.ownershipPercentage,
+        commissionRuleId: ruleId ?? '',
+        effectiveFrom: edit.effectiveFrom,
+      })
+  if (!mappingResult.success) {
+    toast.error(mappingResult.error ?? 'Failed to update property.')
+    return
+  }
+
+  saveFee({
+    ownerId: owner.value.id,
+    listingId: edit.listingId,
+    percentage: edit.operationalFeePercentage,
+  })
+
+  toast.success(edit.mappingId ? 'Property updated.' : 'Property added.')
+  mappingEdit.value = null
+}
+
 const statusBadgeClass: Record<OwnerStatus, string> = {
   active: 'border-transparent bg-green-500/10 text-green-700 dark:text-green-300',
   invited: 'border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -162,43 +297,12 @@ function handleMatrixUpdate(config: typeof ownerPermissions.value) {
   toast.success('Permissions updated.')
 }
 
+// Per-section edit state in the Overview tab (Account / Portal permissions).
+const editingPermissions = ref(false)
+
 const totalOwnership = computed(() =>
   ownerMappings.value.reduce((sum, m) => sum + m.ownershipPercentage, 0),
 )
-
-// --- Portal access (Flow 8) ---
-
-const revokeOpen = ref(false)
-const accessLogEntries = computed(() => owner.value ? getAccessLog(owner.value.id) : [])
-
-const magicLinkStatusLabel: Record<string, string> = {
-  active: 'Active',
-  revoked: 'Revoked',
-  regenerated: 'Regenerated',
-}
-
-function handleRevoke() {
-  if (!owner.value)
-    return
-  const result = revokeAccess(owner.value.id, 'staff-1')
-  if (result.ok) {
-    revokeOpen.value = false
-    toast.warning('Owner access revoked. Any active session was invalidated.')
-  }
-  else {
-    toast.error(result.error ?? 'Failed to revoke access.')
-  }
-}
-
-function handleRegenerate() {
-  if (!owner.value)
-    return
-  const result = regenerateAccess(owner.value.id, 'staff-1', 'Regenerated from owner detail sheet')
-  if (result.ok)
-    toast.success('New magic link generated.')
-  else
-    toast.error(result.error ?? 'Failed to regenerate link.')
-}
 
 // --- Self-booking mode + seasonal quotas (PRD 5.2) ---
 
@@ -306,8 +410,6 @@ function deleteQuota(quotaId: string) {
 }
 
 // --- Contract (PRD 5.3) ---
-
-const { getFeeFor } = useOwnerOperationalFees()
 
 function handleGenerateContract() {
   if (!owner.value || ownerMappings.value.length === 0)
@@ -428,19 +530,10 @@ function saveAnnualCap() {
   <Sheet :open="open" @update:open="(v) => emit('update:open', v)">
     <SheetContent side="right" class="flex w-full flex-col p-0 sm:max-w-3xl">
       <SheetHeader class="border-b px-6 pb-4 pt-6">
-        <div class="flex items-start justify-between gap-3">
+        <div>
           <SheetTitle>
             {{ owner?.name ?? 'Owner' }}
           </SheetTitle>
-          <Button
-            v-if="owner"
-            variant="outline"
-            size="sm"
-            @click="isEditingOwner ? cancelEditOwner() : startEditOwner()"
-          >
-            <Icon :name="isEditingOwner ? 'lucide:x' : 'lucide:pencil'" class="mr-1.5 size-3.5" />
-            {{ isEditingOwner ? 'Cancel' : 'Edit' }}
-          </Button>
         </div>
         <div v-if="owner" class="flex items-center gap-2 pt-1">
           <Badge variant="outline" :class="statusBadgeClass[owner.status]">
@@ -471,25 +564,13 @@ function saveAnnualCap() {
                   <Icon name="lucide:building-2" class="mr-1.5 size-4" />
                   Properties
                 </TabsTrigger>
-                <TabsTrigger value="permissions" class="shrink-0">
-                  <Icon name="lucide:shield-check" class="mr-1.5 size-4" />
-                  Permissions
-                </TabsTrigger>
-                <TabsTrigger value="statements" class="shrink-0">
+                <TabsTrigger value="financials" class="shrink-0">
                   <Icon name="lucide:file-text" class="mr-1.5 size-4" />
-                  Statements
+                  Financials
                 </TabsTrigger>
-                <TabsTrigger value="booking" class="shrink-0">
+                <TabsTrigger value="booking-access" class="shrink-0">
                   <Icon name="lucide:calendar-check-2" class="mr-1.5 size-4" />
-                  Self-booking
-                </TabsTrigger>
-                <TabsTrigger value="contract" class="shrink-0">
-                  <Icon name="lucide:file-signature" class="mr-1.5 size-4" />
-                  Contract
-                </TabsTrigger>
-                <TabsTrigger value="access" class="shrink-0">
-                  <Icon name="lucide:key-round" class="mr-1.5 size-4" />
-                  Access
+                  Booking &amp; Access
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -506,142 +587,211 @@ function saveAnnualCap() {
 
           <!-- Overview -->
           <TabsContent value="overview" class="space-y-3 pt-3">
-            <!-- Edit form -->
-            <form v-if="isEditingOwner" class="space-y-4" @submit.prevent="saveEditOwner">
-              <div class="space-y-1.5">
-                <Label for="edit-owner-name">Name</Label>
-                <Input id="edit-owner-name" v-model="editForm.name" />
-              </div>
-              <div class="space-y-1.5">
-                <Label for="edit-owner-email">Email</Label>
-                <Input id="edit-owner-email" v-model="editForm.email" type="email" />
-              </div>
-              <div class="space-y-1.5">
-                <Label for="edit-owner-phone">Phone</Label>
-                <Input id="edit-owner-phone" v-model="editForm.phone" />
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-1.5">
-                  <Label for="edit-owner-language">Language</Label>
-                  <Select v-model="editForm.language">
-                    <SelectTrigger id="edit-owner-language">
-                      <SelectValue placeholder="Language" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="en">
-                        English
-                      </SelectItem>
-                      <SelectItem value="id">
-                        Bahasa Indonesia
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div class="space-y-1.5">
-                  <Label for="edit-owner-currency">Statement currency</Label>
-                  <Select v-model="editForm.statementCurrency">
-                    <SelectTrigger id="edit-owner-currency">
-                      <SelectValue placeholder="Currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="IDR">
-                        IDR
-                      </SelectItem>
-                      <SelectItem value="USD">
-                        USD
-                      </SelectItem>
-                      <SelectItem value="AUD">
-                        AUD
-                      </SelectItem>
-                      <SelectItem value="SGD">
-                        SGD
-                      </SelectItem>
-                      <SelectItem value="EUR">
-                        EUR
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div class="flex justify-end gap-2">
-                <Button type="button" variant="outline" @click="cancelEditOwner">
-                  Cancel
-                </Button>
-                <Button type="submit" :disabled="!editForm.name.trim() || !editForm.email.trim()">
-                  Save changes
+            <!-- Account -->
+            <section class="space-y-3 rounded-md border p-3">
+              <div class="flex items-center justify-between gap-2">
+                <h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Account
+                </h4>
+                <Button
+                  v-if="owner"
+                  variant="outline"
+                  size="sm"
+                  @click="isEditingOwner ? cancelEditOwner() : startEditOwner()"
+                >
+                  <Icon :name="isEditingOwner ? 'lucide:x' : 'lucide:pencil'" class="mr-1.5 size-3.5" />
+                  {{ isEditingOwner ? 'Cancel' : 'Edit' }}
                 </Button>
               </div>
-            </form>
 
-            <!-- Read-only view -->
-            <dl v-else class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Email
-                </dt>
-                <dd class="font-medium">
-                  <a
-                    v-if="owner.email"
-                    :href="`mailto:${owner.email}`"
-                    class="text-primary underline-offset-2 hover:underline"
-                  >
-                    {{ owner.email }}
-                  </a>
-                  <span v-else>—</span>
-                </dd>
+              <!-- Edit form -->
+              <form v-if="isEditingOwner" class="space-y-4" @submit.prevent="saveEditOwner">
+                <div class="space-y-1.5">
+                  <Label for="edit-owner-name">Name</Label>
+                  <Input id="edit-owner-name" v-model="editForm.name" />
+                </div>
+                <div class="space-y-1.5">
+                  <Label for="edit-owner-email">Email</Label>
+                  <Input id="edit-owner-email" v-model="editForm.email" type="email" />
+                </div>
+                <div class="space-y-1.5">
+                  <Label for="edit-owner-phone">Phone</Label>
+                  <Input id="edit-owner-phone" v-model="editForm.phone" />
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="space-y-1.5">
+                    <Label for="edit-owner-language">Language</Label>
+                    <Select v-model="editForm.language">
+                      <SelectTrigger id="edit-owner-language">
+                        <SelectValue placeholder="Language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">
+                          English
+                        </SelectItem>
+                        <SelectItem value="id">
+                          Bahasa Indonesia
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div class="space-y-1.5">
+                    <Label for="edit-owner-currency">Statement currency</Label>
+                    <Select v-model="editForm.statementCurrency">
+                      <SelectTrigger id="edit-owner-currency">
+                        <SelectValue placeholder="Currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="IDR">
+                          IDR
+                        </SelectItem>
+                        <SelectItem value="USD">
+                          USD
+                        </SelectItem>
+                        <SelectItem value="AUD">
+                          AUD
+                        </SelectItem>
+                        <SelectItem value="SGD">
+                          SGD
+                        </SelectItem>
+                        <SelectItem value="EUR">
+                          EUR
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div class="flex justify-end gap-2">
+                  <Button type="button" variant="outline" @click="cancelEditOwner">
+                    Cancel
+                  </Button>
+                  <Button type="submit" :disabled="!editForm.name.trim() || !editForm.email.trim()">
+                    Save changes
+                  </Button>
+                </div>
+              </form>
+
+              <!-- Read-only view -->
+              <dl v-else class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt class="text-xs font-medium text-muted-foreground">
+                    Email
+                  </dt>
+                  <dd class="font-medium">
+                    <a
+                      v-if="owner.email"
+                      :href="`mailto:${owner.email}`"
+                      class="text-primary underline-offset-2 hover:underline"
+                    >
+                      {{ owner.email }}
+                    </a>
+                    <span v-else>—</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs font-medium text-muted-foreground">
+                    Phone
+                  </dt>
+                  <dd class="font-medium">
+                    <a
+                      v-if="owner.phone"
+                      :href="`tel:${owner.phone}`"
+                      class="text-primary underline-offset-2 hover:underline"
+                    >
+                      {{ owner.phone }}
+                    </a>
+                    <span v-else>—</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs font-medium text-muted-foreground">
+                    Language
+                  </dt>
+                  <dd class="font-medium">
+                    {{ owner.language === 'en' ? 'English' : 'Bahasa Indonesia' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs font-medium text-muted-foreground">
+                    Statement currency
+                  </dt>
+                  <dd class="font-mono">
+                    {{ owner.statementCurrency }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs font-medium text-muted-foreground">
+                    Created
+                  </dt>
+                  <dd class="font-medium">
+                    {{ new Date(owner.createdAt).toLocaleDateString('en-GB') }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-xs font-medium text-muted-foreground">
+                    Invited
+                  </dt>
+                  <dd class="font-medium">
+                    {{ owner.invitedAt ? new Date(owner.invitedAt).toLocaleDateString('en-GB') : '—' }}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <!-- Portal permissions (Dashboard + Statement) -->
+            <section
+              v-if="ownerPermissions"
+              class="space-y-3 rounded-md border p-3"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Portal permissions
+                </h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="editingPermissions = !editingPermissions"
+                >
+                  <Icon :name="editingPermissions ? 'lucide:x' : 'lucide:pencil'" class="mr-1.5 size-3.5" />
+                  {{ editingPermissions ? 'Done' : 'Edit' }}
+                </Button>
               </div>
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Phone
-                </dt>
-                <dd class="font-medium">
-                  <a
-                    v-if="owner.phone"
-                    :href="`tel:${owner.phone}`"
-                    class="text-primary underline-offset-2 hover:underline"
-                  >
-                    {{ owner.phone }}
-                  </a>
-                  <span v-else>—</span>
-                </dd>
+
+              <!-- Preset templates — shown only while editing -->
+              <div v-if="editingPermissions" class="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="handleApplyTemplate('full_transparency')"
+                >
+                  Apply Full transparency
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="handleApplyTemplate('financial_summary')"
+                >
+                  Apply Financial summary
+                </Button>
               </div>
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Language
-                </dt>
-                <dd class="font-medium">
-                  {{ owner.language === 'en' ? 'English' : 'Bahasa Indonesia' }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Statement currency
-                </dt>
-                <dd class="font-mono">
-                  {{ owner.statementCurrency }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Created
-                </dt>
-                <dd class="font-medium">
-                  {{ new Date(owner.createdAt).toLocaleDateString('en-GB') }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Invited
-                </dt>
-                <dd class="font-medium">
-                  {{ owner.invitedAt ? new Date(owner.invitedAt).toLocaleDateString('en-GB') : '—' }}
-                </dd>
-              </div>
-            </dl>
+
+              <OwnerPermissionMatrix
+                :config="ownerPermissions"
+                :readonly="!editingPermissions"
+                @update:config="handleMatrixUpdate"
+              />
+            </section>
+            <p v-if="!ownerPermissions" class="text-sm text-muted-foreground">
+              No permission config found.
+            </p>
           </TabsContent>
 
           <!-- Properties & Commission -->
           <TabsContent value="properties" class="space-y-3 pt-3">
+            <Button size="sm" class="w-full" @click="startAddMapping">
+              <Icon name="lucide:plus" class="mr-1.5 size-4" />
+              Add property
+            </Button>
             <div v-if="ownerMappings.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
               No properties assigned.
             </div>
@@ -651,8 +801,8 @@ function saveAnnualCap() {
                 :key="m.id"
                 class="rounded-md border p-3"
               >
-                <div class="flex items-center justify-between">
-                  <div>
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
                     <div class="font-medium">
                       {{ listingById.get(m.listingId)?.name ?? m.listingId }}
                     </div>
@@ -660,6 +810,14 @@ function saveAnnualCap() {
                       {{ m.ownershipPercentage }}%{{ m.unitId ? ` · unit ${m.unitId}` : '' }} · from {{ new Date(`${m.effectiveFrom}T00:00:00`).toLocaleDateString('en-GB') }}
                     </div>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="startEditMapping(m)"
+                  >
+                    <Icon name="lucide:pencil" class="mr-1.5 size-3.5" />
+                    Edit
+                  </Button>
                 </div>
                 <Separator class="my-3" />
                 <div v-if="ownerRules.find(r => r.listingId === m.listingId)" class="space-y-1">
@@ -673,39 +831,160 @@ function saveAnnualCap() {
                 </div>
               </div>
             </div>
-          </TabsContent>
 
-          <!-- Permissions -->
-          <TabsContent value="permissions" class="space-y-3 pt-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                @click="handleApplyTemplate('full_transparency')"
-              >
-                Apply Full transparency
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                @click="handleApplyTemplate('financial_summary')"
-              >
-                Apply Financial summary
-              </Button>
+            <!-- Operational cost share (PRD 5.1.3) — set at owner creation, shown read-only here -->
+            <div v-if="ownerMappings.length > 0" class="rounded-md border p-3">
+              <div class="mb-2 text-xs font-medium text-muted-foreground">
+                Operational costs covered by owner
+              </div>
+              <div class="space-y-1.5 text-sm">
+                <div
+                  v-for="m in ownerMappings"
+                  :key="m.listingId"
+                  class="flex items-center justify-between"
+                >
+                  <span class="text-muted-foreground">
+                    {{ listingById.get(m.listingId)?.name ?? m.listingId }}
+                  </span>
+                  <span class="font-medium">
+                    {{ getFeeFor(owner!.id, m.listingId)?.percentage ?? 100 }}%
+                  </span>
+                </div>
+              </div>
+              <p class="mt-2 text-xs text-muted-foreground">
+                Set during owner creation. 100% = owner covers all cleaning &amp; utilities; 0% = management absorbs them.
+              </p>
             </div>
-            <Separator />
-            <OwnerPermissionMatrix
-              v-if="ownerPermissions"
-              :config="ownerPermissions"
-              @update:config="handleMatrixUpdate"
-            />
-            <p v-else class="text-sm text-muted-foreground">
-              No permission config found.
-            </p>
+
+            <!-- Management agreement (PRD 5.3) -->
+            <div v-if="!ownerContract" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No contract yet. Generate one from the owner's commission terms.
+            </div>
+            <div v-else class="space-y-3">
+              <div class="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div class="text-sm font-medium">
+                    Management agreement
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {{ ownerContract.terms.basis === 'net'
+                      ? `Fixed ${ownerContract.terms.fixedAmount ?? 0} + ${ownerContract.terms.rate}% of Net`
+                      : `${ownerContract.terms.rate}% of Gross` }}
+                    · {{ ownerContract.listingIds.length }} listing(s)
+                  </div>
+                </div>
+                <Badge :variant="ownerContract.status === 'signed' ? 'default' : ownerContract.status === 'sent' ? 'secondary' : 'outline'">
+                  {{ capitalizeLabel(ownerContract.status) }}
+                </Badge>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <Button v-if="ownerContract.status === 'draft'" size="sm" @click="handleSendContract">
+                  Send magic link to sign
+                </Button>
+                <Button v-if="ownerContract.status !== 'signed'" size="sm" variant="outline" @click="handleGenerateContract">
+                  Regenerate from terms
+                </Button>
+                <Button v-if="ownerContract.status === 'signed'" size="sm" variant="outline" @click="handleDownloadContractPdf">
+                  <Icon name="lucide:file-down" class="mr-1.5 size-3.5" />
+                  Download PDF
+                </Button>
+                <Button size="sm" variant="outline" as-child>
+                  <NuxtLink to="/owner-documents">
+                    View in Document Center
+                  </NuxtLink>
+                </Button>
+              </div>
+            </div>
+
+            <Dialog :open="!!mappingEdit" @update:open="(v: boolean) => { if (!v) mappingEdit = null }">
+              <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{{ mappingEdit?.mappingId ? 'Edit property' : 'Add property' }}</DialogTitle>
+                  <DialogDescription>
+                    Set the owner's share of this property and its commission rule.
+                  </DialogDescription>
+                </DialogHeader>
+                <div v-if="mappingEdit" class="space-y-4">
+                  <div class="space-y-1.5">
+                    <Label>Property</Label>
+                    <Select
+                      :model-value="mappingEdit.listingId"
+                      @update:model-value="(v) => onEditListingChange(String(v))"
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick a property" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="l in listings" :key="l.id" :value="l.id">
+                          {{ l.name }}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                      <Label for="map-edit-ownership">Ownership (%)</Label>
+                      <Input
+                        id="map-edit-ownership"
+                        v-model.number="mappingEdit.ownershipPercentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                      />
+                    </div>
+                    <div class="space-y-1.5">
+                      <Label for="map-edit-fee">Operational costs (%)</Label>
+                      <Input
+                        id="map-edit-fee"
+                        v-model.number="mappingEdit.operationalFeePercentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="5"
+                      />
+                    </div>
+                  </div>
+                  <p class="text-xs text-muted-foreground">
+                    Operational costs: 100% = owner covers all cleaning &amp; utilities; 0% = management absorbs them.
+                  </p>
+
+                  <div class="space-y-1.5">
+                    <Label for="map-edit-effective">Effective from</Label>
+                    <Input
+                      id="map-edit-effective"
+                      v-model="mappingEdit.effectiveFrom"
+                      type="date"
+                    />
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <p class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Commission rule
+                    </p>
+                    <CommissionRuleEditor
+                      v-model:draft="mappingEdit.ruleDraft"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" @click="mappingEdit = null">
+                    Cancel
+                  </Button>
+                  <Button @click="saveMappingEdit">
+                    {{ mappingEdit?.mappingId ? 'Save' : 'Add property' }}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
-          <!-- Statements -->
-          <TabsContent value="statements" class="space-y-3 pt-3">
+          <!-- Financials: Statements + Contract -->
+          <TabsContent value="financials" class="space-y-3 pt-3">
             <div v-if="ownerStatements.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
               No statements yet.
             </div>
@@ -756,15 +1035,15 @@ function saveAnnualCap() {
             />
           </TabsContent>
 
-          <!-- Self-booking mode + seasonal quotas (PRD 5.2) -->
-          <TabsContent value="booking" class="space-y-3 pt-3">
+          <!-- Booking & Access: self-booking + magic link -->
+          <TabsContent value="booking-access" class="space-y-3 pt-3">
             <div v-if="ownerMappings.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
               Assign a property first to configure self-booking.
             </div>
 
             <template v-else>
               <div class="rounded-md border p-4">
-                <div class="flex flex-wrap items-end justify-between gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
                   <div class="min-w-0 flex-1 space-y-1">
                     <div class="flex items-center gap-1.5">
                       <div class="text-sm font-medium">
@@ -785,7 +1064,7 @@ function saveAnnualCap() {
                       The total free nights the owner can book across all their properties each year.
                     </p>
                   </div>
-                  <div class="flex items-end gap-2">
+                  <div class="flex items-center gap-2">
                     <div class="space-y-1">
                       <Label for="annual-cap" class="text-xs">Nights / year</Label>
                       <Input
@@ -992,155 +1271,6 @@ function saveAnnualCap() {
                   </Button>
                   <Button @click="saveQuota">
                     Save quota
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </TabsContent>
-
-          <!-- Contract (PRD 5.3) -->
-          <TabsContent value="contract" class="space-y-3 pt-3">
-            <!-- Operational cost share (PRD 5.1.3) — set at owner creation, shown read-only here -->
-            <div v-if="ownerMappings.length > 0" class="rounded-md border p-3">
-              <div class="mb-2 text-xs font-medium text-muted-foreground">
-                Operational costs covered by owner
-              </div>
-              <div class="space-y-1.5 text-sm">
-                <div
-                  v-for="m in ownerMappings"
-                  :key="m.listingId"
-                  class="flex items-center justify-between"
-                >
-                  <span class="text-muted-foreground">
-                    {{ listingById.get(m.listingId)?.name ?? m.listingId }}
-                  </span>
-                  <span class="font-medium">
-                    {{ getFeeFor(owner!.id, m.listingId)?.percentage ?? 100 }}%
-                  </span>
-                </div>
-              </div>
-              <p class="mt-2 text-xs text-muted-foreground">
-                Set during owner creation. 100% = owner covers all cleaning &amp; utilities; 0% = management absorbs them.
-              </p>
-            </div>
-
-            <div v-if="!ownerContract" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No contract yet. Generate one from the owner's commission terms.
-            </div>
-            <div v-else class="space-y-3">
-              <div class="flex items-center justify-between rounded-md border p-3">
-                <div>
-                  <div class="text-sm font-medium">
-                    Management agreement
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    {{ ownerContract.terms.basis === 'net'
-                      ? `Fixed ${ownerContract.terms.fixedAmount ?? 0} + ${ownerContract.terms.rate}% of Net`
-                      : `${ownerContract.terms.rate}% of Gross` }}
-                    · {{ ownerContract.listingIds.length }} listing(s)
-                  </div>
-                </div>
-                <Badge :variant="ownerContract.status === 'signed' ? 'default' : ownerContract.status === 'sent' ? 'secondary' : 'outline'">
-                  {{ capitalizeLabel(ownerContract.status) }}
-                </Badge>
-              </div>
-
-              <div class="flex flex-wrap gap-2">
-                <Button v-if="ownerContract.status === 'draft'" size="sm" @click="handleSendContract">
-                  Send magic link to sign
-                </Button>
-                <Button v-if="ownerContract.status !== 'signed'" size="sm" variant="outline" @click="handleGenerateContract">
-                  Regenerate from terms
-                </Button>
-                <Button v-if="ownerContract.status === 'signed'" size="sm" variant="outline" @click="handleDownloadContractPdf">
-                  <Icon name="lucide:file-down" class="mr-1.5 size-3.5" />
-                  Download PDF
-                </Button>
-                <Button size="sm" variant="outline" as-child>
-                  <NuxtLink to="/owner-documents">
-                    View in Document Center
-                  </NuxtLink>
-                </Button>
-              </div>
-            </div>
-          </TabsContent>
-
-          <!-- Portal Access (Flow 8) -->
-          <TabsContent value="access" class="space-y-3 pt-3">
-            <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
-              <div>
-                <div class="text-sm font-medium">
-                  Magic link status
-                </div>
-                <div class="text-xs text-muted-foreground">
-                  {{ magicLinkStatusLabel[owner.magicLinkStatus ?? 'active'] ?? 'Active' }}
-                  <template v-if="owner.accessRevokedAt">
-                    · revoked {{ new Date(owner.accessRevokedAt).toLocaleDateString('en-GB') }}
-                  </template>
-                </div>
-              </div>
-              <div class="flex gap-2">
-                <Button
-                  v-if="owner.magicLinkStatus !== 'revoked'"
-                  variant="destructive"
-                  size="sm"
-                  @click="revokeOpen = true"
-                >
-                  Revoke access
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="owner.status === 'inactive'"
-                  @click="handleRegenerate"
-                >
-                  Regenerate link
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div class="text-xs font-medium text-muted-foreground">
-              Access history
-            </div>
-            <div v-if="!accessLogEntries.length" class="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No access activity yet.
-            </div>
-            <div v-else class="space-y-2">
-              <div
-                v-for="entry in accessLogEntries"
-                :key="entry.id"
-                class="flex items-center justify-between rounded-md border p-2.5 text-sm"
-              >
-                <div>
-                  <div class="font-medium">
-                    {{ capitalizeLabel(entry.action.replace(/_/g, ' ')) }}
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    {{ entry.actor }} · {{ entry.note ?? '' }}
-                  </div>
-                </div>
-                <div class="text-xs text-muted-foreground">
-                  {{ new Date(entry.at).toLocaleDateString('en-GB') }}
-                </div>
-              </div>
-            </div>
-
-            <Dialog :open="revokeOpen" @update:open="(v: boolean) => { if (!v) revokeOpen = false }">
-              <DialogContent class="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Revoke portal access?</DialogTitle>
-                  <DialogDescription>
-                    {{ owner.name }} will be logged out immediately and can no longer enter the portal until a new link is sent.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" @click="revokeOpen = false">
-                    Cancel
-                  </Button>
-                  <Button variant="destructive" @click="handleRevoke">
-                    Revoke access
                   </Button>
                 </DialogFooter>
               </DialogContent>

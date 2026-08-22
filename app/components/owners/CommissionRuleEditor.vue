@@ -10,7 +10,8 @@
     - hybrid:  fixed amount + rate%
 -->
 <script setup lang="ts">
-import type { CommissionRuleDraft, CommissionTier } from '~/components/owners/data/commission-rules'
+import type { CommissionBasisDeduction, CommissionRuleDraft, CommissionTier } from '~/components/owners/data/commission-rules'
+import { COMMISSION_BASIS_DEDUCTION_LABELS } from '~/components/owners/data/commission-rules'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -24,6 +25,25 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'update:draft': [value: CommissionRuleDraft]
 }>()
+
+const basisDeductionKeys = Object.keys(COMMISSION_BASIS_DEDUCTION_LABELS) as CommissionBasisDeduction[]
+
+const currentDeductions = computed<CommissionBasisDeduction[]>(() =>
+  props.draft.basisDeductions ?? (props.draft.basis === 'net' ? ['operating_expenses', 'taxes', 'platform_fees'] : []))
+
+function toggleDeduction(key: CommissionBasisDeduction) {
+  const current = currentDeductions.value
+  const next = current.includes(key)
+    ? current.filter(k => k !== key)
+    : [...current, key]
+  // `basis` stays as a coarse mirror for contract/legacy mirrors: gross when
+  // nothing is deducted, net otherwise.
+  emit('update:draft', {
+    ...props.draft,
+    basisDeductions: next,
+    basis: next.length > 0 ? 'net' : 'gross',
+  } as CommissionRuleDraft)
+}
 
 function patch(partial: Partial<CommissionRuleDraft>) {
   // Spread to break aliasing — the parent must never see in-place mutation.
@@ -131,27 +151,34 @@ function removeTier(index: number) {
     <div class="space-y-1.5">
       <Label>
         Commission basis
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button type="button" variant="ghost" size="icon-sm" class="size-4 align-middle">
+              <Icon name="lucide:info" class="size-3.5 text-muted-foreground" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent class="max-w-64">
+            Commission base = Gross minus the checked items. Leave all unchecked for 100% Gross.
+          </TooltipContent>
+        </Tooltip>
       </Label>
-      <div class="inline-flex rounded-md border p-0.5">
-        <button
-          type="button"
-          class="rounded px-3 py-1 text-xs font-medium transition-colors"
-          :class="(draft.basis ?? 'gross') === 'gross' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
-          @click="patch({ basis: 'gross' } as Partial<CommissionRuleDraft>)"
+      <div class="space-y-1">
+        <label
+          v-for="key in basisDeductionKeys"
+          :key="key"
+          class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
         >
-          % of Gross
-        </button>
-        <button
-          type="button"
-          class="rounded px-3 py-1 text-xs font-medium transition-colors"
-          :class="(draft.basis ?? 'gross') === 'net' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
-          @click="patch({ basis: 'net' } as Partial<CommissionRuleDraft>)"
-        >
-          Fixed + % of Net
-        </button>
+          <Checkbox
+            :model-value="currentDeductions.includes(key)"
+            @update:model-value="toggleDeduction(key)"
+          />
+          <span>{{ COMMISSION_BASIS_DEDUCTION_LABELS[key] }}</span>
+        </label>
       </div>
       <p class="text-xs text-muted-foreground">
-        Net = gross revenue after operating expenses, taxes, and platform fees.
+        {{ currentDeductions.length === 0
+          ? 'Commission is calculated on 100% Gross (no deductions).'
+          : `Commission is calculated on Gross minus ${currentDeductions.length === 3 ? 'operating expenses, taxes, and platform fees (Net)' : 'the checked items'}.` }}
       </p>
     </div>
 

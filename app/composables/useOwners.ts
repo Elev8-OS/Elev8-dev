@@ -22,16 +22,6 @@ export type {
 } from '~/components/owners/data/owner-permissions'
 export { mockOwnerPermissions } from '~/components/owners/data/owner-permissions'
 export type {
-  Owner,
-  OwnerLanguage,
-  OwnerMagicLinkStatus,
-  OwnerPropertyMapping,
-  OwnerStatus,
-  StatementCurrency,
-} from '~/components/owners/data/owners'
-export { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
-
-export type {
   OwnerStay,
   OwnerStayApproval,
   OwnerStayCancelRequest,
@@ -44,6 +34,16 @@ export {
   mockOwnerStays,
   ownerStayStatusLabels,
 } from '~/components/owners/data/owner-stays'
+
+export type {
+  Owner,
+  OwnerLanguage,
+  OwnerMagicLinkStatus,
+  OwnerPropertyMapping,
+  OwnerStatus,
+  StatementCurrency,
+} from '~/components/owners/data/owners'
+export { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
 
 /**
  * Input shape for the owner onboarding save form.
@@ -391,6 +391,38 @@ export function useOwners() {
     return { success: true }
   }
 
+  /**
+   * Create a commission rule for an (owner, listing) pair, e.g. when a
+   * mapping has no rule yet. Returns the minted id so callers can link it
+   * onto the mapping via `commissionRuleId`.
+   */
+  function addRule(input: Omit<CommissionRule, 'id'>): { success: boolean, error?: string, ruleId?: string } {
+    const ruleId = generateRuleId()
+    // Spread of a discriminated union loses the exact member shape, so cast
+    // back after reattaching the id.
+    commissionRules.value = [...commissionRules.value, { ...input, id: ruleId } as CommissionRule]
+    return { success: true, ruleId }
+  }
+
+  /**
+   * Update the editable fields of an existing commission rule. `id`,
+   * `ownerId`, and `listingId` are locked — a rule's listing follows its
+   * mapping, so changing the listing goes through `updateMapping`.
+   */
+  function updateRule(
+    ruleId: string,
+    patch: Partial<Omit<CommissionRule, 'id' | 'ownerId' | 'listingId'>>,
+  ): { success: boolean, error?: string } {
+    const rule = commissionRules.value.find(r => r.id === ruleId)
+    if (!rule) {
+      return { success: false, error: 'Commission rule not found.' }
+    }
+    // Union spread flattens the discriminant members; cast back to a rule.
+    const updated = { ...rule, ...patch } as CommissionRule
+    commissionRules.value = commissionRules.value.map(r => r.id === ruleId ? updated : r)
+    return { success: true }
+  }
+
   // Lookups ----------------------------------------------------------------
 
   const listingsForOwner = computed(() => {
@@ -515,6 +547,8 @@ export function useOwners() {
     addMapping,
     updateMapping,
     removeMapping,
+    addRule,
+    updateRule,
     updatePermissions,
     findPermissions,
     rulesForOwner,

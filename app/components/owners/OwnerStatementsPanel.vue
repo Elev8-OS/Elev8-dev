@@ -13,6 +13,19 @@ const { statements, generateForPeriod, recordAdjustment } = useOwnerStatements()
 
 const periodInput = ref('2026-06')
 const isGenerating = ref(false)
+
+// Rolling month options (last 12 months, newest first) for the period dropdown.
+const periodOptions = computed(() => {
+  const months: { value: string, label: string }[] = []
+  const now = new Date()
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    months.push({ value, label })
+  }
+  return months
+})
 const selectedStatementId = ref<string | null>(null)
 const dialogOpen = ref(false)
 const adjustDialogOpen = ref(false)
@@ -146,12 +159,16 @@ const publishedPage = computed(() => paginate(sortedList(published.value.map(enr
           <label for="generate-period-panel" class="text-xs font-medium text-muted-foreground">
             Period
           </label>
-          <Input
-            id="generate-period-panel"
-            v-model="periodInput"
-            class="w-32"
-            placeholder="YYYY-MM"
-          />
+          <Select v-model="periodInput">
+            <SelectTrigger id="generate-period-panel" class="w-44">
+              <SelectValue placeholder="Pick a month" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="opt in periodOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <Button :disabled="isGenerating" @click="handleGenerate">
           <Icon name="lucide:plus" class="mr-1.5 size-4" />

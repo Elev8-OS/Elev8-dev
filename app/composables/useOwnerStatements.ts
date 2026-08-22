@@ -829,8 +829,15 @@ function buildDraftFromLedger(
 ): OwnerStatement {
   // PRD 5.1 — commission basis: 'net' rules apply the rate to net revenue
   // (gross − expenses − taxes − platform fees), 'gross' rules to gross.
+  // Itemised component amounts let calculateCommission subtract exactly the
+  // deductions the rule's checkbox basis selected.
   const netRevenue = entry.grossRevenue - entry.expenses - entry.taxes - entry.platformFees
-  const commission = calculateCommission(rule, entry.grossRevenue, { netRevenue })
+  const commission = calculateCommission(rule, entry.grossRevenue, {
+    netRevenue,
+    operatingExpenses: entry.expenses,
+    taxes: entry.taxes,
+    platformFees: entry.platformFees,
+  })
   const input: StatementInput = ledgerEntryToStatementInput(entry, commission)
   const lines = buildStatementLines(input)
   const totals = calculateStatementTotals(input)
