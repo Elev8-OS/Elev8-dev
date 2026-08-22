@@ -133,7 +133,7 @@ function openHistory(doc: OwnerDocument) {
                 </Badge>
               </TableCell>
               <TableCell class="text-sm text-muted-foreground">
-                {{ new Date(doc.uploadedAt).toLocaleDateString() }}
+                {{ new Date(doc.uploadedAt).toLocaleDateString('en-GB') }}
               </TableCell>
               <TableCell class="text-right">
                 <Button variant="ghost" size="sm" @click="handleDownload(doc)">
@@ -249,7 +249,7 @@ function openHistory(doc: OwnerDocument) {
                 v{{ doc.version }}
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ doc.fileName }} · {{ new Date(doc.uploadedAt).toLocaleString() }}
+                {{ doc.fileName }} · {{ new Date(doc.uploadedAt).toLocaleString('en-GB') }}
               </p>
             </div>
             <Button variant="ghost" size="sm" :disabled="index === historyDocuments.length - 1" @click="handleDownload(doc)">

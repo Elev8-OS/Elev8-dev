@@ -391,8 +391,7 @@ describe('useOwnerPortal', () => {
       await loginAs('wayan.sari@example.com')
       const portal = useOwnerPortal()
 
-      // Create a far-future stay (outside the 72h cutoff) so the cancellation
-      // goes through immediately and the propagation can be asserted.
+      // Create a stay so the cancellation can be asserted.
       const created = useOwnerStays().createStay({
         ownerId: 'own-1',
         listingId: 'lst-1',
@@ -406,7 +405,7 @@ describe('useOwnerPortal', () => {
       expect(portal.myStays.value.find(stay => stay.id === stayId)?.status).toBe('active')
 
       const result = useOwnerStays().cancelStay(stayId, 'Task 7 reactivity test')
-      expect(result).toEqual({ ok: true, requiresApproval: false })
+      expect(result).toEqual({ ok: true })
 
       const live = portal.myStays.value.find(stay => stay.id === stayId)
       expect(live?.status).toBe('cancelled')

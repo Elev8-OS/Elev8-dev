@@ -105,7 +105,7 @@ export function buildOwnerContractPdf(
   doc.text('Signature', MARGIN, signatureY + 4)
   doc.text(
     contract.signature
-      ? `${contract.signature.name} — ${new Date(contract.signature.signedAt).toLocaleString()}`
+      ? `${contract.signature.name} — ${new Date(contract.signature.signedAt).toLocaleString('en-GB')}`
       : 'Not yet signed',
     MARGIN + 90,
     signatureY + 4,

@@ -114,7 +114,7 @@ export type UpdateOwnerStayResult
     | { ok: false, reason: 'not_found' | 'conflict' | 'invalid_dates', conflicts?: OwnerStayConflict[] }
 
 export type CancelOwnerStayResult
-  = | { ok: true, requiresApproval: boolean }
+  = | { ok: true }
     | { ok: false, reason: 'not_found' | 'already_cancelled' | 'pending_approval' }
 
 export type DecideCancelRequestResult
@@ -129,7 +129,6 @@ export const DEFAULT_ANNUAL_OWNER_USE_CAP = 30
 const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
 
-/** Hours between now and the stay check-in. Negative when check-in is in the past. */
 export function hoursUntilCheckIn(checkIn: string): number {
   const checkInMs = Date.parse(`${checkIn}T00:00:00Z`)
   if (!Number.isFinite(checkInMs))
@@ -538,11 +537,9 @@ export function useOwnerStays() {
   /**
    * Cancel an owner stay (Flow 7).
    *
-   * Outside the 72h cutoff (more than 72h before check-in) the owner can
-   * self-serve: the stay is cancelled immediately, cleaning jobs are
-   * released and the smart-lock code is revoked. Inside the cutoff the
-   * cancellation becomes a request that GM/Admin must approve — ops may
-   * already have scheduled cleaning, so we don't let it happen silently.
+   * The owner can always cancel self-serve: the stay is cancelled
+   * immediately, cleaning jobs are released and the smart-lock code is
+   * revoked — no staff approval is required.
    */
   function cancelStay(
     stayId: string,
@@ -559,28 +556,7 @@ export function useOwnerStays() {
 
     const timestamp = nowIso()
 
-    // Inside the cutoff → request manual approval from GM/Admin.
-    if (isWithinCancelWindow(current.checkIn)) {
-      const cancelRequest: OwnerStayCancelRequest = {
-        requestedAt: timestamp,
-        reason: cancellationReason ?? 'Cancelled by owner',
-        status: 'pending',
-      }
-      stays.value = stays.value.map(stay => stay.id === stayId
-        ? { ...stay, cancelRequest, updatedAt: timestamp }
-        : stay)
-      emitOwnerStayAlert('OWNER_STAY_CANCELLED', 'WARNING', {
-        stayId,
-        ownerId: current.ownerId,
-        listingId: current.listingId,
-        checkIn: current.checkIn,
-        checkOut: current.checkOut,
-        requiresApproval: true,
-      })
-      return { ok: true, requiresApproval: true }
-    }
-
-    // Outside the cutoff → immediate cancellation.
+    // Immediate cancellation — no approval required.
     stays.value = stays.value.map(stay => stay.id === stayId
       ? {
           ...stay,
@@ -600,7 +576,7 @@ export function useOwnerStays() {
       checkOut: current.checkOut,
       requiresApproval: false,
     })
-    return { ok: true, requiresApproval: false }
+    return { ok: true }
   }
 
   /**

@@ -526,7 +526,7 @@ describe('useOwnerStays', () => {
 
     const result = cancelStay('ost-existing', 'Plans changed')
 
-    expect(result).toEqual({ ok: true, requiresApproval: false })
+    expect(result).toEqual({ ok: true })
     expect(stays.value[0]).toEqual(expect.objectContaining({
       status: 'cancelled',
       cancellationReason: 'Plans changed',
@@ -550,7 +550,7 @@ describe('useOwnerStays', () => {
       syncFailureTargets: ['cockpit', 'notifications'],
     })
 
-    expect(result).toEqual({ ok: true, requiresApproval: false })
+    expect(result).toEqual({ ok: true })
     expect(stays.value[0]).toEqual(expect.objectContaining({
       id: 'ost-existing',
       status: 'cancelled',
@@ -572,28 +572,11 @@ describe('useOwnerStays', () => {
     })
   })
 
-  describe('Flow 7 — cancellation window (72h cutoff)', () => {
-    it('cancels immediately outside the cutoff window', () => {
-      const { stays, cancelStay } = useOwnerStays()
-      // 2027 is far in the future — well outside the 72h window.
-      stays.value = [activeStay({
-        id: 'ost-far',
-        checkIn: '2027-01-10',
-        checkOut: '2027-01-12',
-        listingId: 'lst-conflicts',
-      })]
-
-      const result = cancelStay('ost-far', 'Plans changed')
-
-      expect(result).toEqual({ ok: true, requiresApproval: false })
-      expect(stays.value.find(s => s.id === 'ost-far')?.status).toBe('cancelled')
-      expect(stays.value.find(s => s.id === 'ost-far')?.cancelRequest).toBeUndefined()
-    })
-
-    it('routes cancellation into a pending management request inside the cutoff', () => {
+  describe('flow 7 — cancellation (no approval required)', () => {
+    it('cancels immediately regardless of how close the check-in is', () => {
       const { stays, cancelStay } = useOwnerStays()
       // Today is 2026-08-19 in the fixture environment; a check-in 1 day out
-      // is inside the window.
+      // used to sit inside the 72h management window.
       const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       const soonOut = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString().slice(0, 10)
       stays.value = [activeStay({
@@ -605,42 +588,18 @@ describe('useOwnerStays', () => {
 
       const result = cancelStay('ost-soon', 'Family emergency')
 
-      expect(result).toEqual({ ok: true, requiresApproval: true })
-      const stay = stays.value.find(s => s.id === 'ost-soon')
-      expect(stay?.status).toBe('active')
-      expect(stay?.cancelRequest).toEqual({
-        requestedAt: expect.any(String),
-        reason: 'Family emergency',
-        status: 'pending',
-      })
-      // Alert fired with the requires_approval flag.
-      expect(notificationsMock.callLog.some(call =>
-        call.type === 'OWNER_STAY_CANCELLED' && call.context.requiresApproval === true)).toBe(true)
-    })
-
-    it('approves a pending cancellation request → stay cancelled', () => {
-      const { stays, cancelStay, approveCancelRequest } = useOwnerStays()
-      const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      const soonOut = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      stays.value = [activeStay({
-        id: 'ost-soon',
-        checkIn: soon,
-        checkOut: soonOut,
-        listingId: 'lst-conflicts',
-      })]
-
-      cancelStay('ost-soon', 'Family emergency')
-      const decision = approveCancelRequest('ost-soon', 'staff-1')
-
-      expect(decision).toEqual({ ok: true })
+      expect(result).toEqual({ ok: true })
       const stay = stays.value.find(s => s.id === 'ost-soon')
       expect(stay?.status).toBe('cancelled')
-      expect(stay?.cancelRequest?.status).toBe('approved')
-      expect(stay?.cancelRequest?.decidedBy).toBe('staff-1')
+      expect(stay?.cancellationReason).toBe('Family emergency')
+      expect(stay?.cancelRequest).toBeUndefined()
+      // Alert fired — immediate cancellation, no approval flag.
+      expect(notificationsMock.callLog.some(call =>
+        call.type === 'OWNER_STAY_CANCELLED' && call.context.requiresApproval === false)).toBe(true)
     })
 
-    it('denies a pending cancellation request → stay stays active', () => {
-      const { stays, cancelStay, denyCancelRequest } = useOwnerStays()
+    it('keeps approve/deny helpers harmless when no cancel request exists', () => {
+      const { stays, cancelStay, approveCancelRequest, denyCancelRequest } = useOwnerStays()
       const soon = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
       const soonOut = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString().slice(0, 10)
       stays.value = [activeStay({
@@ -651,12 +610,10 @@ describe('useOwnerStays', () => {
       })]
 
       cancelStay('ost-soon', 'Family emergency')
-      const decision = denyCancelRequest('ost-soon', 'staff-1')
-
-      expect(decision).toEqual({ ok: true })
-      const stay = stays.value.find(s => s.id === 'ost-soon')
-      expect(stay?.status).toBe('active')
-      expect(stay?.cancelRequest?.status).toBe('denied')
+      // The stay is already cancelled directly — no pending request exists.
+      expect(approveCancelRequest('ost-soon', 'staff-1')).toEqual({ ok: false, reason: 'no_cancel_request' })
+      expect(denyCancelRequest('ost-soon', 'staff-1')).toEqual({ ok: false, reason: 'no_cancel_request' })
+      expect(stays.value.find(s => s.id === 'ost-soon')?.status).toBe('cancelled')
     })
   })
 })

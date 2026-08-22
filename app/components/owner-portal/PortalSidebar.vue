@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar'
+
 const links = [
   { label: 'Overview', to: '/owner-portal', icon: 'lucide:layout-dashboard' },
   { label: 'Statements', to: '/owner-portal/statements', icon: 'lucide:file-text' },
@@ -17,19 +19,39 @@ function isActive(to: string) {
 </script>
 
 <template>
-  <nav aria-label="Owner portal navigation" class="space-y-1">
-    <NuxtLink
-      v-for="link in links"
-      :key="link.to"
-      :to="link.to"
-      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-      :class="isActive(link.to)
-        ? 'bg-primary text-primary-foreground'
-        : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-      :aria-current="isActive(link.to) ? 'page' : undefined"
-    >
-      <Icon :name="link.icon" class="size-4" aria-hidden="true" />
-      {{ link.label }}
-    </NuxtLink>
-  </nav>
+  <Sidebar collapsible="icon">
+    <SidebarHeader class="border-b">
+      <div class="flex items-center gap-2 px-2 py-2">
+        <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <Icon name="lucide:building-2" class="size-4" aria-hidden="true" />
+        </div>
+        <div class="grid flex-1 text-left text-sm leading-tight">
+          <span class="truncate font-semibold">Owner Portal</span>
+          <span class="truncate text-xs text-muted-foreground">Elev8</span>
+        </div>
+      </div>
+    </SidebarHeader>
+    <SidebarContent>
+      <SidebarGroup>
+        <SidebarGroupLabel>Menu</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem v-for="link in links" :key="link.to">
+              <SidebarMenuButton
+                as-child
+                :is-active="isActive(link.to)"
+                :tooltip="link.label"
+              >
+                <NuxtLink :to="link.to">
+                  <Icon :name="link.icon" class="size-4" aria-hidden="true" />
+                  <span>{{ link.label }}</span>
+                </NuxtLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    </SidebarContent>
+    <SidebarRail />
+  </Sidebar>
 </template>

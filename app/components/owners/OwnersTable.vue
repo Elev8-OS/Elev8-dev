@@ -9,6 +9,7 @@ import type { Owner, OwnerStatus } from '~/components/owners/data/owners'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import { Avatar, AvatarFallback } from '~/components/ui/avatar'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
@@ -146,9 +147,11 @@ function handleReactivate(owner: Owner) {
           >
             <td class="px-4 py-3">
               <div class="flex items-center gap-3">
-                <div class="flex size-9 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                  {{ row.owner.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase() }}
-                </div>
+                <Avatar class="size-9">
+                  <AvatarFallback class="bg-primary/10 text-primary text-xs">
+                    {{ row.owner.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase() }}
+                  </AvatarFallback>
+                </Avatar>
                 <div class="min-w-0">
                   <div class="truncate font-medium">
                     {{ row.owner.name }}

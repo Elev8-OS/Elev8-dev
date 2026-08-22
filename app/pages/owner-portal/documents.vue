@@ -80,7 +80,7 @@ function handleDownload(doc: OwnerDocument) {
                 {{ doc.title }}
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ doc.fileName }} · v{{ doc.version }} · {{ new Date(doc.uploadedAt).toLocaleDateString() }}
+                {{ doc.fileName }} · v{{ doc.version }} · {{ new Date(doc.uploadedAt).toLocaleDateString('en-GB') }}
               </p>
             </div>
           </div>

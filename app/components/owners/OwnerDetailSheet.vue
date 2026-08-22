@@ -6,11 +6,13 @@
 -->
 <script setup lang="ts">
 import type { CommissionRule } from '~/components/owners/data/commission-rules'
-import type { OwnerBookingMode } from '~/components/owners/data/owner-quotas'
+import type { OwnerBookingMode, OwnerSeasonalQuota } from '~/components/owners/data/owner-quotas'
 import type { Owner, OwnerStatus } from '~/components/owners/data/owners'
+import { CalendarDate, getLocalTimeZone } from '@internationalized/date'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import StatementPublishDialog from '~/components/owner-statements/StatementPublishDialog.vue'
 import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -19,7 +21,7 @@ import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerContracts } from '~/composables/useOwnerContracts'
@@ -41,6 +43,21 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
+/** Format an ISO date (YYYY-MM-DD) as DD-MMM-YYYY, e.g. "01 Jan 2026". */
+function formatQuotaDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(date.getTime()))
+    return iso
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+/** Capitalize the first letter of a label (e.g. "link used" → "Link used"). */
+function capitalizeLabel(label: string): string {
+  if (!label)
+    return label
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
 const {
   byId,
   mappings,
@@ -50,6 +67,7 @@ const {
   deactivateOwner,
   reactivateOwner,
   updatePermissions,
+  updateOwner,
   findPermissions,
 } = useOwners()
 const { statements } = useOwnerStatements()
@@ -188,7 +206,47 @@ const { getBookingMode, setBookingMode, quotasForOwnerListing, upsertQuota, remo
 const { getContractForOwner, generateContract, sendContract } = useOwnerContracts()
 
 const modeDrafts = ref<Record<string, OwnerBookingMode>>({})
-const quotaInput = ref<{ ownerId: string, listingId: string, startDate: string, endDate: string, maxNights: number } | null>(null)
+const quotaInput = ref<{ id?: string, ownerId: string, listingId: string, startDate: string, endDate: string, maxNights: number } | null>(null)
+
+// Date range picker for the seasonal quota window
+const quotaDateRange = ref<any>({ start: undefined, end: undefined })
+const quotaDatePopoverOpen = ref(false)
+
+function quotaCalendarDate(iso: string): any {
+  if (!iso)
+    return undefined
+  const parts = iso.split('-').map(Number)
+  if (parts.length !== 3 || parts.some(p => !Number.isFinite(p)))
+    return undefined
+  const [year, month, day] = parts as [number, number, number]
+  return new CalendarDate(year, month, day)
+}
+
+function quotaDateToString(date: any): string {
+  if (!date)
+    return ''
+  return date.toDate(getLocalTimeZone()).toISOString().split('T')[0]
+}
+
+function formatQuotaDateLabel(iso: string): string {
+  return iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
+}
+
+watch(quotaDateRange, (val) => {
+  if (quotaInput.value) {
+    quotaInput.value.startDate = quotaDateToString(val.start)
+    quotaInput.value.endDate = quotaDateToString(val.end)
+  }
+}, { deep: true })
+
+watch(() => quotaInput.value, (val) => {
+  if (val) {
+    quotaDateRange.value = {
+      start: quotaCalendarDate(val.startDate),
+      end: quotaCalendarDate(val.endDate),
+    }
+  }
+})
 
 const ownerContract = computed(() => owner.value ? getContractForOwner(owner.value.id) : undefined)
 
@@ -215,6 +273,17 @@ function openAddQuota() {
     startDate: '',
     endDate: '',
     maxNights: 0,
+  }
+}
+
+function openEditQuota(q: OwnerSeasonalQuota) {
+  quotaInput.value = {
+    id: q.id,
+    ownerId: q.ownerId,
+    listingId: q.listingId,
+    startDate: q.startDate,
+    endDate: q.endDate,
+    maxNights: q.maxNights,
   }
 }
 
@@ -284,24 +353,78 @@ function handleDownloadContractPdf() {
   buildOwnerContractPdf(ownerContract.value, owner.value, { download: true })
   toast.success('Contract PDF downloaded.')
 }
+
+// Statement preview / publish (tab Statements)
+const statementPreviewOpen = ref(false)
+const statementPreviewId = ref<string | null>(null)
+
+function openStatementPreview(statementId: string) {
+  statementPreviewId.value = statementId
+  statementPreviewOpen.value = true
+}
+
+// Edit owner details (Overview tab)
+const isEditingOwner = ref(false)
+const editForm = ref({ name: '', email: '', phone: '', language: 'en' as 'en' | 'id', statementCurrency: 'IDR' as 'IDR' | 'USD' | 'AUD' | 'SGD' | 'EUR', annualOwnerUseNightCap: 0 })
+
+function startEditOwner() {
+  if (!owner.value)
+    return
+  editForm.value = {
+    name: owner.value.name,
+    email: owner.value.email,
+    phone: owner.value.phone,
+    language: owner.value.language,
+    statementCurrency: owner.value.statementCurrency,
+    annualOwnerUseNightCap: owner.value.annualOwnerUseNightCap ?? 0,
+  }
+  isEditingOwner.value = true
+}
+
+function cancelEditOwner() {
+  isEditingOwner.value = false
+}
+
+function saveEditOwner() {
+  if (!owner.value)
+    return
+  const result = updateOwner(owner.value.id, {
+    name: editForm.value.name.trim(),
+    email: editForm.value.email.trim(),
+    phone: editForm.value.phone.trim(),
+    language: editForm.value.language,
+    statementCurrency: editForm.value.statementCurrency,
+    annualOwnerUseNightCap: editForm.value.annualOwnerUseNightCap || undefined,
+  })
+  if (result.success) {
+    toast.success('Owner details updated.')
+    isEditingOwner.value = false
+  }
+  else {
+    toast.error(result.error ?? 'Failed to update owner.')
+  }
+}
 </script>
 
 <template>
   <Sheet :open="open" @update:open="(v) => emit('update:open', v)">
     <SheetContent side="right" class="flex w-full flex-col p-0 sm:max-w-3xl">
       <SheetHeader class="border-b px-6 pb-4 pt-6">
-        <SheetTitle>
-          {{ owner?.name ?? 'Owner' }}
-        </SheetTitle>
-        <SheetDescription>
-          <span v-if="owner">{{ owner.email }} · {{ owner.statementCurrency }}</span>
-          <span v-else>No owner selected.</span>
-        </SheetDescription>
-      </SheetHeader>
-
-      <div v-if="owner" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
-        <!-- Status strip -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-start justify-between gap-3">
+          <SheetTitle>
+            {{ owner?.name ?? 'Owner' }}
+          </SheetTitle>
+          <Button
+            v-if="owner"
+            variant="outline"
+            size="sm"
+            @click="isEditingOwner ? cancelEditOwner() : startEditOwner()"
+          >
+            <Icon :name="isEditingOwner ? 'lucide:x' : 'lucide:pencil'" class="mr-1.5 size-3.5" />
+            {{ isEditingOwner ? 'Cancel' : 'Edit' }}
+          </Button>
+        </div>
+        <div v-if="owner" class="flex items-center gap-2 pt-1">
           <Badge variant="outline" :class="statusBadgeClass[owner.status]">
             {{ statusLabel[owner.status] }}
           </Badge>
@@ -312,9 +435,9 @@ function handleDownloadContractPdf() {
             {{ totalOwnership }}% total
           </Badge>
         </div>
+      </SheetHeader>
 
-        <Separator class="my-4" />
-
+      <div v-if="owner" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         <Tabs default-value="overview" class="w-full">
           <div class="relative">
             <div
@@ -365,17 +488,111 @@ function handleDownloadContractPdf() {
 
           <!-- Overview -->
           <TabsContent value="overview" class="space-y-3 pt-3">
-            <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+            <!-- Edit form -->
+            <form v-if="isEditingOwner" class="space-y-4" @submit.prevent="saveEditOwner">
+              <div class="space-y-1.5">
+                <Label for="edit-owner-name">Name</Label>
+                <Input id="edit-owner-name" v-model="editForm.name" />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="edit-owner-email">Email</Label>
+                <Input id="edit-owner-email" v-model="editForm.email" type="email" />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="edit-owner-phone">Phone</Label>
+                <Input id="edit-owner-phone" v-model="editForm.phone" />
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1.5">
+                  <Label for="edit-owner-language">Language</Label>
+                  <Select v-model="editForm.language">
+                    <SelectTrigger id="edit-owner-language">
+                      <SelectValue placeholder="Language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">
+                        English
+                      </SelectItem>
+                      <SelectItem value="id">
+                        Bahasa Indonesia
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div class="space-y-1.5">
+                  <Label for="edit-owner-currency">Statement currency</Label>
+                  <Select v-model="editForm.statementCurrency">
+                    <SelectTrigger id="edit-owner-currency">
+                      <SelectValue placeholder="Currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="IDR">
+                        IDR
+                      </SelectItem>
+                      <SelectItem value="USD">
+                        USD
+                      </SelectItem>
+                      <SelectItem value="AUD">
+                        AUD
+                      </SelectItem>
+                      <SelectItem value="SGD">
+                        SGD
+                      </SelectItem>
+                      <SelectItem value="EUR">
+                        EUR
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <Label for="edit-owner-cap">Owner-use night cap (0 = no cap)</Label>
+                <Input id="edit-owner-cap" v-model.number="editForm.annualOwnerUseNightCap" type="number" min="0" />
+              </div>
+              <div class="flex justify-end gap-2">
+                <Button type="button" variant="outline" @click="cancelEditOwner">
+                  Cancel
+                </Button>
+                <Button type="submit" :disabled="!editForm.name.trim() || !editForm.email.trim()">
+                  Save changes
+                </Button>
+              </div>
+            </form>
+
+            <!-- Read-only view -->
+            <dl v-else class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <div>
-                <dt class="text-xs uppercase tracking-wide text-muted-foreground">
-                  Phone
+                <dt class="text-xs font-medium text-muted-foreground">
+                  Email
                 </dt>
                 <dd class="font-medium">
-                  {{ owner.phone || '—' }}
+                  <a
+                    v-if="owner.email"
+                    :href="`mailto:${owner.email}`"
+                    class="text-primary underline-offset-2 hover:underline"
+                  >
+                    {{ owner.email }}
+                  </a>
+                  <span v-else>—</span>
                 </dd>
               </div>
               <div>
-                <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt class="text-xs font-medium text-muted-foreground">
+                  Phone
+                </dt>
+                <dd class="font-medium">
+                  <a
+                    v-if="owner.phone"
+                    :href="`tel:${owner.phone}`"
+                    class="text-primary underline-offset-2 hover:underline"
+                  >
+                    {{ owner.phone }}
+                  </a>
+                  <span v-else>—</span>
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs font-medium text-muted-foreground">
                   Language
                 </dt>
                 <dd class="font-medium">
@@ -383,7 +600,7 @@ function handleDownloadContractPdf() {
                 </dd>
               </div>
               <div>
-                <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt class="text-xs font-medium text-muted-foreground">
                   Statement currency
                 </dt>
                 <dd class="font-mono">
@@ -391,7 +608,7 @@ function handleDownloadContractPdf() {
                 </dd>
               </div>
               <div>
-                <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt class="text-xs font-medium text-muted-foreground">
                   Owner-use night cap
                 </dt>
                 <dd class="font-medium">
@@ -399,19 +616,19 @@ function handleDownloadContractPdf() {
                 </dd>
               </div>
               <div>
-                <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt class="text-xs font-medium text-muted-foreground">
                   Created
                 </dt>
                 <dd class="font-medium">
-                  {{ new Date(owner.createdAt).toLocaleDateString() }}
+                  {{ new Date(owner.createdAt).toLocaleDateString('en-GB') }}
                 </dd>
               </div>
               <div>
-                <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt class="text-xs font-medium text-muted-foreground">
                   Invited
                 </dt>
                 <dd class="font-medium">
-                  {{ owner.invitedAt ? new Date(owner.invitedAt).toLocaleDateString() : '—' }}
+                  {{ owner.invitedAt ? new Date(owner.invitedAt).toLocaleDateString('en-GB') : '—' }}
                 </dd>
               </div>
             </dl>
@@ -434,18 +651,18 @@ function handleDownloadContractPdf() {
                       {{ listingById.get(m.listingId)?.name ?? m.listingId }}
                     </div>
                     <div class="text-xs text-muted-foreground">
-                      {{ m.ownershipPercentage }}%{{ m.unitId ? ` · unit ${m.unitId}` : '' }} · from {{ m.effectiveFrom }}
+                      {{ m.ownershipPercentage }}%{{ m.unitId ? ` · unit ${m.unitId}` : '' }} · from {{ new Date(`${m.effectiveFrom}T00:00:00`).toLocaleDateString('en-GB') }}
                     </div>
                   </div>
                 </div>
                 <Separator class="my-3" />
                 <div v-if="ownerRules.find(r => r.listingId === m.listingId)" class="space-y-1">
-                  <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <div class="text-xs font-medium text-muted-foreground">
                     Commission rule
                   </div>
                   <div class="text-sm">
                     {{ ownerRules.find(r => r.listingId === m.listingId)?.name }} ·
-                    <span class="text-muted-foreground">{{ ownerRules.find(r => r.listingId === m.listingId)?.type }}</span>
+                    <span class="text-muted-foreground">{{ capitalizeLabel(ownerRules.find(r => r.listingId === m.listingId)?.type ?? '') }}</span>
                   </div>
                 </div>
               </div>
@@ -492,20 +709,45 @@ function handleDownloadContractPdf() {
                 :key="stmt.id"
                 class="flex items-center justify-between rounded-md border p-3"
               >
-                <div>
+                <div class="min-w-0">
                   <div class="font-medium">
                     {{ stmt.period }} · {{ listingById.get(stmt.listingId)?.name ?? stmt.listingId }}
                   </div>
                   <div class="text-xs text-muted-foreground">
-                    {{ stmt.currency }} {{ stmt.totalAmount.toLocaleString() }} ·
-                    {{ stmt.status }}
+                    {{ stmt.currency }} {{ stmt.totalAmount.toLocaleString() }}
                   </div>
                 </div>
-                <Badge :variant="stmt.status === 'published' ? 'default' : 'secondary'">
-                  {{ stmt.status }}
-                </Badge>
+                <div class="flex shrink-0 items-center gap-2">
+                  <Badge :variant="stmt.status === 'published' ? 'default' : 'secondary'">
+                    {{ capitalizeLabel(stmt.status) }}
+                  </Badge>
+                  <Button
+                    v-if="stmt.status === 'draft'"
+                    variant="outline"
+                    size="sm"
+                    @click="openStatementPreview(stmt.id)"
+                  >
+                    Preview & Publish
+                  </Button>
+                  <Button
+                    v-else
+                    variant="outline"
+                    size="sm"
+                    @click="openStatementPreview(stmt.id)"
+                  >
+                    View
+                  </Button>
+                </div>
               </div>
             </div>
+
+            <StatementPublishDialog
+              v-if="statementPreviewId"
+              v-model="statementPreviewOpen"
+              :statement-id="statementPreviewId"
+              published-by="staff-1"
+              @published="(id) => toast.info(`Statement ${id} published.`)"
+            />
           </TabsContent>
 
           <!-- Self-booking mode + seasonal quotas (PRD 5.2) -->
@@ -519,41 +761,41 @@ function handleDownloadContractPdf() {
                 <div
                   v-for="m in ownerMappings"
                   :key="m.id"
-                  class="rounded-md border p-3"
+                  class="flex items-center justify-between gap-3 rounded-md border p-3"
                 >
-                  <div class="flex items-center justify-between">
-                    <div class="text-sm font-medium">
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium leading-snug">
                       {{ listingById.get(m.listingId)?.name ?? m.listingId }}
                     </div>
-                    <Select
-                      :model-value="currentMode(m.listingId)"
-                      @update:model-value="(v) => applyMode(m.listingId, String(v) as OwnerBookingMode)"
-                    >
-                      <SelectTrigger class="w-44">
-                        <SelectValue placeholder="Booking mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="direct">
-                          Direct booking
-                        </SelectItem>
-                        <SelectItem value="request">
-                          Request to book
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                      {{ currentMode(m.listingId) === 'direct'
+                        ? 'Owner dates are blocked immediately.'
+                        : 'Owner dates need management approval.' }}
+                    </p>
                   </div>
-                  <p class="mt-1 text-xs text-muted-foreground">
-                    {{ currentMode(m.listingId) === 'direct'
-                      ? 'Owner dates are blocked immediately.'
-                      : 'Owner dates need management approval.' }}
-                  </p>
+                  <Select
+                    :model-value="currentMode(m.listingId)"
+                    @update:model-value="(v) => applyMode(m.listingId, String(v) as OwnerBookingMode)"
+                  >
+                    <SelectTrigger class="w-44 shrink-0">
+                      <SelectValue placeholder="Booking mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="direct">
+                        Direct booking
+                      </SelectItem>
+                      <SelectItem value="request">
+                        Request to book
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               <Separator />
 
               <div class="flex items-center justify-between">
-                <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <div class="text-xs font-medium text-muted-foreground">
                   Seasonal quotas (non-accumulating)
                 </div>
                 <Button size="sm" variant="outline" @click="openAddQuota">
@@ -572,12 +814,17 @@ function handleDownloadContractPdf() {
                   class="flex items-center justify-between rounded-md border p-2.5 text-sm"
                 >
                   <div>
-                    <span class="font-medium">{{ q.startDate }} → {{ q.endDate }}</span>
+                    <span class="font-medium">{{ formatQuotaDate(q.startDate) }} → {{ formatQuotaDate(q.endDate) }}</span>
                     <span class="ml-2 text-muted-foreground">{{ q.maxNights }} nights</span>
                   </div>
-                  <Button variant="ghost" size="icon-sm" @click="deleteQuota(q.id)">
-                    <Icon name="lucide:trash-2" class="size-3.5" />
-                  </Button>
+                  <div class="flex items-center gap-1">
+                    <Button variant="ghost" size="icon-sm" @click="openEditQuota(q)">
+                      <Icon name="lucide:pencil" class="size-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" @click="deleteQuota(q.id)">
+                      <Icon name="lucide:trash-2" class="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </template>
@@ -585,7 +832,7 @@ function handleDownloadContractPdf() {
             <Dialog :open="!!quotaInput" @update:open="(v: boolean) => { if (!v) quotaInput = null }">
               <DialogContent class="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Add seasonal quota</DialogTitle>
+                  <DialogTitle>{{ quotaInput?.id ? 'Edit seasonal quota' : 'Add seasonal quota' }}</DialogTitle>
                   <DialogDescription>
                     Max self-booked nights in this window. Unused nights do not roll over.
                   </DialogDescription>
@@ -604,18 +851,70 @@ function handleDownloadContractPdf() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div class="grid grid-cols-2 gap-3">
-                    <div class="space-y-1.5">
-                      <Label for="quota-start">Start date</Label>
-                      <Input id="quota-start" v-model="quotaInput.startDate" type="date" />
-                    </div>
-                    <div class="space-y-1.5">
-                      <Label for="quota-end">End date</Label>
-                      <Input id="quota-end" v-model="quotaInput.endDate" type="date" />
-                    </div>
+                  <div class="space-y-1.5">
+                    <Label>Date range</Label>
+                    <Popover v-model:open="quotaDatePopoverOpen">
+                      <PopoverTrigger as-child>
+                        <Button
+                          variant="outline"
+                          class="w-full justify-start gap-1.5 px-3 font-normal"
+                        >
+                          <Icon name="lucide:calendar" class="size-4 shrink-0 text-muted-foreground" />
+                          <template v-if="quotaInput.startDate && quotaInput.endDate">
+                            {{ formatQuotaDateLabel(quotaInput.startDate) }} – {{ formatQuotaDateLabel(quotaInput.endDate) }}
+                          </template>
+                          <template v-else>
+                            <span class="text-muted-foreground">Select date range</span>
+                          </template>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent class="w-auto p-0" align="start">
+                        <div class="p-3">
+                          <RangeCalendar
+                            v-model="quotaDateRange"
+                            weekday-format="short"
+                            :number-of-months="1"
+                            initial-focus
+                            :placeholder="quotaDateRange.start"
+                            @update:start-value="(startDate: any) => quotaDateRange.start = startDate"
+                          />
+                          <div class="mt-3 flex items-center justify-between border-t pt-3">
+                            <p class="text-xs text-muted-foreground">
+                              <template v-if="quotaDateRange.start && quotaDateRange.end">
+                                {{ quotaDateRange.start.toDate(getLocalTimeZone()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) }} – {{ quotaDateRange.end.toDate(getLocalTimeZone()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) }}
+                              </template>
+                              <template v-else>
+                                Pick a start and end date
+                              </template>
+                            </p>
+                            <Button
+                              v-if="quotaInput.startDate || quotaInput.endDate"
+                              variant="ghost"
+                              size="sm"
+                              class="h-7 text-xs text-muted-foreground"
+                              @click="quotaDateRange = { start: undefined, end: undefined }"
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div class="space-y-1.5">
-                    <Label for="quota-max">Max nights (0 = blocked)</Label>
+                    <div class="flex items-center gap-1">
+                      <Label for="quota-max">Max nights</Label>
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <Button type="button" variant="ghost" size="icon-sm" class="size-4">
+                            <Icon name="lucide:info" class="size-3.5 text-muted-foreground" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          0 = blocked
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <Input id="quota-max" v-model.number="quotaInput.maxNights" type="number" min="0" />
                   </div>
                 </div>
@@ -635,7 +934,7 @@ function handleDownloadContractPdf() {
           <TabsContent value="contract" class="space-y-3 pt-3">
             <!-- Operational cost share (PRD 5.1.3) — set at owner creation, shown read-only here -->
             <div v-if="ownerMappings.length > 0" class="rounded-md border p-3">
-              <div class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <div class="mb-2 text-xs font-medium text-muted-foreground">
                 Operational costs covered by owner
               </div>
               <div class="space-y-1.5 text-sm">
@@ -674,7 +973,7 @@ function handleDownloadContractPdf() {
                   </div>
                 </div>
                 <Badge :variant="ownerContract.status === 'signed' ? 'default' : ownerContract.status === 'sent' ? 'secondary' : 'outline'">
-                  {{ ownerContract.status }}
+                  {{ capitalizeLabel(ownerContract.status) }}
                 </Badge>
               </div>
 
@@ -708,7 +1007,7 @@ function handleDownloadContractPdf() {
                 <div class="text-xs text-muted-foreground">
                   {{ magicLinkStatusLabel[owner.magicLinkStatus ?? 'active'] ?? 'Active' }}
                   <template v-if="owner.accessRevokedAt">
-                    · revoked {{ new Date(owner.accessRevokedAt).toLocaleString() }}
+                    · revoked {{ new Date(owner.accessRevokedAt).toLocaleDateString('en-GB') }}
                   </template>
                 </div>
               </div>
@@ -734,7 +1033,7 @@ function handleDownloadContractPdf() {
 
             <Separator />
 
-            <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div class="text-xs font-medium text-muted-foreground">
               Access history
             </div>
             <div v-if="!accessLogEntries.length" class="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
@@ -748,14 +1047,14 @@ function handleDownloadContractPdf() {
               >
                 <div>
                   <div class="font-medium">
-                    {{ entry.action.replace(/_/g, ' ') }}
+                    {{ capitalizeLabel(entry.action.replace(/_/g, ' ')) }}
                   </div>
                   <div class="text-xs text-muted-foreground">
                     {{ entry.actor }} · {{ entry.note ?? '' }}
                   </div>
                 </div>
                 <div class="text-xs text-muted-foreground">
-                  {{ new Date(entry.at).toLocaleString() }}
+                  {{ new Date(entry.at).toLocaleDateString('en-GB') }}
                 </div>
               </div>
             </div>

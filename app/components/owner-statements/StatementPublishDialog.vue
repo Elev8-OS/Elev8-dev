@@ -27,7 +27,7 @@ const emit = defineEmits<{
   'published': [statementId: string]
 }>()
 
-const { statements, publish } = useOwnerStatements()
+const { statements, publish, updateStatementLines } = useOwnerStatements()
 
 const statement = computed(() => statements.value.find(s => s.id === props.statementId) ?? null)
 
@@ -162,6 +162,89 @@ async function confirmPublish() {
   }
   isPublishing.value = false
 }
+
+// --- Add / edit / delete line item before publish (revenue + / cost -) -----
+const addLineOpen = ref(false)
+const editingLineId = ref<string | null>(null)
+const lineLabel = ref('')
+const lineAmount = ref(0)
+const lineIsExpense = ref(true)
+
+function openAddLine() {
+  editingLineId.value = null
+  lineLabel.value = ''
+  lineAmount.value = 0
+  lineIsExpense.value = true
+  addLineOpen.value = true
+}
+
+function openEditLine(line: { id: string, label: string, amount: number }) {
+  editingLineId.value = line.id
+  lineLabel.value = line.label
+  lineAmount.value = Math.abs(line.amount)
+  lineIsExpense.value = line.amount < 0
+  addLineOpen.value = true
+}
+
+function addLine() {
+  const current = statement.value
+  if (!current || !lineLabel.value.trim() || lineAmount.value === 0)
+    return
+  const amount = lineIsExpense.value ? -Math.abs(lineAmount.value) : Math.abs(lineAmount.value)
+
+  // Editing an existing line → replace it in place.
+  if (editingLineId.value) {
+    const updatedLines = current.lines.map(line =>
+      line.id === editingLineId.value
+        ? { ...line, label: lineLabel.value.trim(), amount }
+        : line)
+    const result = updateStatementLines(props.statementId, updatedLines)
+    if (result.ok) {
+      toast.success('Line updated.')
+      addLineOpen.value = false
+      editingLineId.value = null
+    }
+    else {
+      toast.error('Could not update the line. Only draft statements are editable.')
+    }
+    return
+  }
+
+  const newLine = {
+    id: `line-${Date.now()}`,
+    category: 'adjustment' as const,
+    label: lineLabel.value.trim(),
+    amount,
+  }
+  const result = updateStatementLines(props.statementId, [...current.lines, newLine])
+  if (result.ok) {
+    toast.success(lineIsExpense.value ? 'Cost added to the statement.' : 'Revenue added to the statement.')
+    addLineOpen.value = false
+  }
+  else {
+    toast.error('Could not add the line. Only draft statements are editable.')
+  }
+}
+
+function deleteLine(lineId: string) {
+  const current = statement.value
+  if (!current)
+    return
+  const result = updateStatementLines(
+    props.statementId,
+    current.lines.filter(line => line.id !== lineId),
+  )
+  if (result.ok) {
+    toast.success('Line removed from the statement.')
+    if (editingLineId.value === lineId) {
+      addLineOpen.value = false
+      editingLineId.value = null
+    }
+  }
+  else {
+    toast.error('Could not remove the line. Only draft statements are editable.')
+  }
+}
 </script>
 
 <template>
@@ -198,8 +281,18 @@ async function confirmPublish() {
               >
                 {{ line.section }}
               </p>
-              <div class="flex items-center justify-between rounded-md border px-3 py-2">
-                <span class="text-muted-foreground">{{ line.label }}</span>
+              <div class="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="truncate text-muted-foreground">{{ line.label }}</span>
+                  <template v-if="!isPublished && line.category === 'adjustment'">
+                    <Button variant="ghost" size="icon-sm" class="size-6" @click="openEditLine(line)">
+                      <Icon name="lucide:pencil" class="size-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" class="size-6" @click="deleteLine(line.id)">
+                      <Icon name="lucide:trash-2" class="size-3 text-destructive" />
+                    </Button>
+                  </template>
+                </div>
                 <span
                   class="font-medium tabular-nums"
                   :class="line.amount < 0 ? 'text-destructive' : ''"
@@ -256,20 +349,34 @@ async function confirmPublish() {
           Close
         </Button>
         <template v-else>
-          <Button
-            v-if="step === 'review'"
-            variant="outline"
-            @click="onOpenChange(false)"
-          >
-            Cancel
-          </Button>
-          <Button
-            v-if="step === 'review'"
-            data-testid="publish-start"
-            @click="startConfirm"
-          >
-            Confirm & Review
-          </Button>
+          <div class="flex w-full items-center justify-between gap-2">
+            <Button
+              v-if="step === 'review'"
+              variant="outline"
+              size="sm"
+              @click="openAddLine"
+            >
+              <Icon name="lucide:plus" class="mr-1.5 size-3.5" />
+              Add cost / revenue
+            </Button>
+            <span v-else />
+            <div class="flex items-center gap-2">
+              <Button
+                v-if="step === 'review'"
+                variant="outline"
+                @click="onOpenChange(false)"
+              >
+                Cancel
+              </Button>
+              <Button
+                v-if="step === 'review'"
+                data-testid="publish-start"
+                @click="startConfirm"
+              >
+                Confirm & Review
+              </Button>
+            </div>
+          </div>
           <Button
             v-if="step === 'confirm'"
             variant="outline"
@@ -292,6 +399,73 @@ async function confirmPublish() {
             {{ isPublishing ? 'Publishing…' : 'Publish statement' }}
           </Button>
         </template>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog v-model:open="addLineOpen">
+    <DialogContent class="sm:max-w-sm">
+      <DialogHeader>
+        <DialogTitle>{{ editingLineId ? 'Edit line item' : 'Add line item' }}</DialogTitle>
+        <DialogDescription>
+          Add a one-off revenue or cost before this statement is published.
+        </DialogDescription>
+      </DialogHeader>
+      <div class="space-y-3">
+        <div class="space-y-1.5">
+          <Label>Type</Label>
+          <div class="inline-flex rounded-md border p-0.5">
+            <button
+              type="button"
+              class="rounded px-3 py-1 text-xs font-medium transition-colors"
+              :class="lineIsExpense ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+              @click="lineIsExpense = true"
+            >
+              Cost (−)
+            </button>
+            <button
+              type="button"
+              class="rounded px-3 py-1 text-xs font-medium transition-colors"
+              :class="!lineIsExpense ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+              @click="lineIsExpense = false"
+            >
+              Revenue (+)
+            </button>
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <Label for="add-line-label">Label</Label>
+          <Input
+            id="add-line-label"
+            v-model="lineLabel"
+            placeholder="e.g. Lost key charge, refund…"
+          />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="add-line-amount">Amount</Label>
+          <div class="relative">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+              {{ currency }}
+            </span>
+            <Input
+              id="add-line-amount"
+              v-model.number="lineAmount"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+              class="pl-12"
+            />
+          </div>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" @click="addLineOpen = false; editingLineId = null">
+          Cancel
+        </Button>
+        <Button :disabled="!lineLabel.trim() || lineAmount === 0" @click="addLine">
+          {{ editingLineId ? 'Save line' : 'Add line' }}
+        </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

@@ -1,24 +1,21 @@
-# Task 5 Report
+# Task 5 Report — PreviewStep: accept reviews, show summary, persist
 
-## Status
-DONE_WITH_CONCERNS
+## What I implemented
+- Added `ReviewSelection` type import to `app/components/website-builder/steps/PreviewStep.vue`
+- Added `reviews: ReviewSelection` prop to `defineProps`
+- `persistWebsite()`: both edit-mode merge and create-mode push now write `reviewIds: props.reviews.selectedReviewIds` and `manualReviews: props.reviews.manualReviews`
+- Added a "Guest Reviews" summary card in the template (between Selected Content card and Navigation): total count of selected + manual reviews, "Edit" button emits `goToStep(3)`, manual review chips with rating/name/Manual badge
 
-## Commits
-- `cd5ec4a` — feat(journeys): add onMinutEvent matching + firing logic
+## Verification results
+- `pnpm exec eslint --fix app/components/website-builder/steps/PreviewStep.vue` → exit 0 (clean after auto-fix of import order + template line breaks)
+- `pnpm exec vue-tsc --noEmit` filtered for `PreviewStep` → no errors
 
-## Test Summary
-- `pnpm vitest run tests/composables/useJourneys-minut.spec.ts` → **5/5 passed** ✓
-- All 5 brief tests pass: no-match, active-match, inactive skip, out-of-scope skip, all-properties scope
+## Files changed
+- `app/components/website-builder/steps/PreviewStep.vue`
 
-## Implementation Notes
-- Added `import { toast } from 'vue-sonner'` to `app/composables/useJourneys.ts` (lint auto-fix re-ordered it before the relative import per `perfectionist/sort-imports`).
-- Added `onMinutEvent(event)` that iterates journeys, skips inactive / missing-trigger-step / non-matching-trigger / out-of-scope-properties, and calls `toast.info(...)` for matches. Signature accepts `{ type, deviceId, listingId }` plus other passthrough fields.
-- Added `onMinutEvent` to the returned object alongside all 12 pre-existing exports.
-- **Brief deviation — test mock strategy**: Brief instructed `globalThis.toast = { info: vi.fn(), ... }` before the import, but ES module static imports are hoisted, so the composable's `import { toast } from 'vue-sonner'` always resolves to the real module regardless of `globalThis` assignment. Switched to `vi.mock('vue-sonner', () => ({ toast: { info, success, error } }))` which Vitest hoists automatically. All 5 brief tests pass unchanged; the `dynamic import` of `useJourneys` still occurs after the mock is registered so `vi.mock` is in effect when the composable is loaded.
-- Lint clean (`npx eslint app/composables/useJourneys.ts tests/composables/useJourneys-minut.spec.ts`).
-- Typecheck: zero new errors in the `onMinutEvent` block (lines 103-118). Pre-existing errors at lines 20/28/29/51 are unrelated to this task (documented in Task 4 report).
+## Self-review findings
+- Matches the brief exactly. Edit-mode merge preserves existing fields via spread; create-mode push includes thumbnail + new review fields.
+- Lint auto-fixed import order (internal-type before external `vue-sonner`) and singleline-html-element-content-newline warnings — same pattern as prior tasks.
 
-## Concerns
-- **Mock strategy differs from brief**: Brief specified `globalThis.toast = ...` which does not work for ES module static imports. Used `vi.mock('vue-sonner')` instead. Behavior under test is unchanged — same `toastInfo` vi.fn() is asserted on — but downstream subagents reviewing this task should note the deviation. The `tests/setup.ts` `globalThis.toast` shim is left in place for any future tests that genuinely call `globalThis.toast.*` directly.
-- **Pre-existing typecheck errors** in `useJourneys.ts` (lines 20, 28-29, 51) persist — unrelated to this task but worth tracking for cleanup.
-- **No consumer yet**: `onMinutEvent` is exposed but not wired into any UI/page yet. Task 6 (Minut trigger picker in `JourneyStepSidebar.vue`) and a future task will need to call `onMinutEvent(events)` from the Minut webhook/poll handler. The current mock-side `toast.info` is a placeholder for the real firing path.
+## Any issues or concerns
+- None.

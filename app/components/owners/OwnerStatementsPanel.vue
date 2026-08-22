@@ -6,6 +6,7 @@
 import { toast } from 'vue-sonner'
 import StatementPublishDialog from '~/components/owner-statements/StatementPublishDialog.vue'
 import { mockOwners } from '~/components/owners/data/owners'
+import StatementTable from '~/components/owners/StatementTable.vue'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
 
 const { statements, generateForPeriod, recordAdjustment } = useOwnerStatements()
@@ -74,6 +75,59 @@ function submitAdjust() {
     toast.error('Could not record adjustment.')
   }
 }
+
+// --- Sortable + paginated statement table ----------------------------------
+const sortKey = ref<'owner' | 'listing' | 'period' | 'amount' | 'issues'>('period')
+const sortDir = ref<'asc' | 'desc'>('desc')
+const page = ref(1)
+const pageSize = 8
+
+type StatementRow = ReturnType<typeof enrichStatement>
+
+function enrichStatement(statement: { id: string, ownerId: string, listingId: string, period: string, currency: string, totalAmount: number, status: string, issues: Array<{ resolvedAt?: string }> }) {
+  return {
+    ...statement,
+    ownerLabel: ownerName(statement.ownerId),
+    openIssues: statement.issues.filter(issue => !issue.resolvedAt).length,
+  }
+}
+
+function toggleSort(key: typeof sortKey.value) {
+  if (sortKey.value === key) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  }
+  else {
+    sortKey.value = key
+    sortDir.value = 'asc'
+  }
+  page.value = 1
+}
+
+function sortedList(list: StatementRow[]) {
+  const factor = sortDir.value === 'asc' ? 1 : -1
+  return list.slice().sort((a, b) => {
+    if (sortKey.value === 'owner')
+      return a.ownerLabel.localeCompare(b.ownerLabel) * factor
+    if (sortKey.value === 'listing')
+      return a.listingId.localeCompare(b.listingId) * factor
+    if (sortKey.value === 'amount')
+      return (a.totalAmount - b.totalAmount) * factor
+    if (sortKey.value === 'issues')
+      return (a.openIssues - b.openIssues) * factor
+    return a.period.localeCompare(b.period) * factor
+  })
+}
+
+function paginate(list: StatementRow[]) {
+  const total = list.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page.value, totalPages)
+  const start = (safePage - 1) * pageSize
+  return { rows: list.slice(start, start + pageSize), total, totalPages, currentPage: safePage }
+}
+
+const draftPage = computed(() => paginate(sortedList(drafts.value.map(enrichStatement))))
+const publishedPage = computed(() => paginate(sortedList(published.value.map(enrichStatement))))
 </script>
 
 <template>
@@ -156,72 +210,47 @@ function submitAdjust() {
       </TabsList>
 
       <TabsContent value="drafts" class="space-y-3">
-        <Card v-if="drafts.length === 0">
-          <CardContent class="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
-            <Icon name="lucide:file-x-2" class="size-6 opacity-60" />
-            <p>
-              No draft statements yet. Generate monthly drafts above.
-            </p>
-          </CardContent>
-        </Card>
-        <Card v-for="statement in drafts" :key="statement.id">
-          <CardHeader>
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle class="text-base">
-                  {{ ownerName(statement.ownerId) }}
-                </CardTitle>
-                <CardDescription>
-                  {{ statement.listingId }} · {{ statement.period }} · {{ statement.currency }} {{ statement.totalAmount.toLocaleString('en-US') }}
-                </CardDescription>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <Badge v-if="statement.issues.some(issue => !issue.resolvedAt)" variant="destructive">
-                  {{ statement.issues.filter(issue => !issue.resolvedAt).length }} open issue
-                </Badge>
-                <Button variant="default" size="sm" @click="openPublish(statement.id)">
-                  Publish
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
+        <div v-if="drafts.length === 0" class="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+          <Icon name="lucide:file-x-2" class="size-6 opacity-60" />
+          <p>
+            No draft statements yet. Generate monthly drafts above.
+          </p>
+        </div>
+        <StatementTable
+          v-else
+          :rows="draftPage.rows"
+          :total="draftPage.total"
+          :total-pages="draftPage.totalPages"
+          :current-page="draftPage.currentPage"
+          :sort-key="sortKey"
+          :sort-dir="sortDir"
+          mode="draft"
+          @toggle-sort="toggleSort"
+          @page-change="(p: number) => page = p"
+          @publish="openPublish"
+        />
       </TabsContent>
 
       <TabsContent value="published" class="space-y-3">
-        <Card v-if="published.length === 0">
-          <CardContent class="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
-            <Icon name="lucide:file-x-2" class="size-6 opacity-60" />
-            <p>
-              No published statements yet.
-            </p>
-          </CardContent>
-        </Card>
-        <Card v-for="statement in published" :key="statement.id">
-          <CardHeader>
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle class="text-base">
-                  {{ ownerName(statement.ownerId) }}
-                </CardTitle>
-                <CardDescription>
-                  {{ statement.listingId }} · {{ statement.period }} · {{ statement.currency }} {{ statement.totalAmount.toLocaleString('en-US') }}
-                </CardDescription>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <Badge v-if="statement.issues.some(issue => !issue.resolvedAt)" variant="destructive">
-                  {{ statement.issues.filter(issue => !issue.resolvedAt).length }} open issue
-                </Badge>
-                <Badge variant="secondary">
-                  Read-only
-                </Badge>
-                <Button variant="outline" size="sm" @click="openAdjust(statement.id)">
-                  Add adjustment
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
+        <div v-if="published.length === 0" class="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+          <Icon name="lucide:file-x-2" class="size-6 opacity-60" />
+          <p>
+            No published statements yet.
+          </p>
+        </div>
+        <StatementTable
+          v-else
+          :rows="publishedPage.rows"
+          :total="publishedPage.total"
+          :total-pages="publishedPage.totalPages"
+          :current-page="publishedPage.currentPage"
+          :sort-key="sortKey"
+          :sort-dir="sortDir"
+          mode="published"
+          @toggle-sort="toggleSort"
+          @page-change="(p: number) => page = p"
+          @adjust="openAdjust"
+        />
       </TabsContent>
     </Tabs>
 

@@ -19,7 +19,8 @@ See [vue-nuxt/taste.md](vue-nuxt/taste.md)
 See [finance/taste.md](finance/taste.md)
 # workflow
 - Prefer `pnpm dev` over `pnpm build` during development to avoid browser crash from heavy builds. Confidence: 0.65
-- As a dev-server smoke test, don't stop at HTTP status codes — grep the rendered HTML for expected content (guest names, section headings) and scan the dev log for Vue warnings/errors (e.g. `Failed to resolve component`); this catches component-resolution issues that typecheck and 200s miss. Confidence: 0.72
+- As a dev-server smoke test, don't stop at HTTP status codes — grep the rendered HTML for expected content (guest names, section headings) and scan the dev log for Vue warnings/errors (e.g. `Failed to resolve component`); this catches component-resolution issues that typecheck and 200s miss. Re-used in the Owner Portal spec implementation: grepped `/owner-documents` rendered HTML for seeded doc titles, inspected `/owners` tab markup, and scanned the dev log for Vue warnings before killing the server. Confidence: 0.85
+- When verifying a component-resolution fix via the dev log, remember the log RETAINS stale warnings from pre-fix renders — count occurrences / tail the log before and after the HMR apply, and only treat NEW post-fix entries as evidence it's still broken (the `StatementTable` explicit-import fix left 2 old "Failed to resolve component" lines but none after HMR, so the fix was confirmed clean without a server restart). Confidence: 0.7
 - When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. If the user explicitly asked to run the dev server (e.g. a terse "run dev"), leave it running and say so — they want to click through the feature themselves; only stop the server after verification when the assistant started it solely as a smoke test, so no ports are left occupied. The user may specify the exact port in the directive (e.g. "run dev 3000") — treat that port as a requirement: confirm the server actually listens on the requested port (Nuxt can fall back to the next free port like 3001) and state the port explicitly in the report. Confidence: 0.85
 
 # 3cx
@@ -47,15 +48,11 @@ See [documentation/taste.md](documentation/taste.md)
 - Use the sparkle AI SVG icon (flaticon #17653301) for AI-related iconography instead of custom brush/pen designs. Confidence: 0.75
 
 # integrations
-- Don't mention third-party integration provider brand names (e.g., Seam) anywhere in the UI except within the integration settings/configuration page itself. Confidence: 0.75
-- When a mock/demo action exists in an integration UI (e.g. "Simulate finalize"), model it on the real-world event it stands for — the provider's webhook and its state transition (e.g. Lexware `invoice.changed`: `draft_created` → `open_in_lexware`) — not on a generic "test connection" action. Users will question the semantics until they match the real flow. Confidence: 0.6
-- Integration-driven triggers in other modules (e.g. a "Email Received" trigger in Journeys) must be gated by the integration's connection state: the trigger is disabled and shows a "Not connected" badge until the integration is connected, mirroring the existing Minut trigger gate. The user confirmed this gate-by-connected behavior for the Journeys × email trigger. Confidence: 0.6
-
+See [integrations/taste.md](integrations/taste.md)
 # notifications
 See [notifications/taste.md](notifications/taste.md)
 # owner-portal
-- Owner portal charts layout: revenue-trend chart spans full width at top; remaining metrics (ADR, occupancy, etc.) split into half-width cards beneath. ADR is always its own standalone KPI card, never bundled into another chart. Confidence: 0.85
-
+See [owner-portal/taste.md](owner-portal/taste.md)
 # operations-calendar
 - When selecting listing in cleaning/task/review forms, surface guest info automatically (name, stay length, has-pet) — don't require a separate lookup. Confidence: 0.80
 - Exclude INQUIRY-status bookings from operational views (operations calendar, cleaning lists) entirely — unconfirmed bookings have no cleaning, so they must not appear as calendar entries/strips ("jangan pernah munculin booking yang statusnya INQUIRY, karena belum booking jadinya ga ada cleaning"). Confidence: 0.8

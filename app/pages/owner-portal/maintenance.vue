@@ -102,7 +102,7 @@ function doReject() {
                   {{ record.title }}
                 </p>
                 <p class="text-xs text-muted-foreground">
-                  Reported {{ new Date(record.reportedAt).toLocaleDateString() }} · {{ record.vendorName ?? 'No vendor yet' }}
+                  Reported {{ new Date(record.reportedAt).toLocaleDateString('en-GB') }} · {{ record.vendorName ?? 'No vendor yet' }}
                 </p>
               </div>
               <Badge :class="statusBadge[record.status]">

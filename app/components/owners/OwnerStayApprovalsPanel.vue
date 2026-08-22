@@ -114,7 +114,7 @@ const reviewConflicts = computed<Array<{ label: string, dates: string }>>(() => 
               {{ request.reason ?? '—' }}
             </TableCell>
             <TableCell class="text-sm text-muted-foreground">
-              {{ new Date(request.requestedAt).toLocaleDateString() }}
+              {{ new Date(request.requestedAt).toLocaleDateString('en-GB') }}
             </TableCell>
             <TableCell class="text-right">
               <div class="flex justify-end gap-2">

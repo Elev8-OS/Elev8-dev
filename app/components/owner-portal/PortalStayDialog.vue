@@ -6,7 +6,7 @@ import { toast } from 'vue-sonner'
 import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
 import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
-import { isWithinCancelWindow, useOwnerStays } from '~/composables/useOwnerStays'
+import { useOwnerStays } from '~/composables/useOwnerStays'
 
 defineOptions({ name: 'PortalStayDialog' })
 
@@ -129,14 +129,8 @@ async function save() {
   }
 
   if (props.stay) {
-    // Editing an existing stay — inside the cutoff the change needs to be
-    // handled by management (Flow 7). For the mock, reschedule inside the
-    // window is routed through a manual request.
-    if (isWithinCancelWindow(props.stay.checkIn)) {
-      error.value = 'This stay is within the 72h management window. Contact management to reschedule.'
-      saving.value = false
-      return
-    }
+    // Editing an existing stay — dates can be changed freely; there is no
+    // management window for owner stays anymore.
     const result = updateStay(props.stay.id, { ...base, syncFailureTargets: props.syncFailureTargets })
     saving.value = false
     if (!result.ok) {

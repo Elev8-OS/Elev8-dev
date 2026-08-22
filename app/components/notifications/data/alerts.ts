@@ -137,7 +137,7 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   OWNER_USE_CAP_EXCEEDED: 'Owner Use Cap Exceeded',
   OWNER_STAY_REQUESTED: 'Owner Stay Requested',
   OWNER_STAY_REJECTED: 'Owner Stay Rejected',
-  OWNER_STAY_CANCELLED: 'Owner Stay Cancellation Requested',
+  OWNER_STAY_CANCELLED: 'Owner Stay Cancelled',
   OWNER_STAY_APPROACHING: 'Owner Stay Approaching',
   DOCUMENT_UPLOADED: 'New Owner Document',
   MAINTENANCE_APPROVAL_REQUESTED: 'Maintenance Cost Approval',
@@ -398,9 +398,7 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
     case 'OWNER_STAY_REJECTED':
       return `Owner stay${context.checkIn && context.checkOut ? ` for ${context.checkIn} to ${context.checkOut}` : ''} was rejected${context.reason ? `: ${context.reason}` : ''}.`
     case 'OWNER_STAY_CANCELLED':
-      return context.requiresApproval
-        ? `Owner requested cancellation of a stay — management approval needed.`
-        : `Owner stay was cancelled${context.checkIn ? ` (check-in ${context.checkIn})` : ''}.`
+      return `Owner stay was cancelled${context.checkIn ? ` (check-in ${context.checkIn})` : ''}.`
     case 'OWNER_STAY_APPROACHING':
       return `Owner stay for ${context.guestName || 'owner'} starts ${context.checkIn || ''} — pre-arrival ops are ready.`
     case 'DOCUMENT_UPLOADED':

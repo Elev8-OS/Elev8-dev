@@ -5,8 +5,8 @@
 // room-type selector) plus the dialog for creating owner blocks.
 //
 // Flow 4/7 wiring: submitting a stay goes through `requestStay` (auto-approve
-// or the GM/Admin queue), and cancelling inside the 72h cutoff becomes a
-// management request instead of an immediate cancellation.
+// or the GM/Admin queue), and cancelling is always immediate — no management
+// approval is required.
 
 import type { OwnerReservation } from '~/components/owners/data/owner-reservations'
 import type { OwnerStay, OwnerStayStatus } from '~/components/owners/data/owner-stays'
@@ -125,10 +125,7 @@ function confirmCancel() {
     return
   const result = cancelStay(cancelTarget.value.id, cancelReason.value || 'Cancelled by owner')
   if (result.ok) {
-    if (result.requiresApproval)
-      toast.info('This stay is within the 72h management window — your cancellation has been sent to management for approval.')
-    else
-      toast.success('Stay cancelled.')
+    toast.success('Stay cancelled.')
     cancelTarget.value = null
     cancelReason.value = ''
   }
@@ -270,19 +267,22 @@ function saved(_stay: OwnerStay) {
         <DialogHeader>
           <DialogTitle>Cancel stay?</DialogTitle>
           <DialogDescription>
-            {{ cancelTarget?.checkIn }} → {{ cancelTarget?.checkOut }}. If this stay is within 72 hours of check-in, management must approve the cancellation.
+            Are you sure you want to cancel this stay?
+            <template v-if="cancelTarget">
+              ({{ cancelTarget.checkIn }} → {{ cancelTarget.checkOut }})
+            </template>
           </DialogDescription>
         </DialogHeader>
-        <div class="space-y-1.5">
+        <div v-if="cancelTarget" class="space-y-1.5">
           <Label for="cancel-reason">Reason (optional)</Label>
           <Textarea id="cancel-reason" v-model="cancelReason" placeholder="e.g. Plans changed" />
         </div>
         <DialogFooter>
           <Button variant="outline" @click="cancelTarget = null">
-            Keep stay
+            No
           </Button>
           <Button variant="destructive" @click="confirmCancel">
-            Cancel stay
+            Yes, cancel
           </Button>
         </DialogFooter>
       </DialogContent>
