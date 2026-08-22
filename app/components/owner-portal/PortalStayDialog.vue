@@ -5,6 +5,7 @@ import type { OwnerStayConflict, OwnerUseCapWarning } from '~/composables/useOwn
 import { toast } from 'vue-sonner'
 import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
 import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
+import { useOwners } from '~/composables/useOwners'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 
@@ -33,6 +34,14 @@ const open = computed<boolean>({
 const { updateStay, detectConflicts, getCapWarning } = useOwnerStays()
 const { requestStay } = useOwnerStayApprovals()
 const { getBookingMode, checkQuota } = useOwnerQuotas()
+const { byId } = useOwners()
+
+/** Per-owner annual use cap; 0 / absent means no cap. */
+const ownerAnnualCap = computed(() => {
+  const owner = byId(props.ownerId)
+  const cap = owner?.annualOwnerUseNightCap
+  return cap && cap > 0 ? cap : null
+})
 
 const guestName = ref(props.stay?.guestName ?? '')
 const listingId = ref(props.stay?.listingId ?? props.listingId ?? 'lst-1')
@@ -92,7 +101,15 @@ function validate() {
     checkOut: checkOut.value,
     excludeStayId: props.stay?.id,
   })
-  capWarning.value = getCapWarning(props.ownerId, checkIn.value, checkOut.value, 30, props.stay?.id)
+  capWarning.value = ownerAnnualCap.value
+    ? getCapWarning(
+        props.ownerId,
+        checkIn.value,
+        checkOut.value,
+        ownerAnnualCap.value,
+        props.stay?.id,
+      )
+    : undefined
 
   // Seasonal quota advisory (PRD 5.2) — direct mode blocks below, so here
   // we only surface the remaining nights for information.
@@ -146,11 +163,14 @@ async function save() {
   }
 
   // New request — booking mode decides direct vs request (PRD 5.2).
-  const result = requestStay(base)
+  const result = requestStay({ ...base, annualCap: ownerAnnualCap.value ?? undefined })
   saving.value = false
   if (!result.ok) {
     if (result.reason === 'quota_exceeded') {
       error.value = 'These dates exceed your seasonal quota for this property. Pick different dates or contact management.'
+    }
+    else if (result.reason === 'annual_cap_exceeded') {
+      error.value = `These dates exceed your ${ownerAnnualCap.value}-night annual use cap. Pick different dates or contact management.`
     }
     else {
       error.value = result.reason === 'conflict'

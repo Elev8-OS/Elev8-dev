@@ -1,7 +1,7 @@
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { mockOwnerBookingModes, mockOwnerSeasonalQuotas } from '~/components/owners/data/owner-quotas'
+import { mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 
 interface AlertCall {
@@ -59,11 +59,11 @@ describe('useOwnerQuotas', () => {
 
   it('allows a booking inside a window with remaining nights', () => {
     const { checkQuota } = useOwnerQuotas()
-    // own-1 / lst-1: Apr 1 – Jun 30 has maxNights 20; seed ost-1 uses 3 of
-    // them (Jun 10–13), so 17 remain.
+    // own-1 / lst-1: Apr 1 – Jun 30 has maxNights 14 (capped by the annual
+    // use cap); seed ost-1 uses 3 of them (Jun 10–13), so 11 remain.
     const result = checkQuota('own-1', 'lst-1', '2026-04-10', '2026-04-13')
     expect(result.ok).toBe(true)
-    expect(result.windows[0]?.remaining).toBe(17)
+    expect(result.windows[0]?.remaining).toBe(11)
   })
 
   it('counts existing active stays against the window usage (non-accumulating)', () => {
@@ -77,8 +77,8 @@ describe('useOwnerQuotas', () => {
 
   it('computes remaining quota for the active window', () => {
     const { getRemainingQuota } = useOwnerQuotas()
-    // own-1/lst-1 Apr window: 20 nights, 3 used by seed ost-1 → 17.
-    expect(getRemainingQuota('own-1', 'lst-1', '2026-04-15')).toBe(17)
+    // own-1/lst-1 Apr window: 14 nights, 3 used by seed ost-1 → 11.
+    expect(getRemainingQuota('own-1', 'lst-1', '2026-04-15')).toBe(11)
     // Date outside any window → unlimited.
     expect(getRemainingQuota('own-1', 'lst-1', '2026-09-15')).toBe(Number.POSITIVE_INFINITY)
   })
@@ -110,6 +110,35 @@ describe('useOwnerQuotas', () => {
       endDate: '2026-09-01',
       maxNights: 5,
     }).success).toBe(false)
+  })
+
+  it('rejects a seasonal window larger than the owner annual cap', () => {
+    const { upsertQuota } = useOwnerQuotas()
+    // own-1 (Wayan) has an annual cap of 14 — a 15-night window is invalid.
+    const result = upsertQuota({
+      ownerId: 'own-1',
+      listingId: 'lst-1',
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+      maxNights: 15,
+    })
+    expect(result.success).toBe(false)
+    if (!result.success)
+      expect(result.error).toContain('annual cap')
+  })
+
+  it('allows a seasonal window at or below the owner annual cap', () => {
+    const { upsertQuota, quotasForOwnerListing } = useOwnerQuotas()
+    const result = upsertQuota({
+      ownerId: 'own-1',
+      listingId: 'lst-1',
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+      maxNights: 14,
+    })
+    expect(result.success).toBe(true)
+    if (result.success)
+      expect(quotasForOwnerListing('own-1', 'lst-1').some(w => w.maxNights === 14)).toBe(true)
   })
 
   it('sets the booking mode per owner+listing', () => {

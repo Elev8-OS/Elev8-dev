@@ -1,8 +1,8 @@
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mockOwnerStays } from '~/components/owners/data/owner-stays'
-import { mockOwnerStayApprovals } from '~/components/owners/data/owner-stay-approvals'
 import { mockOwnerBookingModes, mockOwnerSeasonalQuotas } from '~/components/owners/data/owner-quotas'
+import { mockOwnerStayApprovals } from '~/components/owners/data/owner-stay-approvals'
+import { mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 
 // Mock notifications + downstream ops so the approval flow can be tested in
@@ -200,5 +200,29 @@ describe('useOwnerStayApprovals', () => {
     expect(result.ok).toBe(false)
     if (!result.ok)
       expect(result.reason).toBe('conflict')
+  })
+
+  it('blocks a direct booking that exceeds the owner annual use cap', () => {
+    const { requestStay } = useOwnerStayApprovals()
+    // Wayan (own-1) has a 14-night annual cap; a 15-night stay blows past it.
+    const result = requestStay({
+      ...lowSeasonInput(),
+      ownerId: 'own-1',
+      listingId: 'lst-1',
+      checkIn: '2026-03-01',
+      checkOut: '2026-03-16',
+      annualCap: 14,
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok)
+      expect(result.reason).toBe('annual_cap_exceeded')
+  })
+
+  it('does not block when the owner has no annual cap', () => {
+    const { requestStay } = useOwnerStayApprovals()
+    const result = requestStay(lowSeasonInput())
+
+    expect(result.ok).toBe(true)
   })
 })

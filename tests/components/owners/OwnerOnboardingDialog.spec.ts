@@ -239,6 +239,10 @@ describe('ownerOnboardingDialog', () => {
       await tick()
     }
 
+    // Advance to step 4 (self-booking) where the final Submit lives.
+    await clickButtonByText('Next')
+    await tick()
+
     const ok = await clickButtonByText(/create owner|create & invite|save|finish/i)
     expect(ok).toBe(true)
     await tick()
@@ -379,31 +383,101 @@ describe('ownerOnboardingDialog', () => {
     expect(body).toMatch(/select a property/i)
   })
 
-  it('step 2: clearing a selected property resets ownership to 0', async () => {
+  it('step 4: setting an annual cap and a quota window persists both', async () => {
     mountDialog()
     await tick()
 
-    await setBasics('Clear Prop', 'clear.prop@example.com')
-    await clickButtonByText('Next')
+    await goToStep3('Quota Test', 'quota.test@example.com')
+    await clickButtonByText('Next') // → step 4 (Self-booking)
     await tick()
 
-    // Pick Apartments Pool (lst-2) — free scope, auto-fills 100%.
-    await pickProperty('Select property', 'Apartments Pool')
-    const ownershipInputs = Array.from(document.body.querySelectorAll('input[type="number"]')) as HTMLInputElement[]
-    const filtered = ownershipInputs.filter(i => i.id.startsWith('ownership-'))
-    expect(filtered[0]?.value).toBe('100')
+    const body = () => document.body.textContent ?? ''
+    expect(body()).toMatch(/annual owner-use night cap/i)
 
-    // Clear the selection via the picker footer "Clear" button.
-    const clearBtn = Array.from(document.body.querySelectorAll('button'))
-      .find(b => b.textContent?.trim() === 'Clear') as HTMLButtonElement | null
-    expect(clearBtn).toBeTruthy()
-    clearBtn!.click()
-    await tick()
+    // Set the annual cap.
+    const capInput = findInputInBody(el => el.id === 'onboard-annual-cap')
+    expect(capInput).toBeTruthy()
+    capInput!.value = '14'
+    capInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    capInput!.dispatchEvent(new Event('change', { bubbles: true }))
     await tick()
 
-    // Ownership must reset to 0, not jump to 100.
-    const afterInputs = Array.from(document.body.querySelectorAll('input[type="number"]')) as HTMLInputElement[]
-    const afterFiltered = afterInputs.filter(i => i.id.startsWith('ownership-'))
-    expect(afterFiltered[0]?.value).toBe('0')
+    // Add a window and fill it in.
+    const addOk = await clickButtonByText(/add window/i)
+    expect(addOk).toBe(true)
+    await tick()
+
+    const dateInputs = Array.from(document.body.querySelectorAll('input[type="date"]')) as HTMLInputElement[]
+    expect(dateInputs.length).toBeGreaterThanOrEqual(2)
+    dateInputs[0]!.value = '2027-07-01'
+    dateInputs[0]!.dispatchEvent(new Event('input', { bubbles: true }))
+    dateInputs[0]!.dispatchEvent(new Event('change', { bubbles: true }))
+    dateInputs[1]!.value = '2027-07-31'
+    dateInputs[1]!.dispatchEvent(new Event('input', { bubbles: true }))
+    dateInputs[1]!.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+
+    const maxInput = Array.from(document.body.querySelectorAll('input[type="number"]'))
+      .find(i => i.id !== 'onboard-annual-cap') as HTMLInputElement | null
+    expect(maxInput).toBeTruthy()
+    maxInput!.value = '7'
+    maxInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    maxInput!.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+
+    // Submit.
+    const ok = await clickButtonByText(/create owner|create & invite|save|finish/i)
+    expect(ok).toBe(true)
+    await tick()
+
+    const { owners } = useOwners()
+    const created = owners.value.find(o => o.email === 'quota.test@example.com')
+    expect(created).toBeTruthy()
+    expect(created!.annualOwnerUseNightCap).toBe(14)
+  })
+
+  it('step 4: a window larger than the annual cap blocks submit', async () => {
+    mountDialog()
+    await tick()
+
+    await goToStep3('Cap Guard', 'cap.guard@example.com')
+    await clickButtonByText('Next') // → step 4
+    await tick()
+
+    const capInput = findInputInBody(el => el.id === 'onboard-annual-cap')
+    expect(capInput).toBeTruthy()
+    capInput!.value = '10'
+    capInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    capInput!.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+
+    await clickButtonByText(/add window/i)
+    await tick()
+
+    const dateInputs = Array.from(document.body.querySelectorAll('input[type="date"]')) as HTMLInputElement[]
+    dateInputs[0]!.value = '2027-08-01'
+    dateInputs[0]!.dispatchEvent(new Event('input', { bubbles: true }))
+    dateInputs[0]!.dispatchEvent(new Event('change', { bubbles: true }))
+    dateInputs[1]!.value = '2027-08-31'
+    dateInputs[1]!.dispatchEvent(new Event('input', { bubbles: true }))
+    dateInputs[1]!.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+
+    const maxInput = Array.from(document.body.querySelectorAll('input[type="number"]'))
+      .find(i => i.id !== 'onboard-annual-cap') as HTMLInputElement | null
+    expect(maxInput).toBeTruthy()
+    maxInput!.value = '15'
+    maxInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    maxInput!.dispatchEvent(new Event('change', { bubbles: true }))
+    await tick()
+
+    const ok = await clickButtonByText(/create owner|create & invite|save|finish/i)
+    expect(ok).toBe(true)
+    await tick()
+
+    // Cap guard error shown, and no owner created.
+    expect(document.body.textContent ?? '').toMatch(/annual cap/i)
+    const { owners } = useOwners()
+    expect(owners.value.find(o => o.email === 'cap.guard@example.com')).toBeUndefined()
   })
 })

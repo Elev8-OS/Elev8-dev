@@ -186,6 +186,7 @@ function saved(_stay: OwnerStay) {
         v-else
         v-model:anchor="calendarAnchor"
         v-model:listing-id="selectedListingId"
+        :owner-id="currentOwner?.id ?? null"
         :reservations="allReservations"
         class="flex-1"
         @create-owner-reservation="startCreate"

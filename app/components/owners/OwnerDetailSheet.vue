@@ -365,7 +365,7 @@ function openStatementPreview(statementId: string) {
 
 // Edit owner details (Overview tab)
 const isEditingOwner = ref(false)
-const editForm = ref({ name: '', email: '', phone: '', language: 'en' as 'en' | 'id', statementCurrency: 'IDR' as 'IDR' | 'USD' | 'AUD' | 'SGD' | 'EUR', annualOwnerUseNightCap: 0 })
+const editForm = ref({ name: '', email: '', phone: '', language: 'en' as 'en' | 'id', statementCurrency: 'IDR' as 'IDR' | 'USD' | 'AUD' | 'SGD' | 'EUR' })
 
 function startEditOwner() {
   if (!owner.value)
@@ -376,7 +376,6 @@ function startEditOwner() {
     phone: owner.value.phone,
     language: owner.value.language,
     statementCurrency: owner.value.statementCurrency,
-    annualOwnerUseNightCap: owner.value.annualOwnerUseNightCap ?? 0,
   }
   isEditingOwner.value = true
 }
@@ -394,7 +393,6 @@ function saveEditOwner() {
     phone: editForm.value.phone.trim(),
     language: editForm.value.language,
     statementCurrency: editForm.value.statementCurrency,
-    annualOwnerUseNightCap: editForm.value.annualOwnerUseNightCap || undefined,
   })
   if (result.success) {
     toast.success('Owner details updated.')
@@ -402,6 +400,26 @@ function saveEditOwner() {
   }
   else {
     toast.error(result.error ?? 'Failed to update owner.')
+  }
+}
+
+// --- Annual owner-use night cap (self-booking tab) ---
+const annualCapDraft = ref<number | undefined>(undefined)
+
+watch(() => owner.value?.id, () => {
+  annualCapDraft.value = owner.value?.annualOwnerUseNightCap
+})
+
+function saveAnnualCap() {
+  if (!owner.value)
+    return
+  const next = annualCapDraft.value && annualCapDraft.value > 0 ? annualCapDraft.value : undefined
+  const result = updateOwner(owner.value.id, { annualOwnerUseNightCap: next })
+  if (result.success) {
+    toast.success('Annual owner-use night cap updated.')
+  }
+  else {
+    toast.error(result.error ?? 'Failed to update the cap.')
   }
 }
 </script>
@@ -545,10 +563,6 @@ function saveEditOwner() {
                   </Select>
                 </div>
               </div>
-              <div class="space-y-1.5">
-                <Label for="edit-owner-cap">Owner-use night cap (0 = no cap)</Label>
-                <Input id="edit-owner-cap" v-model.number="editForm.annualOwnerUseNightCap" type="number" min="0" />
-              </div>
               <div class="flex justify-end gap-2">
                 <Button type="button" variant="outline" @click="cancelEditOwner">
                   Cancel
@@ -605,14 +619,6 @@ function saveEditOwner() {
                 </dt>
                 <dd class="font-mono">
                   {{ owner.statementCurrency }}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-xs font-medium text-muted-foreground">
-                  Owner-use night cap
-                </dt>
-                <dd class="font-medium">
-                  {{ owner.annualOwnerUseNightCap ?? '—' }} {{ owner.annualOwnerUseNightCap ? 'nights / year' : '' }}
                 </dd>
               </div>
               <div>
@@ -757,6 +763,53 @@ function saveEditOwner() {
             </div>
 
             <template v-else>
+              <div class="rounded-md border p-4">
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                  <div class="min-w-0 flex-1 space-y-1">
+                    <div class="flex items-center gap-1.5">
+                      <div class="text-sm font-medium">
+                        Annual owner-use night cap
+                      </div>
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <Button type="button" variant="ghost" size="icon-sm" class="size-5">
+                            <Icon name="lucide:info" class="size-3.5 text-muted-foreground" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent class="max-w-64">
+                          The most nights {{ owner?.name ?? 'this owner' }} can reserve at their own properties in a calendar year. Set to 0 for no limit.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <p class="text-xs text-muted-foreground">
+                      The total free nights the owner can book across all their properties each year.
+                    </p>
+                  </div>
+                  <div class="flex items-end gap-2">
+                    <div class="space-y-1">
+                      <Label for="annual-cap" class="text-xs">Nights / year</Label>
+                      <Input
+                        id="annual-cap"
+                        v-model.number="annualCapDraft"
+                        type="number"
+                        min="0"
+                        class="w-28"
+                        placeholder="No limit"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      :disabled="annualCapDraft === owner?.annualOwnerUseNightCap"
+                      @click="saveAnnualCap"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
               <div class="space-y-3">
                 <div
                   v-for="m in ownerMappings"
@@ -796,7 +849,22 @@ function saveEditOwner() {
 
               <div class="flex items-center justify-between">
                 <div class="text-xs font-medium text-muted-foreground">
-                  Seasonal quotas (non-accumulating)
+                  <div class="flex items-center gap-1.5">
+                    Seasonal quotas per property
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button type="button" variant="ghost" size="icon-sm" class="size-4">
+                          <Icon name="lucide:info" class="size-3.5 text-muted-foreground" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent class="max-w-64">
+                        Limit how many nights the owner can book themselves during certain date ranges (for example peak season). Set a window to 0 to block the owner from staying on those dates entirely. Each window counts separately, so unused nights do not carry over into the next window.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p class="mt-1 font-normal normal-case text-muted-foreground">
+                    E.g. limit nights in peak season, or block the owner entirely from certain dates.
+                  </p>
                 </div>
                 <Button size="sm" variant="outline" @click="openAddQuota">
                   <Icon name="lucide:plus" class="mr-1.5 size-3.5" />
@@ -815,7 +883,7 @@ function saveEditOwner() {
                 >
                   <div>
                     <span class="font-medium">{{ formatQuotaDate(q.startDate) }} → {{ formatQuotaDate(q.endDate) }}</span>
-                    <span class="ml-2 text-muted-foreground">{{ q.maxNights }} nights</span>
+                    <span class="ml-2 text-muted-foreground">{{ q.maxNights === 0 ? 'Blocked' : `${q.maxNights} nights` }}</span>
                   </div>
                   <div class="flex items-center gap-1">
                     <Button variant="ghost" size="icon-sm" @click="openEditQuota(q)">
@@ -834,7 +902,7 @@ function saveEditOwner() {
                 <DialogHeader>
                   <DialogTitle>{{ quotaInput?.id ? 'Edit seasonal quota' : 'Add seasonal quota' }}</DialogTitle>
                   <DialogDescription>
-                    Max self-booked nights in this window. Unused nights do not roll over.
+                    Set how many nights the owner can book themselves within these dates. Pick a window (e.g. peak season) and a night limit — or set 0 so the owner cannot stay on these dates at all.
                   </DialogDescription>
                 </DialogHeader>
                 <div v-if="quotaInput" class="space-y-3">
@@ -910,8 +978,8 @@ function saveEditOwner() {
                             <Icon name="lucide:info" class="size-3.5 text-muted-foreground" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          0 = blocked
+                        <TooltipContent class="max-w-64">
+                          Maximum nights the owner can book themselves during these dates. Set to 0 to block the owner — they cannot stay on these dates at all.
                         </TooltipContent>
                       </Tooltip>
                     </div>

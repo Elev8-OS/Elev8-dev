@@ -91,18 +91,6 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
-        title: 'Owner Statements',
-        icon: 'i-lucide-file-chart-column',
-        link: '/owner-statements',
-        new: true,
-      },
-      {
-        title: 'Document Center',
-        icon: 'i-lucide-folder-open',
-        link: '/owner-documents',
-        new: true,
-      },
-      {
         title: 'Review Hub',
         icon: 'i-lucide-message-square-text',
         link: '/reviews',

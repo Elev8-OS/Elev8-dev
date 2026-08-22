@@ -75,7 +75,7 @@ export const mockOwnerSeasonalQuotas: OwnerSeasonalQuota[] = [
     listingId: 'lst-1',
     startDate: '2026-04-01',
     endDate: '2026-06-30',
-    maxNights: 20,
+    maxNights: 14,
   },
   // I Putu (own-2 / lst-8): holiday season capped at 7 nights.
   {

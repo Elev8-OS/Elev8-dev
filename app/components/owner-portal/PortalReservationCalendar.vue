@@ -29,6 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import {
   buildReservationBars,
   buildReservationMonthGrid,
@@ -40,6 +41,8 @@ const props = defineProps<{
   reservations?: OwnerReservation[]
   /** When provided, the calendar is pinned to a single listing. */
   listingId?: string
+  /** Owner whose self-booking quota is shown for the selected listing. */
+  ownerId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -251,6 +254,28 @@ function toDayKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+const { quotasForOwnerListing, getRemainingQuota } = useOwnerQuotas()
+
+/** Seasonal self-booking quota windows for the selected listing + owner. */
+const ownerQuotaWindows = computed(() => {
+  const id = selectedListingId.value
+  if (!props.ownerId || !id)
+    return []
+  const ownerId = props.ownerId
+  return quotasForOwnerListing(ownerId, id).map((window) => {
+    const remaining = getRemainingQuota(ownerId, id, window.startDate)
+    return {
+      ...window,
+      remaining,
+      unlimited: !Number.isFinite(remaining),
+    }
+  })
+})
+
+function formatQuotaDate(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
 function shiftMonth(months: number) {
   const next = new Date(anchor.value)
   next.setDate(1)
@@ -379,6 +404,26 @@ function propertyTypeChip(listingId: string | null) {
           </dd>
         </div>
       </dl>
+
+      <div v-if="ownerQuotaWindows.length" class="max-w-sm rounded-md border bg-card p-3">
+        <p class="text-xs font-medium text-muted-foreground">
+          My stay quota
+        </p>
+        <ul class="mt-1.5 space-y-1">
+          <li
+            v-for="window in ownerQuotaWindows"
+            :key="window.id"
+            class="flex items-center justify-between gap-2 text-sm"
+          >
+            <span class="text-xs text-muted-foreground">
+              {{ formatQuotaDate(window.startDate) }} → {{ formatQuotaDate(window.endDate) }}
+            </span>
+            <span class="font-medium">
+              {{ window.unlimited ? 'Unlimited' : `${window.remaining} of ${window.maxNights} nights left` }}
+            </span>
+          </li>
+        </ul>
+      </div>
     </header>
 
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

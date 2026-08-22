@@ -41,7 +41,7 @@ export interface OwnerStayRequestInput {
 
 export type OwnerStayRequestResult
   = | { ok: true, stay: OwnerStay, requiredApproval: boolean, autoApproved: boolean, requestId?: string }
-    | { ok: false, reason: 'conflict' | 'invalid_dates' | 'quota_exceeded', conflicts?: unknown[], quota?: QuotaCheckResult }
+    | { ok: false, reason: 'conflict' | 'invalid_dates' | 'quota_exceeded' | 'annual_cap_exceeded', conflicts?: unknown[], quota?: QuotaCheckResult }
 
 export type DecideStayApprovalResult
   = | { ok: true, stay: OwnerStay }
@@ -80,7 +80,7 @@ export function useOwnerStayApprovals() {
     'elev8-owner-stay-approvals',
     () => clone(mockOwnerStayApprovals),
   )
-  const { createStay, detectConflicts } = useOwnerStays()
+  const { createStay, detectConflicts, getCapWarning } = useOwnerStays()
   const { provisionOwnerStayOperations } = useOwnerStayOperations()
   const { getBookingMode, checkQuota } = useOwnerQuotas()
   const { createReservation } = useReservationsModule()
@@ -142,6 +142,16 @@ export function useOwnerStayApprovals() {
 
     const mode = getBookingMode(input.ownerId, input.listingId)
     const quota = checkQuota(input.ownerId, input.listingId, input.checkIn, input.checkOut)
+
+    // Direct mode: annual use cap exceeded blocks the booking outright.
+    // `annualCap` is the per-owner cap (0 / absent = no cap). We only
+    // enforce a finite cap — no cap means the owner can stay freely.
+    const annualCap = input.annualCap && input.annualCap > 0 ? input.annualCap : null
+    if (mode === 'direct' && annualCap) {
+      const capWarning = getCapWarning(input.ownerId, input.checkIn, input.checkOut, annualCap)
+      if (capWarning.exceeds)
+        return { ok: false, reason: 'annual_cap_exceeded' }
+    }
 
     // Direct mode: quota exceeded blocks the booking outright.
     if (mode === 'direct' && quota.exceeded)

@@ -14,6 +14,7 @@ import type {
   QuotaWindowUsage,
 } from '~/components/owners/data/owner-quotas'
 import { mockOwnerBookingModes, mockOwnerSeasonalQuotas } from '~/components/owners/data/owner-quotas'
+import { useOwners } from '~/composables/useOwners'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 
 const DAY_MS = 86_400_000
@@ -50,6 +51,7 @@ export function useOwnerQuotas() {
     () => clone(mockOwnerBookingModes),
   )
   const { stays } = useOwnerStays()
+  const { byId } = useOwners()
 
   function getBookingMode(ownerId: string, listingId: string): OwnerBookingMode {
     return bookingModes.value.find(
@@ -139,6 +141,13 @@ export function useOwnerQuotas() {
       return { success: false, error: 'Invalid date range.' }
     if (input.maxNights < 0)
       return { success: false, error: 'Max nights cannot be negative.' }
+
+    // A seasonal window can't ask for more nights than the owner's annual
+    // use cap allows. 0 / absent cap = no limit, so the check only applies
+    // to owners with a finite cap.
+    const annualCap = byId(input.ownerId)?.annualOwnerUseNightCap
+    if (annualCap && annualCap > 0 && input.maxNights > annualCap)
+      return { success: false, error: `Max nights cannot exceed the owner's ${annualCap}-night annual cap.` }
 
     if (input.id) {
       const updated = { ...input as OwnerSeasonalQuota }
