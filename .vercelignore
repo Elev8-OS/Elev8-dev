@@ -1,0 +1,29 @@
+# Local dev/build artifacts
+.nuxt
+.output
+.data
+.cache
+dist
+node_modules
+
+# Node compile cache (auto-generated)
+node-compile-cache
+
+# Secondary/companion app — not part of this deploy
+guide-app
+
+# Local docs, scratch, tooling output
+docs
+graphify-out
+node-compile-cache
+.superpowers
+.kiro
+.claude
+.commandcode
+
+# Env, logs, OS junk
+.env
+.env.*
+logs
+*.log
+.DS_Store
