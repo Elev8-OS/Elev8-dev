@@ -450,6 +450,63 @@ function fmtCleaningDate(iso: string): string {
               </AccordionItem>
             </Accordion>
 
+            <!-- Rooms (multi-room booking) -->
+            <Accordion v-if="reservation.rooms?.length" type="single" collapsible class="w-full border-b px-2">
+              <AccordionItem value="rooms" class="border-b-0">
+                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                  <span class="flex items-center gap-2">
+                    <Icon name="lucide:door-open" class="size-4" />
+                    Rooms
+                    <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                      {{ reservation.rooms.length }}
+                    </Badge>
+                    <Badge v-if="reservation.bookingMode === 'entire_property'" variant="outline" class="h-4 px-1 text-[9px]">
+                      Entire property
+                    </Badge>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent class="px-3 pb-3">
+                  <div class="space-y-2">
+                    <div
+                      v-for="room in reservation.rooms"
+                      :key="room.id"
+                      class="rounded-md border bg-muted/20 px-3 py-2"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                          <p class="text-sm font-medium">
+                            {{ room.unitName }}
+                          </p>
+                          <p class="text-xs text-muted-foreground">
+                            {{ room.rateLabel }}
+                            <template v-if="room.guestNames">
+                              · {{ room.guestNames }}
+                            </template>
+                          </p>
+                        </div>
+                        <span class="shrink-0 text-sm font-medium">
+                          {{ fmtCurrency(room.lineTotal, reservation.currency) }}
+                        </span>
+                      </div>
+                      <div class="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{{ fmtCurrency(room.pricePerNight, reservation.currency) }} × {{ reservation.nights }} nights</span>
+                      </div>
+                    </div>
+                    <div v-if="reservation.paymentFeeMode && reservation.paymentFeeMode !== 'no_fee'" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                      <span class="text-muted-foreground">Payment charge</span>
+                      <span class="font-medium">
+                        {{ reservation.paymentFeeMode === 'card' ? 'Card (+3%)' : `Custom (${reservation.paymentCustomFeePct}%)` }}
+                      </span>
+                    </div>
+                    <div v-for="charge in reservation.charges" :key="charge.id" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                      <span class="text-muted-foreground">{{ charge.label }}</span>
+                      <span class="font-medium">{{ fmtCurrency(charge.amount, reservation.currency) }}</span>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
             <!-- Guest -->
             <div class="border-b px-5 py-4">
               <div class="flex items-center gap-3">

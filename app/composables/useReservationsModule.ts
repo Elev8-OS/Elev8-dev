@@ -1,4 +1,4 @@
-import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import { generateReservationId, initialGuests, initialReservations } from '~/components/reservations/data/reservations'
 
 export interface ReservationFilters {
@@ -7,6 +7,18 @@ export interface ReservationFilters {
   listings: string[]
   dateFrom: string
   dateTo: string
+}
+
+export interface UnitConflict {
+  reservationId: string
+  guestName: string
+  checkIn: string
+  checkOut: string
+  roomLine: ReservationRoomLine
+}
+
+function rangesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): boolean {
+  return aIn < bOut && bIn < aOut
 }
 
 export function useReservationsModule() {
@@ -22,6 +34,51 @@ export function useReservationsModule() {
     dateFrom: '',
     dateTo: '',
   }))
+
+  /** Reservations that already book the given unit in the given date range. */
+  function getUnitConflicts(unitId: string, listingId: string, checkIn: string, checkOut: string, excludeReservationId?: string): UnitConflict[] {
+    const conflicts: UnitConflict[] = []
+    for (const r of reservations.value) {
+      if (excludeReservationId && r.id === excludeReservationId)
+        continue
+      if (r.listingId !== listingId)
+        continue
+      if (!r.rooms?.length)
+        continue
+      if (!rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut))
+        continue
+      for (const line of r.rooms) {
+        if (line.unitId === unitId) {
+          conflicts.push({
+            reservationId: r.id,
+            guestName: r.guestName,
+            checkIn: r.checkIn,
+            checkOut: r.checkOut,
+            roomLine: line,
+          })
+          break
+        }
+      }
+    }
+    return conflicts
+  }
+
+  function getConflictedUnitIds(listingId: string, checkIn: string, checkOut: string, excludeReservationId?: string): Set<string> {
+    const ids = new Set<string>()
+    for (const r of reservations.value) {
+      if (excludeReservationId && r.id === excludeReservationId)
+        continue
+      if (r.listingId !== listingId)
+        continue
+      if (!r.rooms?.length)
+        continue
+      if (!rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut))
+        continue
+      for (const line of r.rooms)
+        ids.add(line.unitId)
+    }
+    return ids
+  }
 
   const filteredReservations = computed(() => {
     return reservations.value.filter((r) => {
@@ -138,6 +195,8 @@ export function useReservationsModule() {
     updateGuestNotes,
     updateReservationStatus,
     updateReservation,
+    getUnitConflicts,
+    getConflictedUnitIds,
     reset,
   }
 }

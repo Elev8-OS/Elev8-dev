@@ -53,6 +53,34 @@ export interface IdentityVerification {
   documents: GuestDocument[]
 }
 
+export interface ReservationRoomLine {
+  id: string
+  unitTypeId: string
+  unitId: string
+  unitName: string
+  ratePlanId: string
+  rateLabel: string
+  pricePerNight: number
+  lineTotal: number
+  guestNames?: string
+  /** 'per_night' = pricePerNight × nights; 'per_stay' = flat pricePerStay for the whole stay. */
+  priceMode?: 'per_night' | 'per_stay'
+  pricePerStay?: number
+}
+
+export type BookingMode = 'entire_property' | 'rooms'
+
+export type PaymentFeeMode = 'card' | 'manual' | 'no_fee'
+
+export type ReservationChargeKind = 'cleaning' | 'city_tax' | 'service' | 'other'
+
+export interface ReservationCharge {
+  id: string
+  kind: ReservationChargeKind
+  label: string
+  amount: number
+}
+
 export interface ReservationEntry {
   id: string
   guestId: string
@@ -81,6 +109,24 @@ export interface ReservationEntry {
   bookingNote?: string
   identity?: IdentityVerification
   activity: ActivityEvent[]
+  /** Estimated guest arrival time ("HH:MM"). */
+  estimatedArrivalTime?: string
+  /** Inquiry-only: hours before the inquiry expires. */
+  inquiryExpiryHours?: number
+  /** false = "Do not block availability" (inquiry does not block the calendar). */
+  blocksAvailability?: boolean
+  guestFirstName?: string
+  guestLastName?: string
+  guestAddress?: string
+  guestCity?: string
+  guestZip?: string
+  guestCountry?: string
+  /** Multi-room booking: one line per booked unit. */
+  rooms?: ReservationRoomLine[]
+  bookingMode?: BookingMode
+  paymentFeeMode?: PaymentFeeMode
+  paymentCustomFeePct?: number
+  charges?: ReservationCharge[]
 }
 
 export interface GuestProfile {
@@ -124,11 +170,80 @@ export interface ReservationDraft {
   /** Owner stay requests / blocked reservations carry extra context. */
   blockReason?: string
   bookingNote?: string
+  estimatedArrivalTime?: string
+  inquiryExpiryHours?: number
+  blocksAvailability?: boolean
+  guestFirstName?: string
+  guestLastName?: string
+  guestAddress?: string
+  guestCity?: string
+  guestZip?: string
+  guestCountry?: string
+  /** Multi-room booking: one line per booked unit. */
+  rooms?: ReservationRoomLine[]
+  bookingMode?: BookingMode
+  paymentFeeMode?: PaymentFeeMode
+  paymentCustomFeePct?: number
+  charges?: ReservationCharge[]
 }
 
 export function generateReservationId(): string {
   return `res-${Date.now()}`
 }
+
+/** Curated country list for the reservation contact-details form. */
+export const COUNTRIES: string[] = [
+  'Indonesia',
+  'Switzerland',
+  'Australia',
+  'Singapore',
+  'Malaysia',
+  'United States',
+  'United Kingdom',
+  'Germany',
+  'France',
+  'Netherlands',
+  'Italy',
+  'Spain',
+  'Austria',
+  'Belgium',
+  'Denmark',
+  'Sweden',
+  'Norway',
+  'Finland',
+  'Ireland',
+  'Portugal',
+  'Poland',
+  'Czech Republic',
+  'Japan',
+  'South Korea',
+  'China',
+  'Hong Kong',
+  'Taiwan',
+  'India',
+  'Thailand',
+  'Vietnam',
+  'Philippines',
+  'New Zealand',
+  'Canada',
+  'United Arab Emirates',
+  'Saudi Arabia',
+  'Qatar',
+  'Turkey',
+  'South Africa',
+  'Brazil',
+  'Argentina',
+  'Mexico',
+  'Russia',
+  'Ukraine',
+  'Greece',
+  'Hungary',
+  'Luxembourg',
+  'Liechtenstein',
+  'Monaco',
+  'Iceland',
+  'Israel',
+]
 
 export const reservationStatusLabels: Record<ReservationStatus, string> = {
   inquiry: 'Inquiry',
@@ -894,6 +1009,109 @@ export const initialReservations: ReservationEntry[] = [
     blockReason: 'Owner family stay — property unavailable',
     activity: [],
   },
+  // Multi-room booking — 2 rooms in one reservation
+  {
+    id: 'res-multi-1',
+    guestId: 'guest-7',
+    guestName: 'Nathan Hale',
+    guestEmail: 'nathan.hale@email.com',
+    guestPhone: '+1 555-0198',
+    guestLanguage: 'English',
+    guestNotes: 'Family reunion. Early check-in requested for the grandparents.',
+    listingId: 'lst-1',
+    listingName: '5BR Pool the R Villa Luwa – Serene near Canggu',
+    channel: 'Direct',
+    checkIn: '2026-09-12',
+    checkOut: '2026-09-16',
+    nights: 4,
+    guestCount: 5,
+    totalPrice: 1000,
+    currency: 'USD',
+    status: 'verified',
+    guestFirstName: 'Nathan',
+    guestLastName: 'Hale',
+    guestAddress: '221 Oak Avenue',
+    guestCity: 'Austin',
+    guestZip: '73301',
+    guestCountry: 'United States',
+    estimatedArrivalTime: '14:30',
+    bookingMode: 'rooms',
+    paymentFeeMode: 'card',
+    priceDetails: {
+      subtotal: 1000,
+      cleaningFee: 85,
+      serviceFee: 0,
+      tax: 25,
+      extras: 0,
+      guestPaid: 1143,
+      commission: 114,
+      payout: 1029,
+    },
+    rooms: [
+      {
+        id: 'room-multi-1',
+        unitTypeId: 'ut-1',
+        unitId: 'un-1',
+        unitName: 'Master Suite',
+        ratePlanId: 'rp-1',
+        rateLabel: 'Kingbed — Standard Rate',
+        pricePerNight: 100,
+        lineTotal: 400,
+        priceMode: 'per_night',
+        guestNames: 'Nathan & Laura Hale',
+      },
+      {
+        id: 'room-multi-2',
+        unitTypeId: 'ut-2',
+        unitId: 'un-3',
+        unitName: 'Pool Unit',
+        ratePlanId: 'rp-2',
+        rateLabel: 'Single Bed — Standard Rate',
+        pricePerNight: 75,
+        lineTotal: 300,
+        priceMode: 'per_night',
+        guestNames: 'Grandma & Grandpa',
+      },
+      {
+        id: 'room-multi-3',
+        unitTypeId: 'ut-2',
+        unitId: 'un-4',
+        unitName: 'Loft Unit',
+        ratePlanId: 'rp-2',
+        rateLabel: 'Single Bed — Standard Rate',
+        pricePerNight: 75,
+        lineTotal: 300,
+        priceMode: 'per_stay',
+        pricePerStay: 300,
+        guestNames: 'Kids',
+      },
+    ],
+    charges: [
+      { id: 'chg-multi-1', kind: 'cleaning', label: 'Cleaning Fee', amount: 85 },
+      { id: 'chg-multi-2', kind: 'city_tax', label: 'City Tax', amount: 25 },
+    ],
+    activity: [
+      {
+        id: 'act-multi-1',
+        type: 'reservation',
+        title: 'Reservation Confirmed',
+        description: 'Direct multi-room booking for 3 rooms at Villa Luwa.',
+        actor: 'Komang Juliantara',
+        timestamp: '2026-08-18T10:20:00Z',
+        colorDot: 'green',
+      },
+      {
+        id: 'act-multi-2',
+        type: 'message',
+        title: 'Guest asked about early check-in',
+        description: 'Requested 14:30 arrival for the grandparents.',
+        actor: 'Nathan Hale',
+        timestamp: '2026-08-19T09:05:00Z',
+        channel: 'WhatsApp',
+        colorDot: 'blue',
+      },
+    ],
+  },
 ]
 
 export const initialGuests: GuestProfile[] = [
@@ -962,6 +1180,17 @@ export const initialGuests: GuestProfile[] = [
     previousStays: 0,
     tags: ['Spa', 'Quiet room'],
     createdAt: '2026-07-01',
+  },
+  {
+    id: 'guest-7',
+    name: 'Nathan Hale',
+    email: 'nathan.hale@email.com',
+    phone: '+1 555-0198',
+    language: 'English',
+    notes: 'Books multiple rooms for family reunions. Prefers early check-in.',
+    previousStays: 1,
+    tags: ['Family', 'Multi-room'],
+    createdAt: '2026-08-18',
   },
 ]
 
