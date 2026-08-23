@@ -1,3 +1,4 @@
+import type { GateStage, RejectionReason } from '~/components/revenue/data/diagnosis'
 import type {
   ApplyState,
   HealthDomain,
@@ -7,6 +8,12 @@ import type {
   ObjectiveBasis,
 } from '~/components/revenue/data/health'
 import { computed, ref } from 'vue'
+import {
+  diagnosisFor,
+  gateStageDomain,
+  notAssessableRooms,
+  objectiveForContract,
+} from '~/components/revenue/data/diagnosis'
 import {
   healthFindings,
   healthRooms,
@@ -19,6 +26,11 @@ export interface RevenueHealthFilters {
   search: string
   domain: HealthDomain | 'all'
   minSeverity: HealthSeverity | 'all'
+  /**
+   * Which funnel gate is failing. Lets an operator work through every
+   * visibility problem in one pass instead of hunting them room by room.
+   */
+  gate: GateStage | 'all'
 }
 
 /** Ranking order for severity — also used to resolve a room's worst finding. */
@@ -32,6 +44,7 @@ const SEVERITY_RANK: Record<HealthSeverity, number> = {
 
 /** Steps the apply pipeline walks through, and how long each takes in the fixture. */
 const PIPELINE: { state: ApplyState, delayMs: number }[] = [
+  { state: 'snapshot', delayMs: 250 },
   { state: 'saved', delayMs: 350 },
   { state: 'written', delayMs: 900 },
   { state: 'verified', delayMs: 800 },
@@ -45,11 +58,15 @@ export function useRevenueHealth() {
   const rooms = useState<HealthRoom[]>('revenue-health-rooms', () => [...healthRooms])
   const applyStates = useState<Record<string, ApplyState>>('revenue-health-apply', () => ({}))
   const dismissed = useState<string[]>('revenue-health-dismissed', () => [])
+  /** Why a finding was rejected. Adjusts thresholds and ceilings, never a model. */
+  const rejections = useState<Record<string, RejectionReason>>('revenue-health-rejections', () => ({}))
+  const expanded = useState<string | null>('revenue-health-expanded', () => null)
 
   const filters = ref<RevenueHealthFilters>({
     search: '',
     domain: 'all',
     minSeverity: 'all',
+    gate: 'all',
   })
 
   const summary = healthSummary
@@ -80,6 +97,8 @@ export function useRevenueHealth() {
         if (filters.value.domain !== 'all' && finding.domain !== filters.value.domain)
           return false
         if (SEVERITY_RANK[finding.severity] < floor)
+          return false
+        if (filters.value.gate !== 'all' && diagnosisFor(finding.roomId)?.gate.firstFailing !== filters.value.gate)
           return false
         if (!query)
           return true
@@ -114,11 +133,26 @@ export function useRevenueHealth() {
           return acc
         }, {})
 
+        const diagnosis = diagnosisFor(room.id)
+
+        /**
+         * Worst domain is DERIVED from the gate, not chosen. The first funnel
+         * stage that fails is the worst domain — which turns the column from a
+         * label into a statement, and stops a price domain being shown for a
+         * room that is simply not being clicked.
+         */
+        const failing = diagnosis?.gate.firstFailing
+        const worstDomain = failing ? gateStageDomain[failing] : worst?.domain
+
         return {
           room,
           findings: roomFindings,
           worst,
+          worstDomain,
           counts,
+          diagnosis,
+          /** Objective follows the owner contract, never a tenant-wide switch. */
+          objective: diagnosis ? objectiveForContract(diagnosis.contract) : undefined,
           atStake: roomFindings.reduce((max, finding) => Math.max(max, amountFor(finding)), 0),
         }
       })
@@ -187,17 +221,47 @@ export function useRevenueHealth() {
       dismissed.value = [...dismissed.value, findingId]
   }
 
+  /**
+   * Rejecting with a reason. The reason is the point: it is the cheapest
+   * product signal we get, and each one adjusts a threshold, a ceiling or a
+   * prompt rule. It never trains a model — fitting one operator's taste would
+   * cost the reproducibility the measurement depends on.
+   */
+  function rejectFinding(findingId: string, reason: RejectionReason) {
+    rejections.value = { ...rejections.value, [findingId]: reason }
+    dismissFinding(findingId)
+  }
+
+  function rejectionFor(findingId: string) {
+    return rejections.value[findingId]
+  }
+
+  function toggleExpanded(roomId: string) {
+    expanded.value = expanded.value === roomId ? null : roomId
+  }
+
+  /**
+   * Rooms a check could not reach. Without this line a portfolio with eight
+   * findings reads as healthy while a dozen rooms were never assessed.
+   */
+  const notAssessable = computed(() => notAssessableRooms)
+
   function restoreFinding(findingId: string) {
     dismissed.value = dismissed.value.filter(id => id !== findingId)
   }
 
   function resetFilters() {
-    filters.value = { search: '', domain: 'all', minSeverity: 'all' }
+    filters.value = { search: '', domain: 'all', minSeverity: 'all', gate: 'all' }
   }
 
   return {
     basis,
+    expanded,
     filters,
+    notAssessable,
+    rejectFinding,
+    rejectionFor,
+    toggleExpanded,
     findings,
     rooms,
     summary,
