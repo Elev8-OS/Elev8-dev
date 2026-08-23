@@ -9,8 +9,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{ revert: [] }>()
 
-const STEPS = ['saved', 'written', 'verified', 'recomputed', 'live'] as const
+const STEPS = ['snapshot', 'saved', 'written', 'verified', 'recomputed', 'live'] as const
 const STEP_LABELS: Record<typeof STEPS[number], string> = {
+  snapshot: 'Snapshot taken',
   saved: 'Saved in Elev8',
   written: 'Written',
   verified: 'Verified',
@@ -18,14 +19,14 @@ const STEP_LABELS: Record<typeof STEPS[number], string> = {
   live: 'Live on channels',
 }
 
-const ORDER: Record<string, number> = { idle: -1, saved: 0, written: 1, verified: 2, recomputed: 3, live: 4 }
+const ORDER: Record<string, number> = { idle: -1, snapshot: 0, saved: 1, written: 2, verified: 3, recomputed: 4, live: 5 }
 
 /** Where the failure landed, so the strip can mark that step rather than the last one. */
 const failedAt = computed(() => {
   if (props.state === 'recompute_unavailable')
-    return 3
-  if (props.state === 'push_failed')
     return 4
+  if (props.state === 'push_failed')
+    return 5
   return null
 })
 
@@ -47,6 +48,8 @@ function stepStatus(index: number) {
 
 const message = computed(() => {
   switch (props.state) {
+    case 'snapshot':
+      return { tone: 'muted', text: 'Prior state captured for every field this change touches. That snapshot is what a revert restores and what the outcome is measured against.' }
     case 'saved':
       return { tone: 'muted', text: 'Base price and minimum stay saved as a new policy version. Nothing is live yet.' }
     case 'written':

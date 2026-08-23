@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { GateStage } from '~/components/revenue/data/diagnosis'
 import type { HealthDomain, HealthSeverity, ObjectiveBasis } from '~/components/revenue/data/health'
 import { computed } from 'vue'
+import { gateStageLabels } from '~/components/revenue/data/diagnosis'
 import { basisLabels, domainLabels } from '~/components/revenue/data/health'
 import HealthPortfolioTable from '~/components/revenue/HealthPortfolioTable.vue'
 import { Button } from '~/components/ui/button'
@@ -8,17 +10,35 @@ import { Card, CardContent } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { useRevenueHealth } from '~/composables/useRevenueHealth'
 
 definePageMeta({ layout: 'default' })
 
-const { basis, filters, portfolioRows, stats, summary, resetFilters } = useRevenueHealth()
+const {
+  applyFinding,
+  applyStateFor,
+  basis,
+  expanded,
+  filters,
+  notAssessable,
+  portfolioRows,
+  rejectFinding,
+  resetFilters,
+  stats,
+  summary,
+  toggleExpanded,
+} = useRevenueHealth()
 
 const domainOptions = Object.keys(domainLabels) as HealthDomain[]
 const severityOptions: HealthSeverity[] = ['critical', 'high', 'medium', 'low']
+const gateOptions = Object.keys(gateStageLabels) as GateStage[]
 
 const hasFilters = computed(() =>
-  filters.value.search !== '' || filters.value.domain !== 'all' || filters.value.minSeverity !== 'all',
+  filters.value.search !== ''
+  || filters.value.domain !== 'all'
+  || filters.value.minSeverity !== 'all'
+  || filters.value.gate !== 'all',
 )
 
 function money(amount: number) {
@@ -45,18 +65,29 @@ function money(amount: number) {
       </p>
     </div>
 
-    <!-- Toolbar: basis switch first, because it re-ranks everything below -->
+    <!--
+      Toolbar. The basis switch is a VIEW LENS: it re-ranks and re-labels the
+      list, but what the engine optimises per room comes from the owner
+      contract, which is why every row carries its contract type.
+    -->
     <div class="flex flex-wrap items-center gap-3">
-      <Tabs :model-value="basis" @update:model-value="value => basis = value as ObjectiveBasis">
-        <TabsList>
-          <TabsTrigger value="revenue">
-            {{ basisLabels.revenue }}
-          </TabsTrigger>
-          <TabsTrigger value="margin">
-            {{ basisLabels.margin }}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <Tabs :model-value="basis" @update:model-value="value => basis = value as ObjectiveBasis">
+            <TabsList>
+              <TabsTrigger value="revenue">
+                {{ basisLabels.revenue }}
+              </TabsTrigger>
+              <TabsTrigger value="margin">
+                {{ basisLabels.margin }}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </TooltipTrigger>
+        <TooltipContent class="max-w-72">
+          Changes how the list is ranked and valued. What the engine optimises for a room follows its owner contract — shown on each row.
+        </TooltipContent>
+      </Tooltip>
 
       <Input v-model="filters.search" placeholder="Search listings" class="w-56" />
 
@@ -84,6 +115,21 @@ function money(amount: number) {
           </SelectItem>
           <SelectItem v-for="severity in severityOptions" :key="severity" :value="severity">
             {{ severity }} and above
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <!-- Gate filter: work through every visibility problem in one pass. -->
+      <Select :model-value="filters.gate" @update:model-value="value => filters.gate = value as GateStage | 'all'">
+        <SelectTrigger class="w-[190px]">
+          <SelectValue placeholder="Any gate" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">
+            Any gate
+          </SelectItem>
+          <SelectItem v-for="stage in gateOptions" :key="stage" :value="stage">
+            Gate: {{ gateStageLabels[stage].toLowerCase() }}
           </SelectItem>
         </SelectContent>
       </Select>
@@ -166,7 +212,35 @@ function money(amount: number) {
       </Card>
     </div>
 
-    <HealthPortfolioTable :rows="portfolioRows" :basis="basis" />
+    <!--
+      Deliberately a line, not a fifth card: completeness matters, but it must
+      not compete with the money figure for attention. Without it a portfolio
+      with eight findings reads as healthy while a dozen rooms were never
+      assessed at all.
+    -->
+    <div
+      v-if="notAssessable.length"
+      class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+    >
+      <Icon name="lucide:eye-off" class="size-3.5 shrink-0" />
+      <span class="font-medium text-foreground">
+        {{ notAssessable.length }} rooms not assessable
+      </span>
+      <span>—</span>
+      <span v-for="(room, index) in notAssessable" :key="room.roomId">
+        {{ room.name }} ({{ room.missing }}){{ index < notAssessable.length - 1 ? ' · ' : '' }}
+      </span>
+    </div>
+
+    <HealthPortfolioTable
+      :rows="portfolioRows"
+      :basis="basis"
+      :expanded-id="expanded"
+      :apply-state-for="applyStateFor"
+      @toggle="toggleExpanded"
+      @apply="applyFinding"
+      @reject="payload => rejectFinding(payload.findingId, payload.reason)"
+    />
 
     <!-- Legend and the one honesty note the ranking depends on -->
     <div class="flex flex-wrap items-center gap-x-6 gap-y-2 px-1 text-xs text-muted-foreground">
@@ -183,6 +257,7 @@ function money(amount: number) {
         Comparable-set median
       </span>
       <span>Each row shows its largest single opportunity — never a sum, because findings can overlap the same nights.</span>
+      <span>Worst domain is the first funnel gate that fails: a listing shown and not clicked has no price problem, so no price finding is raised for it.</span>
     </div>
   </div>
 </template>
