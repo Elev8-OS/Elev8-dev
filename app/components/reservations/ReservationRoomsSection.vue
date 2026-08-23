@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UnitType } from '~/components/listings/data/listings'
 import type { BookingMode, PaymentFeeMode, ReservationCharge, ReservationChargeKind, ReservationRoomLine } from '~/components/reservations/data/reservations'
+import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
@@ -119,27 +120,32 @@ function unitNameOf(unitId: string): string {
   return unitId
 }
 
-function buildEntirePropertyLines(): ReservationRoomLine[] {
-  const lines: ReservationRoomLine[] = []
+/** Default whole-property price = sum of all units' base rates. */
+const entirePropertyDefault = computed(() => {
+  let sum = 0
   for (const ut of unitTypes.value) {
-    for (const unit of ut.units) {
-      const base = ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0]
-      if (!base)
-        continue
-      const nights = Math.max(props.nights, 1)
-      lines.push({
-        id: `room-${unit.id}-${Date.now()}-${lines.length}`,
-        unitTypeId: ut.id,
-        unitId: unit.id,
-        unitName: unit.name,
-        ratePlanId: base.id,
-        rateLabel: `${ut.name} — ${base.name}`,
-        pricePerNight: base.pricePerNight,
-        lineTotal: base.pricePerNight * nights,
-      })
-    }
+    const base = ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0]
+    if (base)
+      sum += base.pricePerNight * ut.units.length
   }
-  return lines
+  return sum
+})
+
+/** Build a single synthetic whole-property room line with its own price. */
+function buildEntirePropertyLine(): ReservationRoomLine[] {
+  const nights = Math.max(props.nights, 1)
+  const pricePerNight = entirePropertyDefault.value
+  const line: ReservationRoomLine = {
+    id: 'room-entire-property',
+    unitTypeId: `${props.listingId}-whole`,
+    unitId: `${props.listingId}-whole`,
+    unitName: listing.value?.name ?? 'Entire property',
+    ratePlanId: 'entire',
+    rateLabel: 'Entire property',
+    pricePerNight,
+    lineTotal: pricePerNight * nights,
+  }
+  return [line]
 }
 
 const rooms = computed(() => model.value.rooms)
@@ -161,7 +167,7 @@ const bookingMode = computed({
     model.value = {
       ...model.value,
       bookingMode: v,
-      rooms: v === 'entire_property' ? buildEntirePropertyLines() : model.value.rooms,
+      rooms: v === 'entire_property' ? buildEntirePropertyLine() : model.value.rooms,
     }
   },
 })
@@ -256,6 +262,10 @@ watch(() => props.nights, (nights) => {
 })
 
 function openPicker(unitId: string) {
+  if (model.value.rooms.some(r => r.unitId === unitId)) {
+    toast.warning('This unit is already added to the booking.')
+    return
+  }
   const conflicts = getUnitConflicts(unitId, props.listingId, props.checkIn, props.checkOut, props.excludeReservationId)
   if (conflicts.length > 0) {
     pendingConflict.value = { unitId, unitName: unitNameOf(unitId), unitTypeName: '' }
@@ -274,7 +284,7 @@ function confirmOverride() {
     model.value = {
       ...model.value,
       bookingMode: 'entire_property',
-      rooms: buildEntirePropertyLines(),
+      rooms: buildEntirePropertyLine(),
     }
     entirePropertyConflictList.value = []
   }
@@ -432,8 +442,8 @@ function fmt(value: number): string {
       Select a property and dates first.
     </p>
 
-    <!-- Room lines -->
-    <div v-if="listingId" class="space-y-2">
+    <!-- Room lines (rooms mode) -->
+    <div v-if="listingId && bookingMode === 'rooms'" class="space-y-2">
       <div
         v-for="room in rooms"
         :key="room.id"
@@ -511,11 +521,15 @@ function fmt(value: number): string {
                     v-for="unit in ut.units"
                     :key="unit.id"
                     type="button"
-                    class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                    class="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm"
+                    :class="rooms.some(r => r.unitId === unit.id) ? 'opacity-60' : 'hover:bg-muted'"
                     @click="pickerUnitId = unit.id"
                   >
                     <span>{{ unit.name }}</span>
-                    <Badge v-if="conflictedUnitIds.has(unit.id)" variant="destructive" class="text-[9px]">
+                    <Badge v-if="rooms.some(r => r.unitId === unit.id)" variant="secondary" class="text-[9px]">
+                      Added
+                    </Badge>
+                    <Badge v-else-if="conflictedUnitIds.has(unit.id)" variant="destructive" class="text-[9px]">
                       Booked
                     </Badge>
                   </button>
@@ -552,9 +566,53 @@ function fmt(value: number): string {
           </Popover>
         </div>
       </template>
+    </div>
 
-      <p v-else class="text-xs text-muted-foreground">
-        All {{ rooms.length }} units are booked for this stay.
+    <!-- Entire property card -->
+    <div v-if="listingId && bookingMode === 'entire_property'" class="space-y-2">
+      <div v-for="room in rooms" :key="room.id" class="rounded-md border p-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium">
+              Entire property
+            </p>
+            <p class="text-xs text-muted-foreground">
+              All {{ allUnits.length }} units booked together
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <span class="text-sm font-semibold">{{ fmt(room.lineTotal) }}</span>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2 border-t pt-3">
+          <Label class="shrink-0 text-xs text-muted-foreground">Price</Label>
+          <Input
+            :model-value="roomInputValue(room)"
+            type="number"
+            min="0"
+            class="h-8 w-32 text-right text-sm"
+            @update:model-value="(v: any) => updateRoomPrice(room.id, Number(v))"
+          />
+          <Select :model-value="room.priceMode ?? 'per_night'" @update:model-value="(v: any) => updateRoomPriceMode(room.id, v)">
+            <SelectTrigger class="h-8 w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="per_night">
+                per night
+              </SelectItem>
+              <SelectItem value="per_stay">
+                per stay
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <span class="ml-auto text-xs text-muted-foreground">
+            {{ (room.priceMode ?? 'per_night') === 'per_stay' ? 'flat rate' : `× ${Math.max(nights, 1)} nights` }}
+          </span>
+        </div>
+      </div>
+      <p v-if="!rooms.length" class="text-xs text-muted-foreground">
+        Select a property and dates first.
       </p>
     </div>
 

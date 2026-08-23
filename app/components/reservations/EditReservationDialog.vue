@@ -67,6 +67,9 @@ const guestCountry = ref('')
 
 // Rooms & Price
 const guestCount = ref(2)
+const guestAdults = ref(2)
+const guestChildren = ref(0)
+const guestInfants = ref(0)
 const totalPrice = ref(0)
 const currency = ref('USD')
 
@@ -98,6 +101,12 @@ const roomsTotal = computed(() => rooms.value.reduce((sum, r) => sum + r.lineTot
 watch(roomsTotal, (total) => {
   if (total > 0)
     totalPrice.value = total
+})
+
+watch([guestAdults, guestChildren, guestInfants], ([a, c, i]) => {
+  const total = a + c + i
+  if (total > 0)
+    guestCount.value = total
 })
 
 const computedNights = computed(() => {
@@ -161,6 +170,9 @@ watch(() => props.open, (open) => {
     guestZip.value = r.guestZip ?? ''
     guestCountry.value = r.guestCountry ?? ''
     guestCount.value = r.guestCount
+    guestAdults.value = r.guestAdults ?? r.guestCount
+    guestChildren.value = r.guestChildren ?? 0
+    guestInfants.value = r.guestInfants ?? 0
     totalPrice.value = r.totalPrice
     rooms.value = r.rooms?.map(room => ({ ...room })) ?? []
     bookingMode.value = r.bookingMode ?? 'rooms'
@@ -186,6 +198,14 @@ const errors = computed(() => ({
   email: !guestEmail.value.trim(),
 }))
 const hasErrors = computed(() => Object.values(errors.value).some(Boolean))
+
+const statusComplete = computed(() => {
+  if (!status.value)
+    return false
+  if (status.value === 'inquiry')
+    return inquiryExpiryHours.value > 0
+  return true
+})
 
 function startEdit(index: number) {
   const g = occupants.value[index]
@@ -231,12 +251,14 @@ function saveOccupant() {
     occupants.value = [...occupants.value, occupant]
   }
   guestCount.value = occupants.value.length
+  guestAdults.value = occupants.value.length
   editingIndex.value = null
 }
 
 function removeOccupant(index: number) {
   occupants.value = occupants.value.filter((_, i) => i !== index)
   guestCount.value = occupants.value.length
+  guestAdults.value = occupants.value.length
   if (editingIndex.value === index)
     editingIndex.value = null
 }
@@ -262,6 +284,9 @@ function save() {
     guestEmail: guestEmail.value.trim(),
     guestPhone,
     guestCount: guestCount.value,
+    guestAdults: guestAdults.value,
+    guestChildren: guestChildren.value,
+    guestInfants: guestInfants.value,
     totalPrice: totalPrice.value,
     currency: currency.value,
     ...(statusManagedHere ? { status: status.value } : {}),
@@ -414,9 +439,14 @@ function categoryLabel(category: string): string {
           <!-- Status and Source -->
           <AccordionItem value="status" class="rounded-md border">
             <AccordionTrigger class="px-4 py-3 hover:no-underline">
-              <h3 class="text-sm font-semibold">
-                Status and Source
-              </h3>
+              <span class="flex w-full items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold">
+                  Status and Source
+                </h3>
+                <Badge :variant="statusComplete ? 'secondary' : 'outline'" :class="statusComplete ? 'text-green-700 border-green-500/30 bg-green-500/10' : 'text-muted-foreground'">
+                  {{ statusComplete ? 'Complete' : 'Incomplete' }}
+                </Badge>
+              </span>
             </AccordionTrigger>
             <AccordionContent class="px-4 pb-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -591,9 +621,25 @@ function categoryLabel(category: string): string {
                 :exclude-reservation-id="reservation?.id ?? ''"
               />
               <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="space-y-2">
+                <div class="space-y-2 sm:col-span-2">
                   <Label>Guests</Label>
-                  <Input v-model.number="guestCount" type="number" min="1" />
+                  <div class="grid grid-cols-3 gap-2">
+                    <div class="space-y-1">
+                      <Label class="text-[10px] text-muted-foreground">Adults</Label>
+                      <Input v-model.number="guestAdults" type="number" min="0" />
+                    </div>
+                    <div class="space-y-1">
+                      <Label class="text-[10px] text-muted-foreground">Children</Label>
+                      <Input v-model.number="guestChildren" type="number" min="0" />
+                    </div>
+                    <div class="space-y-1">
+                      <Label class="text-[10px] text-muted-foreground">Infants</Label>
+                      <Input v-model.number="guestInfants" type="number" min="0" />
+                    </div>
+                  </div>
+                  <p class="text-xs text-muted-foreground">
+                    {{ guestAdults + guestChildren + guestInfants }} total
+                  </p>
                 </div>
                 <div class="space-y-2">
                   <Label>Nights</Label>

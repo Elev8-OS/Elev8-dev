@@ -96,6 +96,10 @@ export interface ReservationEntry {
   checkOut: string // ISO date YYYY-MM-DD
   nights: number
   guestCount: number
+  /** Guest count breakdown by category. */
+  guestAdults?: number
+  guestChildren?: number
+  guestInfants?: number
   guests?: GuestOccupant[]
   totalPrice: number
   currency: string
@@ -165,6 +169,10 @@ export interface ReservationDraft {
   checkOut: string
   nights: number
   guestCount: number
+  /** Guest count breakdown by category. */
+  guestAdults?: number
+  guestChildren?: number
+  guestInfants?: number
   totalPrice: number
   currency: string
   /** Owner stay requests / blocked reservations carry extra context. */
@@ -1025,6 +1033,9 @@ export const initialReservations: ReservationEntry[] = [
     checkOut: '2026-09-16',
     nights: 4,
     guestCount: 5,
+    guestAdults: 4,
+    guestChildren: 1,
+    guestInfants: 0,
     totalPrice: 1000,
     currency: 'USD',
     status: 'verified',

@@ -120,6 +120,16 @@ const totalPrice = ref(0)
 const guestNotes = ref('')
 
 const guestCount = ref(2)
+const guestAdults = ref(2)
+const guestChildren = ref(0)
+const guestInfants = ref(0)
+
+const guestTotal = computed(() => guestAdults.value + guestChildren.value + guestInfants.value)
+
+watch(guestTotal, (total) => {
+  if (total > 0)
+    guestCount.value = total
+})
 
 const dialCodes = ['+62', '+41', '+1', '+44', '+61', '+49', '+33', '+31', '+48', '+43', '+65']
 
@@ -204,6 +214,13 @@ const formattedTotal = computed(() => {
 })
 
 const basicComplete = computed(() => Boolean(checkIn.value && checkOut.value && listingId.value))
+const statusComplete = computed(() => {
+  if (!status.value)
+    return false
+  if (status.value === 'inquiry')
+    return inquiryExpiryHours.value > 0
+  return true
+})
 const contactComplete = computed(() => Boolean(guestFirstName.value.trim() && guestLastName.value.trim() && guestEmail.value.trim()))
 
 const attempted = ref(false)
@@ -248,6 +265,9 @@ function reset() {
   totalPrice.value = 0
   guestNotes.value = ''
   guestCount.value = 2
+  guestAdults.value = 2
+  guestChildren.value = 0
+  guestInfants.value = 0
   attempted.value = false
 }
 
@@ -273,6 +293,9 @@ function handleSubmit() {
     checkOut: checkOut.value,
     nights: computedNights.value,
     guestCount: guestCount.value,
+    guestAdults: guestAdults.value,
+    guestChildren: guestChildren.value,
+    guestInfants: guestInfants.value,
     totalPrice: totalPrice.value,
     currency: currency.value,
     status: status.value,
@@ -438,9 +461,14 @@ watch(() => props.open, (open) => {
           <!-- Status and Source -->
           <AccordionItem value="status" class="rounded-md border">
             <AccordionTrigger class="px-4 py-3 hover:no-underline">
-              <h3 class="text-sm font-semibold">
-                Status and Source
-              </h3>
+              <span class="flex w-full items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold">
+                  Status and Source
+                </h3>
+                <Badge :variant="statusComplete ? 'secondary' : 'outline'" :class="statusComplete ? 'text-green-700 border-green-500/30 bg-green-500/10' : 'text-muted-foreground'">
+                  {{ statusComplete ? 'Complete' : 'Incomplete' }}
+                </Badge>
+              </span>
             </AccordionTrigger>
             <AccordionContent class="px-4 pb-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -639,9 +667,25 @@ watch(() => props.open, (open) => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div class="space-y-2">
+                <div class="space-y-2 sm:col-span-2">
                   <Label>Guests</Label>
-                  <Input v-model.number="guestCount" type="number" min="1" />
+                  <div class="grid grid-cols-3 gap-4">
+                    <div class="space-y-1.5">
+                      <Label class="text-xs text-muted-foreground">Adults</Label>
+                      <Input v-model.number="guestAdults" type="number" min="0" />
+                    </div>
+                    <div class="space-y-1.5">
+                      <Label class="text-xs text-muted-foreground">Children</Label>
+                      <Input v-model.number="guestChildren" type="number" min="0" />
+                    </div>
+                    <div class="space-y-1.5">
+                      <Label class="text-xs text-muted-foreground">Infants</Label>
+                      <Input v-model.number="guestInfants" type="number" min="0" />
+                    </div>
+                  </div>
+                  <p class="text-xs text-muted-foreground">
+                    {{ guestTotal }} total
+                  </p>
                 </div>
               </div>
             </AccordionContent>
