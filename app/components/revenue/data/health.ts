@@ -29,9 +29,16 @@ export type SignalFamily
 
 export type SyncState = 'live' | 'partial' | 'paused' | 'degraded'
 
-/** Where a finding sits in the apply pipeline. */
+/**
+ * Where a finding sits in the apply pipeline.
+ *
+ * `snapshot` comes first and is not bookkeeping: it captures the full prior
+ * state of every field the write touches, which makes it both the undo and the
+ * baseline the effect is later measured against. Nothing is written before it
+ * exists.
+ */
 export type ApplyState
-  = | 'idle' | 'saved' | 'written' | 'verified' | 'recomputed' | 'live'
+  = | 'idle' | 'snapshot' | 'saved' | 'written' | 'verified' | 'recomputed' | 'live'
     | 'recompute_unavailable' | 'push_failed' | 'stale'
 
 export const domainLabels: Record<HealthDomain, string> = {
