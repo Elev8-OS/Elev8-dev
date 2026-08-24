@@ -2,7 +2,7 @@
 import type { GuestRegistration } from './data/guest-registration'
 import { computed } from 'vue'
 import { listings } from '~/components/listings/data/listings'
-import { buildApoaPayload, buildAvsPayload, providerLabels, statusLabels } from './data/guest-registration'
+import { buildApoaPayload, buildAvsPayload, buildFeratelPayload, providerLabels, statusLabels } from './data/guest-registration'
 
 const props = defineProps<{
   registration: GuestRegistration | null
@@ -31,7 +31,9 @@ const payload = computed(() => {
   const listing = listings.value.find(l => l.id === reg.listingId)
   return reg.provider === 'apoa'
     ? buildApoaPayload(reg, connection, listing)
-    : buildAvsPayload(reg, connection, listing)
+    : reg.provider === 'feratel'
+      ? buildFeratelPayload(reg, connection, listing)
+      : buildAvsPayload(reg, connection, listing)
 })
 
 const payloadRows = computed(() => {

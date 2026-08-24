@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import SettingsApoaIntegration from './ApoaIntegration.vue'
 import SettingsAvsMeldescheinIntegration from './AvsMeldescheinIntegration.vue'
+import SettingsFeratelIntegration from './FeratelIntegration.vue'
 import { payoutAccounts } from './data/payouts'
 import SettingsEmailIntegration from './EmailIntegration.vue'
 import SettingsMinutIntegration from './MinutIntegration.vue'
@@ -16,11 +17,11 @@ const { isConnected: minutConnected, devices: minutDevices } = useMinut()
 const { isConnected: emailConnected, activeAccount: emailAccount, hasPendingCustom: emailPending } = useEmailIntegration()
 const gr = useGuestRegistration()
 
-type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email' | 'apoa' | 'avs'
+type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email' | 'apoa' | 'avs' | 'feratel'
 
 const openIntegration = ref<IntegrationId | null>(null)
 const sheetOpen = computed({
-  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs'].includes(openIntegration.value ?? ''),
+  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs', 'feratel'].includes(openIntegration.value ?? ''),
   set: (val) => {
     if (!val)
       openIntegration.value = null
@@ -42,6 +43,8 @@ const activeComponent = computed(() => {
     return SettingsApoaIntegration
   if (openIntegration.value === 'avs')
     return SettingsAvsMeldescheinIntegration
+  if (openIntegration.value === 'feratel')
+    return SettingsFeratelIntegration
   return null
 })
 
@@ -51,7 +54,7 @@ const activeSheetTitle = computed(() => {
   if (openIntegration.value === 'threecx')
     return '3CX Telephony'
   if (openIntegration.value === 'smartlock')
-    return 'Smart Lock (Seam)'
+    return 'Smart Lock'
   if (openIntegration.value === 'minut')
     return 'Minut (Noise & Sensor Monitoring)'
   if (openIntegration.value === 'email')
@@ -60,6 +63,8 @@ const activeSheetTitle = computed(() => {
     return 'APOA (Indonesian Immigration)'
   if (openIntegration.value === 'avs')
     return 'AVS Meldeschein (Germany)'
+  if (openIntegration.value === 'feratel')
+    return 'Feratel (Austria)'
   return ''
 })
 
@@ -119,6 +124,12 @@ const avsPill = computed(() => {
   return { label: 'Connected', tone: 'connected' as const }
 })
 
+const feratelPill = computed(() => {
+  if (!gr.isConnected('feratel'))
+    return { label: 'Not connected', tone: 'idle' as const }
+  return { label: 'Connected', tone: 'connected' as const }
+})
+
 const payoutPill = computed(() => {
   const count = payoutAccounts.value.length
   if (count === 0)
@@ -139,211 +150,308 @@ const statusDotClass: Record<'connected' | 'idle', string> = {
 function openSheet(id: IntegrationId) {
   openIntegration.value = id
 }
+
+type IntegrationGroup = 'all' | 'messaging' | 'devices' | 'payments' | 'government'
+
+const activeGroup = ref<IntegrationGroup>('all')
+
+const groupOptions: { value: IntegrationGroup, label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'messaging', label: 'Messaging & Communication' },
+  { value: 'devices', label: 'Devices & Sensors' },
+  { value: 'payments', label: 'Payments' },
+  { value: 'government', label: 'Government Integration' },
+]
+
+function isGroupVisible(group: Exclude<IntegrationGroup, 'all'>): boolean {
+  return activeGroup.value === 'all' || activeGroup.value === group
+}
 </script>
 
 <template>
   <div class="space-y-6">
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <!-- WhatsApp -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-[#25D366]/10">
-            <Icon name="logos:whatsapp-icon" class="size-5" />
-          </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[whatsappPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[whatsappPill.tone]" />
-            {{ whatsappPill.label }}
-          </span>
-        </div>
-        <p class="mb-1 text-sm font-medium">
-          WhatsApp Business
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Send WhatsApp templates and receive 2-way guest messages in the Inbox.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('whatsapp')">
-          {{ whatsappConnected ? 'Manage' : 'Connect' }}
-        </Button>
-      </div>
+    <!-- Category filter chips -->
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        v-for="opt in groupOptions"
+        :key="opt.value"
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+        :class="activeGroup === opt.value ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-card text-muted-foreground hover:bg-muted'"
+        @click="activeGroup = opt.value"
+      >
+        {{ opt.label }}
+      </button>
+    </div>
 
-      <!-- 3CX Telephony -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-green-500/10">
-            <Icon name="lucide:phone" class="size-5 text-green-600" />
-          </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[threeCxPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[threeCxPill.tone]" />
-            {{ threeCxPill.label }}
-          </span>
-        </div>
-        <p class="mb-1 text-sm font-medium">
-          3CX Telephony
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Log PBX calls, screen-pop matched guests, and enable click-to-call in the Inbox.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('threecx')">
-          {{ threeCxConnected ? 'Manage' : 'Connect' }}
-        </Button>
+    <!-- Messaging & Communication group -->
+    <div v-if="isGroupVisible('messaging')" class="space-y-3">
+      <div class="flex items-center gap-2">
+        <Icon name="lucide:messages-square" class="size-4 text-muted-foreground" />
+        <h3 class="text-sm font-semibold tracking-tight">
+          Messaging &amp; Communication
+        </h3>
       </div>
-
-      <!-- Smart Lock (Seam) -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-amber-500/10">
-            <Icon name="lucide:key-round" class="size-5 text-amber-600" />
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- WhatsApp -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-[#25D366]/10">
+              <Icon name="logos:whatsapp-icon" class="size-5" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[whatsappPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[whatsappPill.tone]" />
+              {{ whatsappPill.label }}
+            </span>
           </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[smartLockPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[smartLockPill.tone]" />
-            {{ smartLockPill.label }}
-          </span>
+          <p class="mb-1 text-sm font-medium">
+            WhatsApp Business
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Send WhatsApp templates and receive 2-way guest messages in the Inbox.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('whatsapp')">
+            {{ whatsappConnected ? 'Manage' : 'Connect' }}
+          </Button>
         </div>
-        <p class="mb-1 text-sm font-medium">
-          Smart Lock (Seam)
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Pair locks to properties or rooms, auto-generate guest access codes, and monitor battery &amp; connectivity.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('smartlock')">
-          {{ smartLock.isConnected.value ? 'Manage' : 'Connect' }}
-        </Button>
+
+        <!-- Email (Sending Domain) -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-sky-500/10">
+              <Icon name="lucide:mail" class="size-5 text-sky-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[emailPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[emailPill.tone]" />
+              {{ emailPill.label }}
+            </span>
+          </div>
+          <p class="mb-1 text-sm font-medium">
+            Email (Sending Domain)
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Send and receive guest email as your own domain — connect a branded address or use the free default.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('email')">
+            {{ emailConnected ? 'Manage' : 'Connect' }}
+          </Button>
+        </div>
+
+        <!-- 3CX Telephony -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-green-500/10">
+              <Icon name="lucide:phone" class="size-5 text-green-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[threeCxPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[threeCxPill.tone]" />
+              {{ threeCxPill.label }}
+            </span>
+          </div>
+          <p class="mb-1 text-sm font-medium">
+            3CX Telephony
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Log PBX calls, screen-pop matched guests, and enable click-to-call in the Inbox.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('threecx')">
+            {{ threeCxConnected ? 'Manage' : 'Connect' }}
+          </Button>
+        </div>
       </div>
+    </div>
 
-      <!-- Email (Sending Domain) -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-sky-500/10">
-            <Icon name="lucide:mail" class="size-5 text-sky-600" />
-          </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[emailPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[emailPill.tone]" />
-            {{ emailPill.label }}
-          </span>
-        </div>
-        <p class="mb-1 text-sm font-medium">
-          Email (Sending Domain)
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Send and receive guest email as your own domain — connect a branded address or use the free default.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('email')">
-          {{ emailConnected ? 'Manage' : 'Connect' }}
-        </Button>
+    <!-- Devices & Sensors group -->
+    <div v-if="isGroupVisible('devices')" class="space-y-3">
+      <div class="flex items-center gap-2">
+        <Icon name="lucide:radio" class="size-4 text-muted-foreground" />
+        <h3 class="text-sm font-semibold tracking-tight">
+          Devices &amp; Sensors
+        </h3>
       </div>
-
-      <!-- Payout Gateways -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-blue-500/10">
-            <Icon name="lucide:wallet" class="size-5 text-blue-600" />
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Smart Lock -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-amber-500/10">
+              <Icon name="lucide:key-round" class="size-5 text-amber-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[smartLockPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[smartLockPill.tone]" />
+              {{ smartLockPill.label }}
+            </span>
           </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[payoutPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[payoutPill.tone]" />
-            {{ payoutPill.label }}
-          </span>
+          <p class="mb-1 text-sm font-medium">
+            Smart Lock
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Pair locks to properties or rooms, auto-generate guest access codes, and monitor battery &amp; connectivity.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('smartlock')">
+            {{ smartLock.isConnected.value ? 'Manage' : 'Connect' }}
+          </Button>
         </div>
-        <p class="mb-1 text-sm font-medium">
-          Payout Gateways
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Connect Stripe, Doku, or Xendit for guest payments and settlements.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" as-child>
-          <NuxtLink to="/settings/payouts">
-            {{ payoutPill.tone === 'connected' ? 'Manage' : 'Connect' }}
-          </NuxtLink>
-        </Button>
+
+        <!-- Minut (Noise & Sensor Monitoring) -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-sky-500/10">
+              <Icon name="lucide:audio-waveform" class="size-5 text-sky-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[minutPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[minutPill.tone]" />
+              {{ minutPill.label }}
+            </span>
+          </div>
+          <p class="mb-1 text-sm font-medium">
+            Minut (Noise & Sensor Monitoring)
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Receive noise, smoke, motion, and sensor events from Minut devices and trigger Journeys on them.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('minut')">
+            {{ minutConnected ? 'Manage' : 'Connect' }}
+          </Button>
+        </div>
       </div>
+    </div>
 
-      <!-- Minut (Noise & Sensor Monitoring) -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-sky-500/10">
-            <Icon name="lucide:audio-waveform" class="size-5 text-sky-600" />
-          </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[minutPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[minutPill.tone]" />
-            {{ minutPill.label }}
-          </span>
-        </div>
-        <p class="mb-1 text-sm font-medium">
-          Minut (Noise & Sensor Monitoring)
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Receive noise, smoke, motion, and sensor events from Minut devices and trigger Journeys on them.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('minut')">
-          {{ minutConnected ? 'Manage' : 'Connect' }}
-        </Button>
+    <!-- Payments group -->
+    <div v-if="isGroupVisible('payments')" class="space-y-3">
+      <div class="flex items-center gap-2">
+        <Icon name="lucide:wallet" class="size-4 text-muted-foreground" />
+        <h3 class="text-sm font-semibold tracking-tight">
+          Payments
+        </h3>
       </div>
-
-      <!-- APOA (Indonesian Immigration) -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-emerald-500/10">
-            <Icon name="lucide:stamp" class="size-5 text-emerald-600" />
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Payout Gateways -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-blue-500/10">
+              <Icon name="lucide:wallet" class="size-5 text-blue-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[payoutPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[payoutPill.tone]" />
+              {{ payoutPill.label }}
+            </span>
           </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[apoaPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[apoaPill.tone]" />
-            {{ apoaPill.label }}
-          </span>
+          <p class="mb-1 text-sm font-medium">
+            Payout Gateways
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Connect Stripe, Doku, or Xendit for guest payments and settlements.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" as-child>
+            <NuxtLink to="/settings/payouts">
+              {{ payoutPill.tone === 'connected' ? 'Manage' : 'Connect' }}
+            </NuxtLink>
+          </Button>
         </div>
-        <p class="mb-1 text-sm font-medium">
-          APOA (Indonesian Immigration)
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Report foreign guests to Ditjen Imigrasi (Aplikasi Pelaporan Orang Asing) after every check-in.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('apoa')">
-          {{ gr.isConnected('apoa') ? 'Manage' : 'Connect' }}
-        </Button>
       </div>
+    </div>
 
-      <!-- AVS Meldeschein (Germany) -->
-      <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-indigo-500/10">
-            <Icon name="lucide:file-badge" class="size-5 text-indigo-600" />
+    <!-- Government Integration group -->
+    <div v-if="isGroupVisible('government')" class="space-y-3">
+      <div class="flex items-center gap-2">
+        <Icon name="lucide:landmark" class="size-4 text-muted-foreground" />
+        <h3 class="text-sm font-semibold tracking-tight">
+          Government Integration
+        </h3>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- APOA (Indonesian Immigration) -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-emerald-500/10">
+              <Icon name="lucide:stamp" class="size-5 text-emerald-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[apoaPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[apoaPill.tone]" />
+              {{ apoaPill.label }}
+            </span>
           </div>
-          <span
-            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
-            :class="statusToneClass[avsPill.tone]"
-          >
-            <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[avsPill.tone]" />
-            {{ avsPill.label }}
-          </span>
+          <p class="mb-1 text-sm font-medium">
+            APOA (Indonesian Immigration)
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Report foreign guests to Ditjen Imigrasi (Aplikasi Pelaporan Orang Asing) after every check-in.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('apoa')">
+            {{ gr.isConnected('apoa') ? 'Manage' : 'Connect' }}
+          </Button>
         </div>
-        <p class="mb-1 text-sm font-medium">
-          AVS Meldeschein (Germany)
-        </p>
-        <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
-          Generate municipal Meldeschein guest registrations for German properties.
-        </p>
-        <Button variant="outline" size="sm" class="self-start" @click="openSheet('avs')">
-          {{ gr.isConnected('avs') ? 'Manage' : 'Connect' }}
-        </Button>
+
+        <!-- AVS Meldeschein (Germany) -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-indigo-500/10">
+              <Icon name="lucide:file-badge" class="size-5 text-indigo-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[avsPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[avsPill.tone]" />
+              {{ avsPill.label }}
+            </span>
+          </div>
+          <p class="mb-1 text-sm font-medium">
+            AVS Meldeschein (Germany)
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Generate municipal Meldeschein guest registrations for German properties.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('avs')">
+            {{ gr.isConnected('avs') ? 'Manage' : 'Connect' }}
+          </Button>
+        </div>
+
+        <!-- Feratel (Austria) -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-rose-500/10">
+              <Icon name="lucide:landmark" class="size-5 text-rose-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[feratelPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[feratelPill.tone]" />
+              {{ feratelPill.label }}
+            </span>
+          </div>
+          <p class="mb-1 text-sm font-medium">
+            Feratel (Austria)
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Generate municipal Meldewesen guest registrations for Austrian properties.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('feratel')">
+            {{ gr.isConnected('feratel') ? 'Manage' : 'Connect' }}
+          </Button>
+        </div>
       </div>
     </div>
 

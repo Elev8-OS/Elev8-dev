@@ -1,7 +1,7 @@
 import type { Listing } from '~/components/listings/data/listings'
 import type { GuestOccupant } from '~/components/reservations/data/reservations'
 
-export type RegistrationProvider = 'apoa' | 'avs'
+export type RegistrationProvider = 'apoa' | 'avs' | 'feratel'
 export type RegistrationStatus = 'pending' | 'incomplete' | 'submitted' | 'failed' | 'void'
 
 export interface ApoaConnectionDetails {
@@ -12,9 +12,24 @@ export interface ApoaConnectionDetails {
 }
 
 export interface AvsConnectionDetails {
-  firmName: string
-  username: string
-  propertyNumber: string
+  /** Optional human-readable account label (e.g. "Elev8 Tourism Office"). */
+  accountName?: string
+  kurverwaltungId: string
+  firmaId: string
+  objektId: string
+  /** Optional separate object ID used for Airbnb bookings; falls back to `objektId`. */
+  objektIdAirbnb?: string
+}
+
+export interface FeratelConnectionDetails {
+  /** Optional human-readable account label (e.g. "Elev8 Tourism Office"). */
+  accountName?: string
+  /** MappingCode (betriebnr). */
+  mappingCode: string
+  /** Community Number (Gemeinde). */
+  communityNumber: string
+  /** Default country ID (Land). Optional. */
+  countryId?: string
 }
 
 export interface ProviderConnection {
@@ -24,12 +39,14 @@ export interface ProviderConnection {
   connectedAt: string
   apoa?: ApoaConnectionDetails
   avs?: AvsConnectionDetails
+  feratel?: FeratelConnectionDetails
 }
 
 export interface ListingRegistration {
   listingId: string
   apoa?: { registered: boolean, accountId?: string, accommodationId?: string }
   avs?: { registered: boolean, accountId?: string, propertyId?: string }
+  feratel?: { registered: boolean, accountId?: string, propertyId?: string }
 }
 
 export interface GuestRegistration {
@@ -37,6 +54,8 @@ export interface GuestRegistration {
   provider: RegistrationProvider
   accountId?: string // which connected account owns this report
   reservationId: string
+  /** Source channel of the reservation, used to pick the AVS Objekt ID (Airbnb vs direct). */
+  channel?: string
   listingId: string
   listingName: string
   guestName: string
@@ -69,6 +88,7 @@ export interface GuestRegistration {
 export const providerLabels: Record<RegistrationProvider, string> = {
   apoa: 'APOA (Indonesia)',
   avs: 'AVS Meldeschein (Germany)',
+  feratel: 'Feratel (Austria)',
 }
 
 export const statusLabels: Record<RegistrationStatus, string> = {
@@ -95,7 +115,7 @@ const INDONESIAN_NATIONALITIES = new Set([
  * APOA obliges reporting of foreign nationals only; AVS Meldeschein reports every guest.
  */
 export function isReportingRequired(provider: RegistrationProvider, occupant: GuestOccupant): boolean {
-  if (provider === 'avs')
+  if (provider === 'avs' || provider === 'feratel')
     return true
   if (occupant.category === 'infant')
     return false // APOA requires passport-holders; infants without docs are skipped
@@ -156,15 +176,44 @@ export function buildAvsPayload(reg: GuestRegistration, connection?: ProviderCon
     land: reg.country ?? reg.nationality ?? '',
     anreise: reg.checkIn,
     abreise: reg.checkOut,
-    firma: connection?.avs?.firmName ?? '',
-    eigentuemer_nummer: connection?.avs?.propertyNumber ?? '',
+    firma: connection?.avs?.accountName ?? '',
+    kurverwaltung_id: connection?.avs?.kurverwaltungId ?? '',
+    firma_id: connection?.avs?.firmaId ?? '',
+    objekt_id: reg.channel === 'Airbnb'
+      ? (connection?.avs?.objektIdAirbnb || connection?.avs?.objektId || '')
+      : (connection?.avs?.objektId ?? ''),
+  }
+}
+
+/** Real-world Feratel Meldewesen guest payload shape (Austrian municipal registration). */
+export function buildFeratelPayload(reg: GuestRegistration, connection?: ProviderConnection, _listing?: Listing) {
+  const nameParts = reg.guestName.trim().split(/\s+/)
+  const vorname = nameParts.slice(0, -1).join(' ') || reg.guestName
+  const nachname = nameParts.at(-1) ?? ''
+  return {
+    betriebnr: connection?.feratel?.mappingCode ?? '',
+    gemeinde: connection?.feratel?.communityNumber ?? '',
+    land: connection?.feratel?.countryId ?? '',
+    nachname,
+    vorname,
+    geburtsdatum: reg.dob ?? '',
+    geburtsort: reg.placeOfBirth ?? '',
+    staatsangehoerigkeit: reg.nationality ?? '',
+    ausweisart: reg.idType === 'id_card' ? 'Personalausweis' : reg.idType === 'drivers_license' ? 'Führerschein' : 'Reisepass',
+    ausweisnummer: reg.idNumber ?? '',
+    anreise: reg.checkIn,
+    abreise: reg.checkOut,
   }
 }
 
 export function generateSubmissionId(provider: RegistrationProvider): string {
   const n = String(Math.floor(10000 + Math.random() * 89999))
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  return provider === 'apoa' ? `APOA-${date}-${n}` : `AVS-MELD-${date}-${n}`
+  if (provider === 'apoa')
+    return `APOA-${date}-${n}`
+  if (provider === 'feratel')
+    return `FERATEL-${date}-${n}`
+  return `AVS-MELD-${date}-${n}`
 }
 
 /**
@@ -184,7 +233,9 @@ export async function mockSubmitToGovernment(
       ok: false,
       error: provider === 'apoa'
         ? 'APOA returned HTTP 422 — passport number rejected. Check the guest passport data and retry.'
-        : 'AVS XML import failed — required field "Geburtsort" is missing. Complete the guest profile and retry.',
+        : provider === 'feratel'
+          ? 'Feratel Meldewesen rejected the record — required field "Geburtsdatum" is missing. Complete the guest profile and retry.'
+          : 'AVS XML import failed — required field "Geburtsort" is missing. Complete the guest profile and retry.',
     }
   }
   return { ok: true, submissionId: generateSubmissionId(provider) }

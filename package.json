@@ -45,7 +45,7 @@
     "preview": "nuxt preview",
     "start": "node .output/server/index.mjs",
     "postinstall": "nuxt prepare",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 vue-tsc --noEmit",
     "lint": "eslint .",
     "format": "eslint --fix .",
     "release": "release-it"

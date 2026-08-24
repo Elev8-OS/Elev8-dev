@@ -309,6 +309,14 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   GUEST_REGISTRATION_FAILED: '/guest-registration',
 }
 
+function registrationProviderName(provider?: string): string {
+  if (provider === 'apoa')
+    return 'APOA'
+  if (provider === 'feratel')
+    return 'Feratel'
+  return 'AVS Meldeschein'
+}
+
 export function getDescription(type: AlertType, context: Record<string, any>): string {
   switch (type) {
     case 'SMART_LOCK_DEAD':
@@ -436,13 +444,13 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
     case 'EMAIL_REPLY_RECEIVED':
       return `${context.guestName || 'Guest'} replied via email${context.subject ? `: “${context.subject}”` : ''}.`
     case 'GUEST_REGISTRATION_DUE':
-      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} report due.`
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${registrationProviderName(context.provider)} report due.`
     case 'GUEST_REGISTRATION_OVERDUE':
-      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} report overdue (check-in ${context.check_in || '?'}).`
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${registrationProviderName(context.provider)} report overdue (check-in ${context.check_in || '?'}).`
     case 'GUEST_REGISTRATION_SUBMITTED':
-      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} report submitted${context.submission_id ? ` (${context.submission_id})` : ''}.`
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${registrationProviderName(context.provider)} report submitted${context.submission_id ? ` (${context.submission_id})` : ''}.`
     case 'GUEST_REGISTRATION_FAILED':
-      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${context.provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'} submission failed. ${context.error || ''}`
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${registrationProviderName(context.provider)} submission failed. ${context.error || ''}`
     default:
       return ''
   }

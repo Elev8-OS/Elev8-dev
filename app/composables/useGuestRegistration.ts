@@ -1,6 +1,6 @@
-import type { ApoaConnectionDetails, AvsConnectionDetails, GuestRegistration, ListingRegistration, ProviderConnection, RegistrationProvider, RegistrationStatus } from '~/components/guest-registration/data/guest-registration'
+import type { ApoaConnectionDetails, AvsConnectionDetails, FeratelConnectionDetails, GuestRegistration, ListingRegistration, ProviderConnection, RegistrationProvider, RegistrationStatus } from '~/components/guest-registration/data/guest-registration'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import { buildApoaPayload, buildAvsPayload, generateRegistrationId, isRegistrationComplete, isReportingRequired, mockSubmitToGovernment } from '~/components/guest-registration/data/guest-registration'
+import { buildApoaPayload, buildAvsPayload, buildFeratelPayload, generateRegistrationId, isRegistrationComplete, isReportingRequired, mockSubmitToGovernment } from '~/components/guest-registration/data/guest-registration'
 import { listings } from '~/components/listings/data/listings'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
@@ -173,14 +173,14 @@ export function useGuestRegistration() {
    * Connect a new account for a provider (mock OAuth, ~1s).
    * Multiple accounts per provider are supported — each can own different listings.
    */
-  async function connectProvider(provider: RegistrationProvider, details: { apoa?: ApoaConnectionDetails, avs?: AvsConnectionDetails }): Promise<{ success: boolean, error?: string }> {
+  async function connectProvider(provider: RegistrationProvider, details: { apoa?: ApoaConnectionDetails, avs?: AvsConnectionDetails, feratel?: FeratelConnectionDetails }): Promise<{ success: boolean, error?: string }> {
     await new Promise(r => setTimeout(r, 1000))
     const connection: ProviderConnection = {
       id: `${provider}-${Date.now()}`,
       provider,
       status: 'connected',
       connectedAt: new Date().toISOString(),
-      ...(provider === 'apoa' ? { apoa: details.apoa } : { avs: details.avs }),
+      ...(provider === 'apoa' ? { apoa: details.apoa } : provider === 'feratel' ? { feratel: details.feratel } : { avs: details.avs }),
     }
     connections.value = [...connections.value, connection]
     return { success: true }
@@ -206,14 +206,14 @@ export function useGuestRegistration() {
 
   /**
    * Build the registrations for a reservation's occupants (per provider, idempotent).
-   * APOA: foreign nationals only; AVS: every guest. `inquiry` stays are excluded.
+   * APOA: foreign nationals only; AVS & Feratel: every guest. `inquiry` stays are excluded.
    */
   function syncForReservation(reservation: ReservationEntry) {
     if (reservation.status === 'inquiry' || reservation.status === 'cancelled' || reservation.status === 'blocked')
       return
     if (!reservation.guests?.length)
       return
-    for (const provider of ['apoa', 'avs'] as const) {
+    for (const provider of ['apoa', 'avs', 'feratel'] as const) {
       if (!isConnected(provider))
         continue
       const listing = listings.value.find(l => l.id === reservation.listingId)
@@ -234,6 +234,7 @@ export function useGuestRegistration() {
           provider,
           accountId,
           reservationId: reservation.id,
+          channel: reservation.channel,
           listingId: reservation.listingId,
           listingName: listing?.name ?? reservation.listingName,
           guestName: occupant.name,
@@ -288,7 +289,11 @@ export function useGuestRegistration() {
 
     const connection = getAccountForListing(reg.listingId, reg.provider)
     const listing = listings.value.find(l => l.id === reg.listingId)
-    const payload = reg.provider === 'apoa' ? buildApoaPayload(reg, connection, listing) : buildAvsPayload(reg, connection, listing)
+    const payload = reg.provider === 'apoa'
+      ? buildApoaPayload(reg, connection, listing)
+      : reg.provider === 'feratel'
+        ? buildFeratelPayload(reg, connection, listing)
+        : buildAvsPayload(reg, connection, listing)
 
     return mockSubmitToGovernment(reg.provider, payload).then((result) => {
       if (result.ok && result.submissionId) {

@@ -10,14 +10,13 @@ const isConnecting = ref(false)
 const formError = ref('')
 
 const formAccountName = ref('')
-const formKurverwaltungId = ref('')
-const formFirmaId = ref('')
-const formObjektId = ref('')
-const formObjektIdAirbnb = ref('')
+const formMappingCode = ref('')
+const formCommunityNumber = ref('')
+const formCountryId = ref('')
 
-const accounts = computed(() => gr.getConnections('avs'))
-const isConnected = computed(() => gr.isConnected('avs'))
-const registrations = computed(() => gr.registrations.value.filter(r => r.provider === 'avs'))
+const accounts = computed(() => gr.getConnections('feratel'))
+const isConnected = computed(() => gr.isConnected('feratel'))
+const registrations = computed(() => gr.registrations.value.filter(r => r.provider === 'feratel'))
 const submittedCount = computed(() => registrations.value.filter(r => r.status === 'submitted').length)
 
 // --- Account selection (tabs) ---
@@ -34,7 +33,7 @@ watch(accounts, (list) => {
 
 function accountLabel(account: { id: string }) {
   const acc = accounts.value.find(a => a.id === account.id)
-  return acc?.avs?.accountName ?? acc?.avs?.firmaId ?? 'AVS account'
+  return acc?.feratel?.accountName ?? acc?.feratel?.mappingCode ?? 'Feratel account'
 }
 
 function selectAccount(id: string) {
@@ -44,37 +43,35 @@ function selectAccount(id: string) {
 // --- Connect ---
 function resetForm() {
   formAccountName.value = ''
-  formKurverwaltungId.value = ''
-  formFirmaId.value = ''
-  formObjektId.value = ''
-  formObjektIdAirbnb.value = ''
+  formMappingCode.value = ''
+  formCommunityNumber.value = ''
+  formCountryId.value = ''
   formError.value = ''
 }
 
 async function handleConnect() {
   if (isConnecting.value)
     return
-  if (!formKurverwaltungId.value.trim() || !formFirmaId.value.trim() || !formObjektId.value.trim()) {
-    formError.value = 'Kurverwaltung ID, Firma ID and Objekt ID are required.'
+  if (!formMappingCode.value.trim() || !formCommunityNumber.value.trim()) {
+    formError.value = 'Mapping Code and Community Number are required.'
     return
   }
   isConnecting.value = true
   formError.value = ''
-  const result = await gr.connectProvider('avs', {
-    avs: {
+  const result = await gr.connectProvider('feratel', {
+    feratel: {
       accountName: formAccountName.value.trim() || undefined,
-      kurverwaltungId: formKurverwaltungId.value.trim(),
-      firmaId: formFirmaId.value.trim(),
-      objektId: formObjektId.value.trim(),
-      objektIdAirbnb: formObjektIdAirbnb.value.trim() || undefined,
+      mappingCode: formMappingCode.value.trim(),
+      communityNumber: formCommunityNumber.value.trim(),
+      countryId: formCountryId.value.trim() || undefined,
     },
   })
   isConnecting.value = false
   if (!result.success) {
-    formError.value = result.error ?? 'Failed to connect to AVS Meldeschein.'
+    formError.value = result.error ?? 'Failed to connect to Feratel.'
     return
   }
-  toast.success('Connected to AVS Meldeschein.')
+  toast.success('Connected to Feratel (Austria).')
   connectDialogOpen.value = false
   resetForm()
 }
@@ -92,8 +89,8 @@ const disconnectDialogOpen = computed({
 function handleDisconnect() {
   if (!disconnectTarget.value)
     return
-  gr.disconnectProvider('avs', disconnectTarget.value)
-  toast.info('AVS account disconnected. Reported registrations are preserved.')
+  gr.disconnectProvider('feratel', disconnectTarget.value)
+  toast.info('Feratel account disconnected. Reported registrations are preserved.')
   disconnectDialogOpen.value = false
 }
 
@@ -108,10 +105,10 @@ async function handleSync() {
     <div class="flex items-end justify-between gap-4">
       <div class="space-y-1">
         <h3 class="text-lg font-medium">
-          AVS Meldeschein (Germany)
+          Feratel (Austria)
         </h3>
         <p class="text-sm text-muted-foreground">
-          Municipal guest registration for German properties — Meldeschein reports for every guest stay.
+          Municipal guest registration for Austrian properties — Meldewesen reports for every guest stay.
         </p>
       </div>
       <Button v-if="isConnected" class="gap-2" @click="handleSync">
@@ -124,19 +121,19 @@ async function handleSync() {
     <div v-if="!isConnected" class="border border-dashed bg-card/40 p-10 text-center">
       <div class="mx-auto flex max-w-md flex-col items-center gap-4">
         <div class="flex size-12 items-center justify-center rounded-full border bg-background">
-          <Icon name="lucide:file-badge" class="size-5 text-muted-foreground" />
+          <Icon name="lucide:landmark" class="size-5 text-muted-foreground" />
         </div>
         <div class="space-y-2">
           <p class="text-base font-medium">
-            No AVS Meldeschein account connected
+            No Feratel account connected
           </p>
           <p class="text-sm text-muted-foreground">
-            Connect your AVS account to automatically prepare Meldeschein guest registrations for every stay.
+            Connect your Feratel account to automatically prepare Meldewesen guest registrations for every stay.
           </p>
         </div>
         <Button class="gap-2" @click="connectDialogOpen = true">
           <Icon name="lucide:log-in" class="size-4" />
-          Connect with AVS Meldeschein
+          Connect with Feratel
         </Button>
       </div>
     </div>
@@ -152,8 +149,8 @@ async function handleSync() {
           :class="activeAccount?.id === account.id ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-card text-muted-foreground hover:bg-muted'"
           @click="selectAccount(account.id)"
         >
-          <Icon name="lucide:file-badge" class="size-4" :class="activeAccount?.id === account.id ? 'text-primary' : ''" />
-          <span class="font-medium">{{ account.avs?.accountName || account.avs?.firmaId }}</span>
+          <Icon name="lucide:landmark" class="size-4" :class="activeAccount?.id === account.id ? 'text-primary' : ''" />
+          <span class="font-medium">{{ account.feratel?.accountName || account.feratel?.mappingCode }}</span>
         </button>
         <Button variant="outline" size="sm" class="h-9 gap-1.5" @click="connectDialogOpen = true">
           <Icon name="lucide:plus" class="size-3.5" />
@@ -165,14 +162,14 @@ async function handleSync() {
       <div v-if="activeAccount" class="rounded-lg border bg-card p-4">
         <div class="flex items-start gap-3">
           <div class="flex size-10 shrink-0 items-center justify-center rounded-md border bg-card">
-            <Icon name="lucide:file-badge" class="size-5 text-indigo-600" />
+            <Icon name="lucide:landmark" class="size-5 text-rose-600" />
           </div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium">
-              {{ activeAccount.avs?.accountName || activeAccount.avs?.firmaId }}
+              {{ activeAccount.feratel?.accountName || activeAccount.feratel?.mappingCode }}
             </p>
             <p class="text-xs text-muted-foreground">
-              Kurverwaltung {{ activeAccount.avs?.kurverwaltungId }} · Firma {{ activeAccount.avs?.firmaId }} · Objekt {{ activeAccount.avs?.objektId }}
+              Mapping {{ activeAccount.feratel?.mappingCode }} · Gemeinde {{ activeAccount.feratel?.communityNumber }}
             </p>
             <p class="mt-1 text-[11px] text-muted-foreground/60">
               {{ submittedCount }} report{{ submittedCount !== 1 ? 's' : '' }} submitted
@@ -199,13 +196,13 @@ async function handleSync() {
               Property Registration
             </h4>
             <p class="text-xs text-muted-foreground">
-              Assign each listing to this AVS account. A listing already used by another account can't be reassigned.
+              Assign each listing to this Feratel account. A listing already used by another account can't be reassigned.
             </p>
           </div>
         </div>
         <GuestRegistrationListingPicker
           v-if="activeAccount"
-          provider="avs"
+          provider="feratel"
           :account-id="activeAccount.id"
           :account-label="accountLabel(activeAccount)"
         />
@@ -213,7 +210,7 @@ async function handleSync() {
 
       <p class="text-xs text-muted-foreground">
         <Icon name="lucide:info" class="mr-1 inline size-3" />
-        Meldeschein reports are generated for every guest after check-in and become due 24 hours later. Track and submit them from the Guest Registration page.
+        Meldewesen reports are generated for every guest after check-in and become due 24 hours later. Track and submit them from the Guest Registration page.
       </p>
     </div>
 
@@ -221,39 +218,32 @@ async function handleSync() {
     <Dialog v-model:open="connectDialogOpen">
       <DialogContent class="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Connect AVS Meldeschein</DialogTitle>
+          <DialogTitle>Connect Feratel</DialogTitle>
           <DialogDescription>
-            Enter your AVS Meldeschein login details as provided by your municipality (meldeschein.avs.de). You can connect multiple accounts.
+            Enter your Feratel Meldewesen details as provided by your municipality (feratel.at). You can connect multiple accounts.
           </DialogDescription>
         </DialogHeader>
         <form class="space-y-4" @submit.prevent="handleConnect">
           <div class="space-y-2">
-            <Label for="avs-account-name">Account Name</Label>
-            <Input id="avs-account-name" v-model="formAccountName" placeholder="e.g. Elev8 Tourism Office (optional)" class="w-full" />
+            <Label for="feratel-account-name">Account Name</Label>
+            <Input id="feratel-account-name" v-model="formAccountName" placeholder="e.g. Elev8 Tourism Office (optional)" class="w-full" />
             <p class="text-[11px] text-muted-foreground">
               Optional label to identify this connection.
             </p>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
-              <Label for="avs-kurverwaltung">Kurverwaltung ID</Label>
-              <Input id="avs-kurverwaltung" v-model="formKurverwaltungId" placeholder="e.g. 12345" class="w-full font-mono text-sm" />
+              <Label for="feratel-mapping">Mapping Code</Label>
+              <Input id="feratel-mapping" v-model="formMappingCode" placeholder="MappingCode (betriebnr), e.g. N3620" class="w-full font-mono text-sm" />
             </div>
             <div class="space-y-2">
-              <Label for="avs-firma">Firma ID</Label>
-              <Input id="avs-firma" v-model="formFirmaId" placeholder="e.g. 6789" class="w-full font-mono text-sm" />
+              <Label for="feratel-community">Community Number (Gemeinde)</Label>
+              <Input id="feratel-community" v-model="formCommunityNumber" placeholder="e.g. 9182114" class="w-full font-mono text-sm" />
             </div>
           </div>
           <div class="space-y-2">
-            <Label for="avs-objekt">Objekt ID</Label>
-            <Input id="avs-objekt" v-model="formObjektId" placeholder="Objekt ID for direct bookings" class="w-full font-mono text-sm" />
-          </div>
-          <div class="space-y-2">
-            <Label for="avs-objekt-airbnb">Objekt ID (Airbnb)</Label>
-            <Input id="avs-objekt-airbnb" v-model="formObjektIdAirbnb" placeholder="Objekt ID for Airbnb bookings (optional)" class="w-full font-mono text-sm" />
-            <p class="text-[11px] text-muted-foreground">
-              Falls back to the direct Objekt ID when left empty.
-            </p>
+            <Label for="feratel-country">Country ID (Land)</Label>
+            <Input id="feratel-country" v-model="formCountryId" placeholder="Default country ID (optional)" class="w-full font-mono text-sm" />
           </div>
           <div v-if="formError" class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
             <div class="flex items-start gap-2">
@@ -267,7 +257,7 @@ async function handleSync() {
             </Button>
             <Button type="submit" :disabled="isConnecting" class="gap-2">
               <Icon v-if="isConnecting" name="lucide:loader-circle" class="size-4 animate-spin" />
-              {{ isConnecting ? 'Connecting…' : 'Connect AVS' }}
+              {{ isConnecting ? 'Connecting…' : 'Connect Feratel' }}
             </Button>
           </DialogFooter>
         </form>
@@ -278,7 +268,7 @@ async function handleSync() {
     <Dialog v-model:open="disconnectDialogOpen">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Disconnect AVS account?</DialogTitle>
+          <DialogTitle>Disconnect Feratel account?</DialogTitle>
           <DialogDescription>
             New reports will stop. Submitted registration records will be preserved for the next time you connect. Listings assigned to this account will be unassigned.
           </DialogDescription>

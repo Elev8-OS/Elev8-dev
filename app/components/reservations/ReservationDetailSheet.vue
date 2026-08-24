@@ -139,7 +139,11 @@ function registrationStatusVariant(status: string) {
 }
 
 function registrationProviderLabel(provider: string) {
-  return provider === 'apoa' ? 'APOA' : 'AVS Meldeschein'
+  if (provider === 'apoa')
+    return 'APOA'
+  if (provider === 'feratel')
+    return 'Feratel'
+  return 'AVS Meldeschein'
 }
 
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -701,7 +705,7 @@ function fmtCleaningDate(iso: string): string {
                 </AccordionTrigger>
                 <AccordionContent class="px-3 pb-3">
                   <div
-                    v-if="!guestRegistration.isConnected('apoa') && !guestRegistration.isConnected('avs')"
+                    v-if="!guestRegistration.isConnected('apoa') && !guestRegistration.isConnected('avs') && !guestRegistration.isConnected('feratel')"
                     class="border border-dashed p-3 text-center"
                   >
                     <p class="text-xs text-muted-foreground">

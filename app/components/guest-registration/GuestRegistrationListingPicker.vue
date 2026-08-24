@@ -250,7 +250,7 @@ function clearFilters() {
           <template v-else-if="isTaken(listing.id)">
             <Badge variant="secondary" class="shrink-0 gap-1.5">
               <Icon name="lucide:user" class="size-3" />
-              Used by {{ owningAccount(listing.id)?.apoa?.accommodationName || owningAccount(listing.id)?.avs?.firmName || 'another account' }}
+              Used by {{ owningAccount(listing.id)?.apoa?.accommodationName || owningAccount(listing.id)?.avs?.accountName || owningAccount(listing.id)?.avs?.firmaId || owningAccount(listing.id)?.feratel?.accountName || owningAccount(listing.id)?.feratel?.mappingCode || 'another account' }}
             </Badge>
           </template>
           <Button v-else variant="outline" size="sm" class="h-8 shrink-0" @click="assignOne(listing.id)">
