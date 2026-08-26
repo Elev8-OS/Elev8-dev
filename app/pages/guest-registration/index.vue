@@ -11,6 +11,7 @@ const {
   filters,
   filteredRegistrations,
   stats,
+  registrations,
   syncAllRegistrations,
   voidRegistration,
   checkOverdueRegistrations,
@@ -67,6 +68,22 @@ function handleSubmit(reg: GuestRegistration) {
   // stacked overlays don't block the submit dialog's clicks.
   detailTarget.value = null
   submitTarget.value = reg
+}
+
+function handleSubmitted(reg: GuestRegistration) {
+  // Re-open the detail dialog with the freshly-updated registration record
+  // (status now "submitted") after the submit dialog closes itself.
+  const updated = registrations.value.find(r => r.id === reg.id) ?? reg
+  submitTarget.value = null
+  detailTarget.value = updated
+}
+
+function handleCloseSubmit() {
+  submitTarget.value = null
+}
+
+function handleCloseDetails() {
+  detailTarget.value = null
 }
 
 async function handleVoid(reg: GuestRegistration) {
@@ -181,12 +198,14 @@ function handleDetails(reg: GuestRegistration) {
     <GuestRegistrationSubmitDialog
       v-model:open="submitOpen"
       :registration="submitTarget"
-      @submitted="detailTarget = $event"
+      @submitted="handleSubmitted"
+      @close="handleCloseSubmit"
     />
     <GuestRegistrationDetailDialog
       v-model:open="detailOpen"
       :registration="detailTarget"
       @submit="handleSubmit"
+      @close="handleCloseDetails"
     />
   </div>
 </template>

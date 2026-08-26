@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { GuestRegistration } from './data/guest-registration'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { providerLabels, statusLabels } from './data/guest-registration'
 
@@ -17,6 +17,13 @@ const gr = useGuestRegistration()
 const isSubmitting = ref(false)
 const submitError = ref('')
 
+// Reset the spinner whenever a new registration is passed in, so a stale
+// "Submitting…" state can never survive across dialog opens.
+watch(() => props.registration, () => {
+  isSubmitting.value = false
+  submitError.value = ''
+})
+
 const open = computed({
   get: () => props.registration !== null,
   set: (val: boolean) => {
@@ -30,15 +37,23 @@ async function handleSubmit() {
     return
   isSubmitting.value = true
   submitError.value = ''
-  const result = await gr.submitRegistration(props.registration.id)
-  isSubmitting.value = false
-  if (!result.success) {
-    submitError.value = result.error ?? 'Submission failed.'
-    return
+  try {
+    const result = await gr.submitRegistration(props.registration.id)
+    if (!result.success) {
+      submitError.value = result.error ?? 'Submission failed.'
+      return
+    }
+    toast.success(`Report submitted for ${props.registration.guestName}.`)
+    emit('submitted', props.registration)
+    emit('close')
   }
-  toast.success(`Report submitted for ${props.registration.guestName}.`)
-  emit('submitted', props.registration)
-  emit('close')
+  catch (err) {
+    console.error('submitRegistration failed', err)
+    submitError.value = 'An unexpected error occurred. Please try again.'
+  }
+  finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 

@@ -38,6 +38,7 @@ export interface GuestRegistrationFilters {
 }
 
 export function useGuestRegistration() {
+  const notifications = useNotifications()
   const connections = useState<ProviderConnection[]>('guest-registration-connections', () =>
     loadFromStorage<ProviderConnection[]>(CONNECTIONS_KEY, []))
   const listingRegistrations = useState<ListingRegistration[]>('guest-registration-listings', () =>
@@ -323,20 +324,24 @@ export function useGuestRegistration() {
   }
 
   function createRegistrationAlert(type: 'GUEST_REGISTRATION_SUBMITTED' | 'GUEST_REGISTRATION_FAILED', reg: GuestRegistration, extra: Record<string, any>) {
-    const notifications = useNotifications()
-    notifications.createAlert(type, type === 'GUEST_REGISTRATION_FAILED' ? 'WARNING' : 'INFO', {
-      guest_name: reg.guestName,
-      listing_id: reg.listingId,
-      listing_name: reg.listingName,
-      provider: reg.provider,
-      registration_id: reg.id,
-      ...extra,
-    })
+    // Notifications are a side effect and must never reject the submit promise.
+    try {
+      notifications.createAlert(type, type === 'GUEST_REGISTRATION_FAILED' ? 'WARNING' : 'INFO', {
+        guest_name: reg.guestName,
+        listing_id: reg.listingId,
+        listing_name: reg.listingName,
+        provider: reg.provider,
+        registration_id: reg.id,
+        ...extra,
+      })
+    }
+    catch (err) {
+      console.error('Failed to create registration alert', err)
+    }
   }
 
   /** Alert for overdue registrations (report due checkIn + 24h) — mirrors checkOverdueKeys. */
   function checkOverdueRegistrations() {
-    const notifications = useNotifications()
     const now = new Date()
     registrations.value.forEach((reg) => {
       if (reg.status !== 'pending' && reg.status !== 'incomplete')
