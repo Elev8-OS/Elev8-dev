@@ -2,6 +2,8 @@
 import { allListings } from '~/composables/useListingMappings'
 
 export interface PropertyPickerOption {
+  /** Optional stable id. When present it is used as the emitted value instead of `name`. */
+  id?: string
   name: string
   city: string
   region: string
@@ -65,28 +67,33 @@ function toggleTag(tag: string) {
   else selectedTags.value.splice(idx, 1)
 }
 
+function valueFor(listing: PropertyPickerOption): string {
+  return listing.id ?? listing.name
+}
+
 function toggleAllProperties() {
   emit('update:modelValue', ['All Properties'])
 }
 
-function isSelected(name: string) {
-  return !isAllProperties.value && props.modelValue.includes(name)
+function isSelected(listing: PropertyPickerOption) {
+  return !isAllProperties.value && props.modelValue.includes(valueFor(listing))
 }
 
-function toggleProperty(name: string) {
+function toggleProperty(listing: PropertyPickerOption) {
+  const value = valueFor(listing)
   // Single-select: choosing a property replaces the current selection.
   if (!props.multiSelect) {
-    emit('update:modelValue', [name])
+    emit('update:modelValue', [value])
     return
   }
   if (isAllProperties.value) {
-    emit('update:modelValue', [name])
+    emit('update:modelValue', [value])
     return
   }
   const current = [...props.modelValue]
-  const idx = current.indexOf(name)
+  const idx = current.indexOf(value)
   if (idx === -1) {
-    current.push(name)
+    current.push(value)
   }
   else {
     current.splice(idx, 1)
@@ -101,7 +108,7 @@ function toggleProperty(name: string) {
 function selectAll() {
   if (!props.multiSelect)
     return
-  emit('update:modelValue', props.options.map(l => l.name))
+  emit('update:modelValue', props.options.map(l => valueFor(l)))
 }
 
 function unselectAll() {
@@ -246,14 +253,14 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
               v-for="listing in filteredListings"
               :key="listing.name"
               class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted"
-              @click="toggleProperty(listing.name)"
+              @click="toggleProperty(listing)"
             >
               <div
                 class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
-                  isSelected(listing.name) ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
+                  isSelected(listing) ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
                 ]"
               >
-                <Icon v-if="isSelected(listing.name)" name="i-lucide-check" class="h-3 w-3" />
+                <Icon v-if="isSelected(listing)" name="i-lucide-check" class="h-3 w-3" />
               </div>
               <div class="flex min-w-0 flex-col text-left">
                 <span class="truncate text-sm leading-tight">{{ listing.name }}</span>

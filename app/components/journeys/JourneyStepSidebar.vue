@@ -37,6 +37,17 @@ function patch(fields: Partial<JourneyStep>) {
   emit('update', { ...props.step, ...fields } as JourneyStep)
 }
 
+function selectMessageChannel(channel: string) {
+  if (channel === 'whatsapp')
+    patch({ channel, messageMode: 'template', aiPersonalization: false } as any)
+  else
+    patch({ channel } as any)
+}
+
+function selectBranchChannel(channel: string) {
+  patchActiveBranch(channel === 'whatsapp' ? { channel, messageMode: 'template' } : { channel })
+}
+
 // Modal state for condition configuration
 const conditionModalOpen = ref(false)
 const conditionModalTitle = ref('Configure Condition')
@@ -133,6 +144,11 @@ const reservationTriggers = computed(() => allTriggerOptions.filter(t => t.categ
 const calendarTriggers = computed(() => allTriggerOptions.filter(t => t.category === 'calendar'))
 const { isConnected: minutConnected } = useMinut()
 const { isConnected: emailConnected } = useEmailIntegration()
+const { isConnected: whatsappConnected } = useWhatsApp()
+
+const messageWhatsAppNotConnected = computed(() =>
+  messageStep.value?.channel === 'whatsapp' && !whatsappConnected.value,
+)
 
 const triggerEntries = computed(() => (triggerStep.value?.triggers ?? []) as TriggerEntry[])
 
@@ -297,6 +313,10 @@ function patchActiveBranch(fields: Record<string, any>) {
     return
   patchBranchConfig(branchDialogTarget.value, fields)
 }
+
+const branchWhatsAppNotConnected = computed(() =>
+  (activeBranchStep.value as any)?.channel === 'whatsapp' && !whatsappConnected.value,
+)
 
 const usedTriggerTypes = computed(() => new Set(triggerEntries.value.map(e => e.type)))
 const availableTriggers = computed(() => allTriggerOptions.filter(t => !usedTriggerTypes.value.has(t.value)))
@@ -985,7 +1005,7 @@ const showAltTriggerPicker = ref(false)
       <div v-else-if="messageStep" class="flex flex-col gap-4">
         <div>
           <Label>Channel</Label>
-          <Select :model-value="messageStep.channel" @update:model-value="patch($event === 'whatsapp' ? { channel: $event, messageMode: 'template', aiPersonalization: false } as any : { channel: $event } as any)">
+          <Select :model-value="messageStep.channel" @update:model-value="selectMessageChannel($event as string)">
             <SelectTrigger class="mt-1">
               <SelectValue />
             </SelectTrigger>
@@ -994,147 +1014,169 @@ const showAltTriggerPicker = ref(false)
                 OTA Inbox
               </SelectItem>
               <SelectItem value="whatsapp">
-                WhatsApp
+                <div class="flex w-full items-center justify-between">
+                  <span>WhatsApp</span>
+                  <span
+                    class="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[9px] font-medium"
+                    :class="whatsappConnected ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'"
+                  >
+                    <span class="h-1 w-1 rounded-full" :class="whatsappConnected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
+                    {{ whatsappConnected ? 'Connected' : 'Not connected' }}
+                  </span>
+                </div>
               </SelectItem>
               <SelectItem value="email">
                 Email
               </SelectItem>
             </SelectContent>
           </Select>
-          <p v-if="messageStep.channel === 'whatsapp'" class="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
-            <Icon name="i-lucide-triangle-alert" class="h-3 w-3" />
-            Requires WhatsApp Business API. WhatsApp messages must use an approved template.
-          </p>
-        </div>
-        <div>
-          <Label>Message Mode</Label>
-          <div class="mt-1 flex rounded-md border overflow-hidden">
-            <button
-              class="flex-1 px-3 py-1.5 text-sm transition-colors" :class="[
-                messageStep.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
-                messageStep.channel === 'whatsapp' && 'opacity-40 cursor-not-allowed pointer-events-none',
-              ]"
-              @click="patch({ messageMode: 'directive' } as any)"
-            >
-              AI Directive
-            </button>
-            <button
-              class="flex-1 px-3 py-1.5 text-sm transition-colors border-l" :class="[messageStep.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted']"
-              @click="patch({ messageMode: 'template' } as any)"
-            >
-              Template
-            </button>
-          </div>
-          <p v-if="messageStep.channel === 'whatsapp'" class="mt-1.5 text-xs text-muted-foreground">
-            WhatsApp only supports Template mode.
-          </p>
         </div>
 
-        <!-- WhatsApp Template selector -->
-        <div v-if="messageStep.channel === 'whatsapp' && messageStep.messageMode === 'template'" class="space-y-2">
-          <Label>WhatsApp Template</Label>
-          <Select
-            :model-value="messageStep.whatsappTemplateId"
-            @update:model-value="patch({ whatsappTemplateId: $event as string } as any)"
-          >
-            <SelectTrigger class="mt-1">
-              <SelectValue placeholder="Select an approved template…" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="template in approvedTemplates"
-                :key="template.id"
-                :value="template.id"
+        <div v-if="messageWhatsAppNotConnected" class="flex flex-col items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 px-3 py-3">
+          <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+            WhatsApp isn't connected
+          </p>
+          <p class="text-xs text-amber-700/80 dark:text-amber-300/80">
+            Connect a WhatsApp Business Account to send WhatsApp messages from this Journey.
+          </p>
+          <Button as-child variant="default" size="sm">
+            <NuxtLink to="/settings/integrations">
+              Connect WhatsApp
+            </NuxtLink>
+          </Button>
+        </div>
+
+        <template v-else>
+          <div>
+            <Label>Message Mode</Label>
+            <div class="mt-1 flex rounded-md border overflow-hidden">
+              <button
+                class="flex-1 px-3 py-1.5 text-sm transition-colors" :class="[
+                  messageStep.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
+                  messageStep.channel === 'whatsapp' && 'opacity-40 cursor-not-allowed pointer-events-none',
+                ]"
+                @click="patch({ messageMode: 'directive' } as any)"
               >
-                {{ template.name }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <div v-if="selectedWhatsAppTemplate" class="flex flex-wrap gap-1">
-            <Badge variant="secondary" class="capitalize">
-              {{ selectedWhatsAppTemplate.category }}
-            </Badge>
-            <Badge variant="outline">
-              {{ selectedWhatsAppTemplate.language.toUpperCase() }}
-            </Badge>
+                AI Directive
+              </button>
+              <button
+                class="flex-1 px-3 py-1.5 text-sm transition-colors border-l" :class="[messageStep.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted']"
+                @click="patch({ messageMode: 'template' } as any)"
+              >
+                Template
+              </button>
+            </div>
+            <p v-if="messageStep.channel === 'whatsapp'" class="mt-1.5 text-xs text-muted-foreground">
+              WhatsApp only supports Template mode.
+            </p>
           </div>
-          <p v-else-if="approvedTemplates.length === 0" class="text-xs text-muted-foreground">
-            No approved templates yet. Create one from Smart Flow → Journeys → WhatsApp Templates.
-          </p>
-        </div>
 
-        <div v-if="messageStep.messageMode === 'directive'">
-          <div class="flex items-center gap-2 mb-1">
-            <Label>Smart Directive</Label>
-            <span class="text-xs font-medium px-1.5 py-0.5 rounded" :style="{ backgroundColor: '#C8A84B22', color: '#C8A84B' }">ElevAI</span>
-          </div>
-          <Textarea
-            :model-value="messageStep.directive"
-            class="min-h-24 text-sm"
-            placeholder="Describe what ElevAI should say…"
-            @update:model-value="patch({ directive: $event as string } as any)"
-          />
-        </div>
-        <div v-else-if="messageStep.channel !== 'whatsapp'">
-          <Label>Message Template</Label>
-          <Textarea
-            :model-value="messageStep.templateText"
-            class="mt-1 min-h-24 text-sm"
-            placeholder="Write the static message text…"
-            @update:model-value="patch({ templateText: $event as string } as any)"
-          />
-          <div class="mt-2 flex flex-wrap gap-1">
-            <button
-              v-for="v in [
-                { key: 'guestName', label: 'Guest name' },
-                { key: 'propertyName', label: 'Property Name' },
-                { key: 'city', label: 'City' },
-                { key: 'resStart', label: 'Reservation Start Date' },
-                { key: 'resEnd', label: 'Reservation End Date' },
-              ]"
-              :key="v.key"
-              class="rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-              @click="patch({ templateText: `${messageStep.templateText}{{${v.key}}}` } as any)"
+          <!-- WhatsApp Template selector -->
+          <div v-if="messageStep.channel === 'whatsapp' && messageStep.messageMode === 'template'" class="space-y-2">
+            <Label>WhatsApp Template</Label>
+            <Select
+              :model-value="messageStep.whatsappTemplateId"
+              @update:model-value="patch({ whatsappTemplateId: $event as string } as any)"
             >
-              {{ v.label }}
-            </button>
+              <SelectTrigger class="mt-1">
+                <SelectValue placeholder="Select an approved template…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="template in approvedTemplates"
+                  :key="template.id"
+                  :value="template.id"
+                >
+                  {{ template.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <div v-if="selectedWhatsAppTemplate" class="flex flex-wrap gap-1">
+              <Badge variant="secondary" class="capitalize">
+                {{ selectedWhatsAppTemplate.category }}
+              </Badge>
+              <Badge variant="outline">
+                {{ selectedWhatsAppTemplate.language.toUpperCase() }}
+              </Badge>
+            </div>
+            <p v-else-if="approvedTemplates.length === 0" class="text-xs text-muted-foreground">
+              No approved templates yet. Create one from Smart Flow → Journeys → WhatsApp Templates.
+            </p>
           </div>
-        </div>
-        <div class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
-          <div class="flex items-center justify-between">
-            <Label class="cursor-pointer text-sm" for="ctx-check-toggle">AI Context Check</Label>
-            <Switch
-              id="ctx-check-toggle"
-              :key="`ctx-${step.id}-${messageStep.contextCheckEnabled}`"
-              :checked="messageStep.contextCheckEnabled"
-              @update:checked="patch({ contextCheckEnabled: $event } as any)"
+
+          <div v-if="messageStep.messageMode === 'directive'">
+            <div class="flex items-center gap-2 mb-1">
+              <Label>Smart Directive</Label>
+              <span class="text-xs font-medium px-1.5 py-0.5 rounded" :style="{ backgroundColor: '#C8A84B22', color: '#C8A84B' }">ElevAI</span>
+            </div>
+            <Textarea
+              :model-value="messageStep.directive"
+              class="min-h-24 text-sm"
+              placeholder="Describe what ElevAI should say…"
+              @update:model-value="patch({ directive: $event as string } as any)"
             />
           </div>
-          <p class="text-xs text-muted-foreground">
-            AI reads conversation history before sending to decide if the message is still relevant.
-          </p>
-          <Textarea
-            v-if="messageStep.contextCheckEnabled"
-            :model-value="messageStep.contextCheckInstruction"
-            class="text-xs min-h-16"
-            placeholder="e.g. Do not send if the guest has already been welcomed."
-            @update:model-value="patch({ contextCheckInstruction: $event as string } as any)"
-          />
-        </div>
-        <div v-if="messageStep.channel !== 'whatsapp'" class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
-          <div class="flex items-center justify-between">
-            <Label class="cursor-pointer text-sm" for="ai-personalize-toggle">AI Personalization</Label>
-            <Switch
-              id="ai-personalize-toggle"
-              :key="`ai-pers-${step.id}-${messageStep.aiPersonalization}`"
-              :checked="messageStep.aiPersonalization"
-              @update:checked="patch({ aiPersonalization: $event } as any)"
+          <div v-else-if="messageStep.channel !== 'whatsapp'">
+            <Label>Message Template</Label>
+            <Textarea
+              :model-value="messageStep.templateText"
+              class="mt-1 min-h-24 text-sm"
+              placeholder="Write the static message text…"
+              @update:model-value="patch({ templateText: $event as string } as any)"
+            />
+            <div class="mt-2 flex flex-wrap gap-1">
+              <button
+                v-for="v in [
+                  { key: 'guestName', label: 'Guest name' },
+                  { key: 'propertyName', label: 'Property Name' },
+                  { key: 'city', label: 'City' },
+                  { key: 'resStart', label: 'Reservation Start Date' },
+                  { key: 'resEnd', label: 'Reservation End Date' },
+                ]"
+                :key="v.key"
+                class="rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                @click="patch({ templateText: `${messageStep.templateText}{{${v.key}}}` } as any)"
+              >
+                {{ v.label }}
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
+            <div class="flex items-center justify-between">
+              <Label class="cursor-pointer text-sm" for="ctx-check-toggle">AI Context Check</Label>
+              <Switch
+                id="ctx-check-toggle"
+                :key="`ctx-${step.id}-${messageStep.contextCheckEnabled}`"
+                :checked="messageStep.contextCheckEnabled"
+                @update:checked="patch({ contextCheckEnabled: $event } as any)"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">
+              AI reads conversation history before sending to decide if the message is still relevant.
+            </p>
+            <Textarea
+              v-if="messageStep.contextCheckEnabled"
+              :model-value="messageStep.contextCheckInstruction"
+              class="text-xs min-h-16"
+              placeholder="e.g. Do not send if the guest has already been welcomed."
+              @update:model-value="patch({ contextCheckInstruction: $event as string } as any)"
             />
           </div>
-          <p class="text-xs text-muted-foreground">
-            Tailor messages using guest's reservation details and preferences.
-          </p>
-        </div>
+          <div v-if="messageStep.channel !== 'whatsapp'" class="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
+            <div class="flex items-center justify-between">
+              <Label class="cursor-pointer text-sm" for="ai-personalize-toggle">AI Personalization</Label>
+              <Switch
+                id="ai-personalize-toggle"
+                :key="`ai-pers-${step.id}-${messageStep.aiPersonalization}`"
+                :checked="messageStep.aiPersonalization"
+                @update:checked="patch({ aiPersonalization: $event } as any)"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">
+              Tailor messages using guest's reservation details and preferences.
+            </p>
+          </div>
+        </template>
       </div>
 
       <!-- Context Check (legacy) -->
@@ -1576,28 +1618,8 @@ const showAltTriggerPicker = ref(false)
           <!-- Message -->
           <div v-else-if="branchDialogType === 'message'" class="flex flex-col gap-3">
             <div>
-              <Label>Message Mode</Label>
-              <div class="mt-1 flex rounded-md border overflow-hidden">
-                <button
-                  class="flex-1 px-3 py-1.5 text-sm" :class="[
-                    (activeBranchStep as any)?.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
-                    (activeBranchStep as any)?.channel === 'whatsapp' && 'opacity-40 cursor-not-allowed pointer-events-none',
-                  ]"
-                  @click="patchActiveBranch({ messageMode: 'directive' })"
-                >
-                  AI Directive
-                </button>
-                <button class="flex-1 px-3 py-1.5 text-sm border-l" :class="[(activeBranchStep as any)?.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground']" @click="patchActiveBranch({ messageMode: 'template' })">
-                  Template
-                </button>
-              </div>
-              <p v-if="(activeBranchStep as any)?.channel === 'whatsapp'" class="mt-1.5 text-xs text-muted-foreground">
-                WhatsApp only supports Template mode.
-              </p>
-            </div>
-            <div>
               <Label>Channel</Label>
-              <Select :model-value="(activeBranchStep as any)?.channel ?? 'ota'" @update:model-value="patchActiveBranch($event === 'whatsapp' ? { channel: $event, messageMode: 'template' } : { channel: $event })">
+              <Select :model-value="(activeBranchStep as any)?.channel ?? 'ota'" @update:model-value="selectBranchChannel($event as string)">
                 <SelectTrigger class="mt-1">
                   <SelectValue />
                 </SelectTrigger>
@@ -1606,7 +1628,16 @@ const showAltTriggerPicker = ref(false)
                     OTA Inbox
                   </SelectItem>
                   <SelectItem value="whatsapp">
-                    WhatsApp
+                    <div class="flex w-full items-center justify-between">
+                      <span>WhatsApp</span>
+                      <span
+                        class="inline-flex items-center gap-1 rounded-full px-1.5 py-0 text-[9px] font-medium"
+                        :class="whatsappConnected ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'"
+                      >
+                        <span class="h-1 w-1 rounded-full" :class="whatsappConnected ? 'bg-green-500' : 'bg-muted-foreground/50'" />
+                        {{ whatsappConnected ? 'Connected' : 'Not connected' }}
+                      </span>
+                    </div>
                   </SelectItem>
                   <SelectItem value="email">
                     Email
@@ -1615,51 +1646,88 @@ const showAltTriggerPicker = ref(false)
               </Select>
             </div>
 
-            <!-- Branch WhatsApp Template selector -->
-            <div
-              v-if="(activeBranchStep as any)?.channel === 'whatsapp' && (activeBranchStep as any)?.messageMode === 'template'"
-              class="space-y-2"
-            >
-              <Label>WhatsApp Template</Label>
-              <Select
-                :model-value="(activeBranchStep as any)?.whatsappTemplateId ?? ''"
-                @update:model-value="patchActiveBranch({ whatsappTemplateId: $event as string })"
-              >
-                <SelectTrigger class="mt-1">
-                  <SelectValue placeholder="Select an approved template…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="template in approvedTemplates"
-                    :key="template.id"
-                    :value="template.id"
-                  >
-                    {{ template.name }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <div
-                v-if="approvedTemplates.find(t => t.id === (activeBranchStep as any)?.whatsappTemplateId)"
-                class="flex flex-wrap gap-1"
-              >
-                <Badge variant="secondary" class="capitalize">
-                  {{ approvedTemplates.find(t => t.id === (activeBranchStep as any)?.whatsappTemplateId)?.category }}
-                </Badge>
-                <Badge variant="outline">
-                  {{ approvedTemplates.find(t => t.id === (activeBranchStep as any)?.whatsappTemplateId)?.language.toUpperCase() }}
-                </Badge>
-              </div>
+            <div v-if="branchWhatsAppNotConnected" class="flex flex-col items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 px-3 py-3">
+              <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+                WhatsApp isn't connected
+              </p>
+              <p class="text-xs text-amber-700/80 dark:text-amber-300/80">
+                Connect a WhatsApp Business Account to send WhatsApp messages from this Journey.
+              </p>
+              <Button as-child variant="default" size="sm">
+                <NuxtLink to="/settings/integrations">
+                  Connect WhatsApp
+                </NuxtLink>
+              </Button>
             </div>
 
-            <div v-if="(activeBranchStep as any)?.channel !== 'whatsapp'">
-              <Label>{{ (activeBranchStep as any)?.messageMode === 'template' ? 'Template Text' : 'AI Directive' }}</Label>
-              <Textarea
-                :model-value="(activeBranchStep as any)?.messageMode === 'template' ? (activeBranchStep as any)?.templateText : (activeBranchStep as any)?.directive"
-                class="mt-1 min-h-24 text-sm"
-                :placeholder="(activeBranchStep as any)?.messageMode === 'template' ? 'Template text…' : 'AI directive…'"
-                @update:model-value="patchActiveBranch((activeBranchStep as any)?.messageMode === 'template' ? { templateText: $event as string } : { directive: $event as string })"
-              />
-            </div>
+            <template v-else>
+              <div>
+                <Label>Message Mode</Label>
+                <div class="mt-1 flex rounded-md border overflow-hidden">
+                  <button
+                    class="flex-1 px-3 py-1.5 text-sm" :class="[
+                      (activeBranchStep as any)?.messageMode === 'directive' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+                      (activeBranchStep as any)?.channel === 'whatsapp' && 'opacity-40 cursor-not-allowed pointer-events-none',
+                    ]"
+                    @click="patchActiveBranch({ messageMode: 'directive' })"
+                  >
+                    AI Directive
+                  </button>
+                  <button class="flex-1 px-3 py-1.5 text-sm border-l" :class="[(activeBranchStep as any)?.messageMode === 'template' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground']" @click="patchActiveBranch({ messageMode: 'template' })">
+                    Template
+                  </button>
+                </div>
+                <p v-if="(activeBranchStep as any)?.channel === 'whatsapp'" class="mt-1.5 text-xs text-muted-foreground">
+                  WhatsApp only supports Template mode.
+                </p>
+              </div>
+
+              <!-- Branch WhatsApp Template selector -->
+              <div
+                v-if="(activeBranchStep as any)?.channel === 'whatsapp' && (activeBranchStep as any)?.messageMode === 'template'"
+                class="space-y-2"
+              >
+                <Label>WhatsApp Template</Label>
+                <Select
+                  :model-value="(activeBranchStep as any)?.whatsappTemplateId ?? ''"
+                  @update:model-value="patchActiveBranch({ whatsappTemplateId: $event as string })"
+                >
+                  <SelectTrigger class="mt-1">
+                    <SelectValue placeholder="Select an approved template…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="template in approvedTemplates"
+                      :key="template.id"
+                      :value="template.id"
+                    >
+                      {{ template.name }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <div
+                  v-if="approvedTemplates.find(t => t.id === (activeBranchStep as any)?.whatsappTemplateId)"
+                  class="flex flex-wrap gap-1"
+                >
+                  <Badge variant="secondary" class="capitalize">
+                    {{ approvedTemplates.find(t => t.id === (activeBranchStep as any)?.whatsappTemplateId)?.category }}
+                  </Badge>
+                  <Badge variant="outline">
+                    {{ approvedTemplates.find(t => t.id === (activeBranchStep as any)?.whatsappTemplateId)?.language.toUpperCase() }}
+                  </Badge>
+                </div>
+              </div>
+
+              <div v-if="(activeBranchStep as any)?.channel !== 'whatsapp'">
+                <Label>{{ (activeBranchStep as any)?.messageMode === 'template' ? 'Template Text' : 'AI Directive' }}</Label>
+                <Textarea
+                  :model-value="(activeBranchStep as any)?.messageMode === 'template' ? (activeBranchStep as any)?.templateText : (activeBranchStep as any)?.directive"
+                  class="mt-1 min-h-24 text-sm"
+                  :placeholder="(activeBranchStep as any)?.messageMode === 'template' ? 'Template text…' : 'AI directive…'"
+                  @update:model-value="patchActiveBranch((activeBranchStep as any)?.messageMode === 'template' ? { templateText: $event as string } : { directive: $event as string })"
+                />
+              </div>
+            </template>
           </div>
 
           <!-- Action -->

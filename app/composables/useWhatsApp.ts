@@ -120,6 +120,27 @@ export function useWhatsApp() {
     })
   }
 
+  function getConnectedAccountForListing(listingId: string): WhatsAppAccount | undefined {
+    return whatsappAccounts.value.find(a =>
+      a.status === 'connected' && a.listingIds.includes(listingId),
+    )
+  }
+
+  function hasConnectedAccountForListing(listingId: string): boolean {
+    return getConnectedAccountForListing(listingId) !== undefined
+  }
+
+  function resolveWhatsAppCoverage(listingIds: string[]): { covered: string[], uncovered: string[] } {
+    const covered: string[] = []
+    const uncovered: string[] = []
+    for (const id of listingIds) {
+      if (hasConnectedAccountForListing(id))
+        covered.push(id)
+      else uncovered.push(id)
+    }
+    return { covered, uncovered }
+  }
+
   function disconnect() {
     whatsappAccounts.value = []
     localStorage.removeItem(STORAGE_KEY)
@@ -134,6 +155,9 @@ export function useWhatsApp() {
     updateAccount,
     assignListings,
     bulkAssign,
+    getConnectedAccountForListing,
+    hasConnectedAccountForListing,
+    resolveWhatsAppCoverage,
     disconnect,
   }
 }

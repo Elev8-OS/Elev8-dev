@@ -14,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const { getTemplateById } = useWhatsAppTemplates()
+const { isConnected: whatsappConnected } = useWhatsApp()
 
 const stepMeta: Record<string, { icon: string, colorClasses: string, label: string }> = {
   trigger: { icon: 'i-lucide-zap', colorClasses: 'text-purple-500 bg-purple-50 dark:bg-purple-950', label: 'Trigger' },
@@ -112,6 +113,7 @@ const summaryText = computed(() => {
 })
 
 const isWhatsApp = computed(() => props.step.type === 'message' && (props.step as any).channel === 'whatsapp')
+const isWhatsAppNotConfigured = computed(() => isWhatsApp.value && !whatsappConnected.value)
 const isMessage = computed(() => props.step.type === 'message')
 const isNew = computed(() => !!(props.step as any).isNew)
 </script>
@@ -152,7 +154,7 @@ const isNew = computed(() => !!(props.step as any).isNew)
     </div>
 
     <div class="ml-1 flex shrink-0 items-center gap-1">
-      <TooltipProvider v-if="isWhatsApp">
+      <TooltipProvider v-if="isWhatsAppNotConfigured">
         <Tooltip>
           <TooltipTrigger as-child>
             <Icon name="i-lucide-triangle-alert" class="h-3.5 w-3.5 text-amber-500" />

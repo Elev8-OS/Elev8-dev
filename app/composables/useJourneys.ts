@@ -1,7 +1,8 @@
-import type { Journey, JourneyGroup, JourneyStatus, TriggerEntry, TriggerStep } from '~/components/journeys/data/journeys'
+import type { Journey, JourneyGroup, JourneyStatus, MessageStep, TriggerEntry, TriggerStep } from '~/components/journeys/data/journeys'
 import type { MinutEvent } from '~/composables/useMinut'
 import { toast } from 'vue-sonner'
 import { mockGroups, mockJourneys } from '~/components/journeys/data/journeys'
+import { useWhatsApp } from '~/composables/useWhatsApp'
 
 export function useJourneys() {
   const journeys = useState<Journey[]>('journeys', () => mockJourneys)
@@ -144,6 +145,22 @@ export function useJourneys() {
     }
   }
 
+  /**
+   * Resolve whether a WhatsApp message step should fire for a given listing.
+   * A step is skippable only when it targets WhatsApp — an uncovered listing
+   * (no connected WhatsApp account assigned) yields a non-blocking skip; the
+   * journey continues. A covered listing yields the resolved account.
+   */
+  function resolveWhatsAppStep(step: MessageStep, listingId: string): { fire: boolean, reason?: string, accountId?: string } {
+    if (step.channel !== 'whatsapp')
+      return { fire: false, reason: 'not_whatsapp' }
+    const { getConnectedAccountForListing } = useWhatsApp()
+    const account = getConnectedAccountForListing(listingId)
+    if (!account)
+      return { fire: false, reason: 'uncovered' }
+    return { fire: true, accountId: account.id }
+  }
+
   return {
     journeys,
     toggleStatus,
@@ -159,5 +176,6 @@ export function useJourneys() {
     addJourneysToGroup,
     onMinutEvent,
     onEmailReceived,
+    resolveWhatsAppStep,
   }
 }

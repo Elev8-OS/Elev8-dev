@@ -24,6 +24,35 @@ const {
   addJourneysToGroup,
 } = useJourneys()
 
+const { isConnected: whatsappConnected } = useWhatsApp()
+
+function hasWhatsAppStep(journey: Journey): boolean {
+  return journey.steps.some(s => s.type === 'message' && (s as any).channel === 'whatsapp')
+}
+
+function isWhatsAppBlocked(journey: Journey): boolean {
+  return hasWhatsAppStep(journey) && !whatsappConnected.value
+}
+
+// Auto-deactivate WhatsApp-dependent journeys the moment WhatsApp disconnects,
+// so a journey can't silently sit "active" while its WhatsApp steps would skip.
+watch(
+  whatsappConnected,
+  (connected, wasConnected) => {
+    if (wasConnected !== false || connected)
+      return
+    let deactivated = 0
+    for (const journey of journeys.value) {
+      if (hasWhatsAppStep(journey) && journey.status === 'active') {
+        toggleStatus(journey.id)
+        deactivated++
+      }
+    }
+    if (deactivated > 0)
+      toast.warning(`${deactivated} journey${deactivated === 1 ? '' : 's'} paused because WhatsApp disconnected.`)
+  },
+)
+
 const statusConfig: Record<string, { label: string, variant: 'default' | 'secondary' }> = {
   active: { label: 'Active', variant: 'default' },
   inactive: { label: 'Inactive', variant: 'secondary' },
@@ -361,6 +390,14 @@ function submitRename() {
                       <Badge :variant="statusConfig[journey.status]?.variant ?? 'outline'">
                         {{ statusConfig[journey.status]?.label ?? journey.status }}
                       </Badge>
+                      <TooltipProvider v-if="isWhatsAppBlocked(journey)">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <Icon name="i-lucide-triangle-alert" class="h-4 w-4 text-amber-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>WhatsApp not connected — this journey won't send WhatsApp messages</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </TableCell>
                   <TableCell>{{ journey.steps.length }}</TableCell>
@@ -451,6 +488,14 @@ function submitRename() {
                     <Badge :variant="statusConfig[journey.status]?.variant ?? 'outline'">
                       {{ statusConfig[journey.status]?.label ?? journey.status }}
                     </Badge>
+                    <TooltipProvider v-if="isWhatsAppBlocked(journey)">
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <Icon name="i-lucide-triangle-alert" class="h-4 w-4 text-amber-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>WhatsApp not connected — this journey won't send WhatsApp messages</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </TableCell>
                 <TableCell>{{ journey.steps.length }}</TableCell>

@@ -1044,6 +1044,7 @@ async function handleSubmitTemplate(template: WhatsAppTemplate) {
         <ul class="space-y-1.5 text-sm text-muted-foreground">
           <li class="flex gap-2"><span>•</span> Stop all automated WhatsApp messages for assigned listings</li>
           <li class="flex gap-2"><span>•</span> Remove connection credentials</li>
+          <li class="flex gap-2"><span>•</span> Listing assignments will need to be re-applied after reconnecting</li>
           <li class="flex gap-2"><span>•</span> Existing conversation history remains</li>
         </ul>
         <DialogFooter>

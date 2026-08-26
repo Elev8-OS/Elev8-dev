@@ -2,6 +2,8 @@
 import type { ConditionCombinator, ConditionRule, ConditionType, Journey, JourneyStep, StepType } from './data/journeys'
 import { toast } from 'vue-sonner'
 import draggable from 'vuedraggable'
+import { listings } from '~/components/listings/data/listings'
+import { useWhatsApp } from '~/composables/useWhatsApp'
 
 const props = defineProps<{
   initialJourney: Journey | null
@@ -38,6 +40,54 @@ function makeDefaultJourney(): Journey {
 
 const localJourney = ref<Journey>(
   props.initialJourney ? JSON.parse(JSON.stringify(props.initialJourney)) : makeDefaultJourney(),
+)
+
+const { whatsappAccounts } = useWhatsApp()
+
+function deriveRegion(location: string, tags: string[]): 'Bali' | 'Switzerland' | 'Germany' {
+  if (tags.includes('EUR'))
+    return 'Germany'
+  const bali = ['Bali', 'Canggu', 'Seminyak', 'Ubud', 'Pererenan', 'Umalas', 'Jimbaran', 'Uluwatu', 'Kintamani']
+  if (bali.some(k => location.includes(k)))
+    return 'Bali'
+  return 'Switzerland'
+}
+
+const propertyOptions = computed(() =>
+  listings.value.map(l => ({
+    id: l.id,
+    name: l.name,
+    city: l.location,
+    region: deriveRegion(l.location, l.tags),
+  })),
+)
+
+const hasWhatsAppStep = computed(() =>
+  localJourney.value.steps.some(s => s.type === 'message' && (s as any).channel === 'whatsapp'),
+)
+
+const journeyScopeListingIds = computed<string[]>(() => {
+  const scope = localJourney.value.properties
+  if (scope.length === 0 || scope.includes('All Properties'))
+    return propertyOptions.value.map(l => l.id!)
+  return scope.filter(id => propertyOptions.value.some(l => l.id === id))
+})
+
+const whatsappCoverage = computed(() => {
+  const covered = new Set<string>()
+  whatsappAccounts.value
+    .filter(a => a.status === 'connected')
+    .forEach(a => a.listingIds.forEach(id => covered.add(id)))
+  const inScope = journeyScopeListingIds.value
+  const coveredCount = inScope.filter(id => covered.has(id)).length
+  const total = inScope.length
+  return { coveredCount, total, uncovered: inScope.filter(id => !covered.has(id)) }
+})
+
+const showWhatsAppCoverageWarning = computed(() =>
+  hasWhatsAppStep.value
+  && whatsappCoverage.value.total > 0
+  && whatsappCoverage.value.coveredCount < whatsappCoverage.value.total,
 )
 
 // Journey-wide requirements
@@ -249,6 +299,7 @@ const addStepGroups = computed(() => {
       <div class="flex shrink-0 items-center gap-2">
         <SharedPropertyPicker
           :model-value="localJourney.properties"
+          :options="propertyOptions"
           @update:model-value="setProperties"
         />
         <Button
@@ -286,6 +337,23 @@ const addStepGroups = computed(() => {
         </Button>
       </div>
     </header>
+
+    <div v-if="showWhatsAppCoverageWarning" class="flex items-start gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3 dark:bg-amber-950/30">
+      <Icon name="i-lucide-triangle-alert" class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+      <div class="flex-1 text-sm">
+        <p class="font-medium text-amber-800 dark:text-amber-300">
+          WhatsApp messages will only send to {{ whatsappCoverage.coveredCount }} of {{ whatsappCoverage.total }} selected listings.
+        </p>
+        <p class="text-xs text-amber-700/80 dark:text-amber-300/80">
+          {{ whatsappCoverage.uncovered.length }} listing{{ whatsappCoverage.uncovered.length === 1 ? '' : 's' }} don't have a WhatsApp account assigned and will be skipped at runtime.
+        </p>
+      </div>
+      <Button as-child variant="outline" size="sm" class="h-7 shrink-0">
+        <NuxtLink to="/settings/integrations">
+          Review listing assignment
+        </NuxtLink>
+      </Button>
+    </div>
 
     <div class="flex flex-1 overflow-hidden">
       <div class="flex flex-1 flex-col overflow-y-auto p-4">

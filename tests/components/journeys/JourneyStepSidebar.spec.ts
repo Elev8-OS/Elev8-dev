@@ -50,6 +50,8 @@ describe('journeyStepSidebar Minut trigger picker', () => {
   beforeEach(() => {
     minutConnected.value = true
     vi.stubGlobal('useMinut', () => ({ isConnected: minutConnected }))
+    vi.stubGlobal('useEmailIntegration', () => ({ isConnected: ref(false) }))
+    vi.stubGlobal('useWhatsApp', () => ({ isConnected: ref(false) }))
     vi.stubGlobal('useWhatsAppTemplates', () => ({
       approvedTemplates: ref([]),
       getTemplateById: vi.fn(),
