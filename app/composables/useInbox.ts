@@ -439,7 +439,7 @@ export function useInbox() {
   function markAsHandled(conversationId: string) {
     const index = conversations.value.findIndex(c => c.id === conversationId)
     if (index !== -1) {
-      conversations.value[index] = { ...conversations.value[index], status: null }
+      conversations.value[index] = { ...conversations.value[index], status: null, unreadCount: 0 }
       const conv = conversations.value[index]
       if (conv.reservationId && reservations[conv.reservationId]) {
         reservations[conv.reservationId].smartActions = []

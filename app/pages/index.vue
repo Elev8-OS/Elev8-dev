@@ -2,6 +2,8 @@
 import NumberFlow from '@number-flow/vue'
 import { TrendingDown, TrendingUp, TrendingUpIcon } from 'lucide-vue-next'
 
+const groDashboard = useGroDashboard()
+
 const dataCard = ref({
   totalRevenue: 0,
   newCustomers: 0,
@@ -33,7 +35,8 @@ watch(isDesktop, () => {
 
 <template>
   <ChangelogPopup />
-  <div class="w-full flex flex-col gap-4">
+  <GroDashboard v-if="groDashboard.isGro.value" />
+  <div v-else class="w-full flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-2xl font-bold tracking-tight">
         Dashboard

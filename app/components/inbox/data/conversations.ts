@@ -8,6 +8,18 @@ export type StayStatus = 'inquiry' | 'current' | 'future' | 'past' | 'unmatched'
 export type GuestVerification = 'unverified' | 'verified' | 'check_in' | 'check_out'
 export type CleaningStatus = 'need_cleaning' | 'in_progress' | 'cleaning_finished'
 
+export type ActionCategory =
+  | 'cleanliness'
+  | 'guest_requests'
+  | 'maintenance'
+  | 'reservation_changes'
+  | 'check_in_detected'
+  | 'check_out_detected'
+  | 'temperature'
+  | 'other'
+
+export type ActionPriority = 'high' | 'medium' | 'default'
+
 export const DEFAULT_TENANT_ID = 't-1'
 
 export function resolveConversationTenantId(c: Conversation): string {
@@ -67,6 +79,8 @@ export interface Conversation {
   guestLanguage?: string
   waWindowExpired?: boolean
   tenantId?: string
+  actionCategory?: ActionCategory
+  actionPriority?: ActionPriority
 }
 
 export interface UpsellOfferItem {
@@ -265,6 +279,8 @@ export const conversations: Conversation[] = [
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
     guestLanguage: 'English',
+    actionCategory: 'check_in_detected',
+    actionPriority: 'medium',
   },
   {
     id: 'conv-2',
@@ -319,6 +335,8 @@ export const conversations: Conversation[] = [
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
     guestLanguage: 'English',
+    actionCategory: 'guest_requests',
+    actionPriority: 'default',
   },
   {
     id: 'conv-4',
@@ -372,6 +390,8 @@ export const conversations: Conversation[] = [
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
     guestLanguage: 'Japanese',
+    actionCategory: 'reservation_changes',
+    actionPriority: 'default',
   },
   {
     id: 'conv-5',
@@ -399,6 +419,8 @@ export const conversations: Conversation[] = [
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
     guestLanguage: 'English',
+    actionCategory: 'maintenance',
+    actionPriority: 'high',
   },
   {
     id: 'conv-7',
@@ -449,6 +471,8 @@ export const conversations: Conversation[] = [
     verification: 'check_in',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+    actionCategory: 'cleanliness',
+    actionPriority: 'high',
   },
   {
     id: 'conv-9',
@@ -474,6 +498,8 @@ export const conversations: Conversation[] = [
     verification: 'unverified',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+    actionCategory: 'guest_requests',
+    actionPriority: 'medium',
   },
   {
     id: 'conv-10',
@@ -549,6 +575,8 @@ export const conversations: Conversation[] = [
     verification: 'check_in',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+    actionCategory: 'reservation_changes',
+    actionPriority: 'default',
   },
   {
     id: 'conv-13',
@@ -598,6 +626,8 @@ export const conversations: Conversation[] = [
     verification: 'check_in',
     cleaningStatus: 'in_progress',
     linkedUpsellOrderIds: [],
+    actionCategory: 'maintenance',
+    actionPriority: 'high',
   },
   {
     id: 'conv-15',
@@ -647,6 +677,8 @@ export const conversations: Conversation[] = [
     checkOut: '',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+    actionCategory: 'guest_requests',
+    actionPriority: 'default',
   },
   {
     id: 'conv-17',
@@ -696,6 +728,8 @@ export const conversations: Conversation[] = [
     verification: 'check_in',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+    actionCategory: 'cleanliness',
+    actionPriority: 'high',
   },
   {
     id: 'conv-19',
@@ -722,6 +756,8 @@ export const conversations: Conversation[] = [
     verification: 'verified',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+    actionCategory: 'other',
+    actionPriority: 'default',
   },
   {
     id: 'conv-20',
@@ -826,6 +862,8 @@ export const conversations: Conversation[] = [
     cleaningStatus: 'in_progress',
     linkedUpsellOrderIds: [],
     guestLanguage: 'English',
+    actionCategory: 'cleanliness',
+    actionPriority: 'high',
   },
   {
     id: 'conv-wa-3',
@@ -952,6 +990,8 @@ export const conversations: Conversation[] = [
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
     guestLanguage: 'Spanish',
+    actionCategory: 'guest_requests',
+    actionPriority: 'medium',
   },
   {
     id: 'conv-em-2',
@@ -1057,6 +1097,8 @@ export const conversations: Conversation[] = [
     linkedUpsellOrderIds: [],
     guestLanguage: 'German',
     tenantId: 't-2',
+    actionCategory: 'reservation_changes',
+    actionPriority: 'default',
   },
   {
     id: 'conv-gro-t2-2',
@@ -1111,6 +1153,8 @@ export const conversations: Conversation[] = [
     linkedUpsellOrderIds: [],
     guestLanguage: 'English',
     tenantId: 't-3',
+    actionCategory: 'guest_requests',
+    actionPriority: 'default',
   },
 ]
 
