@@ -2,7 +2,7 @@
 import type { CleaningStatus, Conversation, GuestDetails, GuestSentiment, GuestVerification, Reservation, StayStatus } from '~/components/inbox/data/conversations'
 import { format } from 'date-fns'
 import { toast } from 'vue-sonner'
-import { otaSources, staffMembers } from '~/components/inbox/data/conversations'
+import { otaSources, resolveConversationTenantId, staffMembers } from '~/components/inbox/data/conversations'
 import { cn } from '~/lib/utils'
 
 interface ReservationGuestProps {
@@ -37,6 +37,7 @@ const sentimentConfig: Record<string, { emoji: string, label: string, class: str
 const sentimentCfg = computed(() => sentimentConfig[props.sentiment] ?? sentimentConfig.neutral!)
 
 const { assignTo, getAssignedStaff, isElevaiEnabled, getElevaiState, enableElevai, pauseElevai, disableElevai } = useInbox()
+const gro = useGroScope()
 const threeCX = useThreeCX()
 const threeCXCalls = useThreeCxCalls()
 const isInitiatingCall = ref(false)
@@ -258,6 +259,12 @@ function handleElevaiDisable() {
         <div class="min-w-0 flex-1">
           <div class="text-sm font-medium truncate">
             {{ reservation.listingName }}
+          </div>
+          <div
+            v-if="gro.isGro.value"
+            class="mt-0.5 text-[10px] text-muted-foreground"
+          >
+            {{ gro.tenantName(resolveConversationTenantId(conversation)) }}
           </div>
           <div v-if="cleaningCfg && conversation.listingName !== 'Unknown'" class="mt-1.5">
             <span :class="cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium', cleaningCfg.class)">

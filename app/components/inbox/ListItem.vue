@@ -2,7 +2,7 @@
 import type { CleaningStatus, Conversation, StayStatus } from '~/components/inbox/data/conversations'
 import { format, formatDistanceToNow } from 'date-fns'
 import { toast } from 'vue-sonner'
-import { otaSources } from '~/components/inbox/data/conversations'
+import { otaSources, resolveConversationTenantId } from '~/components/inbox/data/conversations'
 import { cn } from '~/lib/utils'
 
 interface ListItemProps {
@@ -58,6 +58,10 @@ function handleCleaningClick(conv: Conversation) {
 const otaIconMap: Record<string, string> = Object.fromEntries(otaSources.map(s => [s.name, s.icon]))
 const stayConfig = computed(() => stayStatusConfig[props.conversation.stayStatus])
 
+const gro = useGroScope()
+const tenantId = computed(() => resolveConversationTenantId(props.conversation))
+const tenantName = computed(() => gro.tenantName(tenantId.value))
+
 const stayDateLabel = computed(() => {
   if (!props.conversation.checkIn || !props.conversation.checkOut)
     return ''
@@ -106,6 +110,12 @@ const stayDateLabel = computed(() => {
               </TooltipContent>
             </Tooltip>
             <span class="text-xs text-muted-foreground truncate">{{ conversation.listingName }}</span>
+            <span
+              v-if="gro.isGro.value"
+              class="inline-flex shrink-0 items-center rounded bg-muted px-1 py-0.5 text-[9px] font-medium text-muted-foreground"
+            >
+              {{ tenantName }}
+            </span>
           </div>
         </div>
       </div>

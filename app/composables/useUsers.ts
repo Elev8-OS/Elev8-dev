@@ -89,6 +89,10 @@ export function useUsers() {
     updateUser(userId, { listingIds })
   }
 
+  function setTenantAssignments(userId: string, tenantIds: string[]): void {
+    updateUser(userId, { assignedTenantIds: tenantIds })
+  }
+
   function getUsersForListing(listingId: string): User[] {
     return users.value.filter(u => u.listingIds.includes(listingId))
   }
@@ -121,6 +125,7 @@ export function useUsers() {
     deleteUser,
     toggleActive,
     setListingAssignments,
+    setTenantAssignments,
     getUsersForListing,
     getUsersByRole,
     findByEmail,

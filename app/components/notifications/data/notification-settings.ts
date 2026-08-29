@@ -245,6 +245,10 @@ const ROLE_DEFAULTS: Record<RoleId, RoleNotifications> = {
     [...GUEST_ACTIVITY_TYPES, ...CLEANING_TYPES, ...TASK_TYPES, ...SMART_LOCK_TYPES],
     ['in_app', 'mobile'],
   ),
+  'role-gro': buildPolicy(
+    [...GUEST_ACTIVITY_TYPES, ...CALL_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...GUEST_GUIDE_TYPES, ...EMAIL_TYPES],
+    ['in_app'],
+  ),
   'role-gardener': buildPolicy(TASK_TYPES, ['in_app']),
   'role-pool': buildPolicy(TASK_TYPES, ['in_app']),
   'role-engineering': buildPolicy(TASK_TYPES, ['in_app']),

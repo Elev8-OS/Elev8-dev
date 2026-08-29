@@ -14,6 +14,7 @@ export type RoleId
     | 'role-finance-hr'
     | 'role-housekeeping-manager'
     | 'role-housekeeping'
+    | 'role-gro'
     | 'role-gardener'
     | 'role-pool'
     | 'role-engineering'
@@ -300,6 +301,37 @@ export const defaultRoles: Role[] = [
       activity_reports: a('no'),
       finance: a('no'),
       payment_requests: a('rw'),
+      integrations: a('no'),
+      users: a('no'),
+      role_management: a('no'),
+      attendance_log: a('no'),
+      billing: a('no'),
+    }, MOBILE_SHARED_STAFF),
+  },
+  {
+    id: 'role-gro',
+    name: 'GRO',
+    description: 'Cross-tenant guest relations officer assigned to multiple tenants. Handles guest messaging and calls across every assigned tenant.',
+    workingHours: { scheduleType: 'flexible', days: ALL_DAYS },
+    notifications: getDefaultRoleNotifications('role-gro'),
+    defaultPermissions: withMobile({
+      dashboard: a('r'),
+      analytics: a('no'),
+      reservations: a('rw'),
+      cockpit_calendar: a('r'),
+      journeys: a('no'),
+      iot_automations: a('no'),
+      listings: a('r'),
+      inbox: a('rw'),
+      review_hub: a('rw'),
+      task_reports: a('no'),
+      upsells: a('r'),
+      orders: a('r'),
+      cleaning_reports: a('no'),
+      housekeeping_schedule: a('no'),
+      activity_reports: a('no'),
+      finance: a('no'),
+      payment_requests: a('no'),
       integrations: a('no'),
       users: a('no'),
       role_management: a('no'),

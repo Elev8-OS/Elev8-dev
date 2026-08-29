@@ -12,6 +12,7 @@ import { useRoles } from '~/composables/useRoles'
 import { toast } from 'vue-sonner'
 import UserPersonalInfoForm from './UserPersonalInfoForm.vue'
 import UserAssignmentPicker from './UserAssignmentPicker.vue'
+import TenantAssignmentPicker from './TenantAssignmentPicker.vue'
 import SalaryDisplay from './SalaryDisplay.vue'
 import type { User, PreferredLanguage } from '~/components/users/data/users'
 import type { RoleId } from '~/components/users/data/roles'
@@ -45,6 +46,7 @@ const form = ref({
   hoursPerDay: 0,
   roleId: '' as RoleId | '',
   listingIds: [] as string[],
+  assignedTenantIds: [] as string[],
   status: 'active' as 'active' | 'inactive',
 })
 
@@ -68,6 +70,7 @@ watch(
         hoursPerDay: editingUser.value.hoursPerDay,
         roleId: editingUser.value.roleId,
         listingIds: [...editingUser.value.listingIds],
+        assignedTenantIds: [...(editingUser.value.assignedTenantIds ?? [])],
         status: editingUser.value.status,
       }
     }
@@ -83,6 +86,7 @@ watch(
         hoursPerDay: 0,
         roleId: 'role-housekeeping',
         listingIds: [],
+        assignedTenantIds: [],
         status: 'active',
       }
     }
@@ -132,6 +136,7 @@ function handleSave() {
     hoursPerDay: form.value.hoursPerDay,
     roleId: form.value.roleId as RoleId,
     listingIds: form.value.listingIds,
+    assignedTenantIds: form.value.roleId === 'role-gro' ? form.value.assignedTenantIds : [],
     status: form.value.status,
   }
 
@@ -224,6 +229,14 @@ function handleSave() {
             <UserAssignmentPicker v-model="form.listingIds" />
             <p class="text-xs text-muted-foreground">
               Leave empty for tenant-wide access (Admin/Owner).
+            </p>
+          </div>
+
+          <div v-if="form.roleId === 'role-gro'" class="space-y-1.5">
+            <Label>Assign to Tenants</Label>
+            <TenantAssignmentPicker v-model="form.assignedTenantIds" />
+            <p class="text-xs text-muted-foreground">
+              A GRO sees inbox messages and calls across all assigned tenants.
             </p>
           </div>
 

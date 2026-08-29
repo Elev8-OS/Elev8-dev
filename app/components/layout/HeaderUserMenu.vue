@@ -1,9 +1,16 @@
 <script setup lang="ts">
-const user = {
-  name: 'Komang Juliantara',
-  role: 'Guest Relations',
-  avatar: '/avatars/avatartion.png',
-}
+const { currentUser } = useCurrentDashboardUser()
+const { getRole } = useRoles()
+
+const user = computed(() => {
+  const u = currentUser.value
+  return {
+    name: u?.name ?? 'User',
+    role: getRole(u?.roleId ?? '')?.name ?? 'Staff',
+    avatar: u?.avatarUrl ?? '/avatars/avatartion.png',
+    initials: u?.initials ?? '?',
+  }
+})
 
 function handleLogout() {
   navigateTo('/login')

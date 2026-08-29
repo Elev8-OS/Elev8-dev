@@ -12,6 +12,7 @@ defineProps<ListProps>()
 const selectedConversationId = defineModel<string | undefined>('selectedConversationId', { required: false })
 
 const { showActionNeeded, unreadFilter, assignedToMeFilter, activeChannelFilter, activeStaffFilter, activeStayFilter, activeDateFilter, searchValue, sortBy, channelOptions, setChannelFilter, clearChannelFilter, staffMembers, toggleStaffFilter, clearStaffFilter } = useInbox()
+const { isGro } = useGroScope()
 
 const otaIconMap: Record<string, string> = Object.fromEntries(otaSources.map(s => [s.name, s.icon]))
 
@@ -67,7 +68,7 @@ function onSelectConversation(id: string) {
 <template>
   <div class="flex flex-col flex-1 min-h-0">
     <div class="flex h-[56px] items-center gap-2 px-4 shrink-0">
-      <div class="relative flex-1">
+      <div v-if="!isGro" class="relative flex-1">
         <Search class="absolute left-2 top-2.5 size-4 text-muted-foreground" />
         <Input v-model="searchValue" placeholder="Search guests, listings, tags..." class="pl-8 h-8" />
       </div>

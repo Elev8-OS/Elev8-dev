@@ -1,6 +1,8 @@
 import type { PhoneCall, PhoneCallStatus, UnmatchedCall } from '~/components/inbox/data/conversations'
+import { resolveConversationTenantId } from '~/components/inbox/data/conversations'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
 import { computed } from 'vue'
+import { useGroScope } from './useGroScope'
 
 export type CallsDateRange = 'today' | 'last-7-days' | 'last-30-days' | 'all'
 
@@ -17,6 +19,7 @@ export function useCallsFilters() {
   const threeCX = useThreeCX()
   const threeCxCalls = useThreeCxCalls()
   const inbox = useInbox()
+  const { isGro, activeTenantId } = useGroScope()
 
   const matchedCalls = computed<Array<PhoneCall & { _guestName: string, _listingName: string, _staffId: string | null, _extensionNumber: string | null }>>(() => {
     const calls = threeCxCalls.allCalls.value
@@ -53,6 +56,12 @@ export function useCallsFilters() {
     if (activeCallsFilter.value === 'unmatched')
       return []
     let result = matchedCalls.value
+    if (isGro.value && activeTenantId.value !== 'all') {
+      result = result.filter((c) => {
+        const conv = inbox.conversations.value.find(cv => cv.id === c.conversationId)
+        return conv ? resolveConversationTenantId(conv) === activeTenantId.value : false
+      })
+    }
     if (activeCallsFilter.value !== 'all')
       result = result.filter(c => c.status === activeCallsFilter.value)
     if (staffFilter.value !== 'all') {
@@ -90,6 +99,10 @@ export function useCallsFilters() {
   })
 
   const filteredUnmatched = computed(() => {
+    // Unmatched calls have no conversation/tenant link, so they only appear
+    // under the "All tenants" scope for a GRO.
+    if (isGro.value && activeTenantId.value !== 'all')
+      return []
     let result = unmatchedRows.value
     if (activeCallsFilter.value === 'all' || activeCallsFilter.value === 'unmatched') {
       // keep all

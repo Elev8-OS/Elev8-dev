@@ -1,6 +1,6 @@
 import { useUsers } from '~/composables/useUsers'
 
-export const CURRENT_DASHBOARD_USER_ID = 'user-1'
+export const CURRENT_DASHBOARD_USER_ID = 'user-9'
 
 export function useCurrentDashboardUser() {
   const { getUser } = useUsers()

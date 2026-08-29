@@ -8,6 +8,12 @@ export type StayStatus = 'inquiry' | 'current' | 'future' | 'past' | 'unmatched'
 export type GuestVerification = 'unverified' | 'verified' | 'check_in' | 'check_out'
 export type CleaningStatus = 'need_cleaning' | 'in_progress' | 'cleaning_finished'
 
+export const DEFAULT_TENANT_ID = 't-1'
+
+export function resolveConversationTenantId(c: Conversation): string {
+  return c.tenantId ?? DEFAULT_TENANT_ID
+}
+
 export interface Note {
   id: string
   content: string
@@ -60,6 +66,7 @@ export interface Conversation {
   linkedUpsellOrderIds?: string[]
   guestLanguage?: string
   waWindowExpired?: boolean
+  tenantId?: string
 }
 
 export interface UpsellOfferItem {
@@ -228,6 +235,7 @@ export interface Reservation {
   scheduledTemplates?: ScheduledTemplate[]
   upsells?: UpsellItem[]
   bookingHistory?: GuestBookingHistoryItem[]
+  tenantId?: string
 }
 
 export const conversations: Conversation[] = [
@@ -1022,6 +1030,87 @@ export const conversations: Conversation[] = [
     checkOut: '',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
+  },
+  {
+    id: 'conv-gro-t2-1',
+    guestName: 'Lukas Meyer',
+    guestInitials: 'LM',
+    listingName: 'The R Apartment Uetliberg, Klima, Parken - Wallbox',
+    propertyName: 'Swiss Alpine Retreats',
+    otaSource: 'WhatsApp',
+    reservationId: 'res-gro-t2-1',
+    status: 'action_needed',
+    lastMessage: 'Hallo, ist ein später Check-out am Sonntag möglich?',
+    lastMessageAt: '2026-08-26T09:15:00Z',
+    unreadCount: 2,
+    isAssignedToMe: false,
+    assignedTo: null,
+    tags: ['Zürich', 'Late Check-out'],
+    labels: ['late-checkout'],
+    sentiment: 'positive',
+    sentimentNote: 'Guest requested late check-out for Sunday.',
+    stayStatus: 'current',
+    checkIn: '2026-08-23T15:00:00Z',
+    checkOut: '2026-08-29T11:00:00Z',
+    verification: 'check_in',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+    guestLanguage: 'German',
+    tenantId: 't-2',
+  },
+  {
+    id: 'conv-gro-t2-2',
+    guestName: 'Anna Berger',
+    guestInitials: 'AB',
+    listingName: 'The R Apartment Rheinfall - central, free parking',
+    propertyName: 'Swiss Alpine Retreats',
+    otaSource: 'Airbnb',
+    reservationId: 'res-gro-t2-2',
+    status: null,
+    lastMessage: 'Danke, die Wegbeschreibung war perfekt!',
+    lastMessageAt: '2026-08-25T18:40:00Z',
+    unreadCount: 0,
+    isAssignedToMe: false,
+    assignedTo: 'staff-2',
+    tags: ['Schaffhausen', 'Positive'],
+    labels: [],
+    sentiment: 'positive',
+    sentimentNote: 'Guest thanked for directions.',
+    stayStatus: 'future',
+    checkIn: '2026-09-02T15:00:00Z',
+    checkOut: '2026-09-06T11:00:00Z',
+    verification: 'unverified',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+    guestLanguage: 'German',
+    tenantId: 't-2',
+  },
+  {
+    id: 'conv-gro-t3-1',
+    guestName: 'Carlos Mendes',
+    guestInitials: 'CM',
+    listingName: 'Beachfront Bungalow Seminyak',
+    propertyName: 'Canggu Surf Hostel',
+    otaSource: 'Booking.com',
+    reservationId: 'res-gro-t3-1',
+    status: 'action_needed',
+    lastMessage: 'Do you provide airport transfer from Ngurah Rai?',
+    lastMessageAt: '2026-08-26T07:05:00Z',
+    unreadCount: 1,
+    isAssignedToMe: false,
+    assignedTo: null,
+    tags: ['Airport Transfer', 'Seminyak'],
+    labels: ['airport-transfer'],
+    sentiment: 'neutral',
+    sentimentNote: 'Guest asked about airport transfer.',
+    stayStatus: 'future',
+    checkIn: '2026-09-10T15:00:00Z',
+    checkOut: '2026-09-15T11:00:00Z',
+    verification: 'unverified',
+    cleaningStatus: 'cleaning_finished',
+    linkedUpsellOrderIds: [],
+    guestLanguage: 'English',
+    tenantId: 't-3',
   },
 ]
 
@@ -1913,6 +2002,15 @@ export const messages: Record<string, Message[]> = {
   ],
   'conv-em-um': [
     { id: 'msg-em-um-1', conversationId: 'conv-em-um', sender: 'guest', senderName: 'info@stayvilla.com', content: 'Do you have availability for a wedding group in September?', channel: 'Email', timestamp: '2026-08-09T14:20:00Z' },
+  ],
+  'conv-gro-t2-1': [
+    { id: 'msg-gro-t2-1-1', conversationId: 'conv-gro-t2-1', sender: 'guest', senderName: 'Lukas Meyer', content: 'Hallo, ist ein später Check-out am Sonntag möglich?', channel: 'WhatsApp', timestamp: '2026-08-26T09:15:00Z' },
+  ],
+  'conv-gro-t2-2': [
+    { id: 'msg-gro-t2-2-1', conversationId: 'conv-gro-t2-2', sender: 'guest', senderName: 'Anna Berger', content: 'Danke, die Wegbeschreibung war perfekt!', channel: 'Airbnb', timestamp: '2026-08-25T18:40:00Z' },
+  ],
+  'conv-gro-t3-1': [
+    { id: 'msg-gro-t3-1-1', conversationId: 'conv-gro-t3-1', sender: 'guest', senderName: 'Carlos Mendes', content: 'Do you provide airport transfer from Ngurah Rai?', channel: 'Booking.com', timestamp: '2026-08-26T07:05:00Z' },
   ],
 }
 
@@ -3246,6 +3344,69 @@ export const reservations: Record<string, Reservation> = {
     activity: [
       { id: 'act-em-2-1', type: 'message', title: 'Repeat Booking via Email', description: 'Returning guest booked the Garden Loft again via email', actor: 'Lukas Meier', timestamp: '2026-08-08T14:00:00Z', channel: 'Email', colorDot: 'blue' },
     ],
+  },
+  'res-gro-t2-1': {
+    id: 'res-gro-t2-1',
+    propertyName: 'Swiss Alpine Retreats',
+    roomName: 'Apartment Uetliberg',
+    listingName: 'The R Apartment Uetliberg, Klima, Parken - Wallbox',
+    otaSource: 'WhatsApp',
+    checkIn: '2026-08-23T15:00:00Z',
+    checkOut: '2026-08-29T11:00:00Z',
+    nights: 6,
+    guestCount: 2,
+    totalPrice: 840,
+    currency: 'CHF',
+    smartActions: [],
+    guestDetails: { name: 'Lukas Meyer', email: 'lukas.meyer@email.com', phone: '+41 79 123 45 67', previousStays: 2, notes: 'Returning Swiss guest, prefers late check-out.', language: 'German' },
+    listingDetails: { name: 'The R Apartment Uetliberg, Klima, Parken - Wallbox', property: 'Swiss Alpine Retreats', room: 'Apartment', amenities: ['WiFi', 'Parking', 'EV Wallbox', 'Kitchen'] },
+    tasks: [],
+    activity: [
+      { id: 'act-gro-t2-1-1', type: 'message', title: 'Late check-out request', description: 'Guest asked about late check-out on Sunday', actor: 'Lukas Meyer', timestamp: '2026-08-26T09:15:00Z', channel: 'WhatsApp', colorDot: 'blue' },
+    ],
+    tenantId: 't-2',
+  },
+  'res-gro-t2-2': {
+    id: 'res-gro-t2-2',
+    propertyName: 'Swiss Alpine Retreats',
+    roomName: 'Apartment Rheinfall',
+    listingName: 'The R Apartment Rheinfall - central, free parking',
+    otaSource: 'Airbnb',
+    checkIn: '2026-09-02T15:00:00Z',
+    checkOut: '2026-09-06T11:00:00Z',
+    nights: 4,
+    guestCount: 1,
+    totalPrice: 620,
+    currency: 'CHF',
+    smartActions: [],
+    guestDetails: { name: 'Anna Berger', email: 'anna.berger@email.com', phone: '+41 76 555 12 34', previousStays: 0, notes: 'First-time guest near Schaffhausen.', language: 'German' },
+    listingDetails: { name: 'The R Apartment Rheinfall - central, free parking', property: 'Swiss Alpine Retreats', room: 'Apartment', amenities: ['WiFi', 'Parking', 'Kitchen'] },
+    tasks: [],
+    activity: [
+      { id: 'act-gro-t2-2-1', type: 'message', title: 'Directions confirmed', description: 'Guest confirmed directions were helpful', actor: 'Anna Berger', timestamp: '2026-08-25T18:40:00Z', channel: 'Airbnb', colorDot: 'green' },
+    ],
+    tenantId: 't-2',
+  },
+  'res-gro-t3-1': {
+    id: 'res-gro-t3-1',
+    propertyName: 'Canggu Surf Hostel',
+    roomName: 'Beachfront Bungalow',
+    listingName: 'Beachfront Bungalow Seminyak',
+    otaSource: 'Booking.com',
+    checkIn: '2026-09-10T15:00:00Z',
+    checkOut: '2026-09-15T11:00:00Z',
+    nights: 5,
+    guestCount: 2,
+    totalPrice: 450,
+    currency: 'USD',
+    smartActions: [],
+    guestDetails: { name: 'Carlos Mendes', email: 'carlos.mendes@email.com', phone: '+351 912 345 678', previousStays: 0, notes: 'New guest, asked about airport transfer.', language: 'English' },
+    listingDetails: { name: 'Beachfront Bungalow Seminyak', property: 'Canggu Surf Hostel', room: 'Bungalow', amenities: ['WiFi', 'AC', 'Beachfront'] },
+    tasks: [],
+    activity: [
+      { id: 'act-gro-t3-1-1', type: 'message', title: 'Airport transfer question', description: 'Guest asked about Ngurah Rai airport transfer', actor: 'Carlos Mendes', timestamp: '2026-08-26T07:05:00Z', channel: 'Booking.com', colorDot: 'blue' },
+    ],
+    tenantId: 't-3',
   },
 }
 

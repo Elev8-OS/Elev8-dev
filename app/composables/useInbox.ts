@@ -1,7 +1,9 @@
 import type { Conversation, Message, Note, PhoneCall, Reservation, StayStatus, UnmatchedMessage } from '~/components/inbox/data/conversations'
 import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
-import { conversations as conversationsData, messages as messagesData, phoneCalls as phoneCallsData, reservations, staffMembers, unmatchedMessages as unmatchedData } from '~/components/inbox/data/conversations'
+import { conversations as conversationsData, messages as messagesData, phoneCalls as phoneCallsData, reservations, resolveConversationTenantId, staffMembers, unmatchedMessages as unmatchedData } from '~/components/inbox/data/conversations'
 import { useUpsellOrders } from './useUpsellOrders'
+import { useGroScope } from './useGroScope'
+import { useCurrentDashboardUser } from './useCurrentDashboardUser'
 
 export type SortOption = 'newest' | 'oldest' | 'unread'
 
@@ -69,6 +71,15 @@ export function useInbox() {
   const searchValue = useState<string>('inbox-search-value', () => '')
   const rightPanelCollapsed = useState<boolean>('inbox-right-panel-collapsed', () => false)
   const autoTranslate = useState<boolean>('inbox-auto-translate', () => true)
+
+  const { isGro, activeTenantId } = useGroScope()
+  const { currentUser } = useCurrentDashboardUser()
+
+  const visibleConversations = computed(() => {
+    if (!isGro.value || activeTenantId.value === 'all')
+      return conversations.value
+    return conversations.value.filter(c => resolveConversationTenantId(c) === activeTenantId.value)
+  })
 
   const mockTranslations: Record<string, string> = {
     'Hi! We\'re arriving tomorrow and wanted to confirm the check-in process.': 'Halo! Kami tiba besok dan ingin mengonfirmasi proses check-in.',
@@ -270,7 +281,7 @@ export function useInbox() {
   }
 
   const filteredConversations = computed(() => {
-    let result = conversations.value
+    let result = visibleConversations.value
 
     if (showActionNeeded.value) {
       result = result.filter(c => c.status === 'action_needed')
@@ -488,8 +499,8 @@ export function useInbox() {
     const newNote: Note = {
       id: `note-${Date.now()}`,
       content,
-      authorId: 'staff-2',
-      authorName: 'Komang Juliantara',
+      authorId: currentUser.value?.id ?? 'staff-2',
+      authorName: currentUser.value?.name ?? 'Komang Juliantara',
       createdAt: new Date().toISOString(),
       visibleToAI,
     }
@@ -513,31 +524,31 @@ export function useInbox() {
   }
 
   function actionNeededCount(): number {
-    return conversations.value.filter(c => c.status === 'action_needed').length
+    return visibleConversations.value.filter(c => c.status === 'action_needed').length
   }
 
   function assignedToMeCount(): number {
-    return conversations.value.filter(c => c.isAssignedToMe).length
+    return visibleConversations.value.filter(c => c.isAssignedToMe).length
   }
 
   function totalCount(): number {
-    return conversations.value.length
+    return visibleConversations.value.length
   }
 
   function stayCountByStatus(status: StayStatus): number {
-    return conversations.value.filter(c => c.stayStatus === status).length
+    return visibleConversations.value.filter(c => c.stayStatus === status).length
   }
 
   const allListingOptions = computed(() => {
     const map = new Map<string, number>()
-    for (const c of conversations.value) {
+    for (const c of visibleConversations.value) {
       map.set(c.listingName, (map.get(c.listingName) ?? 0) + 1)
     }
     return Array.from(map.entries()).map(([name, count]) => ({ name, count }))
   })
 
   const listingOptions = computed(() => {
-    let convs = conversations.value
+    let convs = visibleConversations.value
 
     if (activeTagFilters.value.length > 0) {
       convs = convs.filter(c =>
@@ -561,7 +572,7 @@ export function useInbox() {
 
   const listingTags = computed(() => {
     const map = new Map<string, number>()
-    for (const c of conversations.value) {
+    for (const c of visibleConversations.value) {
       for (const tag of c.tags) {
         map.set(tag, (map.get(tag) ?? 0) + 1)
       }
@@ -573,7 +584,7 @@ export function useInbox() {
 
   const channelOptions = computed(() => {
     const map = new Map<string, number>()
-    for (const c of conversations.value) {
+    for (const c of visibleConversations.value) {
       map.set(c.otaSource, (map.get(c.otaSource) ?? 0) + 1)
     }
     return Array.from(map.entries())
@@ -667,7 +678,7 @@ export function useInbox() {
       id: tempId,
       conversationId,
       sender: 'host',
-      senderName: 'Komang Juliantara',
+      senderName: currentUser.value?.name ?? 'Komang Juliantara',
       senderRole: 'Guest Relations',
       content: content.trim(),
       channel,
@@ -786,6 +797,7 @@ export function useInbox() {
     pendingSuggestion,
     filteredConversations,
     conversations,
+    visibleConversations,
     selectedConversation,
     selectedMessages,
     selectedReservation,

@@ -29,6 +29,8 @@ export interface User {
   // Role + scope
   roleId: RoleId
   listingIds: string[]
+  /** Platform tenant ids a cross-tenant GRO is assigned to. */
+  assignedTenantIds?: string[]
   // Meta
   status: 'active' | 'inactive'
   avatarUrl?: string
@@ -165,6 +167,24 @@ export const seedUsers: User[] = [
     listingIds: ['lst-1', 'lst-2'],
     status: 'active',
     initials: 'KA',
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: 'user-9',
+    name: 'GRO Support',
+    phone: '+6281234567809',
+    preferredLanguage: 'id',
+    email: 'gro@elev8.io',
+    employeeNumber: 'EMP-009',
+    monthlySalaryAmount: 0,
+    workingDaysPerMonth: 0,
+    hoursPerDay: 0,
+    roleId: 'role-gro',
+    listingIds: [],
+    assignedTenantIds: ['t-1', 't-2', 't-3'],
+    status: 'active',
+    initials: 'GS',
     createdAt: now,
     updatedAt: now,
   },
