@@ -38,6 +38,42 @@ export interface ListingStats {
   totalReviews: number
 }
 
+export type TaxType = 'tax' | 'fee' | 'city_tax'
+
+export type TaxLogic = 'percent' | 'per_room' | 'per_room_per_night' | 'per_person' | 'per_person_per_night' | 'per_night' | 'per_booking'
+
+export interface TaxDateRange {
+  after: string
+  before: string
+}
+
+export interface ListingFeeTaxItem {
+  id: string
+  title: string
+  type: TaxType
+  logic: TaxLogic
+  rate: number
+  currency?: string
+  isInclusive: boolean
+  skipNights?: number | null
+  maxNights?: number | null
+  applicableDateRanges: TaxDateRange[]
+}
+
+export interface TaxSetTaxRef {
+  id: string
+  level: number
+}
+
+export interface TaxSet {
+  id: string
+  title: string
+  currency?: string
+  taxes: TaxSetTaxRef[]
+  associatedRatePlanIds: string[]
+  isDefault: boolean
+}
+
 export interface ListingPricing {
   nightlyRate: number
   cleaningFee: number
@@ -45,6 +81,8 @@ export interface ListingPricing {
   weeklyDiscount: number
   monthlyDiscount: number
   seasonalRates: Array<{ startDate: string, endDate: string, rate: number, label: string }>
+  feesTaxes?: ListingFeeTaxItem[]
+  taxSets?: TaxSet[]
 }
 
 export type BookingType = 'reservation' | 'block'
@@ -379,6 +417,44 @@ export const listings = ref<Listing[]>([
       seasonalRates: [
         { startDate: '2026-07-01', endDate: '2026-08-31', rate: 220, label: 'Peak Season' },
         { startDate: '2026-12-20', endDate: '2027-01-05', rate: 250, label: 'Holiday' },
+      ],
+      feesTaxes: [
+        {
+          id: 'ft-1',
+          title: 'Cleaning Fee',
+          type: 'fee',
+          logic: 'per_booking',
+          rate: 45,
+          currency: 'USD',
+          isInclusive: false,
+          skipNights: null,
+          maxNights: null,
+          applicableDateRanges: [],
+        },
+        {
+          id: 'ft-2',
+          title: 'Local Tax',
+          type: 'city_tax',
+          logic: 'percent',
+          rate: 10,
+          isInclusive: true,
+          skipNights: null,
+          maxNights: null,
+          applicableDateRanges: [],
+        },
+      ],
+      taxSets: [
+        {
+          id: 'ts-1',
+          title: 'Standard Tax Set',
+          currency: 'USD',
+          taxes: [
+            { id: 'ft-1', level: 1 },
+            { id: 'ft-2', level: 0 },
+          ],
+          associatedRatePlanIds: [],
+          isDefault: true,
+        },
       ],
     },
     bookings: [
