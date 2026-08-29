@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { currentUser } = useCurrentDashboardUser()
+const { currentUser, setCurrentUserId, users } = useCurrentDashboardUser()
 const { getRole } = useRoles()
 
 const user = computed(() => {
@@ -11,6 +11,14 @@ const user = computed(() => {
     initials: u?.initials ?? '?',
   }
 })
+
+const switchableUsers = computed(() =>
+  users.value.filter(u => u.status === 'active' && u.id !== currentUser.value?.id),
+)
+
+function switchUser(id: string) {
+  setCurrentUserId(id)
+}
 
 function handleLogout() {
   navigateTo('/login')
@@ -59,6 +67,29 @@ const showModalTheme = ref(false)
         </DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger>
+          <Icon name="i-lucide-users" />
+          Switch user
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent class="w-52">
+          <DropdownMenuItem
+            v-for="u in switchableUsers"
+            :key="u.id"
+            @click="switchUser(u.id)"
+          >
+            <Avatar class="h-5 w-5 rounded">
+              <AvatarFallback class="text-[9px]">
+                {{ u.initials }}
+              </AvatarFallback>
+            </Avatar>
+            <span class="truncate">{{ u.name }}</span>
+            <span class="ml-auto text-xs text-muted-foreground">
+              {{ getRole(u.roleId)?.name }}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
       <DropdownMenuGroup>
         <DropdownMenuItem>
           <Icon name="i-lucide-badge-check" />

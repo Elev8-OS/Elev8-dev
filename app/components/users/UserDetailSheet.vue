@@ -136,7 +136,7 @@ function handleSave() {
     hoursPerDay: form.value.hoursPerDay,
     roleId: form.value.roleId as RoleId,
     listingIds: form.value.listingIds,
-    assignedTenantIds: form.value.roleId === 'role-gro' ? form.value.assignedTenantIds : [],
+    assignedTenantIds: form.value.roleId === 'role-guest-experience-manager' ? form.value.assignedTenantIds : [],
     status: form.value.status,
   }
 
@@ -232,11 +232,11 @@ function handleSave() {
             </p>
           </div>
 
-          <div v-if="form.roleId === 'role-gro'" class="space-y-1.5">
+          <div v-if="form.roleId === 'role-guest-experience-manager'" class="space-y-1.5">
             <Label>Assign to Tenants</Label>
             <TenantAssignmentPicker v-model="form.assignedTenantIds" />
             <p class="text-xs text-muted-foreground">
-              A GRO sees inbox messages and calls across all assigned tenants.
+              A Guest Experience Manager (GRO) sees inbox messages and calls across all assigned tenants.
             </p>
           </div>
 

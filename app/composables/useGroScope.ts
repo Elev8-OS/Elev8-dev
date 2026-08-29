@@ -5,7 +5,7 @@ export function useGroScope() {
   const { currentUser } = useCurrentDashboardUser()
   const { byId } = useTenants()
 
-  const isGro = computed(() => currentUser.value?.roleId === 'role-gro')
+  const isGro = computed(() => currentUser.value?.roleId === 'role-guest-experience-manager')
   const activeTenantId = useState<string>('gro-active-tenant', () => 'all')
   const groSearch = useState<string>('gro-search', () => '')
 
