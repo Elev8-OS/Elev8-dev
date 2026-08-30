@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { Bed, Fee, LengthOfStayDiscount, Listing, RatePlan, RatePlanOffering, UnitType } from '~/components/listings/data/listings'
+import type { LengthOfStayDiscount, Listing, RatePlan, RatePlanOffering, RateRateMode, RateSellMode, UnitType } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
+import { createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -148,10 +149,11 @@ function addUnitType() {
     pricing: {
       currency: 'USD',
       ratePlans: [
-        { id: `rp-${Date.now()}`, name: 'Standard Rate', pricePerNight: 100, pricePerAdditionalGuest: 0, isBase: true },
+        { ...createRatePlan({}), id: `rp-${Date.now()}`, name: 'Best Available Rate', title: 'Best Available Rate', isBase: true },
       ],
       offerings: [],
       lengthOfStayDiscounts: [],
+      fees: [],
     },
     units: [],
   }
@@ -251,20 +253,42 @@ function removePhoto(index: number) {
 }
 
 // Pricing - Rate Plans
-function addRatePlan() {
+const showAddRatePlanSheet = ref(false)
+const addRatePlanDraft = ref<RatePlan>(createRatePlan({}))
+
+function openAddRatePlanSheet() {
   if (!form.value.pricing)
     return
-  const newPlan: RatePlan = {
-    id: `rp-${Date.now()}`,
+  const base = form.value.pricing.ratePlans.find(rp => rp.isBase) ?? form.value.pricing.ratePlans[0]
+  addRatePlanDraft.value = {
+    ...createRatePlan({}),
     name: `Rate Plan ${(form.value.pricing.ratePlans.length ?? 0) + 1}`,
-    pricePerNight: form.value.pricing.ratePlans.find(rp => rp.isBase)?.pricePerNight ?? 0,
-    pricePerAdditionalGuest: 0,
+    title: `Rate Plan ${(form.value.pricing.ratePlans.length ?? 0) + 1}`,
+    currency: form.value.pricing.currency ?? 'USD',
+    options: [{ occupancy: base?.options[0]?.occupancy ?? 2, isPrimary: true, derivedOption: null, rate: base ? ratePlanNightlyRate(base) : 0 }],
     isBase: false,
+  }
+  showAddRatePlanSheet.value = true
+}
+
+function saveNewRatePlan() {
+  if (!form.value.pricing || !addRatePlanDraft.value.title.trim())
+    return
+  const newPlan: RatePlan = {
+    ...addRatePlanDraft.value,
+    id: `rp-${Date.now()}`,
+    name: addRatePlanDraft.value.title.trim(),
+    title: addRatePlanDraft.value.title.trim(),
   }
   form.value.pricing = {
     ...form.value.pricing,
     ratePlans: [...form.value.pricing.ratePlans, newPlan],
   }
+  showAddRatePlanSheet.value = false
+}
+
+function closeAddRatePlanSheet() {
+  showAddRatePlanSheet.value = false
 }
 
 function removeRatePlan(index: number) {
@@ -502,7 +526,9 @@ const feeIcons: Record<string, string> = {
                   <div class="flex flex-col gap-1.5">
                     <Label>Quantity</Label>
                     <Input type="number" :model-value="form.quantity ?? 1" min="1" @update:model-value="onQuantityChange(Number($event) || 1)" />
-                    <p class="text-[10px] text-muted-foreground">Number of rooms of this type</p>
+                    <p class="text-[10px] text-muted-foreground">
+                      Number of rooms of this type
+                    </p>
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <Label>Description</Label>
@@ -523,15 +549,15 @@ const feeIcons: Record<string, string> = {
                 <div class="grid grid-cols-3 gap-4">
                   <div class="flex flex-col gap-1.5">
                     <Label>Max Adults</Label>
-                    <Input type="number" v-model.number="form.maxAdults" min="1" />
+                    <Input v-model.number="form.maxAdults" type="number" min="1" />
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <Label>Max Children</Label>
-                    <Input type="number" v-model.number="form.maxChildren" min="0" />
+                    <Input v-model.number="form.maxChildren" type="number" min="0" />
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <Label>Max Infants</Label>
-                    <Input type="number" v-model.number="form.maxInfants" min="0" />
+                    <Input v-model.number="form.maxInfants" type="number" min="0" />
                   </div>
                 </div>
               </div>
@@ -545,11 +571,11 @@ const feeIcons: Record<string, string> = {
                 <div class="grid grid-cols-2 gap-4">
                   <div class="flex flex-col gap-1.5">
                     <Label>Bedrooms</Label>
-                    <Input type="number" v-model.number="form.bedrooms" min="1" />
+                    <Input v-model.number="form.bedrooms" type="number" min="1" />
                   </div>
                   <div class="flex flex-col gap-1.5">
                     <Label>Bathrooms</Label>
-                    <Input type="number" v-model.number="form.bathrooms" min="1" />
+                    <Input v-model.number="form.bathrooms" type="number" min="1" />
                   </div>
                 </div>
 
@@ -568,7 +594,7 @@ const feeIcons: Record<string, string> = {
                       </SelectContent>
                     </Select>
                     <span class="text-xs text-muted-foreground">x</span>
-                    <Input type="number" v-model.number="bed.count" min="1" class="w-16" />
+                    <Input v-model.number="bed.count" type="number" min="1" class="w-16" />
                     <Button variant="ghost" size="sm" class="h-8 w-8 p-0 shrink-0" @click="removeBed(idx)">
                       <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
                     </Button>
@@ -646,7 +672,9 @@ const feeIcons: Record<string, string> = {
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <p class="text-[10px] text-muted-foreground">Using your account currency</p>
+                <p class="text-[10px] text-muted-foreground">
+                  Using your account currency
+                </p>
               </div>
 
               <!-- Rate Plans -->
@@ -660,7 +688,7 @@ const feeIcons: Record<string, string> = {
                       Create multiple rate plans for this room type (e.g., Standard, Weekly, Monthly). The base rate plan cannot be deleted.
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" class="gap-1.5" @click="addRatePlan">
+                  <Button variant="outline" size="sm" class="gap-1.5" @click="openAddRatePlanSheet">
                     <Icon name="lucide:plus" class="size-3.5" />
                     Add Rate Plan
                   </Button>
@@ -680,10 +708,10 @@ const feeIcons: Record<string, string> = {
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex items-center gap-2 flex-1 min-w-0">
                         <Input
-                          :model-value="rp.name"
+                          :model-value="rp.title"
                           placeholder="Rate plan name"
                           class="max-w-[240px]"
-                          @update:model-value="(v) => updateRatePlan(idx, 'name', String(v))"
+                          @update:model-value="(v) => { const t = String(v); updateRatePlan(idx, 'title', t); updateRatePlan(idx, 'name', t) }"
                         />
                         <Badge v-if="rp.isBase" variant="secondary" class="text-[10px] shrink-0">
                           Base
@@ -702,31 +730,91 @@ const feeIcons: Record<string, string> = {
 
                     <div class="grid grid-cols-2 gap-4">
                       <div class="flex flex-col gap-1.5">
-                        <Label>Price per Night ({{ currencySymbol }})*</Label>
-                        <div class="relative">
+                        <Label>Sell Mode</Label>
+                        <Select :model-value="rp.sellMode" @update:model-value="(v) => updateRatePlan(idx, 'sellMode', String(v))">
+                          <SelectTrigger class="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="per_room">
+                              Per Room
+                            </SelectItem>
+                            <SelectItem value="per_person">
+                              Per Person
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div class="flex flex-col gap-1.5">
+                        <Label>Rate Mode</Label>
+                        <Select :model-value="rp.rateMode" @update:model-value="(v) => updateRatePlan(idx, 'rateMode', String(v))">
+                          <SelectTrigger class="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="manual">
+                              Manual
+                            </SelectItem>
+                            <SelectItem value="derived">
+                              Derived
+                            </SelectItem>
+                            <SelectItem value="auto">
+                              Auto
+                            </SelectItem>
+                            <SelectItem value="cascade">
+                              Cascade
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                      <div class="flex items-center justify-between">
+                        <Label>Occupancy Options</Label>
+                        <span class="text-[10px] text-muted-foreground">per_room = single option at max occupancy</span>
+                      </div>
+                      <div v-for="(opt, oi) in rp.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
+                        <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
+                        <Input
+                          type="number"
+                          :model-value="opt.occupancy"
+                          min="1"
+                          class="w-16 h-8 text-xs"
+                          @update:model-value="(v) => updateRatePlan(idx, 'options', rp.options.map((o, i) => i === oi ? { ...o, occupancy: Math.max(1, Number(v) || 1) } : o))"
+                        />
+                        <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
+                        <div class="relative flex-1">
                           <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
                           <Input
                             type="number"
-                            :model-value="rp.pricePerNight"
-                            class="pl-7"
+                            :model-value="opt.rate"
+                            class="pl-7 h-8 text-xs"
                             min="0"
-                            @update:model-value="(v) => updateRatePlan(idx, 'pricePerNight', Number(v) || 0)"
+                            @update:model-value="(v) => updateRatePlan(idx, 'options', rp.options.map((o, i) => i === oi ? { ...o, rate: Number(v) || 0 } : o))"
                           />
                         </div>
                       </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
                       <div class="flex flex-col gap-1.5">
-                        <Label>Price per Additional Guest ({{ currencySymbol }})</Label>
-                        <div class="relative">
-                          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
-                          <Input
-                            type="number"
-                            :model-value="rp.pricePerAdditionalGuest"
-                            class="pl-7"
-                            min="0"
-                            @update:model-value="(v) => updateRatePlan(idx, 'pricePerAdditionalGuest', Number(v) || 0)"
-                          />
-                        </div>
-                        <p class="text-[10px] text-muted-foreground">Charged per night for each guest after the first.</p>
+                        <Label>Children Fee / Night ({{ currencySymbol }})</Label>
+                        <Input
+                          type="number"
+                          :model-value="rp.childrenFee"
+                          min="0"
+                          @update:model-value="(v) => updateRatePlan(idx, 'childrenFee', Number(v) || 0)"
+                        />
+                      </div>
+                      <div class="flex flex-col gap-1.5">
+                        <Label>Infant Fee / Night ({{ currencySymbol }})</Label>
+                        <Input
+                          type="number"
+                          :model-value="rp.infantFee"
+                          min="0"
+                          @update:model-value="(v) => updateRatePlan(idx, 'infantFee', Number(v) || 0)"
+                        />
                       </div>
                     </div>
                   </div>
@@ -949,7 +1037,7 @@ const feeIcons: Record<string, string> = {
               </span>
               <span class="flex items-center gap-1">
                 <Icon name="lucide:dollar-sign" class="size-3" />
-                {{ ut.pricing.ratePlans[0]?.pricePerNight ?? 0 }}/night
+                {{ ut.pricing.ratePlans[0] ? ratePlanNightlyRate(ut.pricing.ratePlans[0]) : 0 }}/night
               </span>
             </div>
 
@@ -1023,5 +1111,126 @@ const feeIcons: Record<string, string> = {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- Add Rate Plan Sheet -->
+    <Sheet v-model:open="showAddRatePlanSheet">
+      <SheetContent class="w-full sm:max-w-md p-0">
+        <SheetHeader>
+          <SheetTitle>Add Rate Plan</SheetTitle>
+          <SheetDescription>
+            New rate plans get Channex defaults: per_room, manual, min stay 1, stop sell off. You can fine-tune them later.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          <div class="flex flex-col gap-1.5">
+            <Label>Title</Label>
+            <Input v-model="addRatePlanDraft.title" placeholder="e.g., Best Available Rate" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <Label>Sell Mode</Label>
+              <Select :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => addRatePlanDraft.sellMode = String(v) as RateSellMode">
+                <SelectTrigger class="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_room">
+                    Per Room
+                  </SelectItem>
+                  <SelectItem value="per_person">
+                    Per Person
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label>Rate Mode</Label>
+              <Select :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode">
+                <SelectTrigger class="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">
+                    Manual
+                  </SelectItem>
+                  <SelectItem value="derived">
+                    Derived
+                  </SelectItem>
+                  <SelectItem value="auto">
+                    Auto
+                  </SelectItem>
+                  <SelectItem value="cascade">
+                    Cascade
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <Label>Occupancy Options</Label>
+            <div class="flex flex-col gap-2">
+              <div v-for="(opt, oi) in addRatePlanDraft.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
+                <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
+                <Input
+                  type="number"
+                  :model-value="opt.occupancy"
+                  min="1"
+                  class="w-16 h-8 text-xs"
+                  @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, occupancy: Math.max(1, Number(v) || 1) }"
+                />
+                <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
+                <div class="relative flex-1">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
+                  <Input
+                    type="number"
+                    :model-value="opt.rate"
+                    class="pl-7 h-8 text-xs"
+                    min="0"
+                    @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, rate: Number(v) || 0 }"
+                  />
+                </div>
+              </div>
+            </div>
+            <p v-if="addRatePlanDraft.sellMode === 'per_room'" class="text-[10px] text-muted-foreground">
+              Per room plans use a single option at max occupancy.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <Label>Children Fee / Night ({{ currencySymbol }})</Label>
+              <Input
+                type="number"
+                :model-value="addRatePlanDraft.childrenFee"
+                min="0"
+                @update:model-value="(v) => addRatePlanDraft.childrenFee = Number(v) || 0"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label>Infant Fee / Night ({{ currencySymbol }})</Label>
+              <Input
+                type="number"
+                :model-value="addRatePlanDraft.infantFee"
+                min="0"
+                @update:model-value="(v) => addRatePlanDraft.infantFee = Number(v) || 0"
+              />
+            </div>
+          </div>
+        </div>
+
+        <SheetFooter class="border-t">
+          <Button variant="outline" size="sm" @click="closeAddRatePlanSheet">
+            Cancel
+          </Button>
+          <Button size="sm" :disabled="!addRatePlanDraft.title.trim()" @click="saveNewRatePlan">
+            <Icon name="lucide:check" class="size-3.5 mr-1.5" />
+            Add
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   </div>
 </template>

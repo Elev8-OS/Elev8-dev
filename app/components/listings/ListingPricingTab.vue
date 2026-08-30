@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import type { Listing, ListingFeeTaxItem, TaxDateRange, TaxSet, TaxSetTaxRef, Unit, UnitType, UnitTypePricing } from '~/components/listings/data/listings'
+import type { Listing, ListingFeeTaxItem, RateMealType, RatePlan, RatePlanOption, RateRateMode, RateSellMode, TaxDateRange, TaxSet, Unit, UnitType, UnitTypePricing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
+import CancellationPolicyEditor from '~/components/listings/CancellationPolicyEditor.vue'
+import { cancellationPolicySummary, createRatePlan, ratePlanMaxOccupancy, ratePlanNightlyRate } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listing: Listing, activeUnit?: Unit | null }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -63,32 +65,163 @@ function setCurrency(utId: string, code: string) {
 }
 
 // Rate plans
-function updateRatePlan(utId: string, index: number, field: string, value: unknown) {
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function primaryOption(rp: RatePlan): RatePlanOption {
+  return rp.options.find(o => o.isPrimary) ?? rp.options[0] ?? { occupancy: 2, isPrimary: true, derivedOption: null, rate: 0 }
+}
+
+function draftAddOption(draft: RatePlan) {
+  const last = draft.options.at(-1)
+  const occ = (last?.occupancy ?? 1) + 1
+  const maxOcc = Math.max(...draft.options.map(o => o.occupancy), 1)
+  draft.options = [
+    ...draft.options,
+    {
+      occupancy: occ,
+      isPrimary: false,
+      derivedOption: null,
+      rate: draft.options.find(o => o.occupancy === maxOcc)?.rate ?? 0,
+    },
+  ]
+}
+
+function draftRemoveOption(draft: RatePlan, index: number) {
+  if (draft.options.length <= 1)
+    return
+  draft.options = draft.options.filter((_, i) => i !== index)
+}
+
+function patchRatePlan(utId: string, index: number, patch: Partial<RatePlan>) {
   const ut = unitTypes.value.find(u => u.id === utId)
   if (!ut)
     return
-  const ratePlans = ut.pricing.ratePlans.map((rp, i) => i === index ? { ...rp, [field]: value } : rp)
+  const ratePlans = ut.pricing.ratePlans.map((rp, i) => i === index ? { ...rp, ...patch } : rp)
   patchPricing(utId, { ratePlans })
 }
 
-function addRatePlan(utId: string) {
+const showAddRatePlanSheet = ref(false)
+const addRatePlanUnitTypeId = ref('')
+const addRatePlanDraft = ref<RatePlan>(createRatePlan({}))
+
+const showEditRatePlanSheet = ref(false)
+const editRatePlanUnitTypeId = ref('')
+const editRatePlanIndex = ref(-1)
+const editRatePlanDraft = ref<RatePlan>(createRatePlan({}))
+
+function openEditRatePlanSheet(utId: string, index: number) {
+  const ut = unitTypes.value.find(u => u.id === utId)
+  const rp = ut?.pricing.ratePlans[index]
+  if (!ut || !rp)
+    return
+  editRatePlanUnitTypeId.value = utId
+  editRatePlanIndex.value = index
+  editRatePlanDraft.value = {
+    ...rp,
+    options: rp.options.map(o => ({ ...o, derivedOption: o.derivedOption ? JSON.parse(JSON.stringify(o.derivedOption)) : null })),
+  }
+  showEditRatePlanSheet.value = true
+}
+
+function saveEditedRatePlan() {
+  const ut = unitTypes.value.find(u => u.id === editRatePlanUnitTypeId.value)
+  if (!ut || editRatePlanIndex.value < 0 || !editRatePlanDraft.value.title.trim())
+    return
+  const draft = editRatePlanDraft.value
+  patchRatePlan(ut.id, editRatePlanIndex.value, {
+    ...draft,
+    name: draft.title.trim(),
+    title: draft.title.trim(),
+  })
+  showEditRatePlanSheet.value = false
+  toast.success('Rate plan updated')
+}
+
+function closeEditRatePlanSheet() {
+  showEditRatePlanSheet.value = false
+  editRatePlanUnitTypeId.value = ''
+  editRatePlanIndex.value = -1
+}
+
+function rateModeHint(mode: RateRateMode): string {
+  const hints: Record<RateRateMode, string> = {
+    manual: 'You set prices directly',
+    derived: 'Priced from another rate plan',
+    auto: 'Imported from your PMS',
+    cascade: 'Inherits from the parent plan',
+  }
+  return hints[mode]
+}
+
+type StayField = 'minStayArrival' | 'minStayThrough' | 'maxStay'
+type BoolField = 'closedToArrival' | 'closedToDeparture' | 'stopSell'
+
+const stayRows: { field: StayField, label: string, min: number }[] = [
+  { field: 'minStayArrival', label: 'Min Stay Arrival', min: 1 },
+  { field: 'minStayThrough', label: 'Min Stay Through', min: 1 },
+  { field: 'maxStay', label: 'Max Stay', min: 0 },
+]
+
+const boolRows: { field: BoolField, label: string }[] = [
+  { field: 'closedToArrival', label: 'Closed To Arrival' },
+  { field: 'closedToDeparture', label: 'Closed To Departure' },
+  { field: 'stopSell', label: 'Stop Sell' },
+]
+
+function stayValue(draft: RatePlan, field: StayField): number {
+  return Math.max(0, ...draft[field])
+}
+
+function setStayValue(draft: RatePlan, field: StayField, value: number, min: number) {
+  const v = Math.max(min, value || 0)
+  draft[field] = draft[field].map(() => v)
+}
+
+function boolDayChecked(draft: RatePlan, field: BoolField, day: number): boolean {
+  return draft[field][day] === true
+}
+
+function toggleBoolDay(draft: RatePlan, field: BoolField, day: number) {
+  draft[field] = draft[field].map((x, i) =>
+    i === day ? !x : x,
+  )
+}
+
+function openAddRatePlanSheet(utId: string) {
   const ut = unitTypes.value.find(u => u.id === utId)
   if (!ut)
     return
-  const base = ut.pricing.ratePlans.find(rp => rp.isBase)
-  patchPricing(utId, {
-    ratePlans: [
-      ...ut.pricing.ratePlans,
-      {
-        id: `rp-${Date.now()}`,
-        name: `Rate Plan ${ut.pricing.ratePlans.length + 1}`,
-        pricePerNight: base?.pricePerNight ?? 0,
-        pricePerAdditionalGuest: 0,
-        isBase: false,
-      },
-    ],
-  })
+  const base = ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0]
+  addRatePlanUnitTypeId.value = utId
+  addRatePlanDraft.value = {
+    ...createRatePlan({}),
+    name: `Rate Plan ${ut.pricing.ratePlans.length + 1}`,
+    title: `Rate Plan ${ut.pricing.ratePlans.length + 1}`,
+    currency: ut.pricing.currency,
+    options: [{ occupancy: primaryOption(base ?? createRatePlan({})).occupancy, isPrimary: true, derivedOption: null, rate: base ? primaryOption(base).rate : 0 }],
+    isBase: false,
+  }
+  showAddRatePlanSheet.value = true
+}
+
+function saveNewRatePlan() {
+  const ut = unitTypes.value.find(u => u.id === addRatePlanUnitTypeId.value)
+  if (!ut || !addRatePlanDraft.value.title.trim())
+    return
+  const newPlan: RatePlan = {
+    ...addRatePlanDraft.value,
+    id: `rp-${Date.now()}`,
+    name: addRatePlanDraft.value.title.trim(),
+    title: addRatePlanDraft.value.title.trim(),
+  }
+  patchPricing(ut.id, { ratePlans: [...ut.pricing.ratePlans, newPlan] })
+  showAddRatePlanSheet.value = false
   toast.success('Rate plan added')
+}
+
+function closeAddRatePlanSheet() {
+  showAddRatePlanSheet.value = false
+  addRatePlanUnitTypeId.value = ''
 }
 
 function removeRatePlan(utId: string, index: number) {
@@ -97,6 +230,15 @@ function removeRatePlan(utId: string, index: number) {
     return
   patchPricing(utId, { ratePlans: ut.pricing.ratePlans.filter((_, i) => i !== index) })
   toast.success('Rate plan removed')
+}
+
+function setRatePlanPrimary(utId: string, index: number) {
+  const ut = unitTypes.value.find(u => u.id === utId)
+  if (!ut)
+    return
+  const ratePlans = ut.pricing.ratePlans.map((rp, i) => ({ ...rp, isBase: i === index }))
+  patchPricing(utId, { ratePlans })
+  toast.success('Base rate plan updated')
 }
 
 // Offerings
@@ -168,14 +310,9 @@ watch(() => props.listing.pricing, (p) => {
   editForm.value = { nightlyRate: p.nightlyRate, cleaningFee: p.cleaningFee, serviceFee: p.serviceFee, weeklyDiscount: p.weeklyDiscount, monthlyDiscount: p.monthlyDiscount }
 })
 
-function savePricing() {
+function patchLegacyPricing(patch: Partial<typeof editForm.value>) {
+  editForm.value = { ...editForm.value, ...patch }
   emit('update', { ...props.listing, pricing: { ...props.listing.pricing, ...editForm.value } })
-  toast.success('Pricing saved')
-}
-
-function saveUnitTypePricing() {
-  emit('update', { ...props.listing })
-  toast.success('Pricing saved')
 }
 
 // ── Property-level Fees & Taxes ──────────────────────────────────────────
@@ -1233,6 +1370,553 @@ function removeTaxSet(id: string) {
       </SheetContent>
     </Sheet>
 
+    <!-- Add Rate Plan Sheet -->
+    <Sheet v-model:open="showAddRatePlanSheet">
+      <SheetContent class="w-full sm:max-w-md p-0">
+        <SheetHeader>
+          <SheetTitle>Add Rate Plan</SheetTitle>
+          <SheetDescription>
+            Set the name, price and selling rules for this new plan.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
+          <div class="flex flex-col gap-1.5">
+            <Label>Rate Plan Name</Label>
+            <Input v-model="addRatePlanDraft.title" placeholder="e.g., Best Available Rate, Weekly, Non-refundable" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1.5">
+              <Label>Currency</Label>
+              <Select :model-value="addRatePlanDraft.currency" @update:model-value="(v) => addRatePlanDraft.currency = String(v)">
+                <SelectTrigger class="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
+                    {{ c.symbol }} {{ c.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label>Sell Mode</Label>
+              <Select :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => addRatePlanDraft.sellMode = String(v) as RateSellMode">
+                <SelectTrigger class="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_room">
+                    Per Room
+                  </SelectItem>
+                  <SelectItem value="per_person">
+                    Per Person
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <Label>Rate Mode</Label>
+            <Select :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">
+                  Manual
+                </SelectItem>
+                <SelectItem value="derived">
+                  Derived
+                </SelectItem>
+                <SelectItem value="auto">
+                  Auto
+                </SelectItem>
+                <SelectItem value="cascade">
+                  Cascade
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-[10px] text-muted-foreground">
+              {{ rateModeHint(addRatePlanDraft.rateMode) }}
+            </p>
+          </div>
+
+          <CancellationPolicyEditor v-model:config="addRatePlanDraft.cancellationPolicyConfig" />
+
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <Label>Occupancy Options</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 gap-1"
+                :disabled="addRatePlanDraft.sellMode === 'per_room'"
+                title="Per room plans use a single option at max occupancy"
+                @click="draftAddOption(addRatePlanDraft)"
+              >
+                <Icon name="lucide:plus" class="size-3" />
+                Option
+              </Button>
+            </div>
+            <div class="flex flex-col gap-2">
+              <div v-for="(opt, oi) in addRatePlanDraft.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
+                <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
+                <Input
+                  type="number"
+                  :model-value="opt.occupancy"
+                  min="1"
+                  class="w-16 h-8 text-xs"
+                  @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, occupancy: Math.max(1, Number(v) || 1) }"
+                />
+                <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
+                <div class="relative flex-1">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
+                  <Input
+                    type="number"
+                    :model-value="opt.rate"
+                    class="pl-7 h-8 text-xs"
+                    min="0"
+                    @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, rate: Number(v) || 0 }"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-7 w-7 p-0 shrink-0"
+                  :disabled="addRatePlanDraft.options.length <= 1"
+                  title="Remove option"
+                  @click="draftRemoveOption(addRatePlanDraft, oi)"
+                >
+                  <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
+                </Button>
+              </div>
+            </div>
+            <p v-if="addRatePlanDraft.sellMode === 'per_room'" class="text-[10px] text-muted-foreground">
+              Per room plans use a single option at max occupancy.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <Label>Children Fee / Night</Label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
+                <Input
+                  type="number"
+                  :model-value="addRatePlanDraft.childrenFee"
+                  class="pl-7 h-8"
+                  min="0"
+                  @update:model-value="(v) => addRatePlanDraft.childrenFee = Number(v) || 0"
+                />
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label>Infant Fee / Night</Label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
+                <Input
+                  type="number"
+                  :model-value="addRatePlanDraft.infantFee"
+                  class="pl-7 h-8"
+                  min="0"
+                  @update:model-value="(v) => addRatePlanDraft.infantFee = Number(v) || 0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Stay + availability restrictions -->
+          <div class="flex flex-col gap-4 rounded-lg border p-3">
+            <div class="flex flex-col gap-2">
+              <Label>Stay Restrictions</Label>
+              <div class="flex flex-col gap-2">
+                <div
+                  v-for="row in stayRows"
+                  :key="row.field"
+                  class="flex items-center justify-between gap-3"
+                >
+                  <span class="text-xs font-medium">{{ row.label }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      :model-value="stayValue(addRatePlanDraft, row.field)"
+                      :min="row.min"
+                      class="h-8 w-16 text-sm text-right"
+                      @update:model-value="(v) => setStayValue(addRatePlanDraft, row.field, Number(v), row.min)"
+                    />
+                    <span class="text-xs text-muted-foreground">nights</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div class="flex flex-col gap-3">
+              <Label>Availability Restrictions (Mon–Sun)</Label>
+              <div
+                v-for="row in boolRows"
+                :key="row.field"
+                class="flex flex-col gap-2"
+              >
+                <span class="text-xs font-medium">{{ row.label }}</span>
+                <div class="grid grid-cols-7 gap-1">
+                  <label
+                    v-for="(label, d) in WEEKDAY_LABELS"
+                    :key="label"
+                    class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
+                    :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
+                  >
+                    <span class="text-[10px] font-medium" :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
+                      {{ label }}
+                    </span>
+                    <Checkbox
+                      :model-value="boolDayChecked(addRatePlanDraft, row.field, d)"
+                      @update:model-value="toggleBoolDay(addRatePlanDraft, row.field, d)"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meal type -->
+          <div class="flex flex-col gap-1.5">
+            <Label>Meal Type</Label>
+            <Select :model-value="addRatePlanDraft.mealType" @update:model-value="(v) => addRatePlanDraft.mealType = String(v) as RateMealType">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  None
+                </SelectItem>
+                <SelectItem value="breakfast">
+                  Breakfast
+                </SelectItem>
+                <SelectItem value="half_board">
+                  Half Board
+                </SelectItem>
+                <SelectItem value="full_board">
+                  Full Board
+                </SelectItem>
+                <SelectItem value="all_inclusive">
+                  All Inclusive
+                </SelectItem>
+                <SelectItem value="room_only">
+                  Room Only
+                </SelectItem>
+                <SelectItem value="bed_and_breakfast">
+                  Bed &amp; Breakfast
+                </SelectItem>
+                <SelectItem value="self_catering">
+                  Self Catering
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <SheetFooter class="border-t">
+          <Button variant="outline" size="sm" @click="closeAddRatePlanSheet">
+            Cancel
+          </Button>
+          <Button size="sm" :disabled="!addRatePlanDraft.title.trim()" @click="saveNewRatePlan">
+            <Icon name="lucide:check" class="size-3.5 mr-1.5" />
+            Add
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+
+    <!-- Edit Rate Plan Sheet -->
+    <Sheet v-model:open="showEditRatePlanSheet">
+      <SheetContent class="w-full sm:max-w-md p-0">
+        <SheetHeader>
+          <SheetTitle>Edit Rate Plan</SheetTitle>
+          <SheetDescription>
+            Adjust pricing, occupancy options and restrictions for this rate plan.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex flex-col gap-0.5 min-w-0">
+              <Input
+                :model-value="editRatePlanDraft.title"
+                placeholder="Rate plan name"
+                class="max-w-[240px]"
+                @update:model-value="(v) => editRatePlanDraft.title = String(v)"
+              />
+              <div class="flex items-center gap-2">
+                <Badge v-if="editRatePlanDraft.isBase" variant="default" class="text-[10px] px-1.5">
+                  Base
+                </Badge>
+                <span class="text-[10px] text-muted-foreground">
+                  Base plans cannot be deleted.
+                </span>
+              </div>
+            </div>
+            <Button
+              v-if="!editRatePlanDraft.isBase"
+              variant="outline"
+              size="sm"
+              class="h-7 gap-1 shrink-0"
+              @click="setRatePlanPrimary(editRatePlanUnitTypeId, editRatePlanIndex); showEditRatePlanSheet = false"
+            >
+              Make base
+            </Button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1.5">
+              <Label>Sell Mode</Label>
+              <Select :model-value="editRatePlanDraft.sellMode" @update:model-value="(v) => editRatePlanDraft.sellMode = String(v) as RateSellMode">
+                <SelectTrigger class="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_room">
+                    Per Room
+                  </SelectItem>
+                  <SelectItem value="per_person">
+                    Per Person
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label>Currency</Label>
+              <Select :model-value="editRatePlanDraft.currency" @update:model-value="(v) => editRatePlanDraft.currency = String(v)">
+                <SelectTrigger class="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
+                    {{ c.symbol }} {{ c.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <Label>Rate Mode</Label>
+            <Select :model-value="editRatePlanDraft.rateMode" @update:model-value="(v) => editRatePlanDraft.rateMode = String(v) as RateRateMode">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">
+                  Manual
+                </SelectItem>
+                <SelectItem value="derived">
+                  Derived
+                </SelectItem>
+                <SelectItem value="auto">
+                  Auto
+                </SelectItem>
+                <SelectItem value="cascade">
+                  Cascade
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-[10px] text-muted-foreground">
+              {{ rateModeHint(editRatePlanDraft.rateMode) }}
+            </p>
+          </div>
+
+          <CancellationPolicyEditor v-model:config="editRatePlanDraft.cancellationPolicyConfig" />
+
+          <!-- Occupancy options -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <Label>Occupancy Options</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 gap-1"
+                :disabled="editRatePlanDraft.sellMode === 'per_room'"
+                title="Per room plans use a single option at max occupancy"
+                @click="draftAddOption(editRatePlanDraft)"
+              >
+                <Icon name="lucide:plus" class="size-3" />
+                Option
+              </Button>
+            </div>
+
+            <div v-for="(opt, oi) in editRatePlanDraft.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
+              <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
+              <Input
+                type="number"
+                :model-value="opt.occupancy"
+                min="1"
+                class="w-16 h-8 text-xs"
+                @update:model-value="(v) => editRatePlanDraft.options[oi] = { ...opt, occupancy: Math.max(1, Number(v) || 1) }"
+              />
+              <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
+              <div class="relative flex-1">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
+                <Input
+                  type="number"
+                  :model-value="opt.rate"
+                  class="pl-7 h-8 text-xs"
+                  min="0"
+                  @update:model-value="(v) => editRatePlanDraft.options[oi] = { ...opt, rate: Number(v) || 0 }"
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 w-7 p-0 shrink-0"
+                :disabled="editRatePlanDraft.options.length <= 1"
+                title="Remove option"
+                @click="draftRemoveOption(editRatePlanDraft, oi)"
+              >
+                <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+          </div>
+
+          <!-- Children / infant fee -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <Label>Children Fee / Night</Label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
+                <Input
+                  type="number"
+                  :model-value="editRatePlanDraft.childrenFee"
+                  class="pl-7 h-8"
+                  min="0"
+                  @update:model-value="(v) => editRatePlanDraft.childrenFee = Number(v) || 0"
+                />
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label>Infant Fee / Night</Label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
+                <Input
+                  type="number"
+                  :model-value="editRatePlanDraft.infantFee"
+                  class="pl-7 h-8"
+                  min="0"
+                  @update:model-value="(v) => editRatePlanDraft.infantFee = Number(v) || 0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Stay + availability restrictions -->
+          <div class="flex flex-col gap-4 rounded-lg border p-3">
+            <!-- Stay restrictions -->
+            <div class="flex flex-col gap-2">
+              <Label>Stay Restrictions</Label>
+              <div class="flex flex-col gap-2">
+                <div
+                  v-for="row in stayRows"
+                  :key="row.field"
+                  class="flex items-center justify-between gap-3"
+                >
+                  <span class="text-xs font-medium">{{ row.label }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      :model-value="stayValue(editRatePlanDraft, row.field)"
+                      :min="row.min"
+                      class="h-8 w-16 text-sm text-right"
+                      @update:model-value="(v) => setStayValue(editRatePlanDraft, row.field, Number(v), row.min)"
+                    />
+                    <span class="text-xs text-muted-foreground">nights</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <!-- Availability restrictions per weekday -->
+            <div class="flex flex-col gap-3">
+              <Label>Availability Restrictions (Mon–Sun)</Label>
+              <div
+                v-for="row in boolRows"
+                :key="row.field"
+                class="flex flex-col gap-2"
+              >
+                <span class="text-xs font-medium">{{ row.label }}</span>
+                <div class="grid grid-cols-7 gap-1">
+                  <label
+                    v-for="(label, d) in WEEKDAY_LABELS"
+                    :key="label"
+                    class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
+                    :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
+                  >
+                    <span class="text-[10px] font-medium" :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
+                      {{ label }}
+                    </span>
+                    <Checkbox
+                      :model-value="boolDayChecked(editRatePlanDraft, row.field, d)"
+                      @update:model-value="toggleBoolDay(editRatePlanDraft, row.field, d)"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meal type -->
+          <div class="flex flex-col gap-1.5">
+            <Label>Meal Type</Label>
+            <Select :model-value="editRatePlanDraft.mealType" @update:model-value="(v) => editRatePlanDraft.mealType = String(v) as RateMealType">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  None
+                </SelectItem>
+                <SelectItem value="breakfast">
+                  Breakfast
+                </SelectItem>
+                <SelectItem value="half_board">
+                  Half Board
+                </SelectItem>
+                <SelectItem value="full_board">
+                  Full Board
+                </SelectItem>
+                <SelectItem value="all_inclusive">
+                  All Inclusive
+                </SelectItem>
+                <SelectItem value="room_only">
+                  Room Only
+                </SelectItem>
+                <SelectItem value="bed_and_breakfast">
+                  Bed &amp; Breakfast
+                </SelectItem>
+                <SelectItem value="self_catering">
+                  Self Catering
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <SheetFooter class="border-t">
+          <Button variant="outline" size="sm" @click="closeEditRatePlanSheet">
+            Cancel
+          </Button>
+          <Button size="sm" :disabled="!editRatePlanDraft.title.trim()" @click="saveEditedRatePlan">
+            <Icon name="lucide:check" class="size-3.5 mr-1.5" />
+            Save
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+
     <!-- Per-unit-type pricing -->
     <template v-if="unitTypes.length > 0">
       <div
@@ -1260,7 +1944,7 @@ function removeTaxSet(id: string) {
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-xs text-muted-foreground">
-              {{ symbolFor(ut.pricing.currency) }}{{ ut.pricing.ratePlans.find(rp => rp.isBase)?.pricePerNight ?? ut.pricing.ratePlans[0]?.pricePerNight ?? 0 }}/night
+              {{ symbolFor(ut.pricing.currency) }}{{ ratePlanNightlyRate(ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0] ?? createRatePlan({})) }}/night
             </span>
             <Icon
               name="lucide:chevron-down"
@@ -1296,208 +1980,231 @@ function removeTaxSet(id: string) {
             </div>
           </div>
 
-        <!-- Rate plans -->
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <div>
-              <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Rate Plans
-              </h4>
-              <p class="text-[10px] text-muted-foreground mt-0.5">
-                Base rate cannot be deleted.
-              </p>
-            </div>
-            <Button variant="outline" size="sm" class="gap-1.5" @click="addRatePlan(ut.id)">
-              <Icon name="lucide:plus" class="size-3.5" />
-              Add Rate Plan
-            </Button>
-          </div>
-
-          <div
-            v-for="(rp, idx) in ut.pricing.ratePlans"
-            :key="rp.id"
-            class="border rounded-lg p-4 space-y-3"
-            :class="rp.isBase ? 'bg-muted/30' : ''"
-          >
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2 flex-1 min-w-0">
-                <Input
-                  :model-value="rp.name"
-                  placeholder="Rate plan name"
-                  class="max-w-[240px]"
-                  @update:model-value="(v) => updateRatePlan(ut.id, idx, 'name', String(v))"
-                />
-                <Badge v-if="rp.isBase" variant="secondary" class="text-[10px] shrink-0">
-                  Base
-                </Badge>
+          <!-- Rate plans -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Rate Plans
+                </h4>
+                <p class="text-[10px] text-muted-foreground mt-0.5">
+                  The base rate plan cannot be deleted. Prices follow the Channex rate plan format.
+                </p>
               </div>
-              <Button
-                v-if="!rp.isBase"
-                variant="ghost"
-                size="sm"
-                class="h-7 w-7 p-0 shrink-0"
-                @click="removeRatePlan(ut.id, idx)"
-              >
-                <Icon name="lucide:trash-2" class="size-3.5 text-muted-foreground" />
+              <Button variant="outline" size="sm" class="gap-1.5" @click="openAddRatePlanSheet(ut.id)">
+                <Icon name="lucide:plus" class="size-3.5" />
+                Add Rate Plan
               </Button>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-              <div class="flex flex-col gap-1.5">
-                <Label>Price per Night</Label>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(ut.pricing.currency) }}</span>
-                  <Input
-                    type="number"
-                    :model-value="rp.pricePerNight"
-                    class="pl-7"
-                    min="0"
-                    @update:model-value="(v) => updateRatePlan(ut.id, idx, 'pricePerNight', Number(v) || 0)"
-                  />
+            <div
+              v-if="ut.pricing.ratePlans.length === 0"
+              class="text-xs text-muted-foreground italic"
+            >
+              No rate plans yet. Add one to set nightly pricing.
+            </div>
+
+            <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div
+                v-for="(rp, idx) in ut.pricing.ratePlans"
+                :key="rp.id"
+                class="flex flex-col rounded-xl border p-4 gap-3 transition-colors"
+                :class="rp.isBase ? 'border-primary/40 bg-primary/5' : 'bg-card hover:border-foreground/20'"
+              >
+                <!-- Header -->
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex flex-col gap-0.5 min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-sm font-semibold truncate">{{ rp.title }}</span>
+                      <Badge v-if="rp.isBase" variant="default" class="text-[10px] px-1.5 shrink-0">
+                        Base
+                      </Badge>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span class="capitalize">{{ rp.sellMode === 'per_room' ? 'Per Room' : 'Per Person' }}</span>
+                      <span>·</span>
+                      <span class="capitalize">{{ rp.rateMode }}</span>
+                      <span>·</span>
+                      <span class="uppercase">{{ rp.currency }}</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-0.5 shrink-0">
+                    <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Edit rate plan" @click="openEditRatePlanSheet(ut.id, idx)">
+                      <Icon name="lucide:pencil" class="size-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      v-if="!rp.isBase"
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 w-7 p-0"
+                      title="Delete rate plan"
+                      @click="removeRatePlan(ut.id, idx)"
+                    >
+                      <Icon name="lucide:trash-2" class="size-3.5 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <Label>Price per Additional Guest</Label>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(ut.pricing.currency) }}</span>
-                  <Input
-                    type="number"
-                    :model-value="rp.pricePerAdditionalGuest"
-                    class="pl-7"
-                    min="0"
-                    @update:model-value="(v) => updateRatePlan(ut.id, idx, 'pricePerAdditionalGuest', Number(v) || 0)"
-                  />
+
+                <!-- Rate + occupancy -->
+                <div class="flex items-end justify-between gap-2">
+                  <div>
+                    <p class="text-xl font-bold leading-none">
+                      {{ symbolFor(ut.pricing.currency) }}{{ primaryOption(rp).rate }}
+                    </p>
+                    <p class="text-[10px] text-muted-foreground mt-1">
+                      {{ rp.sellMode === 'per_person' ? 'per guest / night' : 'per night' }}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" class="gap-1 text-[10px]">
+                    <Icon name="lucide:users" class="size-3" />
+                    up to {{ ratePlanMaxOccupancy(rp) }} guests
+                  </Badge>
+                </div>
+
+                <!-- Occupancy options -->
+                <div class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="opt in rp.options"
+                    :key="opt.occupancy"
+                    class="rounded-md border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {{ opt.occupancy }} guest{{ opt.occupancy !== 1 ? 's' : '' }} · {{ symbolFor(ut.pricing.currency) }}{{ opt.rate }}
+                  </span>
+                </div>
+
+                <!-- Restrictions summary -->
+                <div class="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2.5 text-[10px] text-muted-foreground">
+                  <span>Min stay {{ Math.max(...rp.minStayArrival) }}</span>
+                  <span>Max stay {{ Math.max(...rp.maxStay) || '∞' }}</span>
+                  <span v-if="rp.childrenFee > 0">Child +{{ symbolFor(ut.pricing.currency) }}{{ rp.childrenFee }}</span>
+                  <span v-if="rp.infantFee > 0">Infant +{{ symbolFor(ut.pricing.currency) }}{{ rp.infantFee }}</span>
+                  <span v-if="rp.stopSell[0]" class="text-destructive">Stop sell</span>
+                  <span v-if="rp.mealType !== 'none'" class="capitalize">{{ rp.mealType.replace(/_/g, ' ') }}</span>
+                  <span>{{ cancellationPolicySummary(rp.cancellationPolicyConfig) }}</span>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Offerings -->
-        <div class="flex flex-col gap-3 mt-6">
-          <div class="flex items-center justify-between">
-            <div>
+          <!-- Offerings -->
+          <div class="flex flex-col gap-3 mt-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Offerings
+                </h4>
+                <p class="text-[10px] text-muted-foreground mt-0.5">
+                  Adjust base price by fixed amount or percentage.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" class="gap-1.5" @click="addOffering(ut.id)">
+                <Icon name="lucide:plus" class="size-3.5" />
+                Add Offering
+              </Button>
+            </div>
+
+            <p v-if="ut.pricing.offerings.length === 0" class="text-xs text-muted-foreground italic">
+              No offerings added yet.
+            </p>
+
+            <div v-else class="flex flex-col gap-3">
+              <div v-for="(offering, idx) in ut.pricing.offerings" :key="offering.id" class="border rounded-lg p-3 space-y-3">
+                <div class="flex items-center justify-between">
+                  <Input
+                    :model-value="offering.name"
+                    placeholder="Offering name"
+                    class="max-w-[200px]"
+                    @update:model-value="(v) => updateOffering(ut.id, idx, 'name', String(v))"
+                  />
+                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="removeOffering(ut.id, idx)">
+                    <Icon name="lucide:trash-2" class="size-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+                <div class="flex items-center gap-2">
+                  <Select :model-value="offering.adjustmentType" @update:model-value="(v) => updateOffering(ut.id, idx, 'adjustmentType', v)">
+                    <SelectTrigger class="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fixed">
+                        Fixed
+                      </SelectItem>
+                      <SelectItem value="percent">
+                        Percent
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div class="relative flex-1">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ offering.adjustmentType === 'percent' ? '%' : symbolFor(ut.pricing.currency) }}</span>
+                    <Input
+                      type="number"
+                      :model-value="offering.adjustmentValue"
+                      class="pl-7"
+                      @update:model-value="(v) => updateOffering(ut.id, idx, 'adjustmentValue', Number(v) || 0)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Length of stay discounts -->
+          <div class="flex flex-col gap-3 mt-6">
+            <div class="flex items-center justify-between">
               <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Offerings
+                Length of Stay Discounts
               </h4>
-              <p class="text-[10px] text-muted-foreground mt-0.5">
-                Adjust base price by fixed amount or percentage.
-              </p>
+              <Button variant="outline" size="sm" class="gap-1.5" @click="addLosDiscount(ut.id)">
+                <Icon name="lucide:plus" class="size-3.5" />
+                Add Discount
+              </Button>
             </div>
-            <Button variant="outline" size="sm" class="gap-1.5" @click="addOffering(ut.id)">
-              <Icon name="lucide:plus" class="size-3.5" />
-              Add Offering
-            </Button>
-          </div>
 
-          <p v-if="ut.pricing.offerings.length === 0" class="text-xs text-muted-foreground italic">
-            No offerings added yet.
-          </p>
+            <p v-if="ut.pricing.lengthOfStayDiscounts.length === 0" class="text-xs text-muted-foreground italic">
+              No discounts configured.
+            </p>
 
-          <div v-else class="flex flex-col gap-3">
-            <div v-for="(offering, idx) in ut.pricing.offerings" :key="offering.id" class="border rounded-lg p-3 space-y-3">
-              <div class="flex items-center justify-between">
-                <Input
-                  :model-value="offering.name"
-                  placeholder="Offering name"
-                  class="max-w-[200px]"
-                  @update:model-value="(v) => updateOffering(ut.id, idx, 'name', String(v))"
-                />
-                <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="removeOffering(ut.id, idx)">
-                  <Icon name="lucide:trash-2" class="size-3.5 text-muted-foreground" />
-                </Button>
-              </div>
-              <div class="flex items-center gap-2">
-                <Select :model-value="offering.adjustmentType" @update:model-value="(v) => updateOffering(ut.id, idx, 'adjustmentType', v)">
-                  <SelectTrigger class="w-28">
+            <div v-else class="flex flex-col gap-2">
+              <div v-for="(discount, idx) in ut.pricing.lengthOfStayDiscounts" :key="discount.id" class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <Label class="text-xs whitespace-nowrap">Min nights:</Label>
+                  <Input
+                    type="number"
+                    :model-value="discount.minNights"
+                    class="w-16 h-8"
+                    min="1"
+                    @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'minNights', Number(v) || 1)"
+                  />
+                </div>
+                <Select :model-value="discount.discountType" @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'discountType', v)">
+                  <SelectTrigger class="w-24 h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="fixed">
-                      Fixed
-                    </SelectItem>
                     <SelectItem value="percent">
                       Percent
+                    </SelectItem>
+                    <SelectItem value="fixed">
+                      Fixed
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 <div class="relative flex-1">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ offering.adjustmentType === 'percent' ? '%' : symbolFor(ut.pricing.currency) }}</span>
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ discount.discountType === 'percent' ? '%' : symbolFor(ut.pricing.currency) }}</span>
                   <Input
                     type="number"
-                    :model-value="offering.adjustmentValue"
-                    class="pl-7"
-                    @update:model-value="(v) => updateOffering(ut.id, idx, 'adjustmentValue', Number(v) || 0)"
+                    :model-value="discount.value"
+                    class="pl-7 h-8"
+                    @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'value', Number(v) || 0)"
                   />
                 </div>
+                <Button variant="ghost" size="sm" class="h-8 w-8 p-0 shrink-0" @click="removeLosDiscount(ut.id, idx)">
+                  <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
+                </Button>
               </div>
             </div>
           </div>
         </div>
-
-        <!-- Length of stay discounts -->
-        <div class="flex flex-col gap-3 mt-6">
-          <div class="flex items-center justify-between">
-            <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Length of Stay Discounts
-            </h4>
-            <Button variant="outline" size="sm" class="gap-1.5" @click="addLosDiscount(ut.id)">
-              <Icon name="lucide:plus" class="size-3.5" />
-              Add Discount
-            </Button>
-          </div>
-
-          <p v-if="ut.pricing.lengthOfStayDiscounts.length === 0" class="text-xs text-muted-foreground italic">
-            No discounts configured.
-          </p>
-
-          <div v-else class="flex flex-col gap-2">
-            <div v-for="(discount, idx) in ut.pricing.lengthOfStayDiscounts" :key="discount.id" class="flex items-center gap-2">
-              <div class="flex items-center gap-1.5">
-                <Label class="text-xs whitespace-nowrap">Min nights:</Label>
-                <Input
-                  type="number"
-                  :model-value="discount.minNights"
-                  class="w-16 h-8"
-                  min="1"
-                  @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'minNights', Number(v) || 1)"
-                />
-              </div>
-              <Select :model-value="discount.discountType" @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'discountType', v)">
-                <SelectTrigger class="w-24 h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="percent">
-                    Percent
-                  </SelectItem>
-                  <SelectItem value="fixed">
-                    Fixed
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <div class="relative flex-1">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ discount.discountType === 'percent' ? '%' : symbolFor(ut.pricing.currency) }}</span>
-                <Input
-                  type="number"
-                  :model-value="discount.value"
-                  class="pl-7 h-8"
-                  @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'value', Number(v) || 0)"
-                />
-              </div>
-              <Button variant="ghost" size="sm" class="h-8 w-8 p-0 shrink-0" @click="removeLosDiscount(ut.id, idx)">
-                <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
-              </Button>
-            </div>
-          </div>
-        </div>
-        </div>
-      </div>
-
-      <div class="flex justify-end">
-        <Button @click="saveUnitTypePricing">
-          Save Pricing
-        </Button>
       </div>
     </template>
 
@@ -1510,15 +2217,15 @@ function removeTaxSet(id: string) {
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div class="flex flex-col gap-1.5">
             <Label>Nightly Rate ($)</Label>
-            <Input v-model.number="editForm.nightlyRate" type="number" />
+            <Input :model-value="editForm.nightlyRate" type="number" @update:model-value="(v) => patchLegacyPricing({ nightlyRate: Number(v) || 0 })" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label>Cleaning Fee ($)</Label>
-            <Input v-model.number="editForm.cleaningFee" type="number" />
+            <Input :model-value="editForm.cleaningFee" type="number" @update:model-value="(v) => patchLegacyPricing({ cleaningFee: Number(v) || 0 })" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label>Service Fee ($)</Label>
-            <Input v-model.number="editForm.serviceFee" type="number" />
+            <Input :model-value="editForm.serviceFee" type="number" @update:model-value="(v) => patchLegacyPricing({ serviceFee: Number(v) || 0 })" />
           </div>
         </div>
       </Card>
@@ -1530,11 +2237,11 @@ function removeTaxSet(id: string) {
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1.5">
             <Label>Weekly Discount (%)</Label>
-            <Input v-model.number="editForm.weeklyDiscount" type="number" />
+            <Input :model-value="editForm.weeklyDiscount" type="number" @update:model-value="(v) => patchLegacyPricing({ weeklyDiscount: Number(v) || 0 })" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label>Monthly Discount (%)</Label>
-            <Input v-model.number="editForm.monthlyDiscount" type="number" />
+            <Input :model-value="editForm.monthlyDiscount" type="number" @update:model-value="(v) => patchLegacyPricing({ monthlyDiscount: Number(v) || 0 })" />
           </div>
         </div>
       </Card>
@@ -1567,12 +2274,6 @@ function removeTaxSet(id: string) {
           No seasonal rates configured.
         </p>
       </Card>
-
-      <div class="flex justify-end">
-        <Button @click="savePricing">
-          Save Pricing
-        </Button>
-      </div>
     </template>
   </div>
 </template>

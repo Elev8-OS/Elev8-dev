@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 
 export type OverrideAudience = 'future' | 'current' | 'inquiry'
 
@@ -187,12 +187,167 @@ export interface Bed {
   count: number
 }
 
+export type RateSellMode = 'per_room' | 'per_person'
+export type RateRateMode = 'manual' | 'derived' | 'auto' | 'cascade'
+export type CancellationPolicy = 'flexible' | 'moderate' | 'strict' | 'non_refundable' | 'custom'
+
+export interface RefundTier {
+  id: string
+  percent: number
+  /** Deadline in days before check-in. Higher = earlier, tiers are ordered descending. */
+  days: number
+}
+
+export interface CancellationPolicyConfig {
+  policy: CancellationPolicy
+  refundTiers: RefundTier[]
+  /** Hours after booking during which a guest can cancel for a full refund. */
+  freeCancellationHours: number
+  terms: string
+}
+
+export const cancellationPolicyOptions: { value: CancellationPolicy, label: string, description: string }[] = [
+  { value: 'flexible', label: 'Flexible', description: 'Full refund up to 24h before check-in' },
+  { value: 'moderate', label: 'Moderate', description: 'Full refund up to 5 days before check-in' },
+  { value: 'strict', label: 'Strict', description: '50% refund up to 14 days before check-in' },
+  { value: 'non_refundable', label: 'Non-refundable', description: 'No refund after booking' },
+  { value: 'custom', label: 'Custom', description: 'Define your own policy rules' },
+]
+
+export function cancellationPolicyLabel(policy: CancellationPolicy): string {
+  return cancellationPolicyOptions.find(p => p.value === policy)?.label ?? policy
+}
+
+export function createCancellationPolicyConfig(policy: CancellationPolicy = 'flexible'): CancellationPolicyConfig {
+  return {
+    policy,
+    refundTiers: [],
+    freeCancellationHours: 0,
+    terms: '',
+  }
+}
+
+export function defaultCancellationTiers(): RefundTier[] {
+  return [
+    { id: `rt-${Date.now()}-1`, percent: 100, days: 8 },
+    { id: `rt-${Date.now()}-2`, percent: 50, days: 1 },
+  ]
+}
+
+/** Summarize the refund schedule for compact display (e.g. rate plan cards). */
+export function cancellationPolicySummary(config: CancellationPolicyConfig | undefined | null): string {
+  if (!config || config.policy !== 'custom')
+    return cancellationPolicyLabel(config?.policy ?? 'flexible')
+  if (config.refundTiers.length === 0)
+    return 'Custom'
+  const sorted = [...config.refundTiers].sort((a, b) => b.days - a.days)
+  return sorted.map(t => `${t.percent}% before ${t.days}d`).join(' · ')
+}
+export type RateMealType = 'none' | 'all_inclusive' | 'breakfast' | 'lunch' | 'dinner' | 'american' | 'bed_and_breakfast' | 'buffet_breakfast' | 'carribean_breakfast' | 'continental_breakfast' | 'english_breakfast' | 'european_plan' | 'family_plan' | 'full_board' | 'full_breakfast' | 'half_board' | 'room_only' | 'self_catering' | 'bermuda' | 'dinner_bed_and_breakfast_plan' | 'family_american' | 'breakfast_and_lunch' | 'lunch_and_dinner'
+
+export interface RatePlanOption {
+  occupancy: number
+  isPrimary: boolean
+  derivedOption?: {
+    rate: string[][] // e.g. [["increase_by_percent", "5.00"], ["increase_by_amount", "12.00"]]
+  } | null
+  rate: number
+}
+
 export interface RatePlan {
   id: string
+  /** Channex `title` — unique per property, max 255 chars. */
   name: string
-  pricePerNight: number
-  pricePerAdditionalGuest: number
+  /** Legacy display alias kept so consumers keep working. */
+  title: string
+  sellMode: RateSellMode
+  rateMode: RateRateMode
+  currency: string
+  /** Channex `children_fee` / `infant_fee` (string or non-negative int). */
+  childrenFee: number
+  infantFee: number
+  /** 7-element weekday arrays (Mon..Sun). 0 = no limit (max_stay) or default 1 (min stay). */
+  maxStay: number[]
+  minStayArrival: number[]
+  minStayThrough: number[]
+  closedToArrival: boolean[]
+  closedToDeparture: boolean[]
+  stopSell: boolean[]
+  /** Occupancy options: one entry at max occupancy for per_room, one per guest count for per_person. */
+  options: RatePlanOption[]
+  /** Channex `parent_rate_plan_id`. */
+  parentRatePlanId: string | null
+  inheritRate: boolean
+  inheritClosedToArrival: boolean
+  inheritClosedToDeparture: boolean
+  inheritStopSell: boolean
+  inheritMinStayArrival: boolean
+  inheritMinStayThrough: boolean
+  inheritMaxStay: boolean
+  inheritAvailabilityOffset: boolean
+  inheritMaxSell: boolean
+  inheritMaxAvailability: boolean
+  autoRateSettings: Record<string, unknown> | null
+  mealType: RateMealType
+  /** Channex `tax_set_id`. */
+  taxSetId?: string | null
+  cancellationPolicyConfig: CancellationPolicyConfig
   isBase: boolean
+}
+
+const WEEK_7 = (v: number) => [v, v, v, v, v, v, v]
+const WEEK_7_BOOL = (v: boolean) => [v, v, v, v, v, v, v]
+
+export function createRatePlan(partial?: Partial<RatePlan>): RatePlan {
+  return {
+    id: `rp-${Date.now()}`,
+    name: 'Best Available Rate',
+    title: 'Best Available Rate',
+    sellMode: 'per_room',
+    rateMode: 'manual',
+    currency: 'USD',
+    childrenFee: 0,
+    infantFee: 0,
+    maxStay: WEEK_7(0),
+    minStayArrival: WEEK_7(1),
+    minStayThrough: WEEK_7(1),
+    closedToArrival: WEEK_7_BOOL(false),
+    closedToDeparture: WEEK_7_BOOL(false),
+    stopSell: WEEK_7_BOOL(false),
+    options: [{ occupancy: 2, isPrimary: true, derivedOption: null, rate: 100 }],
+    parentRatePlanId: null,
+    inheritRate: false,
+    inheritClosedToArrival: false,
+    inheritClosedToDeparture: false,
+    inheritStopSell: false,
+    inheritMinStayArrival: false,
+    inheritMinStayThrough: false,
+    inheritMaxStay: false,
+    inheritAvailabilityOffset: false,
+    inheritMaxSell: false,
+    inheritMaxAvailability: false,
+    autoRateSettings: null,
+    mealType: 'none',
+    taxSetId: null,
+    cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+    isBase: false,
+    ...partial,
+  }
+}
+
+/** Primary (base) nightly rate from the plan's primary occupancy option. */
+export function ratePlanNightlyRate(rp: RatePlan): number {
+  return rp.options.find(o => o.isPrimary)?.rate ?? rp.options[0]?.rate ?? 0
+}
+
+/** Max occupancy the plan is sold for (primary option occupancy). */
+export function ratePlanMaxOccupancy(rp: RatePlan): number {
+  return rp.options.find(o => o.isPrimary)?.occupancy ?? rp.options[0]?.occupancy ?? 0
+}
+
+/** Convenience mirror of the old `pricePerNight` for consumers. */
+export function ratePlanDisplayRate(rp: RatePlan): number {
+  return ratePlanNightlyRate(rp)
 }
 
 export interface RatePlanOffering {
@@ -328,7 +483,39 @@ export const listings = ref<Listing[]>([
         pricing: {
           currency: 'USD',
           ratePlans: [
-            { id: 'rp-1', name: 'Standard Rate', pricePerNight: 100, pricePerAdditionalGuest: 50, isBase: true },
+            {
+              id: 'rp-1',
+              name: 'Best Available Rate',
+              title: 'Best Available Rate',
+              sellMode: 'per_room',
+              rateMode: 'manual',
+              currency: 'USD',
+              childrenFee: 0,
+              infantFee: 0,
+              maxStay: [0, 0, 0, 0, 0, 0, 0],
+              minStayArrival: [1, 1, 1, 1, 1, 1, 1],
+              minStayThrough: [1, 1, 1, 1, 1, 1, 1],
+              closedToArrival: [false, false, false, false, false, false, false],
+              closedToDeparture: [false, false, false, false, false, false, false],
+              stopSell: [false, false, false, false, false, false, false],
+              options: [{ occupancy: 3, isPrimary: true, derivedOption: null, rate: 100 }],
+              parentRatePlanId: null,
+              inheritRate: false,
+              inheritClosedToArrival: false,
+              inheritClosedToDeparture: false,
+              inheritStopSell: false,
+              inheritMinStayArrival: false,
+              inheritMinStayThrough: false,
+              inheritMaxStay: false,
+              inheritAvailabilityOffset: false,
+              inheritMaxSell: false,
+              inheritMaxAvailability: false,
+              autoRateSettings: null,
+              mealType: 'none',
+              taxSetId: null,
+              cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+              isBase: true,
+            },
           ],
           offerings: [],
           lengthOfStayDiscounts: [],
@@ -362,7 +549,39 @@ export const listings = ref<Listing[]>([
         pricing: {
           currency: 'USD',
           ratePlans: [
-            { id: 'rp-2', name: 'Standard Rate', pricePerNight: 75, pricePerAdditionalGuest: 30, isBase: true },
+            {
+              id: 'rp-2',
+              name: 'Best Available Rate',
+              title: 'Best Available Rate',
+              sellMode: 'per_room',
+              rateMode: 'manual',
+              currency: 'USD',
+              childrenFee: 0,
+              infantFee: 0,
+              maxStay: [0, 0, 0, 0, 0, 0, 0],
+              minStayArrival: [1, 1, 1, 1, 1, 1, 1],
+              minStayThrough: [1, 1, 1, 1, 1, 1, 1],
+              closedToArrival: [false, false, false, false, false, false, false],
+              closedToDeparture: [false, false, false, false, false, false, false],
+              stopSell: [false, false, false, false, false, false, false],
+              options: [{ occupancy: 2, isPrimary: true, derivedOption: null, rate: 75 }],
+              parentRatePlanId: null,
+              inheritRate: false,
+              inheritClosedToArrival: false,
+              inheritClosedToDeparture: false,
+              inheritStopSell: false,
+              inheritMinStayArrival: false,
+              inheritMinStayThrough: false,
+              inheritMaxStay: false,
+              inheritAvailabilityOffset: false,
+              inheritMaxSell: false,
+              inheritMaxAvailability: false,
+              autoRateSettings: null,
+              mealType: 'none',
+              taxSetId: null,
+              cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+              isBase: true,
+            },
           ],
           offerings: [],
           lengthOfStayDiscounts: [],
@@ -461,8 +680,9 @@ export const listings = ref<Listing[]>([
       { id: 'bk-1', guestName: 'Sarah Mitchell', checkIn: '2026-06-05', checkOut: '2026-06-09', nights: 4, status: 'checked_out', revenue: 740, source: 'Airbnb', hasPet: true },
       { id: 'bk-2', guestName: 'James Kim', checkIn: '2026-06-12', checkOut: '2026-06-15', nights: 3, status: 'checked_out', revenue: 555, source: 'Booking.com' },
       { id: 'bk-3', guestName: 'Emma Wilson', checkIn: '2026-06-20', checkOut: '2026-06-25', nights: 5, adults: 4, children: 0, infants: 0, pets: 1, status: 'inquiry', revenue: 925, source: 'Airbnb', hasPet: true },
-    
-      { id: 'bk-1c', guestName: 'Isabella Romano', checkIn: '2026-07-30', checkOut: '2026-08-04', nights: 5, adults: 2, children: 1, infants: 0, pets: 1, status: 'checked_in', revenue: 1850, source: 'Airbnb', hasPet: true },],
+
+      { id: 'bk-1c', guestName: 'Isabella Romano', checkIn: '2026-07-30', checkOut: '2026-08-04', nights: 5, adults: 2, children: 1, infants: 0, pets: 1, status: 'checked_in', revenue: 1850, source: 'Airbnb', hasPet: true },
+    ],
     blockedDates: ['2026-06-10', '2026-06-11'],
     reviews: [
       { id: 'rv-1', guestName: 'Sarah Mitchell', date: '2026-05-20', rating: 5, text: 'Amazing villa! The pool was perfect and staff was incredibly helpful. Would definitely come back.', categories: { cleanliness: 5, communication: 5, location: 4, value: 5 } },

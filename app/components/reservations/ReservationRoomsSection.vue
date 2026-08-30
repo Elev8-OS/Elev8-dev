@@ -2,7 +2,7 @@
 import type { UnitType } from '~/components/listings/data/listings'
 import type { BookingMode, PaymentFeeMode, ReservationCharge, ReservationChargeKind, ReservationRoomLine } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
-import { listings } from '~/components/listings/data/listings'
+import { createCancellationPolicyConfig, listings, ratePlanNightlyRate } from '~/components/listings/data/listings'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = withDefaults(defineProps<{
@@ -49,12 +49,70 @@ const unitTypes = computed<UnitType[]>(() => {
     pricing: {
       currency: props.currency,
       ratePlans: [
-        { id: 'standard', name: 'Standard Rate', pricePerNight: l.pricing.nightlyRate, pricePerAdditionalGuest: 0, isBase: true },
+        {
+          id: 'standard',
+          name: 'Standard Rate',
+          title: 'Standard Rate',
+          sellMode: 'per_room' as const,
+          rateMode: 'manual' as const,
+          currency: props.currency,
+          childrenFee: 0,
+          infantFee: 0,
+          maxStay: [0, 0, 0, 0, 0, 0, 0],
+          minStayArrival: [1, 1, 1, 1, 1, 1, 1],
+          minStayThrough: [1, 1, 1, 1, 1, 1, 1],
+          closedToArrival: [false, false, false, false, false, false, false],
+          closedToDeparture: [false, false, false, false, false, false, false],
+          stopSell: [false, false, false, false, false, false, false],
+          options: [{ occupancy: l.capacity, isPrimary: true, derivedOption: null, rate: l.pricing.nightlyRate }],
+          parentRatePlanId: null,
+          inheritRate: false,
+          inheritClosedToArrival: false,
+          inheritClosedToDeparture: false,
+          inheritStopSell: false,
+          inheritMinStayArrival: false,
+          inheritMinStayThrough: false,
+          inheritMaxStay: false,
+          inheritAvailabilityOffset: false,
+          inheritMaxSell: false,
+          inheritMaxAvailability: false,
+          autoRateSettings: null,
+          mealType: 'none' as const,
+          taxSetId: null,
+          cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+          isBase: true,
+        },
         ...l.pricing.seasonalRates.map(sr => ({
           id: `seasonal-${sr.label}`,
           name: sr.label,
-          pricePerNight: sr.rate,
-          pricePerAdditionalGuest: 0,
+          title: sr.label,
+          sellMode: 'per_room' as const,
+          rateMode: 'manual' as const,
+          currency: props.currency,
+          childrenFee: 0,
+          infantFee: 0,
+          maxStay: [0, 0, 0, 0, 0, 0, 0],
+          minStayArrival: [1, 1, 1, 1, 1, 1, 1],
+          minStayThrough: [1, 1, 1, 1, 1, 1, 1],
+          closedToArrival: [false, false, false, false, false, false, false],
+          closedToDeparture: [false, false, false, false, false, false, false],
+          stopSell: [false, false, false, false, false, false, false],
+          options: [{ occupancy: l.capacity, isPrimary: true, derivedOption: null, rate: sr.rate }],
+          parentRatePlanId: null,
+          inheritRate: false,
+          inheritClosedToArrival: false,
+          inheritClosedToDeparture: false,
+          inheritStopSell: false,
+          inheritMinStayArrival: false,
+          inheritMinStayThrough: false,
+          inheritMaxStay: false,
+          inheritAvailabilityOffset: false,
+          inheritMaxSell: false,
+          inheritMaxAvailability: false,
+          autoRateSettings: null,
+          mealType: 'none' as const,
+          taxSetId: null,
+          cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
           isBase: false,
         })),
       ],
@@ -126,7 +184,7 @@ const entirePropertyDefault = computed(() => {
   for (const ut of unitTypes.value) {
     const base = ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0]
     if (base)
-      sum += base.pricePerNight * ut.units.length
+      sum += ratePlanNightlyRate(base) * ut.units.length
   }
   return sum
 })
@@ -190,8 +248,8 @@ function addRoom(unitId: string) {
     unitName: unit.name,
     ratePlanId: rate.id,
     rateLabel: `${ut.name} — ${rate.name}`,
-    pricePerNight: rate.pricePerNight,
-    lineTotal: rate.pricePerNight * nights,
+    pricePerNight: ratePlanNightlyRate(rate),
+    lineTotal: ratePlanNightlyRate(rate) * nights,
     guestNames: pickerGuestNames.value.trim() || undefined,
   }
   model.value = { ...model.value, rooms: [...model.value.rooms, line] }
@@ -544,7 +602,7 @@ function fmt(value: number): string {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem v-for="r in pickedRates" :key="r.id" :value="r.id">
-                        {{ r.name }} — {{ fmt(r.pricePerNight) }}/night
+                        {{ r.name }} — {{ fmt(ratePlanNightlyRate(r)) }}/night
                       </SelectItem>
                     </SelectContent>
                   </Select>
