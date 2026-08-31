@@ -3,6 +3,7 @@ import type { LengthOfStayDiscount, Listing, RatePlan, RatePlanOffering, RateRat
 import { toast } from 'vue-sonner'
 import { buildOccupancyOptions, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
 import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
+import RatePlanRateRules from '~/components/listings/RatePlanRateRules.vue'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -105,6 +106,50 @@ function guestPricingHint(rp: RatePlan): string {
   if (extra <= 0 || incl >= max)
     return `${sym}${base} / night · up to ${max} guest${max !== 1 ? 's' : ''}`
   return `${sym}${base} includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym}${extra} per extra guest · ${max} guests = ${sym}${base + (max - incl) * extra}`
+}
+
+// A derived plan that still inherits its rate takes the value from its parent,
+// so the rate inputs are read-only until the "Rate" checkbox is turned off.
+function isRateInherited(rp: RatePlan): boolean {
+  return rp.rateMode === 'derived' && rp.inheritRate === true
+}
+
+function findRatePlanById(id: string | null): RatePlan | null {
+  if (!id)
+    return null
+  for (const ut of unitTypes.value) {
+    const found = ut.pricing.ratePlans.find(p => p.id === id)
+    if (found)
+      return found
+  }
+  return null
+}
+
+function parentBaseRate(rp: RatePlan): number {
+  const parent = findRatePlanById(rp.parentRatePlanId)
+  return parent ? ratePlanNightlyRate(parent) : ratePlanNightlyRate(rp)
+}
+
+// Parent rate with the plan's modification rules applied, in rule order.
+function derivedFinalRate(rp: RatePlan): number {
+  let rate = parentBaseRate(rp)
+  for (const [type, value] of rp.derivedOptions?.rate ?? []) {
+    const v = Number(value) || 0
+    if (type === 'increase_by_amount')
+      rate += v
+    else if (type === 'decrease_by_amount')
+      rate -= v
+    else if (type === 'increase_by_percent')
+      rate += rate * (v / 100)
+    else if (type === 'decrease_by_percent')
+      rate -= rate * (v / 100)
+  }
+  return Math.max(0, rate)
+}
+
+// Value shown in the (locked) rate input for a plan deriving its rate.
+function displayBaseRate(rp: RatePlan): number {
+  return isRateInherited(rp) ? derivedFinalRate(rp) : ratePlanNightlyRate(rp)
 }
 
 function onQuantityChange(newQuantity: number) {
@@ -317,7 +362,14 @@ function syncAddDraftOptions() {
   addRatePlanDraft.value.options = synced.options
 }
 
-watch(() => addRatePlanDraft.value.sellMode, () => syncAddDraftOptions())
+watch(() => addRatePlanDraft.value.sellMode, (mode) => {
+  // A per-room rate covers every guest, so per-guest fees no longer apply.
+  if (mode === 'per_room') {
+    addRatePlanDraft.value.childrenFee = 0
+    addRatePlanDraft.value.infantFee = 0
+  }
+  syncAddDraftOptions()
+})
 
 function setAddDraftIncludedGuests(value: unknown) {
   addRatePlanDraft.value.includedGuests = Math.max(1, Math.round(Number(value)) || 1)
@@ -400,9 +452,13 @@ function updateRatePlanSellMode(index: number, sellMode: string) {
   if (!form.value.pricing)
     return
   const mode = sellMode as RateSellMode
+  // A per-room rate covers every guest, so per-guest fees no longer apply.
+  const guestFees = mode === 'per_room' ? { childrenFee: 0, infantFee: 0 } : {}
   form.value.pricing = {
     ...form.value.pricing,
-    ratePlans: form.value.pricing.ratePlans.map((rp, i) => i === index ? syncRatePlanOptions({ ...rp, sellMode: mode }) : rp),
+    ratePlans: form.value.pricing.ratePlans.map((rp, i) =>
+      i === index ? syncRatePlanOptions({ ...rp, ...guestFees, sellMode: mode }) : rp,
+    ),
   }
 }
 
@@ -883,11 +939,7 @@ const feeIcons: Record<string, string> = {
                         </Select>
                       </div>
                       <RatePlanDerivedOptionsEditor
-                        :model-value="rp.derivedOptions"
                         :rate-plan="rp"
-                        :base-rate="ratePlanNightlyRate(rp)"
-                        :currency-symbol="currencySymbol"
-                        @update:model-value="(v) => updateRatePlan(idx, 'derivedOptions', v)"
                         @update:inherit-rate="(v) => updateRatePlan(idx, 'inheritRate', v)"
                         @update:inherit-min-stay-arrival="(v) => updateRatePlan(idx, 'inheritMinStayArrival', v)"
                         @update:inherit-min-stay-through="(v) => updateRatePlan(idx, 'inheritMinStayThrough', v)"
@@ -898,8 +950,17 @@ const feeIcons: Record<string, string> = {
                       />
                     </div>
 
+                    <!-- Rate is taken from the parent while "Rate" stays inherited. -->
+                    <p v-if="isRateInherited(rp)" class="rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                      Rate follows the parent rate plan. Adjust it with the modification rules below, or uncheck <span class="font-medium">Rate</span> under Derived Options to set it manually.
+                    </p>
+
                     <!-- Per person pricing -->
-                    <div v-if="rp.sellMode === 'per_person'" class="flex flex-col gap-3">
+                    <div
+                      v-if="rp.sellMode === 'per_person'"
+                      class="flex flex-col gap-3"
+                      :class="{ 'opacity-50 pointer-events-none': isRateInherited(rp) }"
+                    >
                       <div class="flex items-center justify-between">
                         <Label>Guest Pricing</Label>
                         <span class="text-[10px] text-muted-foreground">max {{ maxOccupancy }} guests (room type)</span>
@@ -930,7 +991,7 @@ const feeIcons: Record<string, string> = {
                           <Label class="text-xs text-muted-foreground">Base Rate / Night ({{ currencySymbol }})</Label>
                           <Input
                             type="number"
-                            :model-value="ratePlanNightlyRate(rp)"
+                            :model-value="displayBaseRate(rp)"
                             min="0"
                             class="h-8"
                             @update:model-value="(v) => updateRatePlanGuestPricing(idx, 'baseRate', v)"
@@ -943,21 +1004,35 @@ const feeIcons: Record<string, string> = {
                     </div>
 
                     <!-- Per room pricing -->
-                    <div v-else class="flex flex-col gap-3">
+                    <div
+                      v-else
+                      class="flex flex-col gap-3"
+                      :class="{ 'opacity-50 pointer-events-none': isRateInherited(rp) }"
+                    >
                       <div class="flex items-center justify-between">
                         <Label>Base Rate / Night</Label>
                         <span class="text-[10px] text-muted-foreground">all {{ maxOccupancy }} guests included</span>
                       </div>
                       <Input
                         type="number"
-                        :model-value="ratePlanNightlyRate(rp)"
+                        :model-value="displayBaseRate(rp)"
                         min="0"
                         class="h-8"
                         @update:model-value="(v) => updateRatePlanGuestPricing(idx, 'baseRate', v)"
                       />
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <!-- Rules that shape the inherited parent rate -->
+                    <RatePlanRateRules
+                      v-if="isRateInherited(rp)"
+                      :model-value="rp.derivedOptions"
+                      :base-rate="parentBaseRate(rp)"
+                      :currency-symbol="currencySymbol"
+                      @update:model-value="(v) => updateRatePlan(idx, 'derivedOptions', v)"
+                    />
+
+                    <!-- Per-room rates already cover every guest -->
+                    <div v-if="rp.sellMode === 'per_person'" class="grid grid-cols-2 gap-4">
                       <div class="flex flex-col gap-1.5">
                         <Label>Children Fee / Night ({{ currencySymbol }})</Label>
                         <Input
@@ -1328,11 +1403,7 @@ const feeIcons: Record<string, string> = {
               <p class="text-[10px] text-muted-foreground">This rate plan will inherit from and modify the parent rate plan</p>
             </div>
             <RatePlanDerivedOptionsEditor
-              :model-value="addRatePlanDraft.derivedOptions"
               :rate-plan="addRatePlanDraft"
-              :base-rate="ratePlanNightlyRate(addRatePlanDraft)"
-              :currency-symbol="currencySymbol"
-              @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
               @update:inherit-rate="(v) => addRatePlanDraft.inheritRate = v"
               @update:inherit-min-stay-arrival="(v) => addRatePlanDraft.inheritMinStayArrival = v"
               @update:inherit-min-stay-through="(v) => addRatePlanDraft.inheritMinStayThrough = v"
@@ -1344,7 +1415,16 @@ const feeIcons: Record<string, string> = {
           </div>
 
           <!-- Per person pricing -->
-          <div v-if="addRatePlanDraft.sellMode === 'per_person'" class="flex flex-col gap-3">
+          <!-- Rate is taken from the parent while "Rate" stays inherited. -->
+          <p v-if="isRateInherited(addRatePlanDraft)" class="rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            Rate follows the parent rate plan. Adjust it with the modification rules below, or uncheck <span class="font-medium">Rate</span> under Derived Options to set it manually.
+          </p>
+
+          <div
+            v-if="addRatePlanDraft.sellMode === 'per_person'"
+            class="flex flex-col gap-3"
+            :class="{ 'opacity-50 pointer-events-none': isRateInherited(addRatePlanDraft) }"
+          >
             <div class="flex items-center justify-between">
               <Label>Guest Pricing</Label>
               <span class="text-[10px] text-muted-foreground">max {{ maxOccupancy }} guests (room type)</span>
@@ -1381,7 +1461,7 @@ const feeIcons: Record<string, string> = {
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
                 <Input
                   type="number"
-                  :model-value="ratePlanNightlyRate(addRatePlanDraft)"
+                  :model-value="displayBaseRate(addRatePlanDraft)"
                   class="pl-7 h-8"
                   min="0"
                   @update:model-value="setAddDraftBaseRate"
@@ -1394,7 +1474,11 @@ const feeIcons: Record<string, string> = {
           </div>
 
           <!-- Per room pricing -->
-          <div v-else class="flex flex-col gap-3">
+          <div
+            v-else
+            class="flex flex-col gap-3"
+            :class="{ 'opacity-50 pointer-events-none': isRateInherited(addRatePlanDraft) }"
+          >
             <div class="flex items-center justify-between">
               <Label>Base Rate / Night</Label>
               <span class="text-[10px] text-muted-foreground">all {{ maxOccupancy }} guests included</span>
@@ -1403,7 +1487,7 @@ const feeIcons: Record<string, string> = {
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
               <Input
                 type="number"
-                :model-value="ratePlanNightlyRate(addRatePlanDraft)"
+                :model-value="displayBaseRate(addRatePlanDraft)"
                 class="pl-7 h-8"
                 min="0"
                 @update:model-value="setAddDraftBaseRate"
@@ -1411,7 +1495,17 @@ const feeIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <!-- Rules that shape the inherited parent rate -->
+          <RatePlanRateRules
+            v-if="isRateInherited(addRatePlanDraft)"
+            :model-value="addRatePlanDraft.derivedOptions"
+            :base-rate="parentBaseRate(addRatePlanDraft)"
+            :currency-symbol="currencySymbol"
+            @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
+          />
+
+          <!-- Per-room rates already cover every guest -->
+          <div v-if="addRatePlanDraft.sellMode === 'per_person'" class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">
               <Label>Children Fee / Night ({{ currencySymbol }})</Label>
               <Input

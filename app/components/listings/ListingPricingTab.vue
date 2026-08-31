@@ -3,6 +3,7 @@ import type { Listing, ListingFeeTaxItem, RateMealType, RatePlan, RatePlanOption
 import { toast } from 'vue-sonner'
 import CancellationPolicyEditor from '~/components/listings/CancellationPolicyEditor.vue'
 import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
+import RatePlanRateRules from '~/components/listings/RatePlanRateRules.vue'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { buildOccupancyOptions, cancellationPolicySummary, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
@@ -133,6 +134,11 @@ function syncDraftOptions(draft: RatePlan, utId: string) {
 
 function setDraftSellMode(draft: RatePlan, utId: string, mode: RateSellMode) {
   draft.sellMode = mode
+  // A per-room rate covers every guest, so per-guest fees no longer apply.
+  if (mode === 'per_room') {
+    draft.childrenFee = 0
+    draft.infantFee = 0
+  }
   syncDraftOptions(draft, utId)
 }
 
@@ -288,6 +294,68 @@ function stayValue(draft: RatePlan, field: StayField): number {
 function setStayValue(draft: RatePlan, field: StayField, value: number, min: number) {
   const v = Math.max(min, value || 0)
   draft[field] = draft[field].map(() => v)
+}
+
+// Derived plans that still inherit a field take its value from the parent, so
+// the matching control is read-only until the inherit checkbox is turned off.
+const inheritKeyFor: Record<StayField | BoolField, keyof RatePlan> = {
+  minStayArrival: 'inheritMinStayArrival',
+  minStayThrough: 'inheritMinStayThrough',
+  maxStay: 'inheritMaxStay',
+  closedToArrival: 'inheritClosedToArrival',
+  closedToDeparture: 'inheritClosedToDeparture',
+  stopSell: 'inheritStopSell',
+}
+
+function isDerived(draft: RatePlan): boolean {
+  return draft.rateMode === 'derived'
+}
+
+function isRateInherited(draft: RatePlan): boolean {
+  return isDerived(draft) && draft.inheritRate === true
+}
+
+function isFieldInherited(draft: RatePlan, field: StayField | BoolField): boolean {
+  return isDerived(draft) && draft[inheritKeyFor[field]] === true
+}
+
+function findRatePlanById(id: string | null): RatePlan | null {
+  if (!id)
+    return null
+  for (const ut of unitTypes.value) {
+    const found = ut.pricing.ratePlans.find(rp => rp.id === id)
+    if (found)
+      return found
+  }
+  return null
+}
+
+// The rate a derived plan starts from before its modification rules run.
+function parentBaseRate(draft: RatePlan): number {
+  const parent = findRatePlanById(draft.parentRatePlanId)
+  return parent ? ratePlanNightlyRate(parent) : primaryOption(draft).rate
+}
+
+// Parent rate with the plan's modification rules applied, in rule order.
+function derivedFinalRate(draft: RatePlan): number {
+  let rate = parentBaseRate(draft)
+  for (const [type, value] of draft.derivedOptions?.rate ?? []) {
+    const v = Number(value) || 0
+    if (type === 'increase_by_amount')
+      rate += v
+    else if (type === 'decrease_by_amount')
+      rate -= v
+    else if (type === 'increase_by_percent')
+      rate += rate * (v / 100)
+    else if (type === 'decrease_by_percent')
+      rate -= rate * (v / 100)
+  }
+  return Math.max(0, rate)
+}
+
+// Value shown in the (locked) base-rate input for a plan deriving its rate.
+function displayBaseRate(draft: RatePlan): number {
+  return isRateInherited(draft) ? derivedFinalRate(draft) : primaryOption(draft).rate
 }
 
 function boolDayChecked(draft: RatePlan, field: BoolField, day: number): boolean {
@@ -1077,11 +1145,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </div>
 
             <RatePlanDerivedOptionsEditor
-              :model-value="addRatePlanDraft.derivedOptions"
               :rate-plan="addRatePlanDraft"
-              :base-rate="primaryOption(addRatePlanDraft).rate"
-              :currency-symbol="symbolFor(addRatePlanDraft.currency)"
-              @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
               @update:inherit-rate="(v) => addRatePlanDraft.inheritRate = v"
               @update:inherit-min-stay-arrival="(v) => addRatePlanDraft.inheritMinStayArrival = v"
               @update:inherit-min-stay-through="(v) => addRatePlanDraft.inheritMinStayThrough = v"
@@ -1093,7 +1157,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Stay + availability restrictions -->
-          <Collapsible v-model:open="addStayRestrictionsOpen" class="rounded-lg border" :class="{ 'opacity-50 pointer-events-none': addRatePlanDraft.rateMode === 'derived' }">
+          <Collapsible v-model:open="addStayRestrictionsOpen" class="rounded-lg border">
             <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
               <span class="text-sm font-medium">Stay Restrictions</span>
               <Icon :name="addStayRestrictionsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="size-4 text-muted-foreground" />
@@ -1108,10 +1172,12 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   >
                     <span class="text-xs font-medium">{{ row.label }}</span>
                     <div class="flex items-center gap-1.5">
+                      <span v-if="isFieldInherited(addRatePlanDraft, row.field)" class="text-[10px] text-muted-foreground">Inherited</span>
                       <Input
                         type="number"
                         :model-value="stayValue(addRatePlanDraft, row.field)"
                         :min="row.min"
+                        :disabled="isFieldInherited(addRatePlanDraft, row.field)"
                         class="h-8 w-16 text-sm text-right"
                         @update:model-value="(v) => setStayValue(addRatePlanDraft, row.field, Number(v), row.min)"
                       />
@@ -1129,8 +1195,12 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   v-for="row in boolRows"
                   :key="row.field"
                   class="flex flex-col gap-2"
+                  :class="{ 'opacity-50 pointer-events-none': isFieldInherited(addRatePlanDraft, row.field) }"
                 >
-                  <span class="text-xs font-medium">{{ row.label }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-medium">{{ row.label }}</span>
+                    <span v-if="isFieldInherited(addRatePlanDraft, row.field)" class="text-[10px] text-muted-foreground">Inherited</span>
+                  </div>
                   <div class="grid grid-cols-7 gap-1">
                     <label
                       v-for="(label, d) in WEEKDAY_LABELS"
@@ -1162,8 +1232,17 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Tabs>
           </div>
 
+          <!-- Rate is taken from the parent while "Rate" stays inherited. -->
+          <p v-if="isRateInherited(addRatePlanDraft)" class="rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            Rate follows the parent rate plan. Adjust it with the modification rules below, or uncheck <span class="font-medium">Rate</span> under Derived Options to set it manually.
+          </p>
+
           <!-- Per person pricing -->
-          <div v-if="addRatePlanDraft.sellMode === 'per_person'" class="flex flex-col gap-3">
+          <div
+            v-if="addRatePlanDraft.sellMode === 'per_person'"
+            class="flex flex-col gap-3"
+            :class="{ 'opacity-50 pointer-events-none': isRateInherited(addRatePlanDraft) }"
+          >
             <div class="flex items-center justify-between">
               <Label>Guest Pricing</Label>
               <span class="text-[10px] text-muted-foreground">max {{ addMaxOccupancy }} guests (room type)</span>
@@ -1200,7 +1279,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
                 <Input
                   type="number"
-                  :model-value="primaryOption(addRatePlanDraft).rate"
+                  :model-value="displayBaseRate(addRatePlanDraft)"
                   class="pl-7 h-8"
                   min="0"
                   @update:model-value="(v) => setDraftBaseRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
@@ -1213,7 +1292,11 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Per room pricing -->
-          <div v-if="addRatePlanDraft.sellMode === 'per_room'" class="flex flex-col gap-3">
+          <div
+            v-if="addRatePlanDraft.sellMode === 'per_room'"
+            class="flex flex-col gap-3"
+            :class="{ 'opacity-50 pointer-events-none': isRateInherited(addRatePlanDraft) }"
+          >
             <div class="flex items-center justify-between">
               <Label>Base Rate / Night</Label>
               <span class="text-[10px] text-muted-foreground">all {{ addMaxOccupancy }} guests included</span>
@@ -1222,7 +1305,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
               <Input
                 type="number"
-                :model-value="primaryOption(addRatePlanDraft).rate"
+                :model-value="displayBaseRate(addRatePlanDraft)"
                 class="pl-7 h-8"
                 min="0"
                 @update:model-value="(v) => setDraftBaseRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
@@ -1230,7 +1313,16 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-4">
+          <!-- Rules that shape the inherited parent rate -->
+          <RatePlanRateRules
+            v-if="isRateInherited(addRatePlanDraft)"
+            :model-value="addRatePlanDraft.derivedOptions"
+            :base-rate="parentBaseRate(addRatePlanDraft)"
+            :currency-symbol="symbolFor(addRatePlanDraft.currency)"
+            @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
+          />
+
+          <div v-if="addRatePlanDraft.sellMode === 'per_person'" class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">
               <Label>Children Fee / Night</Label>
               <div class="relative">
@@ -1422,11 +1514,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </div>
 
             <RatePlanDerivedOptionsEditor
-              :model-value="editRatePlanDraft.derivedOptions"
               :rate-plan="editRatePlanDraft"
-              :base-rate="primaryOption(editRatePlanDraft).rate"
-              :currency-symbol="symbolFor(editRatePlanDraft.currency)"
-              @update:model-value="(v) => editRatePlanDraft.derivedOptions = v"
               @update:inherit-rate="(v) => editRatePlanDraft.inheritRate = v"
               @update:inherit-min-stay-arrival="(v) => editRatePlanDraft.inheritMinStayArrival = v"
               @update:inherit-min-stay-through="(v) => editRatePlanDraft.inheritMinStayThrough = v"
@@ -1438,7 +1526,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Stay + availability restrictions -->
-          <Collapsible v-model:open="editStayRestrictionsOpen" class="rounded-lg border" :class="{ 'opacity-50 pointer-events-none': editRatePlanDraft.rateMode === 'derived' }">
+          <Collapsible v-model:open="editStayRestrictionsOpen" class="rounded-lg border">
             <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
               <span class="text-sm font-medium">Stay Restrictions</span>
               <Icon :name="editStayRestrictionsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="size-4 text-muted-foreground" />
@@ -1453,10 +1541,12 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   >
                     <span class="text-xs font-medium">{{ row.label }}</span>
                     <div class="flex items-center gap-1.5">
+                      <span v-if="isFieldInherited(editRatePlanDraft, row.field)" class="text-[10px] text-muted-foreground">Inherited</span>
                       <Input
                         type="number"
                         :model-value="stayValue(editRatePlanDraft, row.field)"
                         :min="row.min"
+                        :disabled="isFieldInherited(editRatePlanDraft, row.field)"
                         class="h-8 w-16 text-sm text-right"
                         @update:model-value="(v) => setStayValue(editRatePlanDraft, row.field, Number(v), row.min)"
                       />
@@ -1474,8 +1564,12 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   v-for="row in boolRows"
                   :key="row.field"
                   class="flex flex-col gap-2"
+                  :class="{ 'opacity-50 pointer-events-none': isFieldInherited(editRatePlanDraft, row.field) }"
                 >
-                  <span class="text-xs font-medium">{{ row.label }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-medium">{{ row.label }}</span>
+                    <span v-if="isFieldInherited(editRatePlanDraft, row.field)" class="text-[10px] text-muted-foreground">Inherited</span>
+                  </div>
                   <div class="grid grid-cols-7 gap-1">
                     <label
                       v-for="(label, d) in WEEKDAY_LABELS"
@@ -1507,8 +1601,17 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Tabs>
           </div>
 
+          <!-- Rate is taken from the parent while "Rate" stays inherited. -->
+          <p v-if="isRateInherited(editRatePlanDraft)" class="rounded-md border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+            Rate follows the parent rate plan. Adjust it with the modification rules below, or uncheck <span class="font-medium">Rate</span> under Derived Options to set it manually.
+          </p>
+
           <!-- Per person pricing -->
-          <div v-if="editRatePlanDraft.sellMode === 'per_person'" class="flex flex-col gap-3">
+          <div
+            v-if="editRatePlanDraft.sellMode === 'per_person'"
+            class="flex flex-col gap-3"
+            :class="{ 'opacity-50 pointer-events-none': isRateInherited(editRatePlanDraft) }"
+          >
             <div class="flex items-center justify-between">
               <Label>Guest Pricing</Label>
               <span class="text-[10px] text-muted-foreground">max {{ editMaxOccupancy }} guests (room type)</span>
@@ -1545,7 +1648,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
                 <Input
                   type="number"
-                  :model-value="primaryOption(editRatePlanDraft).rate"
+                  :model-value="displayBaseRate(editRatePlanDraft)"
                   class="pl-7 h-8"
                   min="0"
                   @update:model-value="(v) => setDraftBaseRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
@@ -1558,7 +1661,11 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Per room pricing -->
-          <div v-if="editRatePlanDraft.sellMode === 'per_room'" class="flex flex-col gap-3">
+          <div
+            v-if="editRatePlanDraft.sellMode === 'per_room'"
+            class="flex flex-col gap-3"
+            :class="{ 'opacity-50 pointer-events-none': isRateInherited(editRatePlanDraft) }"
+          >
             <div class="flex items-center justify-between">
               <Label>Base Rate / Night</Label>
               <span class="text-[10px] text-muted-foreground">all {{ editMaxOccupancy }} guests included</span>
@@ -1567,7 +1674,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
               <Input
                 type="number"
-                :model-value="primaryOption(editRatePlanDraft).rate"
+                :model-value="displayBaseRate(editRatePlanDraft)"
                 class="pl-7 h-8"
                 min="0"
                 @update:model-value="(v) => setDraftBaseRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
@@ -1575,8 +1682,17 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </div>
           </div>
 
-          <!-- Children / infant fee -->
-          <div class="grid grid-cols-2 gap-4">
+          <!-- Rules that shape the inherited parent rate -->
+          <RatePlanRateRules
+            v-if="isRateInherited(editRatePlanDraft)"
+            :model-value="editRatePlanDraft.derivedOptions"
+            :base-rate="parentBaseRate(editRatePlanDraft)"
+            :currency-symbol="symbolFor(editRatePlanDraft.currency)"
+            @update:model-value="(v) => editRatePlanDraft.derivedOptions = v"
+          />
+
+          <!-- Children / infant fee — per-room rates already cover every guest -->
+          <div v-if="editRatePlanDraft.sellMode === 'per_person'" class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-1.5">
               <Label>Children Fee / Night</Label>
               <div class="relative">
