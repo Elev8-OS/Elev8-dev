@@ -29,8 +29,6 @@ const emit = defineEmits<{
   'update:inheritStopSell': [value: boolean]
 }>()
 
-const showAdvanced = ref(false)
-
 const rules = computed<DerivedRule[]>({
   get() {
     return (props.modelValue?.rate ?? []).map(([type, value]) => ({
@@ -122,9 +120,6 @@ const calculatedRate = computed(() => {
           <span class="text-sm">Stop Sell</span>
         </div>
       </div>
-      <Button variant="link" size="sm" class="p-0 h-auto text-xs" @click="showAdvanced = !showAdvanced">
-        {{ showAdvanced ? 'Hide' : 'Show' }} advanced settings
-      </Button>
     </div>
 
     <div class="flex items-center justify-between">
