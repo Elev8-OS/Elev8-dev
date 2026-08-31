@@ -60,6 +60,17 @@ const maxOccupancy = computed(() =>
   Math.max(1, (form.value.maxAdults ?? 0) + (form.value.maxChildren ?? 0) + (form.value.maxInfants ?? 0)),
 )
 
+// All rate plans available for selection as parent (from all unit types in the listing)
+const allAvailableRatePlans = computed(() => {
+  const plans: Array<{ id: string, name: string, unitTypeName: string }> = []
+  for (const ut of props.listing.unitTypes ?? []) {
+    for (const rp of ut.pricing.ratePlans) {
+      plans.push({ id: rp.id, name: rp.name, unitTypeName: ut.name })
+    }
+  }
+  return plans
+})
+
 // Guest pricing rules: initial (included) guests + extra charge per additional
 // guest per night, capped at the room type's max occupancy. The occupancy
 // `options` are auto-generated from these settings.
@@ -857,7 +868,20 @@ const feeIcons: Record<string, string> = {
                     </div>
 
                     <!-- Derived Options (only for derived rate mode) -->
-                    <div v-if="rp.rateMode === 'derived'">
+                    <div v-if="rp.rateMode === 'derived'" class="space-y-3">
+                      <div class="flex flex-col gap-1.5">
+                        <Label class="text-sm">Parent Rate Plan</Label>
+                        <Select :model-value="rp.parentRatePlanId ?? ''" @update:model-value="(v) => updateRatePlan(idx, 'parentRatePlanId', v || null)">
+                          <SelectTrigger class="h-8">
+                            <SelectValue placeholder="Select parent rate plan..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem v-for="plan in allAvailableRatePlans" :key="plan.id" :value="plan.id">
+                              {{ plan.name }} ({{ plan.unitTypeName }})
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <RatePlanDerivedOptionsEditor
                         :model-value="rp.derivedOptions"
                         :base-rate="ratePlanNightlyRate(rp)"
@@ -1280,7 +1304,21 @@ const feeIcons: Record<string, string> = {
           </div>
 
           <!-- Derived Options (only for derived rate mode) -->
-          <div v-if="addRatePlanDraft.rateMode === 'derived'">
+          <div v-if="addRatePlanDraft.rateMode === 'derived'" class="space-y-3">
+            <div class="flex flex-col gap-1.5">
+              <Label>Parent Rate Plan</Label>
+              <Select :model-value="addRatePlanDraft.parentRatePlanId ?? ''" @update:model-value="(v) => addRatePlanDraft.parentRatePlanId = v || null">
+                <SelectTrigger class="h-8">
+                  <SelectValue placeholder="Select parent rate plan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="plan in allAvailableRatePlans" :key="plan.id" :value="plan.id">
+                    {{ plan.name }} ({{ plan.unitTypeName }})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-[10px] text-muted-foreground">This rate plan will inherit from and modify the parent rate plan</p>
+            </div>
             <RatePlanDerivedOptionsEditor
               :model-value="addRatePlanDraft.derivedOptions"
               :base-rate="ratePlanNightlyRate(addRatePlanDraft)"

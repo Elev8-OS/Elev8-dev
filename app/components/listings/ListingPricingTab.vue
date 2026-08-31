@@ -71,6 +71,17 @@ const currencies = [
 
 const unitTypes = computed(() => props.listing.unitTypes ?? [])
 
+// All rate plans available for selection as parent (from all unit types)
+const allAvailableRatePlans = computed(() => {
+  const plans: Array<{ id: string, name: string, unitTypeName: string }> = []
+  for (const ut of unitTypes.value) {
+    for (const rp of ut.pricing.ratePlans) {
+      plans.push({ id: rp.id, name: rp.name, unitTypeName: ut.name })
+    }
+  }
+  return plans
+})
+
 const expandedId = ref<string | null>(null)
 
 watch(unitTypes, (uts) => {
@@ -1049,7 +1060,22 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Derived Options (only for derived rate mode) -->
-          <div v-if="addRatePlanDraft.rateMode === 'derived'">
+          <div v-if="addRatePlanDraft.rateMode === 'derived'" class="space-y-3">
+            <div class="flex flex-col gap-1.5">
+              <Label>Parent Rate Plan</Label>
+              <Select :model-value="addRatePlanDraft.parentRatePlanId ?? ''" @update:model-value="(v) => addRatePlanDraft.parentRatePlanId = v || null">
+                <SelectTrigger class="h-8">
+                  <SelectValue placeholder="Select parent rate plan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="plan in allAvailableRatePlans" :key="plan.id" :value="plan.id">
+                    {{ plan.name }} ({{ plan.unitTypeName }})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-[10px] text-muted-foreground">This rate plan will inherit from and modify the parent rate plan</p>
+            </div>
+
             <RatePlanDerivedOptionsEditor
               :model-value="addRatePlanDraft.derivedOptions"
               :base-rate="primaryOption(addRatePlanDraft).rate"
@@ -1371,7 +1397,22 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Derived Options (only for derived rate mode) -->
-          <div v-if="editRatePlanDraft.rateMode === 'derived'">
+          <div v-if="editRatePlanDraft.rateMode === 'derived'" class="space-y-3">
+            <div class="flex flex-col gap-1.5">
+              <Label>Parent Rate Plan</Label>
+              <Select :model-value="editRatePlanDraft.parentRatePlanId ?? ''" @update:model-value="(v) => editRatePlanDraft.parentRatePlanId = v || null">
+                <SelectTrigger class="h-8">
+                  <SelectValue placeholder="Select parent rate plan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="plan in allAvailableRatePlans" :key="plan.id" :value="plan.id">
+                    {{ plan.name }} ({{ plan.unitTypeName }})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-[10px] text-muted-foreground">This rate plan inherits from and modifies the parent rate plan</p>
+            </div>
+
             <RatePlanDerivedOptionsEditor
               :model-value="editRatePlanDraft.derivedOptions"
               :base-rate="primaryOption(editRatePlanDraft).rate"
