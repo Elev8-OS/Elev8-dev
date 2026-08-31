@@ -2,10 +2,62 @@
 import type { Listing, ListingFeeTaxItem, RateMealType, RatePlan, RatePlanOption, RateRateMode, RateSellMode, TaxDateRange, TaxSet, Unit, UnitType, UnitTypePricing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import CancellationPolicyEditor from '~/components/listings/CancellationPolicyEditor.vue'
-import { cancellationPolicySummary, createRatePlan, ratePlanMaxOccupancy, ratePlanNightlyRate } from '~/components/listings/data/listings'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
+import { buildOccupancyOptions, cancellationPolicySummary, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
+import { useFeesTaxes } from '~/composables/useFeesTaxes'
+import { useCancellationPolicies } from '~/composables/useCancellationPolicies'
 
 const props = defineProps<{ listing: Listing, activeUnit?: Unit | null }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
+
+const {
+  feeTaxItems: allFeeTaxItems,
+  taxSets: allTaxSets,
+  getFeesTaxesForListing,
+  getTaxSetsForListing,
+  upsertFeeTaxItem,
+  unassignFeeTax,
+  unassignTaxSet,
+  taxSetsForFeeTax,
+  directFeeTaxIdsForListing,
+  toggleListingFeeTax,
+  setListingTaxSets,
+} = useFeesTaxes()
+
+const { hasOverride, effectiveConfigForListing } = useCancellationPolicies()
+
+const listingHasPolicyOverride = computed(() => hasOverride(props.listing.id))
+
+// The account-level policy that applies to this listing (override or default).
+function accountCancellationSummary(): string {
+  return cancellationPolicySummary(effectiveConfigForListing(props.listing.id))
+}
+
+function accountCancellationConfig() {
+  return effectiveConfigForListing(props.listing.id)
+}
+
+// Copy the account/listing policy into the draft and flip it into override mode.
+function startOverride(draft: RatePlan) {
+  draft.cancellationPolicyConfig = JSON.parse(JSON.stringify(accountCancellationConfig()))
+  draft.inheritCancellationPolicy = false
+}
+
+function revertToAccountPolicy(draft: RatePlan) {
+  draft.inheritCancellationPolicy = true
+}
+
+// Resolve the effective cancellation policy config for a rate plan: its own
+// override when `inheritCancellationPolicy` is false, else the account policy.
+function effectiveCancellationConfig(rp: RatePlan) {
+  if (rp.inheritCancellationPolicy !== false)
+    return accountCancellationConfig()
+  return rp.cancellationPolicyConfig
+}
+
+function effectiveCancellationSummary(rp: RatePlan): string {
+  return cancellationPolicySummary(effectiveCancellationConfig(rp))
+}
 
 const currencies = [
   { code: 'USD', symbol: '$', label: 'USD' },
@@ -46,6 +98,62 @@ function maxGuests(ut: UnitType): number {
   return ut.maxAdults + ut.maxChildren + ut.maxInfants
 }
 
+// Guest pricing rules:
+// - initial (included) guests + extra charge per additional guest per night
+// - total guests always capped at the room type's max occupancy
+// - per_room sells the whole room at max occupancy; per_person gets one option per guest count
+function draftIncludedGuests(draft: RatePlan): number {
+  return draft.includedGuests ?? primaryOption(draft).occupancy
+}
+
+function draftExtraGuestRate(draft: RatePlan): number {
+  return draft.extraGuestRate ?? 0
+}
+
+// Regenerate the draft's occupancy options from its guest-pricing settings.
+function syncDraftOptions(draft: RatePlan, utId: string) {
+  const ut = unitTypes.value.find(u => u.id === utId)
+  const max = ut ? Math.max(1, maxGuests(ut)) : Math.max(1, draftIncludedGuests(draft))
+  draft.includedGuests = Math.min(Math.max(1, Math.round(draftIncludedGuests(draft))), max)
+  draft.extraGuestRate = Math.max(0, draftExtraGuestRate(draft))
+  draft.options = buildOccupancyOptions(draft.includedGuests, draft.extraGuestRate, primaryOption(draft).rate, max, draft.sellMode)
+}
+
+function setDraftSellMode(draft: RatePlan, utId: string, mode: RateSellMode) {
+  draft.sellMode = mode
+  syncDraftOptions(draft, utId)
+}
+
+function setDraftIncludedGuests(draft: RatePlan, utId: string, value: unknown) {
+  draft.includedGuests = Math.max(1, Math.round(Number(value)) || 1)
+  syncDraftOptions(draft, utId)
+}
+
+function setDraftExtraGuestRate(draft: RatePlan, utId: string, value: unknown) {
+  draft.extraGuestRate = Math.max(0, Number(value) || 0)
+  syncDraftOptions(draft, utId)
+}
+
+function setDraftBaseRate(draft: RatePlan, utId: string, value: unknown) {
+  const primary = draft.options.find(o => o.isPrimary) ?? draft.options[0]
+  if (primary)
+    primary.rate = Math.max(0, Number(value) || 0)
+  syncDraftOptions(draft, utId)
+}
+
+function guestPricingPreview(draft: RatePlan, utId: string): string {
+  const ut = unitTypes.value.find(u => u.id === utId)
+  const max = ut ? Math.max(1, maxGuests(ut)) : draftIncludedGuests(draft)
+  const incl = draftIncludedGuests(draft)
+  const extra = draftExtraGuestRate(draft)
+  const base = primaryOption(draft).rate
+  const sym = symbolFor(draft.currency)
+  if (extra <= 0 || incl >= max)
+    return `${sym}${base} / night · up to ${max} guest${max !== 1 ? 's' : ''} (room type limit)`
+  const maxTotal = base + (max - incl) * extra
+  return `${sym}${base} / night includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym}${extra} per extra guest · ${max} guests = ${sym}${maxTotal}`
+}
+
 function patchUnitType(utId: string, patch: Partial<UnitType>) {
   emit('update', {
     ...props.listing,
@@ -71,27 +179,6 @@ function primaryOption(rp: RatePlan): RatePlanOption {
   return rp.options.find(o => o.isPrimary) ?? rp.options[0] ?? { occupancy: 2, isPrimary: true, derivedOption: null, rate: 0 }
 }
 
-function draftAddOption(draft: RatePlan) {
-  const last = draft.options.at(-1)
-  const occ = (last?.occupancy ?? 1) + 1
-  const maxOcc = Math.max(...draft.options.map(o => o.occupancy), 1)
-  draft.options = [
-    ...draft.options,
-    {
-      occupancy: occ,
-      isPrimary: false,
-      derivedOption: null,
-      rate: draft.options.find(o => o.occupancy === maxOcc)?.rate ?? 0,
-    },
-  ]
-}
-
-function draftRemoveOption(draft: RatePlan, index: number) {
-  if (draft.options.length <= 1)
-    return
-  draft.options = draft.options.filter((_, i) => i !== index)
-}
-
 function patchRatePlan(utId: string, index: number, patch: Partial<RatePlan>) {
   const ut = unitTypes.value.find(u => u.id === utId)
   if (!ut)
@@ -103,11 +190,23 @@ function patchRatePlan(utId: string, index: number, patch: Partial<RatePlan>) {
 const showAddRatePlanSheet = ref(false)
 const addRatePlanUnitTypeId = ref('')
 const addRatePlanDraft = ref<RatePlan>(createRatePlan({}))
+const addStayRestrictionsOpen = ref(false)
 
 const showEditRatePlanSheet = ref(false)
 const editRatePlanUnitTypeId = ref('')
 const editRatePlanIndex = ref(-1)
 const editRatePlanDraft = ref<RatePlan>(createRatePlan({}))
+const editStayRestrictionsOpen = ref(false)
+
+// Room type guest cap for the add/edit rate plan sheets.
+const addMaxOccupancy = computed(() => {
+  const ut = unitTypes.value.find(u => u.id === addRatePlanUnitTypeId.value)
+  return ut ? maxGuests(ut) : 1
+})
+const editMaxOccupancy = computed(() => {
+  const ut = unitTypes.value.find(u => u.id === editRatePlanUnitTypeId.value)
+  return ut ? maxGuests(ut) : 1
+})
 
 function openEditRatePlanSheet(utId: string, index: number) {
   const ut = unitTypes.value.find(u => u.id === utId)
@@ -120,6 +219,8 @@ function openEditRatePlanSheet(utId: string, index: number) {
     ...rp,
     options: rp.options.map(o => ({ ...o, derivedOption: o.derivedOption ? JSON.parse(JSON.stringify(o.derivedOption)) : null })),
   }
+  // Normalize against the room type's guest settings (fills includedGuests/extraGuestRate for older plans)
+  syncDraftOptions(editRatePlanDraft.value, utId)
   showEditRatePlanSheet.value = true
 }
 
@@ -192,13 +293,18 @@ function openAddRatePlanSheet(utId: string) {
   if (!ut)
     return
   const base = ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0]
+  const max = Math.max(1, maxGuests(ut))
+  const baseRate = base ? primaryOption(base).rate : 0
   addRatePlanUnitTypeId.value = utId
   addRatePlanDraft.value = {
     ...createRatePlan({}),
     name: `Rate Plan ${ut.pricing.ratePlans.length + 1}`,
     title: `Rate Plan ${ut.pricing.ratePlans.length + 1}`,
     currency: ut.pricing.currency,
-    options: [{ occupancy: primaryOption(base ?? createRatePlan({})).occupancy, isPrimary: true, derivedOption: null, rate: base ? primaryOption(base).rate : 0 }],
+    // per_room default: single option locked at the room type's max occupancy
+    options: [{ occupancy: max, isPrimary: true, derivedOption: null, rate: baseRate }],
+    includedGuests: Math.min(Math.max(1, base?.includedGuests ?? (base ? primaryOption(base).occupancy : 2)), max),
+    extraGuestRate: Math.max(0, base?.extraGuestRate ?? 0),
     isBase: false,
   }
   showAddRatePlanSheet.value = true
@@ -316,11 +422,77 @@ function patchLegacyPricing(patch: Partial<typeof editForm.value>) {
 }
 
 // ── Property-level Fees & Taxes ──────────────────────────────────────────
-const feesTaxes = computed(() => props.listing.pricing.feesTaxes ?? [])
+// Read through the account-level master store so edits sync across every
+// listing that shares the same fee/tax item.
+const feesTaxes = computed(() => getFeesTaxesForListing(props.listing.id))
+const taxSets = computed(() => getTaxSetsForListing(props.listing.id))
+
+// All account-level bundles (tax sets), for toggling on/off this listing.
+const allBundles = computed(() => allTaxSets.value)
+
+// Which items are applied directly (not via a bundle) for this listing.
+const directIds = computed(() => directFeeTaxIdsForListing(props.listing.id))
+
+// Map of item id → bundles that reference it, so we can label provenance.
+function bundlesForItem(itemId: string): string[] {
+  return taxSetsForFeeTax(itemId)
+    .filter(set => taxSets.value.some(s => s.id === set.id))
+    .map(set => set.title)
+}
+
+function itemSource(itemId: string): 'direct' | 'bundle' | 'both' {
+  const direct = directIds.value.includes(itemId)
+  const bundle = bundlesForItem(itemId).length > 0
+  if (direct && bundle)
+    return 'both'
+  if (direct)
+    return 'direct'
+  return 'bundle'
+}
+
+// ── Add from library picker ─────────────────────────────────────────────
+const showLibraryPicker = ref(false)
+const librarySearch = ref('')
+
+// Items in the account library that are NOT already applied to this listing
+// (either directly or via a bundle).
+const libraryItems = computed(() => {
+  const applied = new Set(feesTaxes.value.map(t => t.id))
+  const query = librarySearch.value.trim().toLowerCase()
+  return allFeeTaxItems.value.filter((item) => {
+    if (applied.has(item.id))
+      return false
+    if (query && !item.title.toLowerCase().includes(query))
+      return false
+    return true
+  })
+})
+
+function openLibraryPicker() {
+  librarySearch.value = ''
+  showLibraryPicker.value = true
+}
+
+// Only one bundle can be active on a listing at a time. Turning one on
+// replaces the currently active bundle.
+function toggleBundle(setId: string) {
+  const isActive = taxSets.value.some(s => s.id === setId)
+  if (isActive) {
+    setListingTaxSets(props.listing.id, [])
+  }
+  else {
+    setListingTaxSets(props.listing.id, [setId])
+  }
+}
+
+function addFromLibrary(itemId: string) {
+  // Apply the library item directly to this listing.
+  toggleListingFeeTax(props.listing.id, itemId)
+  toast.success('Added to this listing')
+}
 
 const showFeeTaxSheet = ref(false)
 const editingFeeTaxId = ref<string | null>(null)
-const editingFromTaxSet = ref(false)
 const feeTaxDraft = ref<ListingFeeTaxItem>({
   id: '',
   title: '',
@@ -348,30 +520,11 @@ function isPercent() {
   return feeTaxDraft.value.logic === 'percent'
 }
 
-function openFeeTaxSheet() {
-  editingFeeTaxId.value = null
-  editingFromTaxSet.value = false
-  feeTaxDraft.value = {
-    id: '',
-    title: '',
-    type: 'tax',
-    logic: 'percent',
-    rate: 0,
-    currency: undefined,
-    isInclusive: false,
-    skipNights: null,
-    maxNights: null,
-    applicableDateRanges: [],
-  }
-  showFeeTaxSheet.value = true
-}
-
 function openEditFeeTaxSheet(id: string) {
   const found = feesTaxes.value.find(t => t.id === id)
   if (!found)
     return
   editingFeeTaxId.value = id
-  editingFromTaxSet.value = false
   feeTaxDraft.value = {
     ...found,
     applicableDateRanges: found.applicableDateRanges.map(r => ({ ...r })),
@@ -384,45 +537,29 @@ function closeFeeTaxSheet() {
   editingFeeTaxId.value = null
 }
 
-// When the fee/tax sheet closes, return to the tax set if that's where the
-// edit originated from (covers Cancel, Save, backdrop click, and the X button).
-watch(showFeeTaxSheet, (open) => {
-  if (!open && editingFromTaxSet.value) {
-    editingFromTaxSet.value = false
-    showTaxSetSheet.value = true
-  }
-})
-
-function patchFeesTaxes(items: ListingFeeTaxItem[]) {
-  emit('update', { ...props.listing, pricing: { ...props.listing.pricing, feesTaxes: items } })
-}
-
 function saveFeeTaxItem() {
   if (!feeTaxDraft.value.title.trim())
     return
 
-  if (editingFeeTaxId.value) {
-    patchFeesTaxes(feesTaxes.value.map(t =>
-      t.id === editingFeeTaxId.value
-        ? { ...feeTaxDraft.value, title: feeTaxDraft.value.title.trim() }
-        : t,
-    ))
+  const item: ListingFeeTaxItem = {
+    ...feeTaxDraft.value,
+    id: editingFeeTaxId.value || `ft-${Date.now()}`,
+    title: feeTaxDraft.value.title.trim(),
+  }
+  upsertFeeTaxItem(item, props.listing.id)
+
+  if (editingFeeTaxId.value)
     toast.success('Fee or tax updated')
-  }
-  else {
-    const item: ListingFeeTaxItem = {
-      ...feeTaxDraft.value,
-      id: `ft-${Date.now()}`,
-      title: feeTaxDraft.value.title.trim(),
-    }
-    patchFeesTaxes([...feesTaxes.value, item])
+  else
     toast.success(`${item.type === 'fee' ? 'Fee' : 'Tax'} added`)
-  }
+
   closeFeeTaxSheet()
 }
 
 function removeFeeTaxItem(index: number) {
-  patchFeesTaxes(feesTaxes.value.filter((_, i) => i !== index))
+  const item = feesTaxes.value[index]
+  if (item)
+    unassignFeeTax(props.listing.id, item.id)
   toast.success('Removed')
 }
 
@@ -443,26 +580,9 @@ function removeDateRange(index: number) {
   feeTaxDraft.value.applicableDateRanges = feeTaxDraft.value.applicableDateRanges.filter((_, i) => i !== index)
 }
 
-// ── Tax Sets ──────────────────────────────────────────────────────────────
-const taxSets = computed(() => props.listing.pricing.taxSets ?? [])
-
-const showTaxSetSheet = ref(false)
-const editingTaxSetId = ref<string | null>(null)
-const taxSetDraft = ref<TaxSet>({
-  id: '',
-  title: '',
-  currency: 'USD',
-  taxes: [],
-  associatedRatePlanIds: [],
-  isDefault: false,
-})
-
+// ── Fee/tax helpers (shared by listing view + bundle labels) ──────────────
 function feeTaxLabel(id: string): string {
   return feesTaxes.value.find(t => t.id === id)?.title ?? id
-}
-
-function feeTaxById(id: string): ListingFeeTaxItem | undefined {
-  return feesTaxes.value.find(t => t.id === id)
 }
 
 const logicLabels: Record<string, string> = {
@@ -489,279 +609,11 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
     parts.push(`max ${tax.maxNights}`)
   return parts.join(' · ')
 }
-
-const allRatePlans = computed(() => {
-  const map = new Map<string, { id: string, name: string, unitTypeName: string }>()
-  for (const ut of unitTypes.value) {
-    for (const rp of ut.pricing.ratePlans) {
-      map.set(rp.id, { id: rp.id, name: rp.name, unitTypeName: ut.name })
-    }
-  }
-  return [...map.values()]
-})
-
-function ratePlanLabel(id: string): string {
-  const rp = allRatePlans.value.find(r => r.id === id)
-  return rp ? `${rp.name} (${rp.unitTypeName})` : id
-}
-
-function toggleRatePlanInDraft(rpId: string) {
-  const ids = taxSetDraft.value.associatedRatePlanIds
-  taxSetDraft.value.associatedRatePlanIds = ids.includes(rpId)
-    ? ids.filter(id => id !== rpId)
-    : [...ids, rpId]
-}
-
-function openCreateTaxSet() {
-  editingTaxSetId.value = null
-  taxSetDraft.value = {
-    id: '',
-    title: '',
-    currency: 'USD',
-    taxes: [],
-    associatedRatePlanIds: [],
-    isDefault: false,
-  }
-  showTaxSetSheet.value = true
-}
-
-function openEditTaxSet(id: string) {
-  const found = taxSets.value.find(ts => ts.id === id)
-  if (!found)
-    return
-  editingTaxSetId.value = id
-  taxSetDraft.value = {
-    ...found,
-    taxes: found.taxes.map(t => ({ ...t })),
-    associatedRatePlanIds: [...found.associatedRatePlanIds],
-  }
-  showTaxSetSheet.value = true
-}
-
-function patchTaxSets(items: TaxSet[]) {
-  emit('update', { ...props.listing, pricing: { ...props.listing.pricing, taxSets: items } })
-}
-
-function toggleTaxInDraft(taxId: string) {
-  const exists = taxSetDraft.value.taxes.some(t => t.id === taxId)
-  if (exists) {
-    taxSetDraft.value.taxes = taxSetDraft.value.taxes.filter(t => t.id !== taxId)
-  }
-  else {
-    taxSetDraft.value.taxes = [...taxSetDraft.value.taxes, { id: taxId, level: 0 }]
-  }
-  normalizeTaxLevels()
-}
-
-function normalizeTaxLevels() {
-  const n = taxSetDraft.value.taxes.length
-  // First item is calculated first (deepest/highest level). Last item is level 0.
-  taxSetDraft.value.taxes = taxSetDraft.value.taxes.map((t, i) => ({ ...t, level: n - 1 - i }))
-}
-
-function moveTaxUp(taxId: string) {
-  const idx = taxSetDraft.value.taxes.findIndex(t => t.id === taxId)
-  if (idx <= 0)
-    return
-  const arr = [...taxSetDraft.value.taxes]
-  ;[arr[idx - 1], arr[idx]] = [arr[idx]!, arr[idx - 1]!]
-  taxSetDraft.value.taxes = arr
-  normalizeTaxLevels()
-}
-
-function moveTaxDown(taxId: string) {
-  const idx = taxSetDraft.value.taxes.findIndex(t => t.id === taxId)
-  if (idx < 0 || idx >= taxSetDraft.value.taxes.length - 1)
-    return
-  const arr = [...taxSetDraft.value.taxes]
-  ;[arr[idx], arr[idx + 1]] = [arr[idx + 1]!, arr[idx]!]
-  taxSetDraft.value.taxes = arr
-  normalizeTaxLevels()
-}
-
-// ── Drag & drop reorder ──────────────────────────────────────────────────
-const dragTaxId = ref<string | null>(null)
-const dragOverTaxId = ref<string | null>(null)
-
-function onTaxDragStart(taxId: string) {
-  dragTaxId.value = taxId
-}
-
-function onTaxDragOver(e: DragEvent, taxId: string) {
-  e.preventDefault()
-  if (dragOverTaxId.value !== taxId)
-    dragOverTaxId.value = taxId
-}
-
-function onTaxDrop(taxId: string) {
-  const from = dragTaxId.value
-  const to = taxId
-  dragTaxId.value = null
-  dragOverTaxId.value = null
-
-  if (!from || from === to)
-    return
-
-  const arr = [...taxSetDraft.value.taxes]
-  const fromIdx = arr.findIndex(t => t.id === from)
-  const toIdx = arr.findIndex(t => t.id === to)
-  if (fromIdx < 0 || toIdx < 0)
-    return
-
-  const [moved] = arr.splice(fromIdx, 1)
-  arr.splice(toIdx, 0, moved!)
-  taxSetDraft.value.taxes = arr
-  normalizeTaxLevels()
-}
-
-function onTaxDragEnd() {
-  dragTaxId.value = null
-  dragOverTaxId.value = null
-}
-
-const draftTaxOrder = computed(() =>
-  taxSetDraft.value.taxes.map((t) => {
-    const tax = feeTaxById(t.id)
-    return {
-      id: t.id,
-      level: t.level,
-      title: feeTaxLabel(t.id),
-      summary: tax ? feeTaxSummary(tax) : '',
-      type: tax?.type,
-    }
-  }),
-)
-
-function editTaxFromSet(taxId: string) {
-  // Open the fee/tax sheet in edit mode, remembering to return to the tax set.
-  showTaxSetSheet.value = false
-  openEditFeeTaxSheet(taxId)
-  editingFromTaxSet.value = true
-}
-
-function ordinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`
-}
-
-// ── Pricing calculator simulation ────────────────────────────────────────
-const sampleNights = ref(3)
-const sampleBasePrice = ref(100)
-
-interface CalcLine {
-  id: string
-  title: string
-  amount: number
-  detail: string
-}
-
-const taxSetCalc = computed(() => {
-  const currency = taxSetDraft.value.currency ?? 'USD'
-  const sym = symbolFor(currency)
-  const nights = Math.max(1, sampleNights.value || 1)
-  const base = Math.max(0, sampleBasePrice.value || 0)
-  const baseTotal = base * nights
-
-  // Process in calculation order: already sorted deepest-first in draft.
-  // Rebuild each tax's contribution based on its own logic against the running base.
-  let running = baseTotal
-  const lines: CalcLine[] = []
-
-  for (const ref of [...taxSetDraft.value.taxes].sort((a, b) => b.level - a.level)) {
-    const tax = feesTaxes.value.find(t => t.id === ref.id)
-    if (!tax)
-      continue
-
-    const logic = tax.logic
-    const rate = tax.rate
-
-    if (logic === 'percent') {
-      const amount = running * rate / 100
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${rate}% of ${sym}${running.toFixed(2)}` })
-      running += amount
-    }
-    else if (logic === 'per_room') {
-      const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per room` })
-      running += amount
-    }
-    else if (logic === 'per_room_per_night') {
-      const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per room per night × ${nights} nights` })
-      running += amount
-    }
-    else if (logic === 'per_person') {
-      const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per person` })
-      running += amount
-    }
-    else if (logic === 'per_person_per_night') {
-      const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per person per night × ${nights} nights` })
-      running += amount
-    }
-    else if (logic === 'per_night') {
-      const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per night × ${nights} nights` })
-      running += amount
-    }
-    else if (logic === 'per_booking') {
-      const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per booking` })
-      running += amount
-    }
-  }
-
-  return { currency, sym, nights, base, baseTotal, running, lines }
-})
-
-function saveTaxSet() {
-  if (!taxSetDraft.value.title.trim())
-    return
-
-  // Sort by level descending so deepest (highest number) is processed first,
-  // matching Channex calculation order.
-  const taxes = [...taxSetDraft.value.taxes].sort((a, b) => b.level - a.level)
-
-  if (editingTaxSetId.value) {
-    patchTaxSets(taxSets.value.map(ts =>
-      ts.id === editingTaxSetId.value
-        ? { ...taxSetDraft.value, title: taxSetDraft.value.title.trim(), taxes }
-        : ts,
-    ))
-    toast.success('Tax set updated')
-  }
-  else {
-    const set: TaxSet = {
-      ...taxSetDraft.value,
-      id: `ts-${Date.now()}`,
-      title: taxSetDraft.value.title.trim(),
-      taxes,
-    }
-    // First tax set becomes default automatically.
-    if (taxSets.value.length === 0)
-      set.isDefault = true
-    patchTaxSets([...taxSets.value, set])
-    toast.success('Tax set created')
-  }
-  showTaxSetSheet.value = false
-}
-
-function setDefaultTaxSet(id: string) {
-  patchTaxSets(taxSets.value.map(ts => ({ ...ts, isDefault: ts.id === id })))
-  toast.success('Default tax set updated')
-}
-
-function removeTaxSet(id: string) {
-  patchTaxSets(taxSets.value.filter(ts => ts.id !== id))
-  toast.success('Tax set removed')
-}
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- Property-level Fees & Taxes -->
+    <!-- Fees & Taxes (what applies to this listing) -->
     <Card class="p-5">
       <div class="flex items-start justify-between gap-3">
         <div class="flex flex-col gap-1">
@@ -769,335 +621,117 @@ function removeTaxSet(id: string) {
             Fees &amp; Taxes
           </h3>
           <p class="text-xs text-muted-foreground">
-            Your extras, your call. Applies to direct bookings only, so guests always see a clean total.
+            Charges applied to this listing. Turn bundles on to apply several at once.
           </p>
         </div>
-        <Button variant="outline" size="sm" class="gap-1.5 shrink-0" @click="openFeeTaxSheet">
-          <Icon name="lucide:plus" class="size-3.5" />
-          Add fee or tax
+        <Button variant="ghost" size="sm" class="h-7 gap-1.5 text-xs text-muted-foreground shrink-0" as-child>
+          <NuxtLink to="/settings/fees-taxes">
+            <Icon name="lucide:settings-2" class="size-3.5" />
+            Manage fees &amp; taxes
+          </NuxtLink>
         </Button>
       </div>
 
-      <div class="mt-5">
-        <p v-if="feesTaxes.length === 0" class="text-xs text-muted-foreground italic">
-          No fees or taxes yet. Add one so direct guests see a clear total.
-        </p>
-
-        <div v-else class="flex flex-col gap-2">
-          <div
-            v-for="(item, idx) in feesTaxes"
-            :key="item.id"
-            class="flex items-center justify-between gap-3 border rounded-lg p-3"
-          >
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                <Icon :name="item.type === 'fee' ? 'lucide:receipt' : 'lucide:landmark'" class="size-4 text-muted-foreground" />
-              </div>
-              <div class="flex flex-col min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium truncate">{{ item.title }}</span>
-                  <Badge variant="secondary" class="text-[10px] px-1.5 shrink-0">
-                    {{ item.type === 'fee' ? 'Fee' : 'Tax' }}
-                  </Badge>
-                </div>
-                <span class="text-xs text-muted-foreground">
-                  {{ item.logic === 'percent' ? `${item.rate}%` : `${item.currency ? symbolFor(item.currency) : '$'}${item.rate}` }}{{ item.isInclusive ? ' · included' : '' }}
-                </span>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="openEditFeeTaxSheet(item.id)">
-                <Icon name="lucide:pencil" class="size-3.5 text-muted-foreground" />
-              </Button>
-              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="removeFeeTaxItem(idx)">
-                <Icon name="lucide:trash-2" class="size-3.5 text-muted-foreground" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Card>
-
-    <!-- Tax Sets -->
-    <Card class="p-5">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex flex-col gap-1">
-          <h3 class="text-sm font-semibold">
-            Tax Sets
-          </h3>
-          <p class="text-xs text-muted-foreground">
-            Group taxes and apply them together. The default set is added to every new rate plan automatically.
+      <div class="mt-5 flex flex-col gap-6">
+        <!-- Bundles -->
+        <div class="flex flex-col gap-2">
+          <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Bundles
+          </span>
+          <p v-if="allBundles.length === 0" class="text-xs text-muted-foreground italic">
+            No bundles yet. Create one in Settings → Fees &amp; Taxes.
           </p>
-        </div>
-        <Button variant="outline" size="sm" class="gap-1.5 shrink-0" @click="openCreateTaxSet">
-          <Icon name="lucide:plus" class="size-3.5" />
-          Add tax set
-        </Button>
-      </div>
-
-      <div class="mt-5">
-        <p v-if="taxSets.length === 0" class="text-xs text-muted-foreground italic">
-          No tax sets yet. Group your fees and taxes into a set to reuse them across rate plans.
-        </p>
-
-        <div v-else class="flex flex-col gap-2">
-          <div
-            v-for="set in taxSets"
-            :key="set.id"
-            class="flex items-center justify-between gap-3 border rounded-lg p-3"
-          >
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                <Icon name="lucide:layers" class="size-4 text-muted-foreground" />
-              </div>
-              <div class="flex flex-col min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium truncate">{{ set.title }}</span>
-                  <Badge v-if="set.isDefault" variant="secondary" class="text-[10px] px-1.5 shrink-0">
-                    Default
-                  </Badge>
-                </div>
-                <span class="text-xs text-muted-foreground truncate">
-                  {{ set.taxes.length === 0 ? 'No taxes' : set.taxes.map(t => feeTaxLabel(t.id)).join(' + ') }}
-                </span>
-                <span v-if="set.associatedRatePlanIds.length > 0" class="text-xs text-muted-foreground truncate">
-                  {{ set.associatedRatePlanIds.map(ratePlanLabel).join(', ') }}
-                </span>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-1 shrink-0">
-              <Button
-                v-if="!set.isDefault"
-                variant="ghost"
-                size="sm"
-                class="h-7 px-2 text-xs text-muted-foreground"
-                @click="setDefaultTaxSet(set.id)"
-              >
-                Make default
-              </Button>
-              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="openEditTaxSet(set.id)">
-                <Icon name="lucide:pencil" class="size-3.5 text-muted-foreground" />
-              </Button>
-              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="removeTaxSet(set.id)">
-                <Icon name="lucide:trash-2" class="size-3.5 text-muted-foreground" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Card>
-
-    <!-- Add/Edit Tax Set Sheet -->
-    <Sheet v-model:open="showTaxSetSheet">
-      <SheetContent class="w-full sm:max-w-md p-0">
-        <SheetHeader>
-          <SheetTitle>{{ editingTaxSetId ? 'Edit Tax Set' : 'Add Tax Set' }}</SheetTitle>
-          <SheetDescription>
-            Group taxes together and set the order they are calculated.
-          </SheetDescription>
-        </SheetHeader>
-
-        <div class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-          <div class="flex flex-col gap-1.5">
-            <Label>Title</Label>
-            <Input v-model="taxSetDraft.title" placeholder="e.g., Standard Tax Set" />
-          </div>
-
-          <!-- Associated rate plans -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-1">
-              <Label>Rate Plans</Label>
-              <TooltipProvider :delay-duration="200">
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <button type="button" class="text-muted-foreground/60 hover:text-muted-foreground">
-                      <Icon name="lucide:info" class="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" class="max-w-[260px] text-xs">
-                    Apply this tax set to specific rate plans. When empty, it is available to all rate plans on this property.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-
-            <p v-if="allRatePlans.length === 0" class="text-xs text-muted-foreground italic">
-              No rate plans on this property yet.
-            </p>
-
-            <div v-else class="flex flex-col gap-2">
-              <div
-                v-for="rp in allRatePlans"
-                :key="rp.id"
-                class="flex items-center gap-3 border rounded-lg p-3 cursor-pointer"
-                :class="taxSetDraft.associatedRatePlanIds.includes(rp.id) ? 'bg-muted/30' : ''"
-                @click="toggleRatePlanInDraft(rp.id)"
-              >
-                <div class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border" :class="taxSetDraft.associatedRatePlanIds.includes(rp.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'">
-                  <Icon v-if="taxSetDraft.associatedRatePlanIds.includes(rp.id)" name="lucide:check" class="size-3" />
+          <div v-else class="flex flex-col gap-2">
+            <div
+              v-for="set in allBundles"
+              :key="set.id"
+              class="flex items-center justify-between gap-3 border rounded-lg p-3"
+              :class="taxSets.some(s => s.id === set.id) ? 'bg-muted/30' : ''"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <Icon name="lucide:layers" class="size-4 text-muted-foreground" />
                 </div>
                 <div class="flex flex-col min-w-0">
-                  <span class="text-sm font-medium truncate">{{ rp.name }}</span>
-                  <span class="text-xs text-muted-foreground truncate">{{ rp.unitTypeName }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-1.5">
-            <Label>Currency</Label>
-            <Select :model-value="taxSetDraft.currency ?? 'USD'" @update:model-value="(v) => taxSetDraft.currency = String(v)">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                  {{ c.symbol }} {{ c.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-1">
-              <Label>Taxes</Label>
-              <TooltipProvider :delay-duration="200">
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <button type="button" class="text-muted-foreground/60 hover:text-muted-foreground">
-                      <Icon name="lucide:info" class="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" class="max-w-[260px] text-xs">
-                    Select the taxes to include, then drag them into calculation order. The top item is calculated first, so a VAT on top of a cleaning fee should sit below the fee.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-
-            <p v-if="feesTaxes.length === 0" class="text-xs text-muted-foreground italic">
-              Create a fee or tax first before building a set.
-            </p>
-
-            <div v-else class="flex flex-col gap-2">
-              <!-- Selected taxes (ordered) -->
-              <div
-                v-for="tax in draftTaxOrder"
-                :key="tax.id"
-                class="flex items-start justify-between gap-2 border rounded-lg p-3 bg-muted/30 cursor-grab active:cursor-grabbing transition-colors"
-                :class="dragOverTaxId === tax.id ? 'border-primary bg-primary/5' : ''"
-                draggable="true"
-                @dragstart="onTaxDragStart(tax.id)"
-                @dragover="onTaxDragOver($event, tax.id)"
-                @drop="onTaxDrop(tax.id)"
-                @dragend="onTaxDragEnd"
-              >
-                <div class="flex items-start gap-2 min-w-0">
-                  <Icon name="lucide:grip-vertical" class="size-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                  <div class="flex flex-col min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="text-sm font-medium truncate">{{ tax.title }}</span>
-                      <Badge variant="secondary" class="text-[10px] px-1.5 shrink-0">
-                        {{ ordinal(draftTaxOrder.indexOf(tax) + 1) }}
-                      </Badge>
-                    </div>
-                    <span v-if="tax.summary" class="text-xs text-muted-foreground truncate">
-                      {{ tax.summary }}
-                    </span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium truncate">{{ set.title }}</span>
+                    <Badge v-if="set.isDefault" variant="secondary" class="text-[10px] px-1.5 shrink-0">
+                      Default
+                    </Badge>
                   </div>
-                </div>
-                <div class="flex items-center gap-0.5 shrink-0">
-                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" :disabled="draftTaxOrder.indexOf(tax) === 0" @click="moveTaxUp(tax.id)">
-                    <Icon name="lucide:chevron-up" class="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" :disabled="draftTaxOrder.indexOf(tax) === draftTaxOrder.length - 1" @click="moveTaxDown(tax.id)">
-                    <Icon name="lucide:chevron-down" class="size-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Edit tax" @click="editTaxFromSet(tax.id)">
-                    <Icon name="lucide:pencil" class="size-3.5 text-muted-foreground" />
-                  </Button>
-                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Remove from set" @click="toggleTaxInDraft(tax.id)">
-                    <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
-                  </Button>
+                  <span class="text-xs text-muted-foreground truncate">
+                    {{ set.taxes.length === 0 ? 'No items' : set.taxes.map(t => feeTaxLabel(t.id)).join(' + ') }}
+                  </span>
                 </div>
               </div>
-
-              <!-- Unselected taxes -->
-              <div
-                v-for="tax in feesTaxes.filter(t => !taxSetDraft.taxes.some(s => s.id === t.id))"
-                :key="tax.id"
-                class="flex items-center gap-3 border rounded-lg p-3 cursor-pointer hover:bg-accent/50 transition-colors"
-                @click="toggleTaxInDraft(tax.id)"
-              >
-                <div class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-dashed border-input">
-                  <Icon name="lucide:plus" class="size-3 text-muted-foreground" />
-                </div>
-                <span class="text-sm font-medium truncate text-muted-foreground">{{ tax.title }}</span>
-                <Badge variant="secondary" class="text-[10px] px-1.5 shrink-0">
-                  {{ tax.type === 'fee' ? 'Fee' : 'Tax' }}
-                </Badge>
-              </div>
-            </div>
-          </div>
-
-          <!-- Pricing calculator -->
-          <div class="flex flex-col gap-2 rounded-lg border bg-muted/30 p-4">
-            <div class="flex items-center gap-1">
-              <Icon name="lucide:calculator" class="size-3.5 text-muted-foreground" />
-              <span class="text-sm font-medium">Price Preview</span>
-            </div>
-            <p class="text-xs text-muted-foreground">
-              See how this tax set adds up on a sample stay.
-            </p>
-
-            <div class="grid grid-cols-2 gap-3 mt-1">
-              <div class="flex flex-col gap-1.5">
-                <Label>Base Price / Night</Label>
-                <Input v-model.number="sampleBasePrice" type="number" min="0" class="h-8 text-xs" />
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <Label>Nights</Label>
-                <Input v-model.number="sampleNights" type="number" min="1" class="h-8 text-xs" />
-              </div>
-            </div>
-
-            <div class="flex flex-col gap-1.5 mt-2 text-sm">
-              <div class="flex items-center justify-between">
-                <span class="text-muted-foreground">Base total</span>
-                <span>{{ taxSetCalc.sym }}{{ taxSetCalc.baseTotal.toFixed(2) }}</span>
-              </div>
-              <div
-                v-for="line in taxSetCalc.lines"
-                :key="line.id"
-                class="flex items-start justify-between gap-2"
-              >
-                <div class="flex flex-col min-w-0">
-                  <span class="font-medium truncate">{{ line.title }}</span>
-                  <span class="text-xs text-muted-foreground">{{ line.detail }}</span>
-                </div>
-                <span class="shrink-0">+{{ taxSetCalc.sym }}{{ line.amount.toFixed(2) }}</span>
-              </div>
-              <div class="border-t pt-2 flex items-center justify-between font-semibold">
-                <span>Total</span>
-                <span>{{ taxSetCalc.sym }}{{ taxSetCalc.running.toFixed(2) }}</span>
-              </div>
+              <Switch
+                :model-value="taxSets.some(s => s.id === set.id)"
+                @update:model-value="() => toggleBundle(set.id)"
+              />
             </div>
           </div>
         </div>
 
-        <SheetFooter class="border-t">
-          <Button variant="outline" size="sm" @click="showTaxSetSheet = false">
-            Cancel
-          </Button>
-          <Button size="sm" :disabled="!taxSetDraft.title.trim()" @click="saveTaxSet">
-            <Icon name="lucide:check" class="size-3.5 mr-1.5" />
-            {{ editingTaxSetId ? 'Save' : 'Add' }}
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        <!-- Individual items -->
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Individual Items
+            </span>
+            <Button variant="ghost" size="sm" class="h-7 gap-1.5 text-xs text-muted-foreground" @click="openLibraryPicker">
+              <Icon name="lucide:plus" class="size-3.5" />
+              Add from library
+            </Button>
+          </div>
+          <p v-if="feesTaxes.length === 0" class="text-xs text-muted-foreground italic">
+            Nothing applied yet. Turn on a bundle or add an item from the library.
+          </p>
+          <div v-else class="flex flex-col gap-2">
+            <div
+              v-for="(item, idx) in feesTaxes"
+              :key="item.id"
+              class="flex items-center justify-between gap-3 border rounded-lg p-3"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <Icon :name="item.type === 'fee' ? 'lucide:receipt' : 'lucide:landmark'" class="size-4 text-muted-foreground" />
+                </div>
+                <div class="flex flex-col min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium truncate">{{ item.title }}</span>
+                    <Badge variant="secondary" class="text-[10px] px-1.5 shrink-0">
+                      {{ item.type === 'fee' ? 'Fee' : item.type === 'city_tax' ? 'City Tax' : 'Tax' }}
+                    </Badge>
+                    <Badge v-if="itemSource(item.id) !== 'direct'" variant="outline" class="text-[10px] px-1.5 shrink-0">
+                      From {{ bundlesForItem(item.id).join(', ') }}
+                    </Badge>
+                  </div>
+                  <span class="text-xs text-muted-foreground">
+                    {{ feeTaxSummary(item) }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" size="sm" class="h-7 w-7 p-0" @click="openEditFeeTaxSheet(item.id)">
+                  <Icon name="lucide:pencil" class="size-3.5 text-muted-foreground" />
+                </Button>
+                <Button
+                  v-if="itemSource(item.id) !== 'bundle'"
+                  variant="ghost"
+                  size="sm"
+                  class="h-7 w-7 p-0"
+                  title="Remove from this listing"
+                  @click="removeFeeTaxItem(idx)"
+                >
+                  <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
 
     <!-- Add Fee/Tax Sheet -->
     <Sheet v-model:open="showFeeTaxSheet">
@@ -1386,36 +1020,18 @@ function removeTaxSet(id: string) {
             <Input v-model="addRatePlanDraft.title" placeholder="e.g., Best Available Rate, Weekly, Non-refundable" />
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div class="flex flex-col gap-1.5">
-              <Label>Currency</Label>
-              <Select :model-value="addRatePlanDraft.currency" @update:model-value="(v) => addRatePlanDraft.currency = String(v)">
-                <SelectTrigger class="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                    {{ c.symbol }} {{ c.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <Label>Sell Mode</Label>
-              <Select :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => addRatePlanDraft.sellMode = String(v) as RateSellMode">
-                <SelectTrigger class="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="per_room">
-                    Per Room
-                  </SelectItem>
-                  <SelectItem value="per_person">
-                    Per Person
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div class="flex flex-col gap-1.5">
+            <Label>Currency</Label>
+            <Select :model-value="addRatePlanDraft.currency" @update:model-value="(v) => addRatePlanDraft.currency = String(v)">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
+                  {{ c.symbol }} {{ c.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div class="flex flex-col gap-1.5">
@@ -1431,12 +1047,6 @@ function removeTaxSet(id: string) {
                 <SelectItem value="derived">
                   Derived
                 </SelectItem>
-                <SelectItem value="auto">
-                  Auto
-                </SelectItem>
-                <SelectItem value="cascade">
-                  Cascade
-                </SelectItem>
               </SelectContent>
             </Select>
             <p class="text-[10px] text-muted-foreground">
@@ -1444,58 +1054,129 @@ function removeTaxSet(id: string) {
             </p>
           </div>
 
-          <CancellationPolicyEditor v-model:config="addRatePlanDraft.cancellationPolicyConfig" />
+          <!-- Stay + availability restrictions -->
+          <Collapsible v-model:open="addStayRestrictionsOpen" class="rounded-lg border">
+            <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
+              <span class="text-sm font-medium">Stay Restrictions</span>
+              <Icon :name="addStayRestrictionsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="size-4 text-muted-foreground" />
+            </CollapsibleTrigger>
+            <CollapsibleContent class="flex flex-col gap-4 border-t p-3">
+              <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2">
+                  <div
+                    v-for="row in stayRows"
+                    :key="row.field"
+                    class="flex items-center justify-between gap-3"
+                  >
+                    <span class="text-xs font-medium">{{ row.label }}</span>
+                    <div class="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        :model-value="stayValue(addRatePlanDraft, row.field)"
+                        :min="row.min"
+                        class="h-8 w-16 text-sm text-right"
+                        @update:model-value="(v) => setStayValue(addRatePlanDraft, row.field, Number(v), row.min)"
+                      />
+                      <span class="text-xs text-muted-foreground">nights</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-          <div class="flex flex-col gap-2">
+              <Separator />
+
+              <div class="flex flex-col gap-3">
+                <Label>Availability Restrictions (Mon–Sun)</Label>
+                <div
+                  v-for="row in boolRows"
+                  :key="row.field"
+                  class="flex flex-col gap-2"
+                >
+                  <span class="text-xs font-medium">{{ row.label }}</span>
+                  <div class="grid grid-cols-7 gap-1">
+                    <label
+                      v-for="(label, d) in WEEKDAY_LABELS"
+                      :key="label"
+                      class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
+                      :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
+                    >
+                      <span class="text-[10px] font-medium" :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
+                        {{ label }}
+                      </span>
+                      <Checkbox
+                        :model-value="boolDayChecked(addRatePlanDraft, row.field, d)"
+                        @update:model-value="toggleBoolDay(addRatePlanDraft, row.field, d)"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <div class="flex flex-col gap-1.5">
+            <Label>Sell Mode</Label>
+            <Select :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => setDraftSellMode(addRatePlanDraft, addRatePlanUnitTypeId, String(v) as RateSellMode)">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="per_room">
+                  Per Room
+                </SelectItem>
+                <SelectItem value="per_person">
+                  Per Person
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <Label>Occupancy Options</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-7 gap-1"
-                :disabled="addRatePlanDraft.sellMode === 'per_room'"
-                title="Per room plans use a single option at max occupancy"
-                @click="draftAddOption(addRatePlanDraft)"
-              >
-                <Icon name="lucide:plus" class="size-3" />
-                Option
-              </Button>
+              <Label>Guest Pricing</Label>
+              <span class="text-[10px] text-muted-foreground">max {{ addMaxOccupancy }} guests (room type)</span>
             </div>
-            <div class="flex flex-col gap-2">
-              <div v-for="(opt, oi) in addRatePlanDraft.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
-                <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
+            <div class="grid grid-cols-2 gap-3">
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-xs text-muted-foreground">Included Guests</Label>
                 <Input
                   type="number"
-                  :model-value="opt.occupancy"
+                  :model-value="draftIncludedGuests(addRatePlanDraft)"
                   min="1"
-                  class="w-16 h-8 text-xs"
-                  @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, occupancy: Math.max(1, Number(v) || 1) }"
+                  :max="addMaxOccupancy"
+                  class="h-8"
+                  @update:model-value="(v) => setDraftIncludedGuests(addRatePlanDraft, addRatePlanUnitTypeId, v)"
                 />
-                <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
-                <div class="relative flex-1">
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-xs text-muted-foreground">Extra Guest / Night</Label>
+                <div class="relative">
                   <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
                   <Input
                     type="number"
-                    :model-value="opt.rate"
-                    class="pl-7 h-8 text-xs"
+                    :model-value="draftExtraGuestRate(addRatePlanDraft)"
+                    class="pl-7 h-8"
                     min="0"
-                    @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, rate: Number(v) || 0 }"
+                    @update:model-value="(v) => setDraftExtraGuestRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
                   />
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 w-7 p-0 shrink-0"
-                  :disabled="addRatePlanDraft.options.length <= 1"
-                  title="Remove option"
-                  @click="draftRemoveOption(addRatePlanDraft, oi)"
-                >
-                  <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
-                </Button>
               </div>
             </div>
-            <p v-if="addRatePlanDraft.sellMode === 'per_room'" class="text-[10px] text-muted-foreground">
-              Per room plans use a single option at max occupancy.
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-xs text-muted-foreground">Base Rate / Night ({{ draftIncludedGuests(addRatePlanDraft) }} guest{{ draftIncludedGuests(addRatePlanDraft) !== 1 ? 's' : '' }} included)</Label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
+                <Input
+                  type="number"
+                  :model-value="primaryOption(addRatePlanDraft).rate"
+                  class="pl-7 h-8"
+                  min="0"
+                  @update:model-value="(v) => setDraftBaseRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
+                />
+              </div>
+            </div>
+            <p class="text-[10px] text-muted-foreground">
+              {{ guestPricingPreview(addRatePlanDraft, addRatePlanUnitTypeId) }}
             </p>
           </div>
 
@@ -1524,61 +1205,6 @@ function removeTaxSet(id: string) {
                   min="0"
                   @update:model-value="(v) => addRatePlanDraft.infantFee = Number(v) || 0"
                 />
-              </div>
-            </div>
-          </div>
-
-          <!-- Stay + availability restrictions -->
-          <div class="flex flex-col gap-4 rounded-lg border p-3">
-            <div class="flex flex-col gap-2">
-              <Label>Stay Restrictions</Label>
-              <div class="flex flex-col gap-2">
-                <div
-                  v-for="row in stayRows"
-                  :key="row.field"
-                  class="flex items-center justify-between gap-3"
-                >
-                  <span class="text-xs font-medium">{{ row.label }}</span>
-                  <div class="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      :model-value="stayValue(addRatePlanDraft, row.field)"
-                      :min="row.min"
-                      class="h-8 w-16 text-sm text-right"
-                      @update:model-value="(v) => setStayValue(addRatePlanDraft, row.field, Number(v), row.min)"
-                    />
-                    <span class="text-xs text-muted-foreground">nights</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div class="flex flex-col gap-3">
-              <Label>Availability Restrictions (Mon–Sun)</Label>
-              <div
-                v-for="row in boolRows"
-                :key="row.field"
-                class="flex flex-col gap-2"
-              >
-                <span class="text-xs font-medium">{{ row.label }}</span>
-                <div class="grid grid-cols-7 gap-1">
-                  <label
-                    v-for="(label, d) in WEEKDAY_LABELS"
-                    :key="label"
-                    class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
-                    :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
-                  >
-                    <span class="text-[10px] font-medium" :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
-                      {{ label }}
-                    </span>
-                    <Checkbox
-                      :model-value="boolDayChecked(addRatePlanDraft, row.field, d)"
-                      @update:model-value="toggleBoolDay(addRatePlanDraft, row.field, d)"
-                    />
-                  </label>
-                </div>
               </div>
             </div>
           </div>
@@ -1617,6 +1243,34 @@ function removeTaxSet(id: string) {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <!-- Cancellation policy (inherit vs override) -->
+          <div class="flex flex-col gap-1.5">
+            <Label>Cancellation Policy</Label>
+            <div v-if="addRatePlanDraft.inheritCancellationPolicy !== false" class="flex items-center justify-between gap-2 rounded-lg border p-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <Icon name="lucide:info" class="size-3.5 text-muted-foreground shrink-0" />
+                <p class="text-xs text-muted-foreground truncate">
+                  <span class="font-medium">{{ listingHasPolicyOverride ? 'Listing override' : 'Account default' }}</span>:
+                  {{ accountCancellationSummary() }}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" class="h-7 gap-1.5 shrink-0" @click="startOverride(addRatePlanDraft)">
+                <Icon name="lucide:pencil" class="size-3.5" />
+                Override
+              </Button>
+            </div>
+
+            <div v-else>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs text-muted-foreground">Using a custom policy for this rate plan.</p>
+                <Button variant="ghost" size="sm" class="h-7 px-2 text-xs text-muted-foreground" @click="revertToAccountPolicy(addRatePlanDraft)">
+                  Revert to {{ listingHasPolicyOverride ? 'listing override' : 'default' }}
+                </Button>
+              </div>
+              <CancellationPolicyEditor v-model:config="addRatePlanDraft.cancellationPolicyConfig" />
+            </div>
           </div>
         </div>
 
@@ -1671,36 +1325,18 @@ function removeTaxSet(id: string) {
             </Button>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div class="flex flex-col gap-1.5">
-              <Label>Sell Mode</Label>
-              <Select :model-value="editRatePlanDraft.sellMode" @update:model-value="(v) => editRatePlanDraft.sellMode = String(v) as RateSellMode">
-                <SelectTrigger class="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="per_room">
-                    Per Room
-                  </SelectItem>
-                  <SelectItem value="per_person">
-                    Per Person
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <Label>Currency</Label>
-              <Select :model-value="editRatePlanDraft.currency" @update:model-value="(v) => editRatePlanDraft.currency = String(v)">
-                <SelectTrigger class="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                    {{ c.symbol }} {{ c.label }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div class="flex flex-col gap-1.5">
+            <Label>Currency</Label>
+            <Select :model-value="editRatePlanDraft.currency" @update:model-value="(v) => editRatePlanDraft.currency = String(v)">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
+                  {{ c.symbol }} {{ c.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div class="flex flex-col gap-1.5">
@@ -1716,12 +1352,6 @@ function removeTaxSet(id: string) {
                 <SelectItem value="derived">
                   Derived
                 </SelectItem>
-                <SelectItem value="auto">
-                  Auto
-                </SelectItem>
-                <SelectItem value="cascade">
-                  Cascade
-                </SelectItem>
               </SelectContent>
             </Select>
             <p class="text-[10px] text-muted-foreground">
@@ -1729,56 +1359,131 @@ function removeTaxSet(id: string) {
             </p>
           </div>
 
-          <CancellationPolicyEditor v-model:config="editRatePlanDraft.cancellationPolicyConfig" />
+          <!-- Stay + availability restrictions -->
+          <Collapsible v-model:open="editStayRestrictionsOpen" class="rounded-lg border">
+            <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
+              <span class="text-sm font-medium">Stay Restrictions</span>
+              <Icon :name="editStayRestrictionsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="size-4 text-muted-foreground" />
+            </CollapsibleTrigger>
+            <CollapsibleContent class="flex flex-col gap-4 border-t p-3">
+              <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2">
+                  <div
+                    v-for="row in stayRows"
+                    :key="row.field"
+                    class="flex items-center justify-between gap-3"
+                  >
+                    <span class="text-xs font-medium">{{ row.label }}</span>
+                    <div class="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        :model-value="stayValue(editRatePlanDraft, row.field)"
+                        :min="row.min"
+                        class="h-8 w-16 text-sm text-right"
+                        @update:model-value="(v) => setStayValue(editRatePlanDraft, row.field, Number(v), row.min)"
+                      />
+                      <span class="text-xs text-muted-foreground">nights</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-          <!-- Occupancy options -->
-          <div class="flex flex-col gap-2">
+              <Separator />
+
+              <div class="flex flex-col gap-3">
+                <Label>Availability Restrictions (Mon–Sun)</Label>
+                <div
+                  v-for="row in boolRows"
+                  :key="row.field"
+                  class="flex flex-col gap-2"
+                >
+                  <span class="text-xs font-medium">{{ row.label }}</span>
+                  <div class="grid grid-cols-7 gap-1">
+                    <label
+                      v-for="(label, d) in WEEKDAY_LABELS"
+                      :key="label"
+                      class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
+                      :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
+                    >
+                      <span class="text-[10px] font-medium" :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
+                        {{ label }}
+                      </span>
+                      <Checkbox
+                        :model-value="boolDayChecked(editRatePlanDraft, row.field, d)"
+                        @update:model-value="toggleBoolDay(editRatePlanDraft, row.field, d)"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <div class="flex flex-col gap-1.5">
+            <Label>Sell Mode</Label>
+            <Select :model-value="editRatePlanDraft.sellMode" @update:model-value="(v) => setDraftSellMode(editRatePlanDraft, editRatePlanUnitTypeId, String(v) as RateSellMode)">
+              <SelectTrigger class="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="per_room">
+                  Per Room
+                </SelectItem>
+                <SelectItem value="per_person">
+                  Per Person
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <!-- Guest pricing -->
+          <div class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <Label>Occupancy Options</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-7 gap-1"
-                :disabled="editRatePlanDraft.sellMode === 'per_room'"
-                title="Per room plans use a single option at max occupancy"
-                @click="draftAddOption(editRatePlanDraft)"
-              >
-                <Icon name="lucide:plus" class="size-3" />
-                Option
-              </Button>
+              <Label>Guest Pricing</Label>
+              <span class="text-[10px] text-muted-foreground">max {{ editMaxOccupancy }} guests (room type)</span>
             </div>
-
-            <div v-for="(opt, oi) in editRatePlanDraft.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
-              <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
-              <Input
-                type="number"
-                :model-value="opt.occupancy"
-                min="1"
-                class="w-16 h-8 text-xs"
-                @update:model-value="(v) => editRatePlanDraft.options[oi] = { ...opt, occupancy: Math.max(1, Number(v) || 1) }"
-              />
-              <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
-              <div class="relative flex-1">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-xs text-muted-foreground">Included Guests</Label>
+                <Input
+                  type="number"
+                  :model-value="draftIncludedGuests(editRatePlanDraft)"
+                  min="1"
+                  :max="editMaxOccupancy"
+                  class="h-8"
+                  @update:model-value="(v) => setDraftIncludedGuests(editRatePlanDraft, editRatePlanUnitTypeId, v)"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-xs text-muted-foreground">Extra Guest / Night</Label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
+                  <Input
+                    type="number"
+                    :model-value="draftExtraGuestRate(editRatePlanDraft)"
+                    class="pl-7 h-8"
+                    min="0"
+                    @update:model-value="(v) => setDraftExtraGuestRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
+                  />
+                </div>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-xs text-muted-foreground">Base Rate / Night ({{ draftIncludedGuests(editRatePlanDraft) }} guest{{ draftIncludedGuests(editRatePlanDraft) !== 1 ? 's' : '' }} included)</Label>
+              <div class="relative">
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
                 <Input
                   type="number"
-                  :model-value="opt.rate"
-                  class="pl-7 h-8 text-xs"
+                  :model-value="primaryOption(editRatePlanDraft).rate"
+                  class="pl-7 h-8"
                   min="0"
-                  @update:model-value="(v) => editRatePlanDraft.options[oi] = { ...opt, rate: Number(v) || 0 }"
+                  @update:model-value="(v) => setDraftBaseRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
                 />
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-7 w-7 p-0 shrink-0"
-                :disabled="editRatePlanDraft.options.length <= 1"
-                title="Remove option"
-                @click="draftRemoveOption(editRatePlanDraft, oi)"
-              >
-                <Icon name="lucide:x" class="size-3.5 text-muted-foreground" />
-              </Button>
             </div>
+            <p class="text-[10px] text-muted-foreground">
+              {{ guestPricingPreview(editRatePlanDraft, editRatePlanUnitTypeId) }}
+            </p>
           </div>
 
           <!-- Children / infant fee -->
@@ -1807,63 +1512,6 @@ function removeTaxSet(id: string) {
                   min="0"
                   @update:model-value="(v) => editRatePlanDraft.infantFee = Number(v) || 0"
                 />
-              </div>
-            </div>
-          </div>
-
-          <!-- Stay + availability restrictions -->
-          <div class="flex flex-col gap-4 rounded-lg border p-3">
-            <!-- Stay restrictions -->
-            <div class="flex flex-col gap-2">
-              <Label>Stay Restrictions</Label>
-              <div class="flex flex-col gap-2">
-                <div
-                  v-for="row in stayRows"
-                  :key="row.field"
-                  class="flex items-center justify-between gap-3"
-                >
-                  <span class="text-xs font-medium">{{ row.label }}</span>
-                  <div class="flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      :model-value="stayValue(editRatePlanDraft, row.field)"
-                      :min="row.min"
-                      class="h-8 w-16 text-sm text-right"
-                      @update:model-value="(v) => setStayValue(editRatePlanDraft, row.field, Number(v), row.min)"
-                    />
-                    <span class="text-xs text-muted-foreground">nights</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            <!-- Availability restrictions per weekday -->
-            <div class="flex flex-col gap-3">
-              <Label>Availability Restrictions (Mon–Sun)</Label>
-              <div
-                v-for="row in boolRows"
-                :key="row.field"
-                class="flex flex-col gap-2"
-              >
-                <span class="text-xs font-medium">{{ row.label }}</span>
-                <div class="grid grid-cols-7 gap-1">
-                  <label
-                    v-for="(label, d) in WEEKDAY_LABELS"
-                    :key="label"
-                    class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
-                    :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
-                  >
-                    <span class="text-[10px] font-medium" :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
-                      {{ label }}
-                    </span>
-                    <Checkbox
-                      :model-value="boolDayChecked(editRatePlanDraft, row.field, d)"
-                      @update:model-value="toggleBoolDay(editRatePlanDraft, row.field, d)"
-                    />
-                  </label>
-                </div>
               </div>
             </div>
           </div>
@@ -1902,6 +1550,34 @@ function removeTaxSet(id: string) {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <!-- Cancellation policy (inherit vs override) -->
+          <div class="flex flex-col gap-1.5">
+            <Label>Cancellation Policy</Label>
+            <div v-if="editRatePlanDraft.inheritCancellationPolicy !== false" class="flex items-center justify-between gap-2 rounded-lg border p-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <Icon name="lucide:info" class="size-3.5 text-muted-foreground shrink-0" />
+                <p class="text-xs text-muted-foreground truncate">
+                  <span class="font-medium">{{ listingHasPolicyOverride ? 'Listing override' : 'Account default' }}</span>:
+                  {{ accountCancellationSummary() }}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" class="h-7 gap-1.5 shrink-0" @click="startOverride(editRatePlanDraft)">
+                <Icon name="lucide:pencil" class="size-3.5" />
+                Override
+              </Button>
+            </div>
+
+            <div v-else>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs text-muted-foreground">Using a custom policy for this rate plan.</p>
+                <Button variant="ghost" size="sm" class="h-7 px-2 text-xs text-muted-foreground" @click="revertToAccountPolicy(editRatePlanDraft)">
+                  Revert to {{ listingHasPolicyOverride ? 'listing override' : 'default' }}
+                </Button>
+              </div>
+              <CancellationPolicyEditor v-model:config="editRatePlanDraft.cancellationPolicyConfig" />
+            </div>
           </div>
         </div>
 
@@ -2055,10 +1731,6 @@ function removeTaxSet(id: string) {
                       {{ rp.sellMode === 'per_person' ? 'per guest / night' : 'per night' }}
                     </p>
                   </div>
-                  <Badge variant="secondary" class="gap-1 text-[10px]">
-                    <Icon name="lucide:users" class="size-3" />
-                    up to {{ ratePlanMaxOccupancy(rp) }} guests
-                  </Badge>
                 </div>
 
                 <!-- Occupancy options -->
@@ -2080,7 +1752,7 @@ function removeTaxSet(id: string) {
                   <span v-if="rp.infantFee > 0">Infant +{{ symbolFor(ut.pricing.currency) }}{{ rp.infantFee }}</span>
                   <span v-if="rp.stopSell[0]" class="text-destructive">Stop sell</span>
                   <span v-if="rp.mealType !== 'none'" class="capitalize">{{ rp.mealType.replace(/_/g, ' ') }}</span>
-                  <span>{{ cancellationPolicySummary(rp.cancellationPolicyConfig) }}</span>
+                  <span>{{ effectiveCancellationSummary(rp) }}</span>
                 </div>
               </div>
             </div>
@@ -2275,5 +1947,53 @@ function removeTaxSet(id: string) {
         </p>
       </Card>
     </template>
+
+    <!-- Add from library dialog -->
+    <Dialog v-model:open="showLibraryPicker">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add fee or tax from library</DialogTitle>
+          <DialogDescription>Choose items from your account library to apply to this listing.</DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-3">
+          <div class="relative">
+            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input v-model="librarySearch" placeholder="Search library..." class="h-9 pl-9" />
+          </div>
+
+          <div class="max-h-[320px] space-y-2 overflow-auto pr-1">
+            <p v-if="libraryItems.length === 0" class="text-sm text-muted-foreground py-4 text-center">
+              No matching items. Create new ones in Settings → Fees &amp; Taxes.
+            </p>
+            <button
+              v-for="item in libraryItems"
+              :key="item.id"
+              type="button"
+              class="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/40"
+              @click="addFromLibrary(item.id)"
+            >
+              <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                <Icon :name="item.type === 'fee' ? 'lucide:receipt' : 'lucide:landmark'" class="size-4 text-muted-foreground" />
+              </div>
+              <div class="flex flex-col min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium truncate">{{ item.title }}</span>
+                  <Badge variant="secondary" class="text-[10px] px-1.5 shrink-0">
+                    {{ item.type === 'fee' ? 'Fee' : item.type === 'city_tax' ? 'City Tax' : 'Tax' }}
+                  </Badge>
+                </div>
+                <span class="text-xs text-muted-foreground">{{ feeTaxSummary(item) }}</span>
+              </div>
+              <Icon name="lucide:plus" class="size-4 text-muted-foreground shrink-0 ml-auto" />
+            </button>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" @click="showLibraryPicker = false">Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

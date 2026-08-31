@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { LengthOfStayDiscount, Listing, RatePlan, RatePlanOffering, RateRateMode, RateSellMode, UnitType } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
-import { createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
+import { buildOccupancyOptions, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -53,6 +53,47 @@ const currencySymbol = computed(() => {
   const code = form.value.pricing?.currency ?? 'USD'
   return currencies.find(c => c.code === code)?.symbol ?? '$'
 })
+
+// Max guests the room type can host (adults + children + infants)
+const maxOccupancy = computed(() =>
+  Math.max(1, (form.value.maxAdults ?? 0) + (form.value.maxChildren ?? 0) + (form.value.maxInfants ?? 0)),
+)
+
+// Guest pricing rules: initial (included) guests + extra charge per additional
+// guest per night, capped at the room type's max occupancy. The occupancy
+// `options` are auto-generated from these settings.
+function syncRatePlanOptions(rp: RatePlan): RatePlan {
+  const included = Math.min(Math.max(1, Math.round(rp.includedGuests ?? rp.options.find(o => o.isPrimary)?.occupancy ?? 1)), maxOccupancy.value)
+  const extra = Math.max(0, rp.extraGuestRate ?? 0)
+  const base = ratePlanNightlyRate(rp)
+  return {
+    ...rp,
+    includedGuests: included,
+    extraGuestRate: extra,
+    options: buildOccupancyOptions(included, extra, base, maxOccupancy.value, rp.sellMode),
+  }
+}
+
+// Keep every rate plan in sync when the room type's guest settings change.
+watch(maxOccupancy, () => {
+  if (!form.value.pricing)
+    return
+  form.value.pricing = {
+    ...form.value.pricing,
+    ratePlans: form.value.pricing.ratePlans.map(rp => syncRatePlanOptions(rp)),
+  }
+})
+
+function guestPricingHint(rp: RatePlan): string {
+  const incl = rp.includedGuests ?? rp.options.find(o => o.isPrimary)?.occupancy ?? 1
+  const extra = rp.extraGuestRate ?? 0
+  const base = ratePlanNightlyRate(rp)
+  const sym = currencySymbol.value
+  const max = maxOccupancy.value
+  if (extra <= 0 || incl >= max)
+    return `${sym}${base} / night · up to ${max} guest${max !== 1 ? 's' : ''}`
+  return `${sym}${base} includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym}${extra} per extra guest · ${max} guests = ${sym}${base + (max - incl) * extra}`
+}
 
 function onQuantityChange(newQuantity: number) {
   if (!form.value)
@@ -256,6 +297,32 @@ function removePhoto(index: number) {
 const showAddRatePlanSheet = ref(false)
 const addRatePlanDraft = ref<RatePlan>(createRatePlan({}))
 
+// Keep the add-draft's occupancy options consistent with its guest-pricing settings.
+function syncAddDraftOptions() {
+  const synced = syncRatePlanOptions(addRatePlanDraft.value)
+  addRatePlanDraft.value.includedGuests = synced.includedGuests
+  addRatePlanDraft.value.extraGuestRate = synced.extraGuestRate
+  addRatePlanDraft.value.options = synced.options
+}
+
+watch(() => addRatePlanDraft.value.sellMode, () => syncAddDraftOptions())
+
+function setAddDraftIncludedGuests(value: unknown) {
+  addRatePlanDraft.value.includedGuests = Math.max(1, Math.round(Number(value)) || 1)
+  syncAddDraftOptions()
+}
+
+function setAddDraftExtraGuestRate(value: unknown) {
+  addRatePlanDraft.value.extraGuestRate = Math.max(0, Number(value) || 0)
+  syncAddDraftOptions()
+}
+
+function setAddDraftBaseRate(value: unknown) {
+  const d = addRatePlanDraft.value
+  d.options = d.options.map(o => o.isPrimary ? { ...o, rate: Math.max(0, Number(value) || 0) } : o)
+  syncAddDraftOptions()
+}
+
 function openAddRatePlanSheet() {
   if (!form.value.pricing)
     return
@@ -265,7 +332,9 @@ function openAddRatePlanSheet() {
     name: `Rate Plan ${(form.value.pricing.ratePlans.length ?? 0) + 1}`,
     title: `Rate Plan ${(form.value.pricing.ratePlans.length ?? 0) + 1}`,
     currency: form.value.pricing.currency ?? 'USD',
-    options: [{ occupancy: base?.options[0]?.occupancy ?? 2, isPrimary: true, derivedOption: null, rate: base ? ratePlanNightlyRate(base) : 0 }],
+    options: [{ occupancy: maxOccupancy.value, isPrimary: true, derivedOption: null, rate: base ? ratePlanNightlyRate(base) : 0 }],
+    includedGuests: Math.min(Math.max(1, base?.includedGuests ?? base?.options.find(o => o.isPrimary)?.occupancy ?? 2), maxOccupancy.value),
+    extraGuestRate: Math.max(0, base?.extraGuestRate ?? 0),
     isBase: false,
   }
   showAddRatePlanSheet.value = true
@@ -310,6 +379,38 @@ function updateRatePlan(index: number, field: string, value: any) {
     i === index ? { ...rp, [field]: value } : rp,
   )
   form.value.pricing = { ...form.value.pricing, ratePlans: plans }
+}
+
+// Switching sell mode re-shapes the occupancy options: per_room collapses to a
+// single option at the room type's max occupancy; per_person gets one option
+// per guest count from included guests up to the max.
+function updateRatePlanSellMode(index: number, sellMode: string) {
+  if (!form.value.pricing)
+    return
+  const mode = sellMode as RateSellMode
+  form.value.pricing = {
+    ...form.value.pricing,
+    ratePlans: form.value.pricing.ratePlans.map((rp, i) => i === index ? syncRatePlanOptions({ ...rp, sellMode: mode }) : rp),
+  }
+}
+
+// Update includedGuests / extraGuestRate / base rate, then regenerate options.
+function updateRatePlanGuestPricing(index: number, field: 'includedGuests' | 'extraGuestRate' | 'baseRate', value: unknown) {
+  if (!form.value.pricing)
+    return
+  form.value.pricing = {
+    ...form.value.pricing,
+    ratePlans: form.value.pricing.ratePlans.map((rp, i) => {
+      if (i !== index)
+        return rp
+      if (field === 'includedGuests')
+        return syncRatePlanOptions({ ...rp, includedGuests: Math.max(1, Math.round(Number(value)) || 1) })
+      if (field === 'extraGuestRate')
+        return syncRatePlanOptions({ ...rp, extraGuestRate: Math.max(0, Number(value) || 0) })
+      const options = rp.options.map(o => o.isPrimary ? { ...o, rate: Math.max(0, Number(value) || 0) } : o)
+      return syncRatePlanOptions({ ...rp, options })
+    }),
+  }
 }
 
 function addOffering() {
@@ -731,7 +832,7 @@ const feeIcons: Record<string, string> = {
                     <div class="grid grid-cols-2 gap-4">
                       <div class="flex flex-col gap-1.5">
                         <Label>Sell Mode</Label>
-                        <Select :model-value="rp.sellMode" @update:model-value="(v) => updateRatePlan(idx, 'sellMode', String(v))">
+                        <Select :model-value="rp.sellMode" @update:model-value="(v) => updateRatePlanSellMode(idx, String(v))">
                           <SelectTrigger class="h-8">
                             <SelectValue />
                           </SelectTrigger>
@@ -769,32 +870,47 @@ const feeIcons: Record<string, string> = {
                       </div>
                     </div>
 
-                    <div class="flex flex-col gap-2">
+                    <div class="flex flex-col gap-3">
                       <div class="flex items-center justify-between">
-                        <Label>Occupancy Options</Label>
-                        <span class="text-[10px] text-muted-foreground">per_room = single option at max occupancy</span>
+                        <Label>Guest Pricing</Label>
+                        <span class="text-[10px] text-muted-foreground">max {{ maxOccupancy }} guests (room type)</span>
                       </div>
-                      <div v-for="(opt, oi) in rp.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
-                        <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
-                        <Input
-                          type="number"
-                          :model-value="opt.occupancy"
-                          min="1"
-                          class="w-16 h-8 text-xs"
-                          @update:model-value="(v) => updateRatePlan(idx, 'options', rp.options.map((o, i) => i === oi ? { ...o, occupancy: Math.max(1, Number(v) || 1) } : o))"
-                        />
-                        <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
-                        <div class="relative flex-1">
-                          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
+                      <div class="grid grid-cols-3 gap-3">
+                        <div class="flex flex-col gap-1.5">
+                          <Label class="text-xs text-muted-foreground">Included Guests</Label>
                           <Input
                             type="number"
-                            :model-value="opt.rate"
-                            class="pl-7 h-8 text-xs"
+                            :model-value="rp.includedGuests ?? rp.options.find(o => o.isPrimary)?.occupancy ?? 1"
+                            min="1"
+                            :max="maxOccupancy"
+                            class="h-8"
+                            @update:model-value="(v) => updateRatePlanGuestPricing(idx, 'includedGuests', v)"
+                          />
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                          <Label class="text-xs text-muted-foreground">Extra Guest / Night ({{ currencySymbol }})</Label>
+                          <Input
+                            type="number"
+                            :model-value="rp.extraGuestRate ?? 0"
                             min="0"
-                            @update:model-value="(v) => updateRatePlan(idx, 'options', rp.options.map((o, i) => i === oi ? { ...o, rate: Number(v) || 0 } : o))"
+                            class="h-8"
+                            @update:model-value="(v) => updateRatePlanGuestPricing(idx, 'extraGuestRate', v)"
+                          />
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                          <Label class="text-xs text-muted-foreground">Base Rate / Night ({{ currencySymbol }})</Label>
+                          <Input
+                            type="number"
+                            :model-value="ratePlanNightlyRate(rp)"
+                            min="0"
+                            class="h-8"
+                            @update:model-value="(v) => updateRatePlanGuestPricing(idx, 'baseRate', v)"
                           />
                         </div>
                       </div>
+                      <p class="text-[10px] text-muted-foreground">
+                        {{ guestPricingHint(rp) }}
+                      </p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
@@ -1169,33 +1285,52 @@ const feeIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="flex flex-col gap-2">
-            <Label>Occupancy Options</Label>
-            <div class="flex flex-col gap-2">
-              <div v-for="(opt, oi) in addRatePlanDraft.options" :key="oi" class="flex items-center gap-2 border rounded-lg p-2">
-                <Icon name="lucide:users" class="size-3.5 text-muted-foreground shrink-0" />
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <Label>Guest Pricing</Label>
+              <span class="text-[10px] text-muted-foreground">max {{ maxOccupancy }} guests (room type)</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-xs text-muted-foreground">Included Guests</Label>
                 <Input
                   type="number"
-                  :model-value="opt.occupancy"
+                  :model-value="addRatePlanDraft.includedGuests ?? 1"
                   min="1"
-                  class="w-16 h-8 text-xs"
-                  @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, occupancy: Math.max(1, Number(v) || 1) }"
+                  :max="maxOccupancy"
+                  class="h-8"
+                  @update:model-value="setAddDraftIncludedGuests"
                 />
-                <span class="text-xs text-muted-foreground whitespace-nowrap">guest{{ opt.occupancy !== 1 ? 's' : '' }}</span>
-                <div class="relative flex-1">
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <Label class="text-xs text-muted-foreground">Extra Guest / Night</Label>
+                <div class="relative">
                   <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
                   <Input
                     type="number"
-                    :model-value="opt.rate"
-                    class="pl-7 h-8 text-xs"
+                    :model-value="addRatePlanDraft.extraGuestRate ?? 0"
+                    class="pl-7 h-8"
                     min="0"
-                    @update:model-value="(v) => addRatePlanDraft.options[oi] = { ...opt, rate: Number(v) || 0 }"
+                    @update:model-value="setAddDraftExtraGuestRate"
                   />
                 </div>
               </div>
             </div>
-            <p v-if="addRatePlanDraft.sellMode === 'per_room'" class="text-[10px] text-muted-foreground">
-              Per room plans use a single option at max occupancy.
+            <div class="flex flex-col gap-1.5">
+              <Label class="text-xs text-muted-foreground">Base Rate / Night ({{ addRatePlanDraft.includedGuests ?? 1 }} guest{{ (addRatePlanDraft.includedGuests ?? 1) !== 1 ? 's' : '' }} included)</Label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
+                <Input
+                  type="number"
+                  :model-value="ratePlanNightlyRate(addRatePlanDraft)"
+                  class="pl-7 h-8"
+                  min="0"
+                  @update:model-value="setAddDraftBaseRate"
+                />
+              </div>
+            </div>
+            <p class="text-[10px] text-muted-foreground">
+              {{ guestPricingHint(addRatePlanDraft) }}
             </p>
           </div>
 

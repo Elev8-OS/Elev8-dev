@@ -18,7 +18,7 @@ See [vue-nuxt/taste.md](vue-nuxt/taste.md)
 # finance
 See [finance/taste.md](finance/taste.md)
 # workflow
-- Prefer `pnpm dev` over `pnpm build` during development to avoid browser crash from heavy builds. Confidence: 0.65
+- Prefer `pnpm dev` over `pnpm build` during development to avoid browser crash from heavy builds. Confidence: 0.7
 - As a dev-server smoke test, don't stop at HTTP status codes — grep the rendered HTML for expected content (guest names, section headings) and scan the dev log for Vue warnings/errors (e.g. `Failed to resolve component`); this catches component-resolution issues that typecheck and 200s miss. Re-used in the Owner Portal spec implementation: grepped `/owner-documents` rendered HTML for seeded doc titles, inspected `/owners` tab markup, and scanned the dev log for Vue warnings before killing the server. Confidence: 0.85
 - When verifying a component-resolution fix via the dev log, remember the log RETAINS stale warnings from pre-fix renders — count occurrences / tail the log before and after the HMR apply, and only treat NEW post-fix entries as evidence it's still broken (the `StatementTable` explicit-import fix left 2 old "Failed to resolve component" lines but none after HMR, so the fix was confirmed clean without a server restart). Confidence: 0.7
 - When asked to run the dev server, keep it running in the background, wait for the initial build, verify the listening port and HTTP routes with `curl`, and report the local URL plus relevant routes. If the user explicitly asked to run the dev server (e.g. a terse "run dev"), leave it running and say so — they want to click through the feature themselves; only stop the server after verification when the assistant started it solely as a smoke test, so no ports are left occupied. The user may specify the exact port in the directive (e.g. "run dev 3000") — treat that port as a requirement: confirm the server actually listens on the requested port (Nuxt can fall back to the next free port like 3001) and state the port explicitly in the report. Confidence: 0.85
@@ -29,6 +29,7 @@ See [finance/taste.md](finance/taste.md)
 
 # payment-requests
 - Use "cancel" terminology (not "delete") for cancelling payment links. Confidence: 0.75
+- Payment charge on reservations should default to the standard 3% card fee but stay customizable — a selector with Card (+3%, default) / Custom % / No fee options, mapped to the existing `feeMode` enum (`card` / `manual` / `no_fee`) in `usePaymentRequests` rather than introducing new state. Confidence: 0.65
 
 # whatsapp
 - WhatsApp connection must use OAuth flow, not manual form fields. Confidence: 0.70

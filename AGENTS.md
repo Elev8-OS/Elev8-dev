@@ -22,7 +22,7 @@ This file provides context for AI agents working on this project.
   - `UnitType` — `quantity`, `maxAdults/maxChildren/maxInfants`, `bedrooms/bathrooms`, `beds: Bed[]`, `photos[]`, `pricing: UnitTypePricing`
   - `Unit` — `name`, `identifier`, `status`, `aiStatus`, `otaConnected` (no per-unit capacity)
   - `UnitTypePricing` — `currency`, `ratePlans: RatePlan[]`, `offerings: RatePlanOffering[]`, `lengthOfStayDiscounts[]`, `fees: Fee[]`
-  - `RatePlan` — `name`, `pricePerNight`, `pricePerAdditionalGuest`, `isBase`
+  - `RatePlan` — Channex-style: `name`/`title`, `sellMode` (`per_room`/`per_person`), `rateMode` (`manual`/`derived`/`auto`/`cascade`), `currency`, `childrenFee`/`infantFee`, 7-day arrays `maxStay`/`minStayArrival`/`minStayThrough`/`closedToArrival`/`closedToDeparture`/`stopSell`, `options: RatePlanOption[]` (`occupancy`, `isPrimary`, `derivedOption`, `rate`), `parentRatePlanId`, `inherit*` flags, `autoRateSettings`, `mealType`, `taxSetId?`, `isBase`. Helpers: `createRatePlan()`, `ratePlanNightlyRate()`, `ratePlanMaxOccupancy()` (no more `pricePerNight`/`pricePerAdditionalGuest`)
   - `Fee` — `type: 'cleaning' | 'early_checkin' | 'late_checkout'`, `enabled`, `amount`
   - Helper exports: `getUnits()`, `getUnitTypes()`, `getUnitById()`, `getUnitTypeForUnit()`
   - Reactive: `listings` uses `ref<Listing[]>` — mutations use `listings.value[index] = updated`

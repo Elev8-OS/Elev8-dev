@@ -273,8 +273,12 @@ export interface RatePlan {
   closedToArrival: boolean[]
   closedToDeparture: boolean[]
   stopSell: boolean[]
-  /** Occupancy options: one entry at max occupancy for per_room, one per guest count for per_person. */
+  /** Occupancy options: one entry at max occupancy for per_room, one per guest count for per_person. Auto-generated from `includedGuests`/`extraGuestRate` — don't edit by hand. */
   options: RatePlanOption[]
+  /** Guests covered by the base nightly rate. Extra guests (up to the room type's max) pay `extraGuestRate` each. */
+  includedGuests?: number
+  /** Extra charge per additional guest per night beyond `includedGuests`. */
+  extraGuestRate?: number
   /** Channex `parent_rate_plan_id`. */
   parentRatePlanId: string | null
   inheritRate: boolean
@@ -292,6 +296,8 @@ export interface RatePlan {
   /** Channex `tax_set_id`. */
   taxSetId?: string | null
   cancellationPolicyConfig: CancellationPolicyConfig
+  /** When true (default), the rate plan inherits the account/listing cancellation policy instead of `cancellationPolicyConfig`. */
+  inheritCancellationPolicy?: boolean
   isBase: boolean
 }
 
@@ -315,6 +321,8 @@ export function createRatePlan(partial?: Partial<RatePlan>): RatePlan {
     closedToDeparture: WEEK_7_BOOL(false),
     stopSell: WEEK_7_BOOL(false),
     options: [{ occupancy: 2, isPrimary: true, derivedOption: null, rate: 100 }],
+    includedGuests: 2,
+    extraGuestRate: 0,
     parentRatePlanId: null,
     inheritRate: false,
     inheritClosedToArrival: false,
@@ -330,6 +338,7 @@ export function createRatePlan(partial?: Partial<RatePlan>): RatePlan {
     mealType: 'none',
     taxSetId: null,
     cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+    inheritCancellationPolicy: true,
     isBase: false,
     ...partial,
   }
@@ -338,6 +347,28 @@ export function createRatePlan(partial?: Partial<RatePlan>): RatePlan {
 /** Primary (base) nightly rate from the plan's primary occupancy option. */
 export function ratePlanNightlyRate(rp: RatePlan): number {
   return rp.options.find(o => o.isPrimary)?.rate ?? rp.options[0]?.rate ?? 0
+}
+
+/**
+ * Generate occupancy options from the guest-pricing settings.
+ * per_room plans use a single option at max occupancy; per_person plans get
+ * one option per guest count from `includedGuests` up to `maxOccupancy`.
+ */
+export function buildOccupancyOptions(includedGuests: number, extraGuestRate: number, baseRate: number, maxOccupancy: number, sellMode: RateSellMode = 'per_person'): RatePlanOption[] {
+  if (sellMode === 'per_room')
+    return [{ occupancy: Math.max(1, maxOccupancy), isPrimary: true, derivedOption: null, rate: baseRate }]
+  const from = Math.max(1, includedGuests)
+  const to = Math.max(from, maxOccupancy)
+  const options: RatePlanOption[] = []
+  for (let occ = from; occ <= to; occ++) {
+    options.push({
+      occupancy: occ,
+      isPrimary: occ === from,
+      derivedOption: null,
+      rate: baseRate + (occ - from) * extraGuestRate,
+    })
+  }
+  return options
 }
 
 /** Max occupancy the plan is sold for (primary option occupancy). */
@@ -514,6 +545,7 @@ export const listings = ref<Listing[]>([
               mealType: 'none',
               taxSetId: null,
               cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+              inheritCancellationPolicy: true,
               isBase: true,
             },
           ],
@@ -580,6 +612,7 @@ export const listings = ref<Listing[]>([
               mealType: 'none',
               taxSetId: null,
               cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
+              inheritCancellationPolicy: true,
               isBase: true,
             },
           ],
@@ -636,44 +669,6 @@ export const listings = ref<Listing[]>([
       seasonalRates: [
         { startDate: '2026-07-01', endDate: '2026-08-31', rate: 220, label: 'Peak Season' },
         { startDate: '2026-12-20', endDate: '2027-01-05', rate: 250, label: 'Holiday' },
-      ],
-      feesTaxes: [
-        {
-          id: 'ft-1',
-          title: 'Cleaning Fee',
-          type: 'fee',
-          logic: 'per_booking',
-          rate: 45,
-          currency: 'USD',
-          isInclusive: false,
-          skipNights: null,
-          maxNights: null,
-          applicableDateRanges: [],
-        },
-        {
-          id: 'ft-2',
-          title: 'Local Tax',
-          type: 'city_tax',
-          logic: 'percent',
-          rate: 10,
-          isInclusive: true,
-          skipNights: null,
-          maxNights: null,
-          applicableDateRanges: [],
-        },
-      ],
-      taxSets: [
-        {
-          id: 'ts-1',
-          title: 'Standard Tax Set',
-          currency: 'USD',
-          taxes: [
-            { id: 'ft-1', level: 1 },
-            { id: 'ft-2', level: 0 },
-          ],
-          associatedRatePlanIds: [],
-          isDefault: true,
-        },
       ],
     },
     bookings: [
