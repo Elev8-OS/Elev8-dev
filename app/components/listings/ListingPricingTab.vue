@@ -1093,7 +1093,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Stay + availability restrictions -->
-          <Collapsible v-model:open="addStayRestrictionsOpen" class="rounded-lg border">
+          <Collapsible v-model:open="addStayRestrictionsOpen" class="rounded-lg border" :class="{ 'opacity-50 pointer-events-none': addRatePlanDraft.rateMode === 'derived' }">
             <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
               <span class="text-sm font-medium">Stay Restrictions</span>
               <Icon :name="addStayRestrictionsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="size-4 text-muted-foreground" />
@@ -1438,7 +1438,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
 
           <!-- Stay + availability restrictions -->
-          <Collapsible v-model:open="editStayRestrictionsOpen" class="rounded-lg border">
+          <Collapsible v-model:open="editStayRestrictionsOpen" class="rounded-lg border" :class="{ 'opacity-50 pointer-events-none': editRatePlanDraft.rateMode === 'derived' }">
             <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
               <span class="text-sm font-medium">Stay Restrictions</span>
               <Icon :name="editStayRestrictionsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="size-4 text-muted-foreground" />
