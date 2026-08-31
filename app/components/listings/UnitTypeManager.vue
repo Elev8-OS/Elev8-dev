@@ -2,6 +2,7 @@
 import type { LengthOfStayDiscount, Listing, RatePlan, RatePlanOffering, RateRateMode, RateSellMode, UnitType } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import { buildOccupancyOptions, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
+import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -855,6 +856,16 @@ const feeIcons: Record<string, string> = {
                       </div>
                     </div>
 
+                    <!-- Derived Options (only for derived rate mode) -->
+                    <div v-if="rp.rateMode === 'derived'">
+                      <RatePlanDerivedOptionsEditor
+                        :model-value="rp.derivedOptions"
+                        :base-rate="ratePlanNightlyRate(rp)"
+                        :currency-symbol="currencySymbol"
+                        @update:model-value="(v) => updateRatePlan(idx, 'derivedOptions', v)"
+                      />
+                    </div>
+
                     <!-- Per person pricing -->
                     <div v-if="rp.sellMode === 'per_person'" class="flex flex-col gap-3">
                       <div class="flex items-center justify-between">
@@ -1266,6 +1277,16 @@ const feeIcons: Record<string, string> = {
                 </TabsList>
               </Tabs>
             </div>
+          </div>
+
+          <!-- Derived Options (only for derived rate mode) -->
+          <div v-if="addRatePlanDraft.rateMode === 'derived'">
+            <RatePlanDerivedOptionsEditor
+              :model-value="addRatePlanDraft.derivedOptions"
+              :base-rate="ratePlanNightlyRate(addRatePlanDraft)"
+              :currency-symbol="currencySymbol"
+              @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
+            />
           </div>
 
           <!-- Per person pricing -->
