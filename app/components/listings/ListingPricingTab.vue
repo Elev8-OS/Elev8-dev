@@ -1039,7 +1039,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             <Tabs :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode" class="w-full">
               <TabsList class="grid w-full grid-cols-2 h-8">
                 <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
-                <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
+                <TabsTrigger value="derived" class="text-xs">Derived Options</TabsTrigger>
               </TabsList>
             </Tabs>
             <p class="text-[10px] text-muted-foreground">
@@ -1346,14 +1346,16 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
 
           <div class="flex flex-col gap-2">
             <Label>Rate Mode</Label>
-            <Tabs :model-value="editRatePlanDraft.rateMode" @update:model-value="(v) => editRatePlanDraft.rateMode = String(v) as RateRateMode" class="w-full">
-              <TabsList class="grid w-full grid-cols-2 h-8">
-                <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
-                <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div class="opacity-50 pointer-events-none">
+              <Tabs :model-value="editRatePlanDraft.rateMode" class="w-full">
+                <TabsList class="grid w-full grid-cols-2 h-8">
+                  <TabsTrigger value="manual" class="text-xs" disabled>Manual</TabsTrigger>
+                  <TabsTrigger value="derived" class="text-xs" disabled>Derived Options</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
             <p class="text-[10px] text-muted-foreground">
-              {{ rateModeHint(editRatePlanDraft.rateMode) }}
+              {{ rateModeHint(editRatePlanDraft.rateMode) }} (cannot be changed after creation)
             </p>
           </div>
 

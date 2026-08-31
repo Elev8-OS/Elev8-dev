@@ -841,14 +841,17 @@ const feeIcons: Record<string, string> = {
                       </div>
                       <div class="flex flex-col gap-2">
                         <Label>Rate Mode</Label>
-                        <Tabs :model-value="rp.rateMode" @update:model-value="(v) => updateRatePlan(idx, 'rateMode', String(v))" class="w-full">
-                          <TabsList class="grid w-full grid-cols-2 h-8">
-                            <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
-                            <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
-                            <TabsTrigger value="auto" class="text-xs">Auto</TabsTrigger>
-                            <TabsTrigger value="cascade" class="text-xs">Cascade</TabsTrigger>
-                          </TabsList>
-                        </Tabs>
+                        <div class="opacity-50 pointer-events-none">
+                          <Tabs :model-value="rp.rateMode" class="w-full">
+                            <TabsList class="grid w-full grid-cols-2 h-8">
+                              <TabsTrigger value="manual" class="text-xs" disabled>Manual</TabsTrigger>
+                              <TabsTrigger value="derived" class="text-xs" disabled>Derived Options</TabsTrigger>
+                              <TabsTrigger value="auto" class="text-xs" disabled>Auto</TabsTrigger>
+                              <TabsTrigger value="cascade" class="text-xs" disabled>Cascade</TabsTrigger>
+                            </TabsList>
+                          </Tabs>
+                        </div>
+                        <p class="text-[10px] text-muted-foreground">(cannot be changed)</p>
                       </div>
                     </div>
 
@@ -1257,7 +1260,7 @@ const feeIcons: Record<string, string> = {
               <Tabs :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode" class="w-full">
                 <TabsList class="grid w-full grid-cols-2 h-8">
                   <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
-                  <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
+                  <TabsTrigger value="derived" class="text-xs">Derived Options</TabsTrigger>
                   <TabsTrigger value="auto" class="text-xs">Auto</TabsTrigger>
                   <TabsTrigger value="cascade" class="text-xs">Cascade</TabsTrigger>
                 </TabsList>
