@@ -298,6 +298,8 @@ export interface RatePlan {
   cancellationPolicyConfig: CancellationPolicyConfig
   /** When true (default), the rate plan inherits the account/listing cancellation policy instead of `cancellationPolicyConfig`. */
   inheritCancellationPolicy?: boolean
+  /** Derived Options: rules to modify rate from parent rate plan or primary occupancy option. Structure: { rate: [["increase_by_percent", "5.00"], ["increase_by_amount", "12.00"]] } */
+  derivedOptions?: Record<string, Array<[string, string]>> | null
   isBase: boolean
 }
 
@@ -339,6 +341,7 @@ export function createRatePlan(partial?: Partial<RatePlan>): RatePlan {
     taxSetId: null,
     cancellationPolicyConfig: createCancellationPolicyConfig('flexible'),
     inheritCancellationPolicy: true,
+    derivedOptions: null,
     isBase: false,
     ...partial,
   }

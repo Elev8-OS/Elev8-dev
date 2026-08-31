@@ -2,6 +2,7 @@
 import type { Listing, ListingFeeTaxItem, RateMealType, RatePlan, RatePlanOption, RateRateMode, RateSellMode, TaxDateRange, TaxSet, Unit, UnitType, UnitTypePricing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import CancellationPolicyEditor from '~/components/listings/CancellationPolicyEditor.vue'
+import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { buildOccupancyOptions, cancellationPolicySummary, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
@@ -1047,6 +1048,16 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </p>
           </div>
 
+          <!-- Derived Options (only for derived rate mode) -->
+          <div v-if="addRatePlanDraft.rateMode === 'derived'">
+            <RatePlanDerivedOptionsEditor
+              :model-value="addRatePlanDraft.derivedOptions"
+              :base-rate="primaryOption(addRatePlanDraft).rate"
+              :currency-symbol="symbolFor(addRatePlanDraft.currency)"
+              @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
+            />
+          </div>
+
           <!-- Stay + availability restrictions -->
           <Collapsible v-model:open="addStayRestrictionsOpen" class="rounded-lg border">
             <CollapsibleTrigger class="flex w-full items-center justify-between gap-2 p-3">
@@ -1357,6 +1368,16 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             <p class="text-[10px] text-muted-foreground">
               {{ rateModeHint(editRatePlanDraft.rateMode) }} (cannot be changed after creation)
             </p>
+          </div>
+
+          <!-- Derived Options (only for derived rate mode) -->
+          <div v-if="editRatePlanDraft.rateMode === 'derived'">
+            <RatePlanDerivedOptionsEditor
+              :model-value="editRatePlanDraft.derivedOptions"
+              :base-rate="primaryOption(editRatePlanDraft).rate"
+              :currency-symbol="symbolFor(editRatePlanDraft.currency)"
+              @update:model-value="(v) => editRatePlanDraft.derivedOptions = v"
+            />
           </div>
 
           <!-- Stay + availability restrictions -->
