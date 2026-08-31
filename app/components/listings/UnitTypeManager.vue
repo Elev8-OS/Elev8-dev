@@ -830,43 +830,24 @@ const feeIcons: Record<string, string> = {
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
-                      <div class="flex flex-col gap-1.5">
+                      <div class="flex flex-col gap-2">
                         <Label>Sell Mode</Label>
-                        <Select :model-value="rp.sellMode" @update:model-value="(v) => updateRatePlanSellMode(idx, String(v))">
-                          <SelectTrigger class="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="per_room">
-                              Per Room
-                            </SelectItem>
-                            <SelectItem value="per_person">
-                              Per Person
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Tabs :model-value="rp.sellMode" @update:model-value="(v) => updateRatePlanSellMode(idx, String(v))" class="w-full">
+                          <TabsList class="grid w-full grid-cols-2 h-8">
+                            <TabsTrigger value="per_room" class="text-xs">Room</TabsTrigger>
+                            <TabsTrigger value="per_person" class="text-xs">Person</TabsTrigger>
+                          </TabsList>
+                        </Tabs>
                       </div>
-                      <div class="flex flex-col gap-1.5">
+                      <div class="flex flex-col gap-2">
                         <Label>Rate Mode</Label>
-                        <Select :model-value="rp.rateMode" @update:model-value="(v) => updateRatePlan(idx, 'rateMode', String(v))">
-                          <SelectTrigger class="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="manual">
-                              Manual
-                            </SelectItem>
-                            <SelectItem value="derived">
-                              Derived
-                            </SelectItem>
-                            <SelectItem value="auto">
-                              Auto
-                            </SelectItem>
-                            <SelectItem value="cascade">
-                              Cascade
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Tabs :model-value="rp.rateMode" @update:model-value="(v) => updateRatePlan(idx, 'rateMode', String(v))" class="w-full">
+                          <TabsList class="grid w-full grid-cols-2 h-8">
+                            <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
+                            <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
+                            <TabsTrigger value="auto" class="text-xs">Auto</TabsTrigger>
+                            <TabsTrigger value="cascade" class="text-xs">Cascade</TabsTrigger>
+                          </TabsList>
                       </div>
                     </div>
 
@@ -1261,43 +1242,25 @@ const feeIcons: Record<string, string> = {
           </div>
 
           <div class="grid grid-cols-2 gap-4">
-            <div class="flex flex-col gap-1.5">
+            <div class="flex flex-col gap-2">
               <Label>Sell Mode</Label>
-              <Select :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => addRatePlanDraft.sellMode = String(v) as RateSellMode">
-                <SelectTrigger class="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="per_room">
-                    Per Room
-                  </SelectItem>
-                  <SelectItem value="per_person">
-                    Per Person
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <Tabs :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => addRatePlanDraft.sellMode = String(v) as RateSellMode" class="w-full">
+                <TabsList class="grid w-full grid-cols-2 h-8">
+                  <TabsTrigger value="per_room" class="text-xs">Room</TabsTrigger>
+                  <TabsTrigger value="per_person" class="text-xs">Person</TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
-            <div class="flex flex-col gap-1.5">
+            <div class="flex flex-col gap-2">
               <Label>Rate Mode</Label>
-              <Select :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode">
-                <SelectTrigger class="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="manual">
-                    Manual
-                  </SelectItem>
-                  <SelectItem value="derived">
-                    Derived
-                  </SelectItem>
-                  <SelectItem value="auto">
-                    Auto
-                  </SelectItem>
-                  <SelectItem value="cascade">
-                    Cascade
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <Tabs :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode" class="w-full">
+                <TabsList class="grid w-full grid-cols-2 h-8">
+                  <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
+                  <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
+                  <TabsTrigger value="auto" class="text-xs">Auto</TabsTrigger>
+                  <TabsTrigger value="cascade" class="text-xs">Cascade</TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
           </div>
 

@@ -1034,21 +1034,14 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Select>
           </div>
 
-          <div class="flex flex-col gap-1.5">
+          <div class="flex flex-col gap-2">
             <Label>Rate Mode</Label>
-            <Select :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode">
-              <SelectTrigger class="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">
-                  Manual
-                </SelectItem>
-                <SelectItem value="derived">
-                  Derived
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <Tabs :model-value="addRatePlanDraft.rateMode" @update:model-value="(v) => addRatePlanDraft.rateMode = String(v) as RateRateMode" class="w-full">
+              <TabsList class="grid w-full grid-cols-2 h-8">
+                <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
+                <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <p class="text-[10px] text-muted-foreground">
               {{ rateModeHint(addRatePlanDraft.rateMode) }}
             </p>
@@ -1114,21 +1107,14 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </CollapsibleContent>
           </Collapsible>
 
-          <div class="flex flex-col gap-1.5">
+          <div class="flex flex-col gap-2">
             <Label>Sell Mode</Label>
-            <Select :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => setDraftSellMode(addRatePlanDraft, addRatePlanUnitTypeId, String(v) as RateSellMode)">
-              <SelectTrigger class="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="per_room">
-                  Per Room
-                </SelectItem>
-                <SelectItem value="per_person">
-                  Per Person
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <Tabs :model-value="addRatePlanDraft.sellMode" @update:model-value="(v) => setDraftSellMode(addRatePlanDraft, addRatePlanUnitTypeId, String(v) as RateSellMode)" class="w-full">
+              <TabsList class="grid w-full grid-cols-2 h-8">
+                <TabsTrigger value="per_room" class="text-xs">Per Room</TabsTrigger>
+                <TabsTrigger value="per_person" class="text-xs">Per Person</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           <!-- Per person pricing -->
@@ -1358,21 +1344,14 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Select>
           </div>
 
-          <div class="flex flex-col gap-1.5">
+          <div class="flex flex-col gap-2">
             <Label>Rate Mode</Label>
-            <Select :model-value="editRatePlanDraft.rateMode" @update:model-value="(v) => editRatePlanDraft.rateMode = String(v) as RateRateMode">
-              <SelectTrigger class="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">
-                  Manual
-                </SelectItem>
-                <SelectItem value="derived">
-                  Derived
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <Tabs :model-value="editRatePlanDraft.rateMode" @update:model-value="(v) => editRatePlanDraft.rateMode = String(v) as RateRateMode" class="w-full">
+              <TabsList class="grid w-full grid-cols-2 h-8">
+                <TabsTrigger value="manual" class="text-xs">Manual</TabsTrigger>
+                <TabsTrigger value="derived" class="text-xs">Derived</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <p class="text-[10px] text-muted-foreground">
               {{ rateModeHint(editRatePlanDraft.rateMode) }}
             </p>
@@ -1438,21 +1417,14 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </CollapsibleContent>
           </Collapsible>
 
-          <div class="flex flex-col gap-1.5">
+          <div class="flex flex-col gap-2">
             <Label>Sell Mode</Label>
-            <Select :model-value="editRatePlanDraft.sellMode" @update:model-value="(v) => setDraftSellMode(editRatePlanDraft, editRatePlanUnitTypeId, String(v) as RateSellMode)">
-              <SelectTrigger class="h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="per_room">
-                  Per Room
-                </SelectItem>
-                <SelectItem value="per_person">
-                  Per Person
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <Tabs :model-value="editRatePlanDraft.sellMode" @update:model-value="(v) => setDraftSellMode(editRatePlanDraft, editRatePlanUnitTypeId, String(v) as RateSellMode)" class="w-full">
+              <TabsList class="grid w-full grid-cols-2 h-8">
+                <TabsTrigger value="per_room" class="text-xs">Per Room</TabsTrigger>
+                <TabsTrigger value="per_person" class="text-xs">Per Person</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
 
           <!-- Per person pricing -->
