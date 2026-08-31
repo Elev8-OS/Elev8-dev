@@ -3,7 +3,7 @@
 import type { ModulePermissions, PermissionModule } from '~/components/users/data/permissions'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
-import { DASHBOARD_PERMISSION_MODULES, MOBILE_PERMISSION_MODULES } from '~/components/users/data/permissions'
+import { DASHBOARD_PERMISSION_MODULES, MOBILE_PERMISSION_MODULES, MOBILE_VIEW_ONLY_MODULES } from '~/components/users/data/permissions'
 
 interface Props {
   permissions: Record<PermissionModule, ModulePermissions>
@@ -26,6 +26,10 @@ function toggle(module: PermissionModule, key: keyof ModulePermissions) {
 
 function isChecked(module: PermissionModule, key: keyof ModulePermissions): boolean {
   return props.permissions[module]?.[key] ?? false
+}
+
+function isMobileViewOnly(module: PermissionModule): boolean {
+  return MOBILE_VIEW_ONLY_MODULES.includes(module)
 }
 </script>
 
@@ -167,7 +171,15 @@ function isChecked(module: PermissionModule, key: keyof ModulePermissions): bool
 
               <!-- Mobile Edit -->
               <div class="flex justify-center">
+                <span
+                  v-if="isMobileViewOnly(m.id)"
+                  class="text-xs text-muted-foreground"
+                  :title="`${m.label} is view-only on mobile`"
+                >
+                  —
+                </span>
                 <button
+                  v-else
                   type="button"
                   :aria-label="`${m.label} mobile edit`"
                   :aria-pressed="isChecked(m.id, 'mobileEdit')"

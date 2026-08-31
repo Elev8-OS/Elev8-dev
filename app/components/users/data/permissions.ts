@@ -25,10 +25,10 @@ export type PermissionModule
     | 'attendance_log'
     | 'billing'
   // Mobile-only modules
-    | 'upcoming_checkin'
-    | 'chatroom'
+    | 'costs'
     | 'tasks'
     | 'cleaning'
+    | 'manage_cleanings'
     | 'activity_tracking'
 
 export interface ModulePermissions {
@@ -64,15 +64,20 @@ export const DASHBOARD_PERMISSION_MODULES: { id: PermissionModule, label: string
 ]
 
 export const MOBILE_PERMISSION_MODULES: { id: PermissionModule, label: string }[] = [
-  { id: 'reservations', label: 'Reservation' },
-  { id: 'upcoming_checkin', label: 'Upcoming Check-in' },
-  { id: 'inbox', label: 'Inbox' },
+  { id: 'reservations', label: 'Cockpit & Reservations' },
+  { id: 'analytics', label: 'Analytics' },
+  { id: 'costs', label: 'Costs' },
+  { id: 'inbox', label: 'Guest Inbox' },
   { id: 'iot_automations', label: 'IoT and Automations' },
-  { id: 'chatroom', label: 'Internal Inbox' },
   { id: 'tasks', label: 'Task' },
   { id: 'activity_tracking', label: 'Activity (Time Tracking)' },
-  { id: 'cleaning', label: 'Cleaning' },
+  { id: 'cleaning', label: 'Cleanings' },
+  { id: 'manage_cleanings', label: 'Manage Cleanings' },
 ]
+
+// Modules that are read-only on mobile — the app has no write surface for them,
+// so the Edit column is not offered.
+export const MOBILE_VIEW_ONLY_MODULES: PermissionModule[] = ['analytics']
 
 export const PERMISSION_MODULES: { id: PermissionModule, label: string }[] = [
   ...DASHBOARD_PERMISSION_MODULES,

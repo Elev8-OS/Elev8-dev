@@ -56,6 +56,14 @@ function a(level: AccessLevel): Pick<ModulePermissions, 'dashboardView' | 'dashb
   return { dashboardView: false, dashboardEdit: false }
 }
 
+function m(level: AccessLevel): Pick<ModulePermissions, 'mobileView' | 'mobileEdit'> {
+  if (level === 'rw')
+    return { mobileView: true, mobileEdit: true }
+  if (level === 'r')
+    return { mobileView: true, mobileEdit: false }
+  return { mobileView: false, mobileEdit: false }
+}
+
 function buildPerms(patches: PermissionPatch): Record<PermissionModule, ModulePermissions> {
   const base = defaultPerms()
   for (const [module, patch] of Object.entries(patches)) {
@@ -107,102 +115,111 @@ const DASHBOARD_FULL_ACCESS: DashboardPermissionPatch = {
 }
 
 const MOBILE_FULL_ACCESS: MobilePermissionPatch = {
-  reservations: { mobileView: true, mobileEdit: true },
-  upcoming_checkin: { mobileView: true, mobileEdit: true },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: true, mobileEdit: true },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: true, mobileEdit: true },
+  reservations: m('rw'),
+  analytics: m('r'),
+  costs: m('rw'),
+  inbox: m('rw'),
+  iot_automations: m('rw'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('rw'),
+  manage_cleanings: m('rw'),
 }
 
-const MOBILE_SHARED_STAFF: MobilePermissionPatch = {
-  reservations: { mobileView: true, mobileEdit: false },
-  upcoming_checkin: { mobileView: true, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: true, mobileEdit: true },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: false, mobileEdit: false },
+const MOBILE_GENERAL_MANAGER: MobilePermissionPatch = {
+  reservations: m('rw'),
+  analytics: m('r'),
+  costs: m('rw'),
+  inbox: m('rw'),
+  iot_automations: m('rw'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('no'),
+  manage_cleanings: m('no'),
+}
+
+const MOBILE_MANAGER_STAFF: MobilePermissionPatch = {
+  reservations: m('rw'),
+  analytics: m('no'),
+  costs: m('rw'),
+  inbox: m('rw'),
+  iot_automations: m('rw'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('no'),
+  manage_cleanings: m('no'),
 }
 
 const MOBILE_FINANCE_HR: MobilePermissionPatch = {
-  reservations: { mobileView: true, mobileEdit: false },
-  upcoming_checkin: { mobileView: true, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: false, mobileEdit: false },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: false, mobileEdit: false },
+  reservations: m('rw'),
+  analytics: m('r'),
+  costs: m('rw'),
+  inbox: m('no'),
+  iot_automations: m('no'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('no'),
+  manage_cleanings: m('no'),
 }
 
 const MOBILE_BACK_OFFICE: MobilePermissionPatch = {
-  reservations: { mobileView: false, mobileEdit: false },
-  upcoming_checkin: { mobileView: true, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: false, mobileEdit: false },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: false, mobileEdit: false },
+  reservations: m('no'),
+  analytics: m('no'),
+  costs: m('rw'),
+  inbox: m('no'),
+  iot_automations: m('no'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('no'),
+  manage_cleanings: m('no'),
 }
 
 const MOBILE_HOUSEKEEPING_MANAGER: MobilePermissionPatch = {
-  reservations: { mobileView: true, mobileEdit: false },
-  upcoming_checkin: { mobileView: true, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: true, mobileEdit: true },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: true, mobileEdit: true },
+  reservations: m('r'),
+  analytics: m('no'),
+  costs: m('rw'),
+  inbox: m('no'),
+  iot_automations: m('rw'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('rw'),
+  manage_cleanings: m('rw'),
 }
 
 const MOBILE_HOUSEKEEPING: MobilePermissionPatch = {
-  reservations: { mobileView: false, mobileEdit: false },
-  upcoming_checkin: { mobileView: true, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: true, mobileEdit: true },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: true, mobileEdit: true },
+  reservations: m('no'),
+  analytics: m('no'),
+  costs: m('rw'),
+  inbox: m('no'),
+  iot_automations: m('rw'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('rw'),
+  manage_cleanings: m('no'),
 }
 
 const MOBILE_OPERATIONAL_STAFF: MobilePermissionPatch = {
-  reservations: { mobileView: true, mobileEdit: false },
-  upcoming_checkin: { mobileView: false, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: false, mobileEdit: false },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: false, mobileEdit: false },
-}
-
-const MOBILE_IT_TEAM: MobilePermissionPatch = {
-  reservations: { mobileView: false, mobileEdit: false },
-  upcoming_checkin: { mobileView: false, mobileEdit: false },
-  inbox: { mobileView: true, mobileEdit: true },
-  iot_automations: { mobileView: false, mobileEdit: false },
-  chatroom: { mobileView: true, mobileEdit: true },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: true, mobileEdit: true },
-  cleaning: { mobileView: false, mobileEdit: false },
+  reservations: m('no'),
+  analytics: m('no'),
+  costs: m('rw'),
+  inbox: m('no'),
+  iot_automations: m('no'),
+  tasks: m('rw'),
+  activity_tracking: m('rw'),
+  cleaning: m('no'),
+  manage_cleanings: m('no'),
 }
 
 const MOBILE_OWNER: MobilePermissionPatch = {
-  reservations: { mobileView: true, mobileEdit: false },
-  upcoming_checkin: { mobileView: false, mobileEdit: false },
-  inbox: { mobileView: false, mobileEdit: false },
-  iot_automations: { mobileView: false, mobileEdit: false },
-  chatroom: { mobileView: false, mobileEdit: false },
-  tasks: { mobileView: true, mobileEdit: true },
-  activity_tracking: { mobileView: false, mobileEdit: false },
-  cleaning: { mobileView: false, mobileEdit: false },
+  reservations: m('r'),
+  analytics: m('no'),
+  costs: m('rw'),
+  inbox: m('no'),
+  iot_automations: m('no'),
+  tasks: m('rw'),
+  activity_tracking: m('no'),
+  cleaning: m('no'),
+  manage_cleanings: m('no'),
 }
 
 export const defaultRoles: Role[] = [
@@ -243,7 +260,7 @@ export const defaultRoles: Role[] = [
       role_management: a('no'),
       attendance_log: a('rw'),
       billing: a('no'),
-    }, MOBILE_SHARED_STAFF),
+    }, MOBILE_GENERAL_MANAGER),
   },
   {
     id: 'role-listing-manager',
@@ -274,7 +291,7 @@ export const defaultRoles: Role[] = [
       role_management: a('no'),
       attendance_log: a('rw'),
       billing: a('no'),
-    }, MOBILE_SHARED_STAFF),
+    }, MOBILE_MANAGER_STAFF),
   },
   {
     id: 'role-guest-experience-manager',
@@ -305,7 +322,7 @@ export const defaultRoles: Role[] = [
       role_management: a('no'),
       attendance_log: a('no'),
       billing: a('no'),
-    }, MOBILE_SHARED_STAFF),
+    }, MOBILE_MANAGER_STAFF),
   },
   {
     id: 'role-quality-manager',
@@ -336,7 +353,7 @@ export const defaultRoles: Role[] = [
       role_management: a('no'),
       attendance_log: a('no'),
       billing: a('no'),
-    }, MOBILE_SHARED_STAFF),
+    }, MOBILE_MANAGER_STAFF),
   },
   {
     id: 'role-back-office',
@@ -477,7 +494,7 @@ export const defaultRoles: Role[] = [
     description: 'Manages the company\'s technology infrastructure, including Wi-Fi, smart home devices, and software systems. Provides technical support to staff and guests.',
     workingHours: { scheduleType: 'flexible', days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
     notifications: getDefaultRoleNotifications('role-it-team'),
-    defaultPermissions: withMobile({}, MOBILE_IT_TEAM),
+    defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
   {
     id: 'role-laundry',
@@ -485,7 +502,7 @@ export const defaultRoles: Role[] = [
     description: 'Manages the collection, washing, drying, and distribution of linens and towels for all listings. Can view schedules and report on linen inventory levels.',
     workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-laundry'),
-    defaultPermissions: withMobile({}, MOBILE_IT_TEAM),
+    defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
   {
     id: 'role-owner',
