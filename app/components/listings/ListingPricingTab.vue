@@ -1131,7 +1131,8 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Select>
           </div>
 
-          <div class="flex flex-col gap-3">
+          <!-- Per person pricing -->
+          <div v-if="addRatePlanDraft.sellMode === 'per_person'" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <Label>Guest Pricing</Label>
               <span class="text-[10px] text-muted-foreground">max {{ addMaxOccupancy }} guests (room type)</span>
@@ -1178,6 +1179,24 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             <p class="text-[10px] text-muted-foreground">
               {{ guestPricingPreview(addRatePlanDraft, addRatePlanUnitTypeId) }}
             </p>
+          </div>
+
+          <!-- Per room pricing -->
+          <div v-if="addRatePlanDraft.sellMode === 'per_room'" class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <Label>Base Rate / Night</Label>
+              <span class="text-[10px] text-muted-foreground">all {{ addMaxOccupancy }} guests included</span>
+            </div>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(addRatePlanDraft.currency) }}</span>
+              <Input
+                type="number"
+                :model-value="primaryOption(addRatePlanDraft).rate"
+                class="pl-7 h-8"
+                min="0"
+                @update:model-value="(v) => setDraftBaseRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
+              />
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -1436,8 +1455,8 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Select>
           </div>
 
-          <!-- Guest pricing -->
-          <div class="flex flex-col gap-3">
+          <!-- Per person pricing -->
+          <div v-if="editRatePlanDraft.sellMode === 'per_person'" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <Label>Guest Pricing</Label>
               <span class="text-[10px] text-muted-foreground">max {{ editMaxOccupancy }} guests (room type)</span>
@@ -1484,6 +1503,24 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             <p class="text-[10px] text-muted-foreground">
               {{ guestPricingPreview(editRatePlanDraft, editRatePlanUnitTypeId) }}
             </p>
+          </div>
+
+          <!-- Per room pricing -->
+          <div v-if="editRatePlanDraft.sellMode === 'per_room'" class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <Label>Base Rate / Night</Label>
+              <span class="text-[10px] text-muted-foreground">all {{ editMaxOccupancy }} guests included</span>
+            </div>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ symbolFor(editRatePlanDraft.currency) }}</span>
+              <Input
+                type="number"
+                :model-value="primaryOption(editRatePlanDraft).rate"
+                class="pl-7 h-8"
+                min="0"
+                @update:model-value="(v) => setDraftBaseRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
+              />
+            </div>
           </div>
 
           <!-- Children / infant fee -->

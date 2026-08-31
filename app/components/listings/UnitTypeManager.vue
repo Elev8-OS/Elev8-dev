@@ -870,7 +870,8 @@ const feeIcons: Record<string, string> = {
                       </div>
                     </div>
 
-                    <div class="flex flex-col gap-3">
+                    <!-- Per person pricing -->
+                    <div v-if="rp.sellMode === 'per_person'" class="flex flex-col gap-3">
                       <div class="flex items-center justify-between">
                         <Label>Guest Pricing</Label>
                         <span class="text-[10px] text-muted-foreground">max {{ maxOccupancy }} guests (room type)</span>
@@ -911,6 +912,21 @@ const feeIcons: Record<string, string> = {
                       <p class="text-[10px] text-muted-foreground">
                         {{ guestPricingHint(rp) }}
                       </p>
+                    </div>
+
+                    <!-- Per room pricing -->
+                    <div v-else class="flex flex-col gap-3">
+                      <div class="flex items-center justify-between">
+                        <Label>Base Rate / Night</Label>
+                        <span class="text-[10px] text-muted-foreground">all {{ maxOccupancy }} guests included</span>
+                      </div>
+                      <Input
+                        type="number"
+                        :model-value="ratePlanNightlyRate(rp)"
+                        min="0"
+                        class="h-8"
+                        @update:model-value="(v) => updateRatePlanGuestPricing(idx, 'baseRate', v)"
+                      />
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
@@ -1285,7 +1301,8 @@ const feeIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="flex flex-col gap-3">
+          <!-- Per person pricing -->
+          <div v-if="addRatePlanDraft.sellMode === 'per_person'" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <Label>Guest Pricing</Label>
               <span class="text-[10px] text-muted-foreground">max {{ maxOccupancy }} guests (room type)</span>
@@ -1332,6 +1349,24 @@ const feeIcons: Record<string, string> = {
             <p class="text-[10px] text-muted-foreground">
               {{ guestPricingHint(addRatePlanDraft) }}
             </p>
+          </div>
+
+          <!-- Per room pricing -->
+          <div v-else class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <Label>Base Rate / Night</Label>
+              <span class="text-[10px] text-muted-foreground">all {{ maxOccupancy }} guests included</span>
+            </div>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ currencySymbol }}</span>
+              <Input
+                type="number"
+                :model-value="ratePlanNightlyRate(addRatePlanDraft)"
+                class="pl-7 h-8"
+                min="0"
+                @update:model-value="setAddDraftBaseRate"
+              />
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
