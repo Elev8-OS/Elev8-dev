@@ -17,6 +17,7 @@ const {
 
 const showDefaultSheet = ref(false)
 const defaultDraft = ref<CancellationPolicyConfig>(createCancellationPolicyConfig('flexible'))
+const showOverrideListingPicker = ref(false)
 
 function openEditDefault() {
   defaultDraft.value = JSON.parse(JSON.stringify(defaultConfig.value))
@@ -40,6 +41,10 @@ const listingOptions = computed(() =>
 
 const overrideListings = computed(() =>
   listingOptions.value.filter(l => l.id in overrides.value),
+)
+
+const availableListingsForOverride = computed(() =>
+  listingOptions.value.filter(l => !(l.id in overrides.value)),
 )
 
 // Rate-plan-level overrides stored inline on each listing's rate plans.
@@ -132,11 +137,19 @@ function getListingName(id: string): string {
     <div class="space-y-3">
       <div class="flex items-center justify-between">
         <h4 class="text-sm font-medium">Listing Overrides</h4>
-        <span class="text-xs text-muted-foreground">{{ overrideListings.length }} listing{{ overrideListings.length !== 1 ? 's' : '' }} with custom policy</span>
+        <Button v-if="overrideListings.length > 0" variant="outline" size="sm" class="h-8 gap-1" @click="showOverrideListingPicker = true">
+          <Icon name="lucide:plus" class="size-3.5" />
+          Add
+        </Button>
+        <span v-else class="text-xs text-muted-foreground">{{ overrideListings.length }} listing{{ overrideListings.length !== 1 ? 's' : '' }} with custom policy</span>
       </div>
 
       <div v-if="overrideListings.length === 0" class="border border-dashed bg-card/40 p-10 text-center">
-        <p class="text-sm text-muted-foreground">No overrides yet. Every listing uses the default policy.</p>
+        <p class="mb-3 text-sm text-muted-foreground">No overrides yet. Every listing uses the default policy.</p>
+        <Button size="sm" @click="showOverrideListingPicker = true">
+          <Icon name="lucide:plus" class="mr-1.5 size-3.5" />
+          Add Listing Override
+        </Button>
       </div>
 
       <div v-else class="space-y-3">
@@ -244,5 +257,32 @@ function getListingName(id: string): string {
         </SheetFooter>
       </SheetContent>
     </Sheet>
+
+    <!-- Add listing override dialog -->
+    <Dialog v-model:open="showOverrideListingPicker">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Add Listing Override</DialogTitle>
+          <DialogDescription>Choose a listing to create a custom cancellation policy for.</DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-2 max-h-[360px] overflow-auto">
+          <button
+            v-for="listing in availableListingsForOverride"
+            :key="listing.id"
+            type="button"
+            class="w-full flex flex-col items-start gap-1 rounded-lg border bg-card p-3 text-left text-sm hover:bg-accent"
+            @click="openAddOverride(listing.id); showOverrideListingPicker = false"
+          >
+            <span class="font-medium">{{ listing.name }}</span>
+            <span class="text-xs text-muted-foreground">{{ listing.location }}</span>
+          </button>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" @click="showOverrideListingPicker = false">Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

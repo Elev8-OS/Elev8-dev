@@ -25,7 +25,7 @@ const {
 
 const currencies = [
   { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'IDR', symbol: 'Rp', label: 'IDR' },
+  { code: 'IDR', symbol: 'IDR', label: 'IDR' },
   { code: 'EUR', symbol: '€', label: 'EUR' },
   { code: 'GBP', symbol: '£', label: 'GBP' },
   { code: 'AUD', symbol: 'A$', label: 'AUD' },
@@ -57,8 +57,10 @@ function symbolFor(code: string): string {
 }
 
 function feeTaxSummary(tax: ListingFeeTaxItem): string {
-  const sym = tax.logic === 'percent' ? '%' : symbolFor(tax.currency ?? 'USD')
-  const parts = [`${sym}${tax.rate}`, logicLabels[tax.logic] ?? tax.logic]
+  const amount = tax.logic === 'percent'
+    ? `${tax.rate}%`
+    : `${symbolFor(tax.currency ?? 'USD')}${tax.rate}`
+  const parts = [amount, logicLabels[tax.logic] ?? tax.logic]
   if (tax.isInclusive)
     parts.push('included')
   if (tax.skipNights)
@@ -933,8 +935,18 @@ function removeDateRange(index: number) {
           </div>
 
           <div class="max-h-[360px] space-y-2 overflow-auto pr-1">
-            <label v-for="listing in assignableListings" :key="listing.id" class="flex items-start gap-3 rounded-lg border bg-background p-3 text-sm cursor-pointer">
-              <Checkbox :model-value="assignDraftIds.includes(listing.id)" @update:model-value="() => toggleAssignListing(listing.id)" />
+            <div
+              v-for="listing in assignableListings"
+              :key="listing.id"
+              class="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 text-sm"
+              @click="toggleAssignListing(listing.id)"
+            >
+              <div
+                class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                :class="assignDraftIds.includes(listing.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+              >
+                <Icon v-if="assignDraftIds.includes(listing.id)" name="lucide:check" class="size-3" />
+              </div>
               <div class="min-w-0 flex-1">
                 <p class="truncate font-medium">{{ listing.name }}</p>
                 <p class="text-xs text-muted-foreground">{{ listing.location }}</p>
@@ -944,7 +956,7 @@ function removeDateRange(index: number) {
                   </Badge>
                 </div>
               </div>
-            </label>
+            </div>
           </div>
 
           <div class="flex items-center justify-between rounded-lg border bg-muted/20 px-4 py-3 text-sm">
