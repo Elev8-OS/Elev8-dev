@@ -27,12 +27,6 @@ const emit = defineEmits<{
   'update:inheritClosedToArrival': [value: boolean]
   'update:inheritClosedToDeparture': [value: boolean]
   'update:inheritStopSell': [value: boolean]
-  'update:minStayArrival': [value: number[]]
-  'update:minStayThrough': [value: number[]]
-  'update:maxStay': [value: number[]]
-  'update:closedToArrival': [value: boolean[]]
-  'update:closedToDeparture': [value: boolean[]]
-  'update:stopSell': [value: boolean[]]
 }>()
 
 const rules = computed<DerivedRule[]>({
@@ -124,112 +118,6 @@ const calculatedRate = computed(() => {
         <div class="flex items-center gap-2">
           <Checkbox :checked="props.ratePlan.inheritStopSell" @update:checked="(v) => emit('update:inheritStopSell', v)" />
           <span class="text-sm">Stop Sell</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stay Restrictions -->
-    <div class="space-y-2">
-      <Label class="text-sm font-medium">Stay Restrictions (Mon–Sun)</Label>
-      <div class="space-y-2 text-sm">
-        <div class="space-y-1">
-          <span class="text-xs font-medium">Min Stay Arrival</span>
-          <div class="grid grid-cols-7 gap-1">
-            <div v-for="(val, day) in props.ratePlan.minStayArrival" :key="`msa-${day}`" class="flex">
-              <Input
-                type="number"
-                :model-value="val"
-                min="0"
-                class="h-7 text-xs text-center"
-                @update:model-value="(v) => {
-                  const arr = [...props.ratePlan.minStayArrival]
-                  arr[day] = Number(v) || 0
-                  emit('update:minStayArrival', arr)
-                }"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="space-y-1">
-          <span class="text-xs font-medium">Min Stay Through</span>
-          <div class="grid grid-cols-7 gap-1">
-            <div v-for="(val, day) in props.ratePlan.minStayThrough" :key="`mst-${day}`" class="flex">
-              <Input
-                type="number"
-                :model-value="val"
-                min="0"
-                class="h-7 text-xs text-center"
-                @update:model-value="(v) => {
-                  const arr = [...props.ratePlan.minStayThrough]
-                  arr[day] = Number(v) || 0
-                  emit('update:minStayThrough', arr)
-                }"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="space-y-1">
-          <span class="text-xs font-medium">Max Stay</span>
-          <div class="grid grid-cols-7 gap-1">
-            <div v-for="(val, day) in props.ratePlan.maxStay" :key="`ms-${day}`" class="flex">
-              <Input
-                type="number"
-                :model-value="val"
-                min="0"
-                class="h-7 text-xs text-center"
-                @update:model-value="(v) => {
-                  const arr = [...props.ratePlan.maxStay]
-                  arr[day] = Number(v) || 0
-                  emit('update:maxStay', arr)
-                }"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="space-y-1">
-          <span class="text-xs font-medium">Closed To Arrival</span>
-          <div class="grid grid-cols-7 gap-1">
-            <div v-for="(val, day) in props.ratePlan.closedToArrival" :key="`cta-${day}`" class="flex items-center justify-center">
-              <Checkbox
-                :checked="val"
-                @update:checked="(v) => {
-                  const arr = [...props.ratePlan.closedToArrival]
-                  arr[day] = v
-                  emit('update:closedToArrival', arr)
-                }"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="space-y-1">
-          <span class="text-xs font-medium">Closed To Departure</span>
-          <div class="grid grid-cols-7 gap-1">
-            <div v-for="(val, day) in props.ratePlan.closedToDeparture" :key="`ctd-${day}`" class="flex items-center justify-center">
-              <Checkbox
-                :checked="val"
-                @update:checked="(v) => {
-                  const arr = [...props.ratePlan.closedToDeparture]
-                  arr[day] = v
-                  emit('update:closedToDeparture', arr)
-                }"
-              />
-            </div>
-          </div>
-        </div>
-        <div class="space-y-1">
-          <span class="text-xs font-medium">Stop Sell</span>
-          <div class="grid grid-cols-7 gap-1">
-            <div v-for="(val, day) in props.ratePlan.stopSell" :key="`ss-${day}`" class="flex items-center justify-center">
-              <Checkbox
-                :checked="val"
-                @update:checked="(v) => {
-                  const arr = [...props.ratePlan.stopSell]
-                  arr[day] = v
-                  emit('update:stopSell', arr)
-                }"
-              />
-            </div>
-          </div>
         </div>
       </div>
     </div>

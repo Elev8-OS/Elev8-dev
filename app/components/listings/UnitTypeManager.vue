@@ -895,12 +895,6 @@ const feeIcons: Record<string, string> = {
                         @update:inherit-closed-to-arrival="(v) => updateRatePlan(idx, 'inheritClosedToArrival', v)"
                         @update:inherit-closed-to-departure="(v) => updateRatePlan(idx, 'inheritClosedToDeparture', v)"
                         @update:inherit-stop-sell="(v) => updateRatePlan(idx, 'inheritStopSell', v)"
-                        @update:min-stay-arrival="(v) => updateRatePlan(idx, 'minStayArrival', v)"
-                        @update:min-stay-through="(v) => updateRatePlan(idx, 'minStayThrough', v)"
-                        @update:max-stay="(v) => updateRatePlan(idx, 'maxStay', v)"
-                        @update:closed-to-arrival="(v) => updateRatePlan(idx, 'closedToArrival', v)"
-                        @update:closed-to-departure="(v) => updateRatePlan(idx, 'closedToDeparture', v)"
-                        @update:stop-sell="(v) => updateRatePlan(idx, 'stopSell', v)"
                       />
                     </div>
 
@@ -1346,12 +1340,6 @@ const feeIcons: Record<string, string> = {
               @update:inherit-closed-to-arrival="(v) => addRatePlanDraft.inheritClosedToArrival = v"
               @update:inherit-closed-to-departure="(v) => addRatePlanDraft.inheritClosedToDeparture = v"
               @update:inherit-stop-sell="(v) => addRatePlanDraft.inheritStopSell = v"
-              @update:min-stay-arrival="(v) => addRatePlanDraft.minStayArrival = v"
-              @update:min-stay-through="(v) => addRatePlanDraft.minStayThrough = v"
-              @update:max-stay="(v) => addRatePlanDraft.maxStay = v"
-              @update:closed-to-arrival="(v) => addRatePlanDraft.closedToArrival = v"
-              @update:closed-to-departure="(v) => addRatePlanDraft.closedToDeparture = v"
-              @update:stop-sell="(v) => addRatePlanDraft.stopSell = v"
             />
           </div>
 
