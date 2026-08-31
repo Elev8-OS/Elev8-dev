@@ -1078,9 +1078,17 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
 
             <RatePlanDerivedOptionsEditor
               :model-value="addRatePlanDraft.derivedOptions"
+              :rate-plan="addRatePlanDraft"
               :base-rate="primaryOption(addRatePlanDraft).rate"
               :currency-symbol="symbolFor(addRatePlanDraft.currency)"
               @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
+              @update:inherit-rate="(v) => addRatePlanDraft.inheritRate = v"
+              @update:inherit-min-stay-arrival="(v) => addRatePlanDraft.inheritMinStayArrival = v"
+              @update:inherit-min-stay-through="(v) => addRatePlanDraft.inheritMinStayThrough = v"
+              @update:inherit-max-stay="(v) => addRatePlanDraft.inheritMaxStay = v"
+              @update:inherit-closed-to-arrival="(v) => addRatePlanDraft.inheritClosedToArrival = v"
+              @update:inherit-closed-to-departure="(v) => addRatePlanDraft.inheritClosedToDeparture = v"
+              @update:inherit-stop-sell="(v) => addRatePlanDraft.inheritStopSell = v"
             />
           </div>
 
@@ -1415,9 +1423,17 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
 
             <RatePlanDerivedOptionsEditor
               :model-value="editRatePlanDraft.derivedOptions"
+              :rate-plan="editRatePlanDraft"
               :base-rate="primaryOption(editRatePlanDraft).rate"
               :currency-symbol="symbolFor(editRatePlanDraft.currency)"
               @update:model-value="(v) => editRatePlanDraft.derivedOptions = v"
+              @update:inherit-rate="(v) => editRatePlanDraft.inheritRate = v"
+              @update:inherit-min-stay-arrival="(v) => editRatePlanDraft.inheritMinStayArrival = v"
+              @update:inherit-min-stay-through="(v) => editRatePlanDraft.inheritMinStayThrough = v"
+              @update:inherit-max-stay="(v) => editRatePlanDraft.inheritMaxStay = v"
+              @update:inherit-closed-to-arrival="(v) => editRatePlanDraft.inheritClosedToArrival = v"
+              @update:inherit-closed-to-departure="(v) => editRatePlanDraft.inheritClosedToDeparture = v"
+              @update:inherit-stop-sell="(v) => editRatePlanDraft.inheritStopSell = v"
             />
           </div>
 

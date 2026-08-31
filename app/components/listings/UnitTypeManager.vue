@@ -884,9 +884,17 @@ const feeIcons: Record<string, string> = {
                       </div>
                       <RatePlanDerivedOptionsEditor
                         :model-value="rp.derivedOptions"
+                        :rate-plan="rp"
                         :base-rate="ratePlanNightlyRate(rp)"
                         :currency-symbol="currencySymbol"
                         @update:model-value="(v) => updateRatePlan(idx, 'derivedOptions', v)"
+                        @update:inherit-rate="(v) => updateRatePlan(idx, 'inheritRate', v)"
+                        @update:inherit-min-stay-arrival="(v) => updateRatePlan(idx, 'inheritMinStayArrival', v)"
+                        @update:inherit-min-stay-through="(v) => updateRatePlan(idx, 'inheritMinStayThrough', v)"
+                        @update:inherit-max-stay="(v) => updateRatePlan(idx, 'inheritMaxStay', v)"
+                        @update:inherit-closed-to-arrival="(v) => updateRatePlan(idx, 'inheritClosedToArrival', v)"
+                        @update:inherit-closed-to-departure="(v) => updateRatePlan(idx, 'inheritClosedToDeparture', v)"
+                        @update:inherit-stop-sell="(v) => updateRatePlan(idx, 'inheritStopSell', v)"
                       />
                     </div>
 
@@ -1321,9 +1329,17 @@ const feeIcons: Record<string, string> = {
             </div>
             <RatePlanDerivedOptionsEditor
               :model-value="addRatePlanDraft.derivedOptions"
+              :rate-plan="addRatePlanDraft"
               :base-rate="ratePlanNightlyRate(addRatePlanDraft)"
               :currency-symbol="currencySymbol"
               @update:model-value="(v) => addRatePlanDraft.derivedOptions = v"
+              @update:inherit-rate="(v) => addRatePlanDraft.inheritRate = v"
+              @update:inherit-min-stay-arrival="(v) => addRatePlanDraft.inheritMinStayArrival = v"
+              @update:inherit-min-stay-through="(v) => addRatePlanDraft.inheritMinStayThrough = v"
+              @update:inherit-max-stay="(v) => addRatePlanDraft.inheritMaxStay = v"
+              @update:inherit-closed-to-arrival="(v) => addRatePlanDraft.inheritClosedToArrival = v"
+              @update:inherit-closed-to-departure="(v) => addRatePlanDraft.inheritClosedToDeparture = v"
+              @update:inherit-stop-sell="(v) => addRatePlanDraft.inheritStopSell = v"
             />
           </div>
 
