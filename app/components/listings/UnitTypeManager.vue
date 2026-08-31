@@ -848,6 +848,7 @@ const feeIcons: Record<string, string> = {
                             <TabsTrigger value="auto" class="text-xs">Auto</TabsTrigger>
                             <TabsTrigger value="cascade" class="text-xs">Cascade</TabsTrigger>
                           </TabsList>
+                        </Tabs>
                       </div>
                     </div>
 
