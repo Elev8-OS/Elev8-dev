@@ -1,4 +1,8 @@
-export type IntegrationStatus = 'connected' | 'available' | 'coming_soon'
+/**
+ * `configured` is for file-handoff integrations (DATEV) that have per-tenant
+ * settings but no live connection to be "connected" to.
+ */
+export type IntegrationStatus = 'connected' | 'configured' | 'available' | 'coming_soon'
 export type IntegrationCategory = 'Accounting' | 'HR & Payroll' | 'Payments' | 'Operations'
 
 export interface Integration {
@@ -8,6 +12,11 @@ export interface Integration {
   category: IntegrationCategory
   icon: string
   logo?: string
+  /**
+   * Tailwind sizing for the logo in the tile grid. Defaults to a landscape
+   * wordmark; square lockups (DATEV) need more height to stay legible.
+   */
+  logoClass?: string
   status: IntegrationStatus
   component?: string
   docsUrl?: string
@@ -43,6 +52,18 @@ export const integrations: Integration[] = [
     logo: 'FinanceLexwareLogo',
     status: 'available',
     component: 'FinanceLexwareIntegration',
+  },
+  {
+    id: 'datev',
+    name: 'DATEV',
+    description: 'Export a Buchungsstapel (EXTF) your German tax advisor imports in one click.',
+    category: 'Accounting',
+    icon: 'i-lucide-file-spreadsheet',
+    logo: 'FinanceDatevLogo',
+    logoClass: 'h-8 w-auto',
+    status: 'available',
+    component: 'FinanceDatevExportSettings',
+    docsUrl: 'https://developer.datev.de/en/file-format/details/datev-format/getting-started',
   },
   {
     id: 'xero',
