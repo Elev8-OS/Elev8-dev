@@ -67,10 +67,14 @@ export function columnIndexFor(grid: OwnerReservationDay[], key: string | Date):
 
 /**
  * Convert a flat list of reservations into positioned bars for the given
- * listing, scoped to the month grid. Each reservation produces exactly
- * one bar on `row: 0` — overlapping stays visually overlap on the same
- * horizontal line, and reservations that cross a week boundary are
- * rendered as a single contiguous bar (never split into segments).
+ * listing, scoped to the month grid. Each reservation produces exactly one
+ * contiguous bar (never split per visible week).
+ *
+ * Overlapping stays are **stacked**: each bar is assigned the lowest `row`
+ * that is free for its whole column span, so two bookings running at the same
+ * time sit on separate lines instead of drawing over each other. A property
+ * with several rooms genuinely has concurrent stays, and hiding one behind
+ * another loses real information.
  *
  *   - Skips reservations entirely outside the grid.
  *   - Clamps `startDay` to 0 and `endDay` to the last in-grid cell so a
@@ -116,15 +120,24 @@ export function buildReservationBars(
     return []
 
   const bars: OwnerReservationBar[] = []
-  // Each reservation produces exactly one bar — the calendar UI renders
-  // every reservation on the same horizontal line (overlapping stays
-  // visually overlap on that line), and never splits a reservation into
-  // separate segments per visible week.
-  for (const segment of segments) {
+  // Earliest first, longest first on a tie, so the stack reads top-down in
+  // the order the stays begin rather than in fixture order.
+  const ordered = segments
+    .filter(segment => segment.endDay >= segment.startDay)
+    .sort((a, b) => a.startDay - b.startDay || (b.endDay - b.startDay) - (a.endDay - a.startDay))
+
+  // Occupied column spans per row; a bar takes the first row with no clash.
+  const rows: Array<Array<{ start: number, end: number }>> = []
+  for (const segment of ordered) {
     const { reservation, startDay, endDay } = segment
-    if (endDay < startDay)
-      continue
-    pushBar(grid, bars, reservation, startDay, endDay)
+    let row = rows.findIndex(spans =>
+      spans.every(span => endDay <= span.start || startDay >= span.end))
+    if (row === -1) {
+      rows.push([])
+      row = rows.length - 1
+    }
+    rows[row]!.push({ start: startDay, end: endDay })
+    pushBar(grid, bars, reservation, startDay, endDay, row)
   }
   return bars
 }
@@ -135,6 +148,7 @@ function pushBar(
   reservation: OwnerReservation,
   startDay: number,
   endDay: number,
+  row: number,
 ) {
   const lastIndex = grid.length - 1
   const startsBeforeGrid = startDay < 0
@@ -153,7 +167,7 @@ function pushBar(
     ownerStayStatus: reservation.ownerStayStatus,
     startDay: trimmedStart,
     endDay: trimmedEnd,
-    row: 0,
+    row,
     wrapsBackward: startsBeforeGrid,
     wrapsForward: endsAfterGrid,
   })

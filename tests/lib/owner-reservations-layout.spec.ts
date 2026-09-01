@@ -66,16 +66,17 @@ describe('buildReservationBars', () => {
     expect(bar?.row).toBe(0)
   })
 
-  it('places overlapping stays on the same row so they visually overlap', () => {
+  it('stacks overlapping stays on separate rows', () => {
     const grid = buildReservationMonthGrid(new Date(2025, 11, 1))
     const a = reservation({ id: 'a', checkIn: '2025-12-15', checkOut: '2025-12-18' })
     const b = reservation({ id: 'b', checkIn: '2025-12-16', checkOut: '2025-12-20' })
     const bars = buildReservationBars(grid, 'lst-1', [a, b])
     expect(bars).toHaveLength(2)
-    expect(bars.every(bar => bar.row === 0)).toBe(true)
+    // Two stays running at the same time must not draw over each other.
+    expect(bars.map(bar => bar.row).sort()).toEqual([0, 1])
   })
 
-  it('places non-overlapping stays in the same row', () => {
+  it('reuses row 0 for stays that do not overlap', () => {
     const grid = buildReservationMonthGrid(new Date(2025, 11, 1))
     const a = reservation({ id: 'a', checkIn: '2025-12-15', checkOut: '2025-12-18' })
     const b = reservation({ id: 'b', checkIn: '2025-12-19', checkOut: '2025-12-22' })

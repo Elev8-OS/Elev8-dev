@@ -1,24 +1,22 @@
 <script setup lang="ts">
 // Owner Portal — Reservation Calendar.
 //
-// Single-property month grid that mirrors the Figma "My Stays" design:
-// property info + occupancy stats at the top, a toolbar with property /
-// room-type selector + month / year navigation + "New owner reservation"
-// button, and a 7-column by 6-row day grid where reservations render as
-// absolutely-positioned bars overlaid on the cells. Guest stays are
-// emerald, owner blocks are amber. Bars that cross a week boundary are
-// split across weeks (the existing `buildReservationBars` helper).
+// Single-property resource calendar: property info + occupancy stats at the
+// top, a toolbar with the property selector + month / year navigation, then a
+// linear month axis with the owner's own stays on the first row and each room
+// on its own row below, grouped by room type. Guest stays are emerald, owner
+// blocks amber. A bar is half-inset on its arrival and departure days, so a
+// check-out and the next check-in on the same date read as a handover rather
+// than an overlap.
 
-import type { OwnerReservation, OwnerReservationBar, OwnerRoom, OwnerRoomType } from '~/components/owners/data/owner-reservations'
+import type { OwnerReservation } from '~/components/owners/data/owner-reservations'
 import { computed, ref } from 'vue'
 import { listings } from '~/components/listings/data/listings'
-import { mockOwnerLedgerEntries } from '~/components/owners/data/owner-ledger'
 import {
   mockOwnerReservations,
   mockOwnerRooms,
   mockOwnerRoomTypes,
 } from '~/components/owners/data/owner-reservations-seed'
-import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import {
   DropdownMenu,
@@ -26,14 +24,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
-import {
-  buildReservationBars,
-  buildReservationMonthGrid,
-} from '~/lib/owner-reservations-layout'
 import PortalOwnerReservationPopover from './PortalOwnerReservationPopover.vue'
 
 const props = defineProps<{
@@ -48,7 +40,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:anchor': [value: Date]
   'update:listingId': [value: string]
-  'createOwnerReservation': [value: { checkIn: string, checkOut: string, listingId?: string, roomTypeId?: string }]
   'editOwnerReservation': [value: OwnerReservation]
   'removeOwnerReservation': [value: OwnerReservation]
 }>()
@@ -79,65 +70,13 @@ const selectedListing = computed(() => {
   return listings.value.find(l => l.id === id) ?? null
 })
 
-const roomTypesForListing = computed<OwnerRoomType[]>(() => {
-  const id = selectedListingId.value
-  if (!id)
-    return []
-  return mockOwnerRoomTypes.filter(rt => rt.listingId === id)
-})
+const propertyDropdownLabel = computed(() =>
+  selectedListing.value?.name ?? 'Select a property')
 
-const roomsForListing = computed<OwnerRoom[]>(() => {
-  const id = selectedListingId.value
-  if (!id)
-    return []
-  return mockOwnerRooms.filter(r => r.listingId === id)
-})
-
-const selectedRoomTypeId = ref<string | null>(null)
-const selectedRoomId = ref<string | null>(null)
-
-const selectedRoomType = computed(() => {
-  const id = selectedRoomTypeId.value
-  if (!id)
-    return null
-  return roomTypesForListing.value.find(rt => rt.id === id) ?? null
-})
-
-const selectedRoom = computed(() => {
-  const id = selectedRoomId.value
-  if (!id)
-    return null
-  return roomsForListing.value.find(r => r.id === id) ?? null
-})
-
-const roomDropdownLabel = computed(() => {
-  const room = selectedRoom.value
-  if (room) {
-    const roomType = roomTypesForListing.value.find(rt => rt.id === room.roomTypeId)
-    return `${roomType?.name ?? 'Room'} · ${room.label}`
-  }
-  const roomType = selectedRoomType.value
-  if (roomType)
-    return roomType.name
-  return 'All rooms'
-})
-
-const monthGrid = computed(() => buildReservationMonthGrid(anchor.value))
 const monthLabel = computed(() => anchor.value.toLocaleDateString('en-US', { month: 'long' }))
-const yearLabel = computed(() => anchor.value.toLocaleDateString('en-US', { year: 'numeric' }))
+const yearLabel = computed(() => String(anchor.value.getFullYear()))
 
-interface PlacedBar extends OwnerReservationBar {
-  startWeek: number
-  endWeek: number
-  startCellKey: string
-  startOffsetPct: number
-  remainingWidthPct: number
-}
-
-const CELL_ROW_HEIGHT_PX = 96
-const BAR_TOP_OFFSET_PX = 36
-const BAR_HEIGHT_PX = 24
-
+/** Every reservation on the selected property, whatever room it is in. */
 const listingReservations = computed<OwnerReservation[]>(() => {
   const id = selectedListingId.value
   if (!id)
@@ -145,137 +84,196 @@ const listingReservations = computed<OwnerReservation[]>(() => {
   return reservations.value.filter(r => r.listingId === id)
 })
 
-const listingBars = computed<PlacedBar[]>(() => {
-  const id = selectedListingId.value
-  if (!id)
-    return []
-  const totalCells = 42
-  const cellWidthPct = 100 / totalCells
-  const halfCellPct = cellWidthPct / 2
-
-  return buildReservationBars(monthGrid.value, id, listingReservations.value).map((bar) => {
-    // Airbnb-style calendar: a reservation's bar covers half of the
-    // check-in day (the right half — guest arrives in the afternoon)
-    // and half of the check-out day (the left half — guest departs in
-    // the morning). The nights in between are full cells. When the bar
-    // extends past the visible grid (wrapsForward / wrapsBackward), the
-    // outer edge runs to the grid boundary instead of stopping at the
-    // half-cell.
-    // Number of cell-widths the bar spans: from the middle of the
-    // start cell to the middle of the end cell = endDay - startDay
-    // (e.g. Dec 15 → Dec 20 spans 5 cells = 19 - 14).
-    const cellWidths = Math.max(0, bar.endDay - bar.startDay)
-    const startOffsetPct = bar.wrapsBackward ? 0 : halfCellPct
-    const endOffsetPct = bar.wrapsForward ? 0 : halfCellPct
-    const remainingWidthPct = cellWidths * 100 + startOffsetPct + endOffsetPct
-    // The bar is placed inside its starting cell as an absolute child.
-    // Because the cell is `position: relative`, the bar is anchored to
-    // the row of its starting cell automatically — no need to compute
-    // y from the grid header height. The width is expressed as a
-    // percentage of the cell width so the bar spans the right number
-    // of columns regardless of the cell's actual pixel size.
-    const startWeek = Math.floor(bar.startDay / 7)
-    const startCell = monthGrid.value[bar.startDay]
+/**
+ * Days of the anchored month — one column each. A resource calendar needs a
+ * linear date axis; the old 6-week wrap cannot carry per-room rows.
+ */
+const monthDays = computed(() => {
+  const year = anchor.value.getFullYear()
+  const month = anchor.value.getMonth()
+  const total = new Date(year, month + 1, 0).getDate()
+  const todayKey = new Date().toISOString().slice(0, 10)
+  return Array.from({ length: total }, (_, index) => {
+    const date = new Date(year, month, index + 1)
+    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`
     return {
-      ...bar,
-      startWeek,
-      endWeek: Math.floor(bar.endDay / 7),
-      startCellKey: startCell?.key ?? '',
-      startOffsetPct,
-      remainingWidthPct,
+      key,
+      day: index + 1,
+      weekday: date.toLocaleDateString('en-GB', { weekday: 'narrow' }),
+      isWeekend: date.getDay() === 0 || date.getDay() === 6,
+      isToday: key === todayKey,
     }
   })
 })
 
-// Group bars by their starting cell so the template can render them as
-// absolutely-positioned children of that cell. Bars never duplicate: a
-// reservation that crosses a week boundary still renders as one bar,
-// anchored to its starting cell.
-const barsByCell = computed<Record<string, PlacedBar[]>>(() => {
-  const map: Record<string, PlacedBar[]> = {}
-  for (const bar of listingBars.value) {
-    const bucket = map[bar.startCellKey] ?? []
-    bucket.push(bar)
-    map[bar.startCellKey] = bucket
+interface RoomRow {
+  kind: 'group' | 'room'
+  id: string
+  label: string
+  sublabel?: string
+}
+
+/** One row per room, grouped under its room type. */
+const roomRows = computed<RoomRow[]>(() => {
+  const id = selectedListingId.value
+  if (!id)
+    return []
+  const rows: RoomRow[] = []
+  for (const type of mockOwnerRoomTypes.filter(rt => rt.listingId === id)) {
+    const rooms = mockOwnerRooms.filter(r => r.roomTypeId === type.id)
+    if (rooms.length === 0)
+      continue
+    rows.push({ kind: 'group', id: type.id, label: type.name })
+    for (const room of rooms)
+      rows.push({ kind: 'room', id: room.id, label: room.label, sublabel: type.name })
   }
-  return map
+  return rows
 })
 
+/** A reservation placed on the date axis of the visible month. */
+interface PlacedStay {
+  id: string
+  reservation: OwnerReservation
+  /** 0-based column of the check-in day, clamped to the month. */
+  startIndex: number
+  /** Column of the check-out day, clamped to the month. */
+  endIndex: number
+  clippedStart: boolean
+  clippedEnd: boolean
+  /** Stacking line within the lane, for stays that overlap in the same row. */
+  lane: number
+}
+
+function placeStay(reservation: OwnerReservation): PlacedStay | null {
+  const days = monthDays.value
+  if (days.length === 0)
+    return null
+  const first = days[0]!.key
+  const last = days[days.length - 1]!.key
+  // Skip anything entirely outside the month.
+  if (reservation.checkOut < first || reservation.checkIn > last)
+    return null
+  const startIndex = days.findIndex(d => d.key === reservation.checkIn)
+  const endIndex = days.findIndex(d => d.key === reservation.checkOut)
+  return {
+    id: reservation.id,
+    reservation,
+    startIndex: startIndex === -1 ? 0 : startIndex,
+    endIndex: endIndex === -1 ? days.length - 1 : endIndex,
+    clippedStart: startIndex === -1,
+    clippedEnd: endIndex === -1,
+    lane: 0,
+  }
+}
+
+/**
+ * Stack stays that overlap within one row. Room rows rarely need it — a room
+ * cannot be double-booked — but the owner row holds every owner stay for the
+ * property, and two of those can genuinely run at once.
+ */
+function assignLanes(stays: PlacedStay[]): PlacedStay[] {
+  const lanes: Array<Array<{ start: number, end: number }>> = []
+  return stays.map((stay) => {
+    let lane = lanes.findIndex(spans =>
+      spans.every(span => stay.endIndex <= span.start || stay.startIndex >= span.end))
+    if (lane === -1) {
+      lanes.push([])
+      lane = lanes.length - 1
+    }
+    lanes[lane]!.push({ start: stay.startIndex, end: stay.endIndex })
+    return { ...stay, lane }
+  })
+}
+
+/** Stays for one row: the owner row takes owner blocks, room rows take their own. */
+/**
+ * Stays shown on a room's row: guest bookings for that room, owner stays
+ * booked into that room, and owner stays with no room at all — those block the
+ * whole property, so they belong on every room row rather than a lane of their
+ * own.
+ */
+function staysForRow(row: RoomRow): PlacedStay[] {
+  if (row.kind === 'group')
+    return []
+  const placed = listingReservations.value
+    .filter(r => r.roomId
+      ? r.roomId === row.id
+      : r.type === 'owner_block')
+    .map(placeStay)
+    .filter((stay): stay is PlacedStay => stay !== null)
+    .sort((a, b) => a.startIndex - b.startIndex
+      || (b.endIndex - b.startIndex) - (a.endIndex - a.startIndex))
+  return assignLanes(placed)
+}
+
+/** Lane count for a row, so its height can grow to fit a stack. */
+function laneCount(row: RoomRow): number {
+  return staysForRow(row).reduce((deepest, stay) => Math.max(deepest, stay.lane + 1), 1)
+}
+
+/**
+ * Geometry for a bar on a row: anchored at midday on the check-in column and
+ * running to midday on the check-out column, so the arrival and departure days
+ * are each half-covered. A clipped edge runs to the edge of the month instead.
+ */
+function barStyle(stay: PlacedStay) {
+  const columns = monthDays.value.length
+  const startPct = ((stay.startIndex + (stay.clippedStart ? 0 : 0.5)) / columns) * 100
+  const endPct = ((stay.endIndex + (stay.clippedEnd ? 1 : 0.5)) / columns) * 100
+  return { left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }
+}
+
+/**
+ * Month stats, all on one basis: ROOM-NIGHTS. A five-room property selling six
+ * nights in every room sold 30 room-nights, not 6 — and that is the figure the
+ * statements are built from.
+ *
+ * Occupancy uses the same numerator, so the two can never disagree:
+ *   room-nights sold / (rooms x days in month)
+ */
 const stats = computed(() => {
   const id = selectedListingId.value
   if (!id)
-    return { occupancy: 0, thisMonthNights: 0, upcomingCount: 0 }
+    return { occupancy: 0, roomNights: 0, upcomingCount: 0 }
 
-  const monthStart = new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1)
-  const monthEnd = new Date(anchor.value.getFullYear(), anchor.value.getMonth() + 1, 0)
+  const year = anchor.value.getFullYear()
+  const month = anchor.value.getMonth()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
-  const occupiedDayKeys = new Set<string>()
+  // Each guest reservation counts its own nights: one room occupied for one
+  // night is one room-night, so concurrent stays in different rooms add up.
+  let roomNights = 0
   for (const reservation of listingReservations.value) {
-    if (reservation.type !== 'guest')
+    if (reservation.type !== 'guest' || reservation.status === 'cancelled')
       continue
-    const start = new Date(`${reservation.checkIn}T00:00:00`)
+    const startMs = new Date(`${reservation.checkIn}T00:00:00`).getTime()
     const endMs = new Date(`${reservation.checkOut}T00:00:00`).getTime()
-    const oneDayMs = 24 * 60 * 60 * 1000
-    for (let cursorMs = start.getTime(), cursor = new Date(cursorMs); cursorMs < endMs; cursorMs += oneDayMs, cursor = new Date(cursorMs)) {
-      if (cursor.getMonth() === anchor.value.getMonth() && cursor.getFullYear() === anchor.value.getFullYear())
-        occupiedDayKeys.add(toDayKey(cursor))
+    for (let cursorMs = startMs; cursorMs < endMs; cursorMs += ONE_DAY_MS) {
+      const night = new Date(cursorMs)
+      if (night.getMonth() === month && night.getFullYear() === year)
+        roomNights += 1
     }
   }
 
-  const daysInMonth = monthEnd.getDate()
-  const occupancy = daysInMonth > 0 ? Math.round((occupiedDayKeys.size / daysInMonth) * 100) : 0
+  const rooms = Math.max(1, mockOwnerRooms.filter(r => r.listingId === id).length)
+  const capacity = rooms * daysInMonth
+  const occupancy = capacity > 0 ? Math.round((roomNights / capacity) * 100) : 0
 
   let upcomingCount = 0
   for (const reservation of listingReservations.value) {
     if (reservation.status === 'cancelled')
       continue
-    const start = new Date(`${reservation.checkIn}T00:00:00`)
-    if (start >= today)
+    if (new Date(`${reservation.checkIn}T00:00:00`) >= today)
       upcomingCount += 1
   }
 
-  const ledger = mockOwnerLedgerEntries.find(entry =>
-    entry.ownerId
-    && entry.listingId === id
-    && entry.period === `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`,
-  )
-  const thisMonthNights = ledger ? ledger.occupiedNights : occupiedDayKeys.size
-
-  return {
-    occupancy,
-    thisMonthNights,
-    upcomingCount,
-  }
+  return { occupancy, roomNights, upcomingCount }
 })
-
-function toDayKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-const { quotasForOwnerListing, getRemainingQuota } = useOwnerQuotas()
 
 /** Seasonal self-booking quota windows for the selected listing + owner. */
-const ownerQuotaWindows = computed(() => {
-  const id = selectedListingId.value
-  if (!props.ownerId || !id)
-    return []
-  const ownerId = props.ownerId
-  return quotasForOwnerListing(ownerId, id).map((window) => {
-    const remaining = getRemainingQuota(ownerId, id, window.startDate)
-    return {
-      ...window,
-      remaining,
-      unlimited: !Number.isFinite(remaining),
-    }
-  })
-})
-
-function formatQuotaDate(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-}
-
 function shiftMonth(months: number) {
   const next = new Date(anchor.value)
   next.setDate(1)
@@ -306,34 +304,13 @@ function setYear(year: number) {
 const selectedReservation = ref<OwnerReservation | null>(null)
 const popoverOpen = ref(false)
 
-function openBar(bar: PlacedBar) {
-  const reservationId = bar.id.split('-').slice(0, -2).join('-')
-  const found = reservations.value.find(r => r.id === reservationId)
-  if (!found)
-    return
-  selectedReservation.value = found
+function openStay(stay: PlacedStay) {
+  selectedReservation.value = stay.reservation
   popoverOpen.value = true
-}
-
-function newOwnerReservation() {
-  const listingId = selectedListingId.value ?? ownerListings.value[0]?.id
-  const roomTypeId = listingId ? roomTypesForListing.value[0]?.id : undefined
-  emit('createOwnerReservation', { checkIn: '', checkOut: '', listingId, roomTypeId })
 }
 
 function selectListing(listingId: string) {
   selectedListingId.value = listingId
-  selectedRoomTypeId.value = null
-  selectedRoomId.value = null
-}
-
-function selectRoomType(roomTypeId: string | null) {
-  selectedRoomTypeId.value = roomTypeId
-  selectedRoomId.value = null
-}
-
-function selectRoom(roomId: string | null) {
-  selectedRoomId.value = roomId
 }
 
 const monthOptions = computed(() => {
@@ -346,87 +323,17 @@ const yearOptions = computed(() => {
   return [baseYear - 1, baseYear, baseYear + 1]
 })
 
-const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-function propertyTypeChip(listingId: string | null) {
-  if (!listingId)
-    return ''
-  const listing = listings.value.find(l => l.id === listingId)
-  if (!listing)
-    return ''
-  const bedroomCount = listing.unitTypes?.reduce((sum, ut) => sum + (ut.bedrooms ?? 0), 0) ?? 0
-  return bedroomCount > 0 ? `Villa · ${bedroomCount} Bedrooms` : 'Villa'
-}
+/** Row height and the label gutter, matching the operations calendar. */
+const ROW_HEIGHT_PX = 44
+const LABEL_WIDTH_PX = 200
+/** Vertical pitch of stacked stays inside one row. */
+const LANE_PITCH_PX = 32
 </script>
 
 <template>
   <div class="flex h-full min-h-0 flex-col gap-6">
-    <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div class="space-y-1">
-        <p class="text-base font-semibold">
-          {{ selectedListing?.name ?? 'No property selected' }}
-        </p>
-        <p class="text-sm text-muted-foreground">
-          {{ selectedListing?.location ?? '—' }}
-        </p>
-        <Badge
-          v-if="selectedListingId"
-          variant="outline"
-          class="mt-2 rounded-full px-3 py-1 text-xs font-normal"
-        >
-          {{ propertyTypeChip(selectedListingId) }}
-        </Badge>
-      </div>
-
-      <dl v-if="selectedListingId" class="flex items-stretch divide-x divide-border rounded-md border bg-card">
-        <div class="flex flex-col gap-1 px-4 py-2">
-          <dt class="text-xs font-medium text-muted-foreground">
-            Occupancy
-          </dt>
-          <dd class="text-base font-semibold">
-            {{ stats.occupancy }}%
-          </dd>
-        </div>
-        <div class="flex flex-col gap-1 px-4 py-2">
-          <dt class="text-xs font-medium text-muted-foreground">
-            This month
-          </dt>
-          <dd class="text-base font-semibold">
-            {{ stats.thisMonthNights }} nights
-          </dd>
-        </div>
-        <div class="flex flex-col gap-1 px-4 py-2">
-          <dt class="text-xs font-medium text-muted-foreground">
-            Upcoming
-          </dt>
-          <dd class="text-base font-semibold">
-            {{ stats.upcomingCount }} bookings
-          </dd>
-        </div>
-      </dl>
-
-      <div v-if="ownerQuotaWindows.length" class="max-w-sm rounded-md border bg-card p-3">
-        <p class="text-xs font-medium text-muted-foreground">
-          My stay quota
-        </p>
-        <ul class="mt-1.5 space-y-1">
-          <li
-            v-for="window in ownerQuotaWindows"
-            :key="window.id"
-            class="flex items-center justify-between gap-2 text-sm"
-          >
-            <span class="text-xs text-muted-foreground">
-              {{ formatQuotaDate(window.startDate) }} → {{ formatQuotaDate(window.endDate) }}
-            </span>
-            <span class="font-medium">
-              {{ window.unlimited ? 'Unlimited' : `${window.remaining} of ${window.maxNights} nights left` }}
-            </span>
-          </li>
-        </ul>
-      </div>
-    </header>
-
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <header class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      <!-- Left: which property -->
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <Button
@@ -435,7 +342,7 @@ function propertyTypeChip(listingId: string | null) {
             :disabled="ownerListings.length === 0"
           >
             <span class="truncate">
-              {{ roomDropdownLabel }}
+              {{ propertyDropdownLabel }}
             </span>
             <Icon name="lucide:chevron-down" class="size-4 shrink-0 opacity-60" aria-hidden="true" />
           </Button>
@@ -454,62 +361,15 @@ function propertyTypeChip(listingId: string | null) {
               {{ listing.name }}
             </DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator v-if="roomTypesForListing.length > 0" />
-          <template v-if="roomTypesForListing.length > 0">
-            <DropdownMenuLabel>Room type</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              :model-value="selectedRoomTypeId ?? ''"
-              @update:model-value="(value: string) => selectRoomType(value || null)"
-            >
-              <DropdownMenuRadioItem value="">
-                All rooms
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem
-                v-for="roomType in roomTypesForListing"
-                :key="roomType.id"
-                :value="roomType.id"
-              >
-                {{ roomType.name }}
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </template>
-          <template v-if="roomsForListing.length > 0">
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Room</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              :model-value="selectedRoomId ?? ''"
-              @update:model-value="(value: string) => selectRoom(value || null)"
-            >
-              <DropdownMenuRadioItem value="">
-                Any
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem
-                v-for="room in roomsForListing"
-                :key="room.id"
-                :value="room.id"
-              >
-                {{ room.label }}
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </template>
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <!-- Centre: which month -->
       <div class="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Previous month"
-          @click="shiftMonth(-1)"
-        >
+        <Button variant="ghost" size="icon" aria-label="Previous month" @click="shiftMonth(-1)">
           <Icon name="lucide:chevron-left" class="size-4" aria-hidden="true" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Next month"
-          @click="shiftMonth(1)"
-        >
+        <Button variant="ghost" size="icon" aria-label="Next month" @click="shiftMonth(1)">
           <Icon name="lucide:chevron-right" class="size-4" aria-hidden="true" />
         </Button>
         <DropdownMenu>
@@ -561,97 +421,164 @@ function propertyTypeChip(listingId: string | null) {
         </Button>
       </div>
 
-      <Button
-        class="rounded-full bg-emerald-100 px-4 text-emerald-900 hover:bg-emerald-200"
-        @click="newOwnerReservation"
-      >
-        <Icon name="lucide:plus" class="mr-1.5 size-4" aria-hidden="true" />
-        New owner reservation
-      </Button>
-    </div>
+      <!-- Right: how the month is performing -->
+      <dl v-if="selectedListingId" class="flex items-stretch divide-x divide-border rounded-md border bg-card">
+        <div class="flex flex-col gap-1 px-4 py-2">
+          <dt class="text-xs font-medium text-muted-foreground">
+            Occupancy
+          </dt>
+          <dd class="text-base font-semibold">
+            {{ stats.occupancy }}%
+          </dd>
+        </div>
+        <div class="flex flex-col gap-1 px-4 py-2">
+          <dt class="text-xs font-medium text-muted-foreground">
+            Sold
+          </dt>
+          <dd class="text-base font-semibold">
+            {{ stats.roomNights }} room-nights
+          </dd>
+        </div>
+        <div class="flex flex-col gap-1 px-4 py-2">
+          <dt class="text-xs font-medium text-muted-foreground">
+            Upcoming
+          </dt>
+          <dd class="text-base font-semibold">
+            {{ stats.upcomingCount }} bookings
+          </dd>
+        </div>
+      </dl>
+    </header>
 
     <div class="min-h-0 flex-1 overflow-auto rounded-md border bg-card">
-      <div role="grid" class="relative grid grid-cols-7">
-        <div
-          v-for="weekday in WEEKDAY_LABELS"
-          :key="weekday"
-          class="sticky top-0 z-20 border-b border-r bg-card px-3 py-2 text-xs font-medium text-muted-foreground"
-        >
-          {{ weekday }}
-        </div>
-        <div
-          v-for="cell in monthGrid"
-          :key="cell.key"
-          class="relative border-r border-b p-2"
-          :class="[
-            cell.inMonth ? '' : 'bg-muted/30 text-muted-foreground/60',
-            cell.isToday ? 'bg-primary/5' : '',
-          ]"
-          :style="{ minHeight: `${CELL_ROW_HEIGHT_PX}px` }"
-        >
-          <span class="relative z-10 text-sm font-medium">
-            {{ cell.date.getDate() }}
-          </span>
-          <!-- Reservation bars that START in this cell are absolutely
-               positioned inside the cell, so they automatically align
-               with the row of their starting date and stay within the
-               cell's column bounds. Each bar extends rightward by its
-               own pixel width into adjacent cells. -->
+      <div class="min-w-[900px]">
+        <!-- Date axis -->
+        <div class="sticky top-0 z-20 flex border-b bg-card">
           <div
-            v-for="bar in barsByCell[cell.key] ?? []"
-            :key="bar.id"
-            class="pointer-events-auto absolute z-10"
-            :style="{
-              top: `${BAR_TOP_OFFSET_PX}px`,
-              left: `${bar.startOffsetPct}%`,
-              width: `${bar.remainingWidthPct}%`,
-              height: `${BAR_HEIGHT_PX}px`,
-            }"
+            class="sticky left-0 z-30 shrink-0 border-r bg-card px-3 py-2 text-xs font-medium text-muted-foreground"
+            :style="{ width: `${LABEL_WIDTH_PX}px` }"
           >
-            <button
-              type="button"
-              class="flex h-full w-full items-center gap-1.5 overflow-hidden rounded px-2 text-[11px] font-medium"
-              :class="bar.type === 'guest'
-                ? (bar.status === 'cancelled' ? 'bg-emerald-900/40 text-white line-through' : 'bg-emerald-800 text-white')
-                : bar.ownerStayStatus === 'pending_approval'
-                  ? 'bg-amber-200 text-amber-950'
-                  : bar.ownerStayStatus === 'rejected'
-                    ? 'bg-zinc-300 text-zinc-600 line-through'
-                    : 'bg-amber-400 text-amber-950'"
-              :style="{
-                clipPath: bar.wrapsBackward && bar.wrapsForward
-                  ? 'polygon(6px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 6px 100%, 0 calc(100% - 10px), 0 10px)'
-                  : bar.wrapsBackward
-                    ? 'polygon(6px 0, 100% 0, 100% 100%, 6px 100%, 0 calc(100% - 10px), 0 10px)'
-                    : 'polygon(0 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 0 100%, 0 10px)',
-              }"
-              :aria-label="bar.type === 'guest' ? `Guest stay for ${bar.guestName}` : 'Owner block'"
-              @click="openBar(bar)"
+            Room
+          </div>
+          <div class="flex flex-1">
+            <div
+              v-for="day in monthDays"
+              :key="day.key"
+              class="flex flex-1 flex-col items-center justify-center border-r py-1 last:border-r-0"
+              :class="[
+                day.isWeekend ? 'bg-muted/40' : '',
+                day.isToday ? 'bg-primary/10' : '',
+              ]"
             >
-              <Icon
-                v-if="bar.type === 'owner_block'"
-                name="lucide:circle-x"
-                class="size-3 shrink-0"
-                aria-hidden="true"
-              />
-              <span
-                v-if="bar.type === 'guest' && bar.channel"
-                class="flex size-4 shrink-0 items-center justify-center rounded-full bg-white/90 text-[9px] font-bold text-emerald-900"
-              >
-                {{ bar.channel.charAt(0).toUpperCase() }}
+              <span class="text-[10px] uppercase text-muted-foreground">{{ day.weekday }}</span>
+              <span class="text-xs font-medium tabular-nums" :class="day.isToday ? 'text-primary' : ''">
+                {{ day.day }}
               </span>
-              <span class="truncate">
-                {{ bar.type === 'guest' ? bar.guestName : (bar.note || 'Owner stay') }}
-                <span v-if="bar.ownerStayStatus === 'pending_approval'" class="ml-1 font-bold">
-                  · Pending approval
-                </span>
-                <span v-else-if="bar.ownerStayStatus === 'rejected'" class="ml-1">
-                  · Rejected
-                </span>
-              </span>
-            </button>
+            </div>
           </div>
         </div>
+
+        <!-- One row per room, grouped by room type -->
+        <div v-if="!roomRows.length" class="p-8 text-center text-sm text-muted-foreground">
+          Select a property to see its calendar.
+        </div>
+
+        <template v-for="row in roomRows" :key="row.id">
+          <!-- Room-type header -->
+          <div v-if="row.kind === 'group'" class="flex border-t bg-muted/50">
+            <div
+              class="sticky left-0 z-10 shrink-0 bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              :style="{ width: `${LABEL_WIDTH_PX}px` }"
+            >
+              {{ row.label }}
+            </div>
+            <div class="flex-1" />
+          </div>
+
+          <!-- Owner row / room row -->
+          <div v-else class="flex border-t">
+            <div
+              class="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r bg-card px-3"
+              :style="{ width: `${LABEL_WIDTH_PX}px`, minHeight: `${Math.max(ROW_HEIGHT_PX, 12 + laneCount(row) * LANE_PITCH_PX)}px` }"
+            >
+              <Icon
+                name="lucide:bed-double"
+                class="size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <span class="truncate text-sm">
+                {{ row.label }}
+              </span>
+            </div>
+
+            <!-- Date lane -->
+            <div
+              class="relative flex-1"
+              :style="{ minHeight: `${Math.max(ROW_HEIGHT_PX, 12 + laneCount(row) * LANE_PITCH_PX)}px` }"
+              role="row"
+              :aria-label="row.label"
+            >
+              <!-- Day gridlines -->
+              <div class="absolute inset-0 flex">
+                <div
+                  v-for="day in monthDays"
+                  :key="day.key"
+                  class="flex-1 border-r last:border-r-0"
+                  :class="[
+                    day.isWeekend ? 'bg-muted/30' : '',
+                    day.isToday ? 'bg-primary/5' : '',
+                  ]"
+                />
+              </div>
+
+              <!-- Stays -->
+              <div
+                v-for="stay in staysForRow(row)"
+                :key="stay.id"
+                class="absolute z-10 px-px"
+                :style="{ ...barStyle(stay), top: `${6 + stay.lane * LANE_PITCH_PX}px` }"
+              >
+                <button
+                  type="button"
+                  class="flex h-7 w-full items-center gap-1.5 overflow-hidden rounded px-2 text-[11px] font-medium"
+                  :class="stay.reservation.type === 'guest'
+                    ? (stay.reservation.status === 'cancelled' ? 'bg-emerald-900/40 text-white line-through' : 'bg-emerald-800 text-white')
+                    : stay.reservation.ownerStayStatus === 'pending_approval'
+                      ? 'bg-amber-200 text-amber-950'
+                      : stay.reservation.ownerStayStatus === 'rejected'
+                        ? 'bg-zinc-300 text-zinc-600 line-through'
+                        : 'bg-amber-400 text-amber-950'"
+                  :aria-label="stay.reservation.type === 'guest'
+                    ? `Guest stay for ${stay.reservation.guestName}`
+                    : 'Owner block'"
+                  @click="openStay(stay)"
+                >
+                  <span
+                    v-if="stay.reservation.type === 'guest' && stay.reservation.channel"
+                    class="flex size-4 shrink-0 items-center justify-center rounded-full bg-white/90 text-[9px] font-bold text-emerald-900"
+                  >
+                    {{ stay.reservation.channel.charAt(0).toUpperCase() }}
+                  </span>
+                  <Icon
+                    v-else-if="stay.reservation.type === 'owner_block'"
+                    name="lucide:user-round"
+                    class="size-3 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span class="truncate">
+                    {{ stay.reservation.type === 'guest' ? stay.reservation.guestName : (stay.reservation.note || 'Owner stay') }}
+                    <span v-if="stay.reservation.ownerStayStatus === 'pending_approval'" class="ml-1 font-bold">
+                      · Pending
+                    </span>
+                    <span v-else-if="stay.reservation.ownerStayStatus === 'rejected'" class="ml-1">
+                      · Rejected
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
 
