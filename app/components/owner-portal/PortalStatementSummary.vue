@@ -43,7 +43,7 @@ const adr = computed(() => occupancy.value)
             Gross revenue
           </p>
           <p class="text-xl font-semibold tabular-nums">
-            {{ currency }} {{ grossRevenue.toLocaleString() }}
+            {{ currency }} {{ grossRevenue.toLocaleString('id-ID') }}
           </p>
           <PortalStatementPeriodDelta
             v-if="comparison"
@@ -56,7 +56,7 @@ const adr = computed(() => occupancy.value)
             Net revenue
           </p>
           <p class="text-xl font-semibold tabular-nums">
-            {{ currency }} {{ netRevenue.toLocaleString() }}
+            {{ currency }} {{ netRevenue.toLocaleString('id-ID') }}
           </p>
           <PortalStatementPeriodDelta
             v-if="comparison"
@@ -82,7 +82,7 @@ const adr = computed(() => occupancy.value)
             ADR
           </p>
           <p class="text-xl font-semibold tabular-nums">
-            {{ currency }} {{ Math.round(adr).toLocaleString() }}
+            {{ currency }} {{ Math.round(adr).toLocaleString('id-ID') }}
           </p>
           <PortalStatementPeriodDelta
             v-if="comparison"

@@ -36,7 +36,7 @@ const totalImpact = computed(() => props.adjustments.reduce((s, a) => s + a.amou
             class="text-sm font-semibold tabular-nums"
             :class="adj.amount < 0 ? 'text-destructive' : 'text-emerald-600'"
           >
-            {{ currency }} {{ adj.amount.toLocaleString() }}
+            {{ currency }} {{ adj.amount.toLocaleString('id-ID') }}
           </span>
         </div>
         <p class="mt-1 text-xs text-muted-foreground">
@@ -54,7 +54,7 @@ const totalImpact = computed(() => props.adjustments.reduce((s, a) => s + a.amou
           class="text-sm font-semibold tabular-nums"
           :class="totalImpact < 0 ? 'text-destructive' : 'text-emerald-600'"
         >
-          {{ currency }} {{ totalImpact.toLocaleString() }}
+          {{ currency }} {{ totalImpact.toLocaleString('id-ID') }}
         </span>
       </div>
     </CardContent>

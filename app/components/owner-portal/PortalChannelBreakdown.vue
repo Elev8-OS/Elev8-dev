@@ -60,7 +60,7 @@ const totalShare = computed(() => props.breakdown.reduce((s, b) => s + b.share, 
           </div>
           <div class="flex items-center gap-4 text-muted-foreground tabular-nums">
             <span>{{ row.reservations }} reservations</span>
-            <span class="font-medium text-foreground">{{ currency }} {{ row.revenue.toLocaleString() }}</span>
+            <span class="font-medium text-foreground">{{ currency }} {{ row.revenue.toLocaleString('id-ID') }}</span>
             <span class="w-12 text-right">{{ (row.share * 100).toFixed(0) }}%</span>
           </div>
         </div>

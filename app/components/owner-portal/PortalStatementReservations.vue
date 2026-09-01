@@ -78,13 +78,13 @@ const open = ref(false)
                   {{ res.nights }}
                 </td>
                 <td class="px-4 py-3 text-right font-medium tabular-nums">
-                  {{ currency }} {{ res.grossAmount.toLocaleString() }}
+                  {{ currency }} {{ res.grossAmount.toLocaleString('id-ID') }}
                 </td>
                 <td class="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                  {{ currency }} {{ res.channelFee.toLocaleString() }}
+                  {{ currency }} {{ res.channelFee.toLocaleString('id-ID') }}
                 </td>
                 <td class="px-4 py-3 text-right font-semibold tabular-nums">
-                  {{ currency }} {{ res.netToOwner.toLocaleString() }}
+                  {{ currency }} {{ res.netToOwner.toLocaleString('id-ID') }}
                 </td>
               </tr>
             </tbody>

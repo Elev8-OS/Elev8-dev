@@ -67,10 +67,11 @@ describe('portalDashboard', () => {
     document.body.innerHTML = ''
   })
 
-  it('renders the welcome header', async () => {
+  it('renders the page heading and what the page covers', async () => {
     mount(PortalDashboard, { attachTo: document.body, global: globalOptions })
     await flush()
     const body = document.body.textContent ?? ''
-    expect(body).toMatch(/welcome|owner|dashboard|portal/i)
+    expect(body).toContain('Overview')
+    expect(body).toMatch(/last 12 months/i)
   })
 })
