@@ -53,6 +53,30 @@ export function useOwnerMaintenance() {
     () => structuredClone(mockMaintenanceRecords),
   )
 
+  /** The Tasks-module task mirroring a record, if it still exists. */
+  function taskForRecord(record: Pick<MaintenanceRecord, 'taskId'>) {
+    if (!record.taskId)
+      return undefined
+    const { tasks } = useTaskStore()
+    return tasks.value.find(t => t.id === record.taskId)
+  }
+
+  /** The maintenance record behind a mirrored task, if any. */
+  function recordForTask(taskId: string): MaintenanceRecord | undefined {
+    return records.value.find(r => r.taskId === taskId)
+  }
+
+  /** Move the mirrored task to `status`, when the record has one. */
+  function setMirroredTaskStatus(
+    record: Pick<MaintenanceRecord, 'taskId'>,
+    status: string,
+  ): void {
+    if (!record.taskId)
+      return
+    const { tasks } = useTaskStore()
+    tasks.value = tasks.value.map(t => t.id === record.taskId ? { ...t, status } : t)
+  }
+
   function recordIdTaken(id: string): boolean {
     return records.value.some(r => r.id === id)
   }
@@ -84,12 +108,11 @@ export function useOwnerMaintenance() {
       createdAt: timestamp,
       updatedAt: timestamp,
     }
-    records.value = [...records.value, record]
-
     // PRD 5.4.3 — mirror the maintenance item into the Tasks module so staff
-    // manage it through the existing lifecycle, tagged with the owner id.
+    // manage it through the existing lifecycle, tagged with the owner id. The
+    // returned id is stored on the record so the two stay linkable.
     const { addTask } = useTaskStore()
-    addTask({
+    const task = addTask({
       title: record.title,
       status: requiresApproval ? 'todo' : 'in progress',
       priority: 'high',
@@ -99,6 +122,8 @@ export function useOwnerMaintenance() {
       ownerVisible: true,
       source: 'manual',
     })
+    record.taskId = task.id
+    records.value = [...records.value, record]
 
     if (requiresApproval) {
       emitMaintenanceAlert('MAINTENANCE_APPROVAL_REQUESTED', 'WARNING', {
@@ -143,6 +168,9 @@ export function useOwnerMaintenance() {
       updatedAt: timestamp,
     }
     records.value = records.value.map(r => r.id === recordId ? updated : r)
+    // Keep the mirrored task in step: an approved cost releases the vendor,
+    // a rejected one cancels the work.
+    setMirroredTaskStatus(updated, approve ? 'in progress' : 'canceled')
     return { ok: true, record: updated }
   }
 
@@ -267,5 +295,8 @@ export function useOwnerMaintenance() {
     completeRecord,
     syncToStatement,
     recordsForOwner,
+    taskForRecord,
+    recordForTask,
+    setMirroredTaskStatus,
   }
 }

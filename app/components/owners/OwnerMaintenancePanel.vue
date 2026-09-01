@@ -1,27 +1,94 @@
 <script setup lang="ts">
 // Maintenance panel — tenant view of maintenance records (Flow 10B).
-// Lists all records with owner-approval status; staff can emergency-override
-// past a missing owner response, complete a record with actual cost + invoice,
-// and sync it to a statement period.
+// Lists all records with owner-approval status; staff report a repair, and can
+// emergency-override past a missing owner response, complete a record with
+// actual cost + invoice, and sync it to a statement period.
+//
+// Reporting a repair also mirrors it into the Tasks module (PRD 5.4.3), linked
+// by MaintenanceRecord.taskId.
 
 import type { MaintenanceRecord } from '~/components/owners/data/owner-maintenance'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
-import { ownerMaintenanceApprovalLabels, ownerMaintenanceStatusLabels } from '~/components/owners/data/owner-maintenance'
+import { ownerMaintenanceApprovalLabels, ownerMaintenanceConfig, ownerMaintenanceStatusLabels } from '~/components/owners/data/owner-maintenance'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table'
 import { Textarea } from '~/components/ui/textarea'
 import { useOwnerMaintenance } from '~/composables/useOwnerMaintenance'
 import { useOwners } from '~/composables/useOwners'
 
-const { records, openApprovals, emergencyOverride, completeRecord, syncToStatement } = useOwnerMaintenance()
-const { byId } = useOwners()
+const { records, openApprovals, createRecord, emergencyOverride, completeRecord, syncToStatement, taskForRecord } = useOwnerMaintenance()
+const { byId, owners, mappings } = useOwners()
 
 const listingById = computed(() => new Map(listings.value.map(l => [l.id, l])))
+
+// --- Report a repair -------------------------------------------------------
+
+const reportOpen = ref(false)
+const reportOwnerId = ref('')
+const reportListingId = ref('')
+const reportTitle = ref('')
+const reportDescription = ref('')
+const reportCost = ref<number>(0)
+
+/** Only listings the chosen owner actually owns can carry their repair. */
+const reportListingOptions = computed(() => {
+  if (!reportOwnerId.value)
+    return []
+  const owned = new Set(
+    mappings.value.filter(m => m.ownerId === reportOwnerId.value).map(m => m.listingId),
+  )
+  return listings.value.filter(l => owned.has(l.id))
+})
+
+watch(reportOwnerId, () => { reportListingId.value = '' })
+
+const reportBlockedReason = computed<string | null>(() => {
+  if (!reportOwnerId.value)
+    return 'Pick the owner this repair belongs to.'
+  if (!reportListingId.value)
+    return 'Pick one of that owner\'s properties.'
+  if (!reportTitle.value.trim())
+    return 'Add a short title.'
+  if (reportCost.value < 0)
+    return 'Estimated cost cannot be negative.'
+  return null
+})
+
+const reportNeedsApproval = computed(() => reportCost.value >= ownerMaintenanceConfig.approvalThreshold)
+
+function resetReport() {
+  reportOwnerId.value = ''
+  reportListingId.value = ''
+  reportTitle.value = ''
+  reportDescription.value = ''
+  reportCost.value = 0
+}
+
+function submitReport() {
+  const result = createRecord({
+    ownerId: reportOwnerId.value,
+    listingId: reportListingId.value,
+    title: reportTitle.value,
+    description: reportDescription.value,
+    estimatedCost: reportCost.value,
+    reportedBy: 'staff-1',
+  })
+  if (!result.ok) {
+    toast.error(result.error)
+    return
+  }
+  toast.success(result.requiresApproval
+    ? 'Repair reported — waiting on the owner to approve the cost.'
+    : 'Repair reported — below the approval threshold, sent straight to the vendor.')
+  reportOpen.value = false
+  resetReport()
+}
 
 const overrideTarget = ref<MaintenanceRecord | null>(null)
 const overrideNote = ref('')
@@ -96,14 +163,21 @@ function doSyncToStatement(record: MaintenanceRecord) {
 
 <template>
   <div class="space-y-3">
-    <div v-if="openApprovals.length" class="flex items-center gap-2">
-      <Badge variant="destructive">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <Badge v-if="openApprovals.length" variant="destructive">
         {{ openApprovals.length }} awaiting owner cost approval
       </Badge>
+      <span v-else class="text-sm text-muted-foreground">
+        No repairs are waiting on an owner.
+      </span>
+      <Button size="sm" @click="reportOpen = true">
+        <Icon name="lucide:wrench" class="mr-1.5 size-3.5" />
+        Report a repair
+      </Button>
     </div>
 
     <div v-if="!enriched.length" class="rounded-md border p-8 text-center text-sm text-muted-foreground">
-      No maintenance records yet. Records are created from Tasks / Damage & Issue reports.
+      No maintenance records yet. Report a repair to create one.
     </div>
 
     <div v-else class="overflow-auto rounded-md border">
@@ -229,6 +303,78 @@ function doSyncToStatement(record: MaintenanceRecord) {
           <Button @click="doComplete">
             Complete
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Report a repair — creates the record and its mirrored task. -->
+    <Dialog v-model:open="reportOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Report a repair</DialogTitle>
+          <DialogDescription>
+            Creates a maintenance record and a linked task for the team. Costs at or above
+            {{ ownerMaintenanceConfig.currency }} {{ ownerMaintenanceConfig.approvalThreshold.toLocaleString() }}
+            wait for the owner to approve before the vendor starts.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <Label>Owner <span class="text-destructive">*</span></Label>
+            <Select v-model="reportOwnerId">
+              <SelectTrigger>
+                <SelectValue placeholder="Pick an owner" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="owner in owners" :key="owner.id" :value="owner.id">
+                  {{ owner.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1.5">
+            <Label>Property <span class="text-destructive">*</span></Label>
+            <Select v-model="reportListingId" :disabled="!reportOwnerId">
+              <SelectTrigger>
+                <SelectValue :placeholder="reportOwnerId ? 'Pick a property' : 'Pick an owner first'" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="listing in reportListingOptions" :key="listing.id" :value="listing.id">
+                  {{ listing.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="report-title">Title <span class="text-destructive">*</span></Label>
+            <Input id="report-title" v-model="reportTitle" placeholder="e.g. AC unit not cooling — main bedroom" />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="report-desc">Description</Label>
+            <Textarea id="report-desc" v-model="reportDescription" placeholder="What is wrong, and what the vendor will do" />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="report-cost">Estimated cost ({{ ownerMaintenanceConfig.currency }})</Label>
+            <Input id="report-cost" v-model.number="reportCost" type="number" min="0" step="50000" />
+            <p class="text-xs" :class="reportNeedsApproval ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'">
+              {{ reportNeedsApproval
+                ? 'At or above the threshold — the owner must approve before work starts.'
+                : 'Below the threshold — goes straight to the vendor.' }}
+            </p>
+          </div>
+        </div>
+        <DialogFooter class="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <p v-if="reportBlockedReason" class="mr-auto text-xs text-muted-foreground">
+            {{ reportBlockedReason }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" @click="reportOpen = false">
+              Cancel
+            </Button>
+            <Button :disabled="!!reportBlockedReason" @click="submitReport">
+              Report repair
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

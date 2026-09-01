@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Task } from '~/components/tasks/data/schema'
 import { mockMaintenanceRecords } from '~/components/owners/data/owner-maintenance'
+import { mockTasks } from '~/components/tasks/data/tasks-mock'
 import { useOwnerMaintenance } from '~/composables/useOwnerMaintenance'
+import { useTaskStore } from '~/composables/useTaskStore'
 
 interface AlertCall {
   type: string
@@ -27,7 +30,17 @@ vi.mock('~/composables/useNotifications', () => ({
 function resetState() {
   const records = useState('elev8-owner-maintenance')
   records.value = structuredClone(mockMaintenanceRecords)
+  const tasks = useState<Task[]>('tasks')
+  tasks.value = mockTasks.map(t => ({ ...t }))
   notificationsMock.callLog.length = 0
+}
+
+/** The mirrored task for a record id, straight from the task store. */
+function mirroredTask(recordId: string): Task | undefined {
+  const { records } = useOwnerMaintenance()
+  const taskId = records.value.find(r => r.id === recordId)?.taskId
+  const { tasks } = useTaskStore()
+  return taskId ? tasks.value.find(t => t.id === taskId) : undefined
 }
 
 describe('useOwnerMaintenance', () => {
@@ -170,5 +183,78 @@ describe('useOwnerMaintenance', () => {
     expect(putu.every(r => r.ownerId === 'own-2')).toBe(true)
     // Co-owner isolation: no record leaks across owners.
     expect(wayan.some(r => r.ownerId === 'own-2')).toBe(false)
+  })
+  // --- Tasks-module mirror (PRD 5.4.3) ------------------------------------
+
+  it('links every seeded record to a mirrored task', () => {
+    const { records, taskForRecord } = useOwnerMaintenance()
+    for (const record of records.value) {
+      expect(record.taskId, `${record.id} has no taskId`).toBeTruthy()
+      const task = taskForRecord(record)
+      expect(task, `${record.id} -> ${record.taskId} not found`).toBeDefined()
+      expect(task!.ownerId).toBe(record.ownerId)
+      expect(task!.ownerVisible).toBe(true)
+    }
+  })
+
+  it('resolves a record back from its mirrored task', () => {
+    const { recordForTask } = useOwnerMaintenance()
+    expect(recordForTask('TASK-OWN-002')?.id).toBe('mnt-2')
+    expect(recordForTask('TASK-INV-001')).toBeUndefined()
+  })
+
+  it('mirrors a newly reported repair into Tasks and stores the link', () => {
+    const { createRecord, taskForRecord } = useOwnerMaintenance()
+    const result = createRecord({
+      ownerId: 'own-1',
+      listingId: 'lst-1',
+      title: 'Broken gate latch',
+      description: 'Front gate will not latch shut.',
+      estimatedCost: 200_000,
+      reportedBy: 'staff-1',
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(result.requiresApproval).toBe(false)
+    expect(result.record.taskId).toBeTruthy()
+    const task = taskForRecord(result.record)
+    expect(task).toBeDefined()
+    // Below threshold -> straight to the vendor.
+    expect(task!.status).toBe('in progress')
+    expect(task!.ownerId).toBe('own-1')
+    expect(task!.ownerVisible).toBe(true)
+  })
+
+  it('parks the mirrored task on todo when the cost needs owner approval', () => {
+    const { createRecord, taskForRecord } = useOwnerMaintenance()
+    const result = createRecord({
+      ownerId: 'own-1',
+      listingId: 'lst-1',
+      title: 'Roof tile replacement',
+      description: 'Several cracked tiles above the terrace.',
+      estimatedCost: 900_000,
+      reportedBy: 'staff-1',
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(result.requiresApproval).toBe(true)
+    expect(taskForRecord(result.record)!.status).toBe('todo')
+  })
+
+  it('releases the mirrored task when the owner approves the cost', () => {
+    const { ownerRespond } = useOwnerMaintenance()
+    expect(mirroredTask('mnt-2')!.status).toBe('todo')
+    const result = ownerRespond('mnt-2', true, 'Go ahead.')
+    expect(result.ok).toBe(true)
+    expect(mirroredTask('mnt-2')!.status).toBe('in progress')
+  })
+
+  it('cancels the mirrored task when the owner rejects the cost', () => {
+    const { ownerRespond } = useOwnerMaintenance()
+    const result = ownerRespond('mnt-2', false, 'Too expensive — get another quote.')
+    expect(result.ok).toBe(true)
+    expect(mirroredTask('mnt-2')!.status).toBe('canceled')
   })
 })
