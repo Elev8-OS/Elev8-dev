@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { DateFormatter, getLocalTimeZone } from '@internationalized/date'
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { useBexio } from '@/composables/useBexio'
+import { useDatev } from '@/composables/useDatev'
 import { useJurnal } from '@/composables/useJurnal'
 import { useLexware } from '@/composables/useLexware'
 import { useListingMappings } from '@/composables/useListingMappings'
@@ -26,7 +27,22 @@ const {
   isPushingLexware,
   pushEligibleReservations,
 } = useLexware()
+const {
+  isConfigured: datevConfigured,
+  isEligible: isDatevEligible,
+  isGenerating: isGeneratingDatev,
+  preview: datevPreview,
+  previewRows: datevPreviewRows,
+  settings: datevSettings,
+  generateFromSelection,
+  discardPreview: discardDatevPreview,
+  downloadExport: downloadDatevExport,
+  emailExport: emailDatevExport,
+  hydrate: hydrateDatev,
+} = useDatev()
 const { getMappingFor, mappedByIntegration } = useListingMappings()
+
+onMounted(hydrateDatev)
 const { showConvertedColumn, getAccountingAmount } = useActiveIntegration()
 
 const anyConnected = computed(() => jurnalConnected.value || bexioConnected.value)
@@ -176,6 +192,45 @@ const selectedEurUnsynced = computed(() =>
   selectedWithInvoice.value.filter(r => r.currency === 'EUR' && !r.syncedToLexware),
 )
 
+// Rows in the selection that can legally become DATEV postings. Manual picking
+// must not be able to smuggle a CHF booking into a German posting batch, so the
+// same EUR gate the period export uses applies here.
+const selectedDatevEligible = computed(() => selectedWithInvoice.value.filter(isDatevEligible))
+
+const datevDialogOpen = ref(false)
+const datevExcluded = ref<{ reason: string, count: number }[]>([])
+
+async function handleExportDatev() {
+  const { record, excluded } = await generateFromSelection(selectedWithInvoice.value)
+  datevExcluded.value = excluded
+  if (!record) {
+    toast.error('Nothing in the selection can be exported to DATEV.')
+    return
+  }
+  datevDialogOpen.value = true
+}
+
+function handleDatevDownload() {
+  if (!datevPreview.value)
+    return
+  downloadDatevExport(datevPreview.value)
+  toast.success(`${datevPreview.value.filename} downloaded.`)
+  closeDatevDialog()
+}
+
+function handleDatevEmail() {
+  if (!datevPreview.value)
+    return
+  emailDatevExport(datevPreview.value)
+  toast.success('File saved. Attach it to the e-mail draft.')
+  closeDatevDialog()
+}
+
+function closeDatevDialog() {
+  datevDialogOpen.value = false
+  discardDatevPreview()
+}
+
 const pushDestLabel = computed(() => {
   const integs = new Set<string>()
   selectedUnsynced.value.forEach((r) => {
@@ -277,6 +332,7 @@ const statusClass: Record<string, string> = {
   'Verified': 'text-green-700 bg-green-50',
   'Checked-in': 'text-blue-700 bg-blue-50',
   'Checked-out': 'text-muted-foreground bg-muted/60',
+  'Cancelled': 'text-red-700 bg-red-50',
 }
 </script>
 
@@ -446,6 +502,9 @@ const statusClass: Record<string, string> = {
             <SelectItem value="Checked-in">
               Checked-in
             </SelectItem>
+            <SelectItem value="Cancelled">
+              Cancelled
+            </SelectItem>
             <SelectItem value="Checked-out">
               Checked-out
             </SelectItem>
@@ -604,7 +663,63 @@ const statusClass: Record<string, string> = {
         <Icon v-else name="i-lucide-upload" class="mr-1.5 h-3.5 w-3.5" />
         {{ isPushingLexware ? 'Pushing…' : `Push ${selectedEurUnsynced.length} to Lexware` }}
       </Button>
+      <Button
+        v-if="datevConfigured && selectedDatevEligible.length > 0"
+        variant="outline"
+        size="sm"
+        class="h-7"
+        :disabled="isGeneratingDatev"
+        @click="handleExportDatev"
+      >
+        <Icon
+          v-if="isGeneratingDatev"
+          name="i-lucide-loader-2"
+          class="mr-1.5 h-3.5 w-3.5 animate-spin"
+        />
+        <Icon v-else name="i-lucide-file-spreadsheet" class="mr-1.5 h-3.5 w-3.5" />
+        {{ isGeneratingDatev ? 'Building…' : `Export ${selectedDatevEligible.length} to DATEV` }}
+      </Button>
     </div>
+
+    <!-- Review the hand-picked batch before it reaches the advisor -->
+    <Dialog :open="datevDialogOpen" @update:open="(v) => v ? null : closeDatevDialog()">
+      <!--
+        `sm:max-w-5xl`, not `max-w-5xl`: DialogContent's default is the responsive
+        `sm:max-w-lg`, so an unprefixed override loses to it above 640px and the
+        preview spills out of a 512px dialog.
+      -->
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>DATEV export — selected reservations</DialogTitle>
+          <DialogDescription>
+            Built from your selection, not a calendar period. Review it before handing it over.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div
+          v-if="datevExcluded.length > 0"
+          class="flex flex-col gap-1 rounded-md border border-amber-200 bg-amber-50/60 p-3"
+        >
+          <p class="text-xs font-medium text-amber-900">
+            Some selected rows are not in the file
+          </p>
+          <p v-for="row in datevExcluded" :key="row.reason" class="text-xs text-amber-800">
+            · {{ row.count }} — {{ row.reason }}
+          </p>
+        </div>
+
+        <div v-if="datevPreview" class="min-w-0">
+          <FinanceDatevPreview
+            :record="datevPreview"
+            :rows="datevPreviewRows"
+            :advisor-email="datevSettings.advisorEmail"
+            @back="closeDatevDialog"
+            @download="handleDatevDownload"
+            @email="handleDatevEmail"
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
 
     <!-- Table -->
     <div class="rounded-md border">

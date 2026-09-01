@@ -1,5 +1,5 @@
 import { beforeEach, vi } from 'vitest'
-import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, reactive, ref, resolveComponent, shallowRef, watch } from 'vue'
 import { useAssistant } from './utils/useAssistant-global'
 
 globalThis.toast = {
@@ -15,6 +15,8 @@ globalThis.shallowRef = shallowRef
 globalThis.reactive = reactive
 globalThis.watch = watch
 globalThis.onMounted = onMounted
+// Components registered via mount({ global: { components } }) resolve through this.
+globalThis.resolveComponent = resolveComponent
 
 // Expose auto-imported composables so tests can call them without an import.
 globalThis.useAssistant = useAssistant

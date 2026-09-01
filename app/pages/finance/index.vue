@@ -1,19 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, watch } from 'vue'
 import { revenueStats } from '@/components/finance/data/revenue'
 import { useCosts } from '@/composables/useCosts'
 import { useReservations } from '@/composables/useReservations'
 import { useUpsells } from '@/composables/useUpsells'
 
+const TABS = ['overview', 'revenue', 'costs', 'exports', 'integrations']
+
 const activeTab = useState<string>('finance-active-tab', () => 'overview')
 
-// Deep-link support: /finance?tab=integrations (alert routes, banners) lands on that tab.
-onMounted(() => {
-  const route = useRoute()
-  const tab = route.query.tab
-  if (typeof tab === 'string' && ['overview', 'revenue', 'costs', 'integrations'].includes(tab))
-    activeTab.value = tab
-})
+// Deep-link support: /finance?tab=integrations (alert routes, banners, and the
+// Exports tab's own "Configure" link) lands on that tab.
+//
+// This MUST be a watcher, not onMounted: navigating between tabs on this page
+// only changes the query, so the page component is never remounted and an
+// onMounted hook would fire exactly once — leaving in-app links dead.
+const route = useRoute()
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (typeof tab === 'string' && TABS.includes(tab))
+      activeTab.value = tab
+  },
+  { immediate: true },
+)
 
 const { costs, unsyncedCount: unsyncedCosts } = useCosts()
 const { unsyncedCount: unsyncedReservations } = useReservations()
@@ -132,6 +142,9 @@ function formatCHF(amount: number) {
         <TabsTrigger value="costs">
           Costs
         </TabsTrigger>
+        <TabsTrigger value="exports">
+          Exports
+        </TabsTrigger>
         <TabsTrigger value="integrations">
           Integrations
         </TabsTrigger>
@@ -147,6 +160,10 @@ function formatCHF(amount: number) {
 
       <TabsContent value="costs" class="mt-4">
         <FinanceCostsTab />
+      </TabsContent>
+
+      <TabsContent value="exports" class="mt-4">
+        <FinanceDatevExportTab />
       </TabsContent>
 
       <TabsContent value="integrations" class="mt-4">

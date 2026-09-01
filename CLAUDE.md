@@ -14,7 +14,7 @@
 ### Main Modules
 - **Inbox** — Guest messaging system (4-panel layout) with Phone call tab
 - **Notification Center** — Bell icon in header with dropdown for CRITICAL/WARNING alerts
-- **Finance** — Revenue (Reservations + Upsell), Costs, Integrations (Jurnal/Bexio)
+- **Finance** — Revenue (Reservations + Upsell), Costs, Exports (DATEV Buchungsstapel), Integrations (Jurnal/Bexio/Lexware/DATEV)
 - **Listings** — Property management with 6-tab detail page (Overview, Pricing, Calendar, Reviews, Maintenance, Settings) + compact hero with AI schedule Sheet (HostBuddy concept)
 - **Upsells** — Full request system: Catalog CRUD, Order tracking with lifecycle (pending→confirmed→completed/cancelled), Cancellation flow with refund policies, Staff/Guest notifications, Inbox integration (UpsellOrderCreator, UpsellOfferCard in chat, linked orders in ReservationPanel)
 - **AI Assistant** — Global Ask AI slide-over panel accessible from the top-right header on any page. Streams answers about reservations, cleaning, listings, occupancy, and revenue. **All ai-elements primitives** in use: `Message`/`Conversation`/`PromptInput`/`MessageResponse`/`MessageActions`/`Loader`/`Reasoning`/`Context`/`Confirmation`/`Suggestions`/`Attachments`/`Shimmer`/`ChainOfThought`. Mock-only v1 (pattern matcher + mock data + mock reasoning text), real-AI-ready via Vercel AI SDK streaming protocol. Follow-up suggestion chips appear above the textarea after each response.
@@ -479,6 +479,65 @@ Two integrations supported: **Mekari Jurnal** (IDR, Indonesia) and **Bexio** (CH
 **Acctg. Amount column**: shown in Reservations, Upsell, and Costs tables when `showConvertedColumn` is true. Displays `—` for unsynced rows.
 
 **Synced badge**: table rows in Reservations, Upsell, and Costs tabs all show cloud-check icon + Jurnal (blue) or Bexio (violet) badge when synced. Not-synced rows show cloud-off icon.
+
+#### DATEV Export (`Finance → Exports` tab)
+
+German tax advisors work in DATEV. Tenants generate an **EXTF "Buchungsstapel"** (posting batch,
+format 700 / record version 13), review it, then download it or open a prefilled e-mail draft.
+
+> ⚠️ **DATEV is not a connection.** There is no API, no auth, and no per-row sync state — it is a
+> file handoff. It must never feed the "Unsynced Entries" KPI or reuse Connect/Connected wording.
+> Its tile status is `configured` / `available` (labelled "Not set up"), not `connected`.
+
+**Two surfaces:**
+- **Settings** → `DatevExportSettings.vue`, opened from the DATEV tile in the Integrations tab
+  (deep-link `/finance?tab=integrations&integration=datev`)
+- **Action** → `DatevExportTab.vue` on the new `Exports` tab (`/finance?tab=exports`)
+
+**Format writer** (`app/lib/datev-extf.ts`) — framework-free and the part that must not regress:
+- `;` separator, CRLF endings, CP1252 encoding (`encodeCp1252`), exactly 125 fields per record
+- Text fields are always quoted (empty → `""`); numeric/date fields are never quoted (empty → bare).
+  Quoting an empty numeric field raises one DATEV-checker message per field.
+- Amounts use a decimal comma and are always positive — the sign lives in the S/H flag
+- Belegdatum is `TTMM`; Leistungsdatum is `DDMMYYYY`; header dates are `YYYYMMDD`
+- **BU-Schlüssel is left empty and Festschreibung is 0 on purpose** — the advisor assigns VAT keys
+  on import. Do not "fix" this.
+- Cancellations post as **Generalumkehr** (field 118 = 1), not as a second revenue line
+
+**Scope** — reuses Lexware's EUR gate (`getEurListings()`, listings tagged `EUR`) so both
+German-market surfaces agree on which properties count. Bookings are dated by **check-out**
+(service completion). Excluded bookings surface as a grouped digest, mirroring `nonEligibleDigest`.
+
+**Per-tenant settings** (`app/components/finance/data/datev.ts`) — all supplied by the advisor:
+Beraternummer (≤7 digits), Mandantennummer (≤5), SKR03/SKR04, fiscal-year start, Debitorenkonto,
+default Erlöskonto, per-channel revenue accounts (Airbnb / Booking.com / Direct / Ctrip),
+include-cancelled toggle, advisor e-mail. Switching SKR re-seeds every account (`applySkrDefaults`)
+— SKR03 revenue is 8xxx, SKR04 is 4xxx.
+
+**Two entry points, one builder** — `generate()` exports the selected period; `generateFromSelection(rows)`
+exports a hand-picked set from the **Revenue → Reservations** row selection ("Export N to DATEV" in
+the selection bar, reviewed in a Dialog that reuses `DatevPreview`). Both funnel through
+`buildRecord()`, so a manual export is byte-identical to a period one over the same rows — there is
+a test asserting exactly that. A manual selection derives its period from its own check-out dates
+and still passes the EUR gate, so hand-picking cannot smuggle a CHF booking into a German batch;
+the button counts only eligible rows and the dialog lists what was dropped.
+
+**Duplicate guard** — `existingExportForPeriod` warns before re-exporting a period already handed
+over; generated files are retained in history so a period can be re-downloaded rather than rebuilt.
+
+**Delivery** — `downloadExport` writes CP1252 **bytes** (never a UTF-8 string). `mailto:` cannot
+carry an attachment, so `emailExport` downloads first, then opens the draft.
+
+**Tests** — `tests/lib/datev-extf.spec.ts` (28, format rules), `tests/composables/useDatev.spec.ts`
+(31, scope/postings/generate/selection/history), plus render tests under
+`tests/components/finance/` for the Exports tab, the settings sheet deep-link, and the Reservations
+selection button. Nuxt auto-imported children must be registered in `global.components` to render in
+Vitest, and `resolveComponent` is shimmed in `tests/setup.ts`.
+
+> ⚠️ `import.meta.client` is **not** replaced under Vitest despite the `define` in
+> `vitest.config.ts` — it evaluates to `undefined`, so any code behind it is unreachable in tests.
+> `useDatev` guards persistence on storage availability (`typeof localStorage`) instead, which is
+> both SSR-correct and testable.
 
 #### Reservations Tab (`ReservationsTab.vue`)
 - Data: `app/components/finance/data/revenue.ts` — `ReservationEntry` interface + `recentReservations[]`
@@ -1416,6 +1475,7 @@ const table = useVueTable({
 | `useWhatsAppTemplates` | `app/composables/useWhatsAppTemplates.ts` | Template messages | `waTemplates`, `renderTemplate()` |
 | `useSmartLock` | `app/composables/useSmartLock.ts` | Smart lock connection + per-listing/room lock assignment + brand-shared access codes | `connection`, `isConnected`, `locks`, `codes`, `validateAndConnect(apiKey, workspaceName)`, `disconnect()`, `pairLock`, `unpairLock`, `setMainLock`, `renameLock`, `swapDevice(lockId, newProviderDeviceId)`, `generateAccessCode` (async, 700ms mock), `revokeAccessCode`, `findActiveBrandCode(reservationId, provider)`, `getLocksForListing`, `getLocksForUnit`, `getLockCount`, `getMainLock`, `syncDevices`, `emitMockAlerts`. Persisted to localStorage. |
 | `useMinut` | `app/composables/useMinut.ts` | Minut noise/sensor monitoring — events feed Journeys | `connection`, `devices`, `events`, `isConnected`, `validateAndConnect(apiKey, workspaceName)`, `disconnect()`, `seedDevices()`, `syncDevices()`, `emitMockEvents()`, `getEventsByListing(listingId)`, `getEventsByType(type)`. Persisted to localStorage. |
+| `useDatev` | `app/composables/useDatev.ts` | DATEV Buchungsstapel export — settings, period scope, manual selection, file generation, history | `settings`, `isConfigured`, `saveSettings()`, `switchChart()`, `periodFrom`/`periodTo`, `monthShortcuts`, `setPeriod()`, `eligibleReservations`, `isEligible()`, `excludedDigest`, `scopeTotal`, `postings`, `previewRows`, `generate()`, `generateFromSelection()`, `preview`, `commitExport()`, `existingExportForPeriod`, `downloadExport()`, `emailExport()`, `buildMailto()`, `exports`, `hydrate()`. Persisted to LocalStorage. |
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
 
 ### State Management Rules
