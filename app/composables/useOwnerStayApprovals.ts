@@ -17,6 +17,7 @@ import type { AlertType } from '~/components/notifications/data/alerts'
 import type { QuotaCheckResult } from '~/components/owners/data/owner-quotas'
 import type { OwnerStayApprovalRequest } from '~/components/owners/data/owner-stay-approvals'
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
+import { listings } from '~/components/listings/data/listings'
 import { mockOwnerStayApprovals } from '~/components/owners/data/owner-stay-approvals'
 import { useNotifications } from '~/composables/useNotifications'
 import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
@@ -80,17 +81,35 @@ export function useOwnerStayApprovals() {
     'elev8-owner-stay-approvals',
     () => clone(mockOwnerStayApprovals),
   )
-  const { createStay, detectConflicts, getCapWarning } = useOwnerStays()
+  const { createStay, detectConflicts, getCapWarning, linkReservation, setMirroredReservationStatus } = useOwnerStays()
   const { provisionOwnerStayOperations } = useOwnerStayOperations()
   const { getBookingMode, checkQuota } = useOwnerQuotas()
   const { createReservation } = useReservationsModule()
 
+  function resolveListingName(listingId: string): string {
+    return listings.value.find(listing => listing.id === listingId)?.name ?? listingId
+  }
+
   /**
-   * Mirror a pending owner stay request into the Reservations module as an
-   * `owner_request` reservation (PRD 5.4.2) so staff see it in Reservations
-   * and the Cockpit queue.
+   * Mirror an owner stay into the Reservations module so staff see
+   * owner-occupied dates on the Reservations page (PRD 5.4.2).
+   *
+   *   - `request` mode  -> `owner_request`, awaiting the GM/Admin decision.
+   *   - `direct` mode   -> `unverified`, a confirmed owner reservation.
+   *
+   * The owner signal lives in the STATUS, not the channel — there is no
+   * `Owner` channel, so these rows stay on `Direct`.
+   *
+   * Returns the new reservation id so the caller can store it on the stay.
    */
-  function syncOwnerRequestReservation(stay: OwnerStay, listingName: string): string | undefined {
+  function syncOwnerStayReservation(
+    stay: OwnerStay,
+    status: 'owner_request' | 'unverified',
+  ): string | undefined {
+    const listingName = resolveListingName(stay.listingId)
+    const blockReason = status === 'owner_request'
+      ? 'Owner stay — pending approval'
+      : 'Owner stay'
     const result = createReservation({
       guestName: stay.guestName,
       guestEmail: '',
@@ -106,8 +125,8 @@ export function useOwnerStayApprovals() {
       guestCount: stay.guestCount ?? 1,
       totalPrice: 0,
       currency: 'IDR',
-      status: 'owner_request',
-      blockReason: 'Owner stay — pending approval',
+      status,
+      blockReason,
       bookingNote: `Owner request ${stay.id}`,
     })
     return result.id
@@ -179,6 +198,9 @@ export function useOwnerStayApprovals() {
       })
       if (!result.ok)
         return result
+      // Direct bookings take the dates straight away, so they are mirrored
+      // into Reservations as a confirmed reservation rather than a request.
+      linkReservation(result.stay.id, syncOwnerStayReservation(result.stay, 'unverified'))
       // Provision ops for direct bookings too (Flow 5).
       void provisionOwnerStayOperations(result.stay)
       return { ok: true, stay: result.stay, requiredApproval: false, autoApproved: true }
@@ -220,7 +242,7 @@ export function useOwnerStayApprovals() {
     requests.value = [...requests.value, request]
 
     // PRD 5.4.2 — mirror the request into Reservations with an owner_request status.
-    syncOwnerRequestReservation(stayResult.stay, input.listingId)
+    linkReservation(stayResult.stay.id, syncOwnerStayReservation(stayResult.stay, 'owner_request'))
 
     emitApprovalAlert('OWNER_STAY_REQUESTED', 'WARNING', {
       requestId: request.id,
@@ -247,10 +269,14 @@ export function useOwnerStayApprovals() {
     const { updateStayStatus } = useOwnerStayOperations()
     const result = updateStayStatus(request.stayId, 'active', { decidedBy, decidedAt: timestamp })
 
-    // Flip the mirrored reservation to a confirmed block (PRD 5.4.2).
-    const { reservations } = useReservationsModule()
-    reservations.value = reservations.value.map(r =>
-      r.bookingNote === `Owner request ${request.stayId}` ? { ...r, status: 'verified' } : r)
+    // Flip the mirrored reservation to a confirmed owner reservation
+    // (PRD 5.4.2). It lands on `unverified` — a real reservation that has
+    // simply not been verified yet.
+    setMirroredReservationStatus(
+      { id: request.stayId, reservationId: result.stay?.reservationId },
+      'unverified',
+      'Owner stay',
+    )
 
     requests.value = requests.value.map(r => r.id === requestId
       ? { ...r, status: 'approved' as const, decidedBy, decidedAt: timestamp }
@@ -271,10 +297,12 @@ export function useOwnerStayApprovals() {
     const { updateStayStatus } = useOwnerStayOperations()
     const result = updateStayStatus(request.stayId, 'rejected', { decidedBy, decidedAt: timestamp, reason })
 
-    // Mirror the rejection onto the reservation (PRD 5.4.2).
-    const { reservations } = useReservationsModule()
-    reservations.value = reservations.value.map(r =>
-      r.bookingNote === `Owner request ${request.stayId}` ? { ...r, status: 'cancelled' } : r)
+    // Mirror the rejection onto the reservation (PRD 5.4.2) so the dates are
+    // released on the Reservations page.
+    setMirroredReservationStatus(
+      { id: request.stayId, reservationId: result.stay?.reservationId },
+      'cancelled',
+    )
 
     requests.value = requests.value.map(r => r.id === requestId
       ? { ...r, status: 'rejected' as const, decidedBy, decidedAt: timestamp, decisionReason: reason }
@@ -292,6 +320,11 @@ export function useOwnerStayApprovals() {
     return { ok: true, stay: result.stay }
   }
 
+  /** The open approval request for a stay, if it is still awaiting a decision. */
+  function pendingRequestForStay(stayId: string): OwnerStayApprovalRequest | undefined {
+    return requests.value.find(request => request.stayId === stayId && request.status === 'pending')
+  }
+
   const pendingRequests = computed(() => requests.value
     .filter(r => r.status === 'pending')
     .slice()
@@ -303,5 +336,6 @@ export function useOwnerStayApprovals() {
     requestStay,
     approveRequest,
     rejectRequest,
+    pendingRequestForStay,
   }
 }

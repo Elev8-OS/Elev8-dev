@@ -36,8 +36,65 @@ export interface OwnerDocumentUploadInput {
   visibility: OwnerDocumentVisibility
   ownerIds?: string[]
   listingIds?: string[]
+  /** Taken from the picked file when one is attached; otherwise synthesized from the title. */
   fileName?: string
+  fileSize?: number
+  mimeType?: string
   content?: string
+}
+
+// --- File rules ------------------------------------------------------------
+//
+// Applied by the upload FORM. `uploadDocument` itself stays file-optional,
+// because contracts create their Document Center entry programmatically with
+// a generated body and no file (see `useOwnerContracts.ensureContractDocument`).
+
+/** Largest document a staff member can attach. */
+export const OWNER_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024
+
+/** Extensions offered in the picker, in the order shown to the user. */
+export const OWNER_DOCUMENT_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.csv',
+  '.md',
+  '.json',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+] as const
+
+/** Human-readable summary for the hint under the picker. */
+export const OWNER_DOCUMENT_ACCEPT_LABEL = 'PDF, DOC, DOCX, TXT, CSV, MD, JSON, PNG, JPG, WebP'
+
+/** `accept` attribute for the native file input. */
+export const OWNER_DOCUMENT_ACCEPT_ATTR = OWNER_DOCUMENT_EXTENSIONS.join(',')
+
+/** Bytes → "8 KB" / "1.4 MB", matching the branding asset formatter. */
+export function formatDocumentFileSize(bytes: number): string {
+  return bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * Validate a picked file against the extension allowlist and the size cap.
+ * Returns the inline error message, or `null` when the file is acceptable.
+ * Extension-based rather than MIME-based: browsers report inconsistent MIME
+ * types for .docx, .csv and .md, so the extension is the reliable signal.
+ */
+export function validateOwnerDocumentFile(file: { name: string, size: number }): string | null {
+  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+  if (!ext || !(OWNER_DOCUMENT_EXTENSIONS as readonly string[]).includes(ext))
+    return `Unsupported file type. Use ${OWNER_DOCUMENT_ACCEPT_LABEL}.`
+  if (file.size === 0)
+    return 'That file is empty.'
+  if (file.size > OWNER_DOCUMENT_MAX_BYTES)
+    return `That file is ${formatDocumentFileSize(file.size)}. The limit is ${formatDocumentFileSize(OWNER_DOCUMENT_MAX_BYTES)}.`
+  return null
 }
 
 export const documentCategoryLabels: Record<OwnerDocumentCategory, string> = {

@@ -8,8 +8,8 @@
 import type { AlertType } from '~/components/notifications/data/alerts'
 import type { OwnerDocument, OwnerDocumentUploadInput } from '~/components/owners/data/owner-documents'
 import { mockOwnerDocuments } from '~/components/owners/data/owner-documents'
-import { mockOwnerPropertyMappings } from '~/components/owners/data/owners'
 import { useNotifications } from '~/composables/useNotifications'
+import { useOwners } from '~/composables/useOwners'
 
 export type UploadDocumentResult
   = | { ok: true, document: OwnerDocument }
@@ -56,12 +56,36 @@ export function useOwnerDocuments() {
    * Co-owners of the same property never see documents assigned only to the
    * other co-owner.
    */
-  function getDocumentsForOwner(ownerId: string): OwnerDocument[] {
-    const ownerListingIds = new Set(
-      mockOwnerPropertyMappings
+  /** Listings an owner is mapped to, read from live state (not the seed array). */
+  function listingIdsForOwner(ownerId: string): Set<string> {
+    const { mappings } = useOwners()
+    return new Set(
+      mappings.value
         .filter(m => m.ownerId === ownerId)
         .map(m => m.listingId),
     )
+  }
+
+  /**
+   * The owners who can see a document — the inverse of `getDocumentsForOwner`.
+   * `specific_owner` names them directly; `all_owners` resolves the listings
+   * to every owner mapped to them. Returns an empty array when a document has
+   * no audience at all (e.g. a listing with no owners yet).
+   */
+  function audienceForDocument(doc: OwnerDocument): string[] {
+    if (doc.visibility === 'specific_owner')
+      return [...new Set(doc.ownerIds)]
+    const { mappings } = useOwners()
+    const listingIds = new Set(doc.listingIds ?? [])
+    return [...new Set(
+      mappings.value
+        .filter(m => listingIds.has(m.listingId))
+        .map(m => m.ownerId),
+    )]
+  }
+
+  function getDocumentsForOwner(ownerId: string): OwnerDocument[] {
+    const ownerListingIds = listingIdsForOwner(ownerId)
     return documents.value
       .filter((doc) => {
         if (doc.visibility === 'specific_owner')
@@ -73,8 +97,12 @@ export function useOwnerDocuments() {
   }
 
   /**
-   * Staff uploads a new document (version 1). Fires a notification so the
-   * affected owner(s) know a new document is available.
+   * Staff uploads a new document (version 1).
+   *
+   * The `DOCUMENT_UPLOADED` alert this fires is a STAFF-side alert — it lands
+   * in the staff bell, not with the owner. The owner portal has no
+   * notification surface, so an owner discovers a new document by opening
+   * their Documents page. Do not describe this as notifying the owner.
    */
   function uploadDocument(input: OwnerDocumentUploadInput, uploadedBy: string): UploadDocumentResult {
     const title = input.title.trim()
@@ -91,8 +119,8 @@ export function useOwnerDocuments() {
       title,
       category: input.category,
       fileName: input.fileName ?? `${title.replace(/\s+/g, '-').toLowerCase()}.pdf`,
-      fileSize: input.content?.length ?? 512,
-      mimeType: 'application/pdf',
+      fileSize: input.fileSize ?? input.content?.length ?? 512,
+      mimeType: input.mimeType ?? 'application/pdf',
       uploadedBy,
       uploadedAt: timestamp,
       visibility: input.visibility,
@@ -184,6 +212,7 @@ export function useOwnerDocuments() {
   return {
     documents,
     getDocumentsForOwner,
+    audienceForDocument,
     uploadDocument,
     updateDocumentVersion,
     getDocumentHistory,

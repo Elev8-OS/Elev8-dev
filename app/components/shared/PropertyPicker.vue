@@ -81,9 +81,11 @@ function isSelected(listing: PropertyPickerOption) {
 
 function toggleProperty(listing: PropertyPickerOption) {
   const value = valueFor(listing)
-  // Single-select: choosing a property replaces the current selection.
+  // Single-select: choosing a property replaces the current selection and
+  // closes the popover — there is nothing left to pick.
   if (!props.multiSelect) {
     emit('update:modelValue', [value])
+    open.value = false
     return
   }
   if (isAllProperties.value) {
@@ -115,13 +117,25 @@ function unselectAll() {
   emit('update:modelValue', props.multiSelect ? ['All Properties'] : [])
 }
 
+/**
+ * Index options by their emitted value (id when present, otherwise name) so
+ * the trigger can render a human-readable name even when the model holds ids.
+ */
+const optionByValue = computed(() => {
+  const map = new Map<string, PropertyPickerOption>()
+  for (const option of props.options)
+    map.set(valueFor(option), option)
+  return map
+})
+
 const displayLabel = computed(() => {
   if (isAllProperties.value) {
     return props.multiSelect ? 'All Properties' : 'Select property'
   }
-  const name = props.modelValue[0]
-  if (props.modelValue.length === 1 && name) {
-    return name.length > 22 ? `${name.slice(0, 22)}…` : name
+  const value = props.modelValue[0]
+  if (props.modelValue.length === 1 && value) {
+    const label = optionByValue.value.get(value)?.name ?? value
+    return label.length > 22 ? `${label.slice(0, 22)}…` : label
   }
   return `${props.modelValue.length} properties`
 })
@@ -251,7 +265,7 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
           <template v-if="filteredListings.length > 0">
             <button
               v-for="listing in filteredListings"
-              :key="listing.name"
+              :key="valueFor(listing)"
               class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-muted"
               @click="toggleProperty(listing)"
             >

@@ -56,7 +56,9 @@ function doEmergencyOverride() {
     return
   const result = emergencyOverride(overrideTarget.value.id, 'staff-1', overrideNote.value || 'Emergency override — owner did not respond in time.')
   if (result.ok) {
-    toast.warning('Emergency override recorded — owner will be notified retroactively.')
+    // No owner notification channel exists — the record is simply visible in
+    // the owner's portal from now on.
+    toast.warning('Emergency override recorded — visible in the owner\'s portal.')
     overrideTarget.value = null
     overrideNote.value = ''
   }
@@ -184,7 +186,7 @@ function doSyncToStatement(record: MaintenanceRecord) {
         <DialogHeader>
           <DialogTitle>Emergency override</DialogTitle>
           <DialogDescription>
-            {{ overrideTarget?.title }} — the owner has not responded. Overriding lets the vendor start immediately; the owner is notified retroactively.
+            {{ overrideTarget?.title }} — the owner has not responded. Overriding lets the vendor start immediately; the override and your note become visible in the owner's portal.
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-1.5">

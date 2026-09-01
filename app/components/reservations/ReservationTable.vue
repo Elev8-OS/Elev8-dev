@@ -9,6 +9,9 @@ const emit = defineEmits<{
   openGuest: [id: string]
   openDetail: [reservation: ReservationEntry]
   copyId: [id: string]
+  /** Owner stay requests are actioned straight from the row (R47 mirror). */
+  approveOwnerStay: [reservation: ReservationEntry]
+  rejectOwnerStay: [reservation: ReservationEntry]
 }>()
 
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -226,6 +229,21 @@ const pageNumbers = computed(() => {
                     <Icon name="lucide:copy" class="mr-2 size-4" />
                     Copy booking ID
                   </DropdownMenuItem>
+                  <!-- Owner stay awaiting a decision — actionable in place. -->
+                  <template v-if="r.status === 'owner_request'">
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem @click="emit('approveOwnerStay', r)">
+                      <Icon name="lucide:calendar-check" class="mr-2 size-4" />
+                      Approve owner stay
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="text-destructive focus:text-destructive"
+                      @click="emit('rejectOwnerStay', r)"
+                    >
+                      <Icon name="lucide:calendar-x" class="mr-2 size-4" />
+                      Reject owner stay…
+                    </DropdownMenuItem>
+                  </template>
                 </DropdownMenuContent>
               </DropdownMenu>
             </td>
