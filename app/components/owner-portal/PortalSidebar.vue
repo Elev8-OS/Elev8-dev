@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar'
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail } from '@/components/ui/sidebar'
 
-const links = [
-  { label: 'Overview', to: '/owner-portal', icon: 'lucide:layout-dashboard' },
-  { label: 'Statements', to: '/owner-portal/statements', icon: 'lucide:file-text' },
-  { label: 'My Stays', to: '/owner-portal/stays', icon: 'lucide:calendar-days' },
-  { label: 'Documents', to: '/owner-portal/documents', icon: 'lucide:folder-open' },
-  { label: 'Maintenance', to: '/owner-portal/maintenance', icon: 'lucide:wrench' },
-]
+const { currentOwner } = useOwnerPortal()
+const { approvalsForOwner } = useTaskOwnerApproval()
+
+/**
+ * Repairs waiting on this owner's decision. Same source as the Maintenance
+ * page's "Awaiting you" tile, so the badge and the page can never disagree.
+ */
+const awaitingApproval = computed(() =>
+  currentOwner.value ? approvalsForOwner(currentOwner.value.id).length : 0)
+
+const links = computed(() => [
+  { label: 'Overview', to: '/owner-portal', icon: 'lucide:layout-dashboard', badge: 0 },
+  { label: 'Statements', to: '/owner-portal/statements', icon: 'lucide:file-text', badge: 0 },
+  { label: 'My Stays', to: '/owner-portal/stays', icon: 'lucide:calendar-days', badge: 0 },
+  { label: 'Documents', to: '/owner-portal/documents', icon: 'lucide:folder-open', badge: 0 },
+  { label: 'Maintenance', to: '/owner-portal/maintenance', icon: 'lucide:wrench', badge: awaitingApproval.value },
+])
 
 const route = useRoute()
 
@@ -42,11 +52,17 @@ function isActive(to: string) {
                 :is-active="isActive(link.to)"
                 :tooltip="link.label"
               >
-                <NuxtLink :to="link.to">
+                <NuxtLink
+                  :to="link.to"
+                  :aria-label="link.badge ? `${link.label}, ${link.badge} waiting for your approval` : undefined"
+                >
                   <Icon :name="link.icon" class="size-4" aria-hidden="true" />
                   <span>{{ link.label }}</span>
                 </NuxtLink>
               </SidebarMenuButton>
+              <SidebarMenuBadge v-if="link.badge" class="bg-primary text-primary-foreground">
+                {{ link.badge }}
+              </SidebarMenuBadge>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
