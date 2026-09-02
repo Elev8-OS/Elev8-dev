@@ -72,7 +72,8 @@ function fmtDate(iso: string | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-/** Plain language — the owner never sees a raw task status. */
+/** The task statuses the rest of the app uses, plus the two outcomes only an
+ * owner-approved task can reach. */
 function state(task: Task): { label: string, tone: string } {
   if (task.ownerApprovalStatus === 'rejected')
     return { label: 'You declined', tone: 'bg-muted text-muted-foreground' }
@@ -81,8 +82,8 @@ function state(task: Task): { label: string, tone: string } {
   if (task.status === 'done')
     return { label: 'Completed', tone: 'bg-green-500/10 text-green-700 dark:text-green-300' }
   if (task.status === 'in progress')
-    return { label: 'Work underway', tone: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' }
-  return { label: 'Scheduled', tone: 'bg-muted text-muted-foreground' }
+    return { label: 'In progress', tone: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' }
+  return { label: 'Not started', tone: 'bg-muted text-muted-foreground' }
 }
 
 /** Over/under the amount the owner agreed to. */
@@ -163,7 +164,7 @@ function doReject() {
       </div>
       <div class="rounded-lg border p-4">
         <p class="text-xs uppercase tracking-wide text-muted-foreground">
-          Work underway
+          In progress
         </p>
         <p class="mt-1 text-2xl font-semibold tabular-nums">
           {{ inProgressCount }}
