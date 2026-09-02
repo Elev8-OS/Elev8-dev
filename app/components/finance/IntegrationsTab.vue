@@ -11,7 +11,9 @@ const { isConnected: lexwareConnected } = useLexware()
 const { isConfigured: datevConfigured, hydrate: hydrateDatev } = useDatev()
 
 const selected = ref<Integration | null>(null)
-const sheetOpen = ref(false)
+// Shared so a settings panel inside the sheet can close it — the DATEV setup
+// wizard ends by leaving for the Exports tab.
+const sheetOpen = useState<boolean>('finance-integration-sheet-open', () => false)
 
 // Deep-link support: /finance?tab=integrations&integration=datev opens that
 // integration's sheet directly, so "Configure" from the Exports tab lands here.

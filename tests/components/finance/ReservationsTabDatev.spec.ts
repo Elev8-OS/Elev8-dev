@@ -5,9 +5,11 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { exampleDatevSettings } from '~/components/finance/data/datev'
 import DatevPreview from '~/components/finance/DatevPreview.vue'
 import ReservationsTab from '~/components/finance/ReservationsTab.vue'
 import { Button } from '~/components/ui/button'
+import { useDatev } from '~/composables/useDatev'
 import { useReservations } from '~/composables/useReservations'
 
 const global = {
@@ -40,8 +42,28 @@ async function select(wrapper: ReturnType<typeof mount>, ids: string[]) {
   await nextTick()
 }
 
+/** The selection export is gated on setup, so tests have to finish it first. */
+function configure() {
+  useDatev().saveSettings({
+    ...exampleDatevSettings,
+    channelAccounts: { ...exampleDatevSettings.channelAccounts },
+  })
+}
+
 describe('reservationsTab — DATEV export', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    configure()
+  })
+
+  it('stays hidden while DATEV has not been set up', async () => {
+    useDatev().resetSettings()
+    const wrapper = mountTab()
+    await select(wrapper, ['de-res-121', 'de-res-124'])
+
+    expect(wrapper.text()).toContain('2 rows selected')
+    expect(datevButton(wrapper)).toBeUndefined()
+  })
 
   it('offers no DATEV action with nothing selected', () => {
     const wrapper = mountTab()

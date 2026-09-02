@@ -494,6 +494,29 @@ format 700 / record version 13), review it, then download it or open a prefilled
   (deep-link `/finance?tab=integrations&integration=datev`)
 - **Action** → `DatevExportTab.vue` on the new `Exports` tab (`/finance?tab=exports`)
 
+**A tenant starts NOT set up.** `useDatev` seeds `createDefaultDatevSettings()` (blank
+Beraternummer/Mandantennummer, pre-seeded account suggestions) and an **empty** export history —
+there is no `mockDatevSettings`/`mockDatevExports` seed any more. `exampleDatevSettings` remains
+exported as a configured fixture for tests. Everything downstream is gated on `isConfigured`:
+the Exports tab shows the setup card, `generate()`/`generateFromSelection()` return `null`, the
+Reservations "Export N to DATEV" button is hidden, and the tile reads "Not set up".
+
+**First-run flow** — `Exports → Set up DATEV` (or the tile's `Set up`) opens the sheet on
+`DatevSetupWizard.vue`, a 3-step guided setup: **Advisor & client → Kontenrahmen & accounts →
+Handover** (the last step carries a review block). Each step gates on its own fields via
+`validateDatevSetupStep(settings, stepId)` — validating the whole object per step would light up
+fields the tenant has not reached. Finish saves once, then a success panel offers
+**Go to Exports** (sets `finance-active-tab` + closes the sheet through the shared
+`finance-integration-sheet-open` state) or **Review settings** (emits `done` → the flat form).
+`DatevExportSettings` picks its mode in `onMounted` after the synchronous `hydrate()`, held as
+LOCAL state — deriving it from `isConfigured` would swap the wizard's success panel away the
+instant it saved.
+
+**Shared field groups** — `DatevFieldsAdvisor.vue`, `DatevFieldsAccounts.vue`,
+`DatevFieldsHandover.vue` each take `v-model` (a whole `DatevSettings` draft, patched by spread so
+no prop is mutated) plus `:errors`. The wizard renders one per step, the flat form stacks all three,
+so labels and validation copy cannot drift between the two surfaces.
+
 **Format writer** (`app/lib/datev-extf.ts`) — framework-free and the part that must not regress:
 - `;` separator, CRLF endings, CP1252 encoding (`encodeCp1252`), exactly 125 fields per record
 - Text fields are always quoted (empty → `""`); numeric/date fields are never quoted (empty → bare).
@@ -529,9 +552,11 @@ over; generated files are retained in history so a period can be re-downloaded r
 carry an attachment, so `emailExport` downloads first, then opens the draft.
 
 **Tests** — `tests/lib/datev-extf.spec.ts` (28, format rules), `tests/composables/useDatev.spec.ts`
-(31, scope/postings/generate/selection/history), plus render tests under
-`tests/components/finance/` for the Exports tab, the settings sheet deep-link, and the Reservations
-selection button. Nuxt auto-imported children must be registered in `global.components` to render in
+(36, scope/postings/generate/selection/history/first-run), plus render tests under
+`tests/components/finance/` for the Exports tab, the setup wizard
+(`DatevSetupWizard.spec.ts`), the settings sheet deep-link, and the Reservations selection
+button. Anything that produces a file must call setup first — the specs share a `configure()`
+helper built from `exampleDatevSettings`. Nuxt auto-imported children must be registered in `global.components` to render in
 Vitest, and `resolveComponent` is shimmed in `tests/setup.ts`.
 
 > ⚠️ `import.meta.client` is **not** replaced under Vitest despite the `define` in
@@ -1475,7 +1500,7 @@ const table = useVueTable({
 | `useWhatsAppTemplates` | `app/composables/useWhatsAppTemplates.ts` | Template messages | `waTemplates`, `renderTemplate()` |
 | `useSmartLock` | `app/composables/useSmartLock.ts` | Smart lock connection + per-listing/room lock assignment + brand-shared access codes | `connection`, `isConnected`, `locks`, `codes`, `validateAndConnect(apiKey, workspaceName)`, `disconnect()`, `pairLock`, `unpairLock`, `setMainLock`, `renameLock`, `swapDevice(lockId, newProviderDeviceId)`, `generateAccessCode` (async, 700ms mock), `revokeAccessCode`, `findActiveBrandCode(reservationId, provider)`, `getLocksForListing`, `getLocksForUnit`, `getLockCount`, `getMainLock`, `syncDevices`, `emitMockAlerts`. Persisted to localStorage. |
 | `useMinut` | `app/composables/useMinut.ts` | Minut noise/sensor monitoring — events feed Journeys | `connection`, `devices`, `events`, `isConnected`, `validateAndConnect(apiKey, workspaceName)`, `disconnect()`, `seedDevices()`, `syncDevices()`, `emitMockEvents()`, `getEventsByListing(listingId)`, `getEventsByType(type)`. Persisted to localStorage. |
-| `useDatev` | `app/composables/useDatev.ts` | DATEV Buchungsstapel export — settings, period scope, manual selection, file generation, history | `settings`, `isConfigured`, `saveSettings()`, `switchChart()`, `periodFrom`/`periodTo`, `monthShortcuts`, `setPeriod()`, `eligibleReservations`, `isEligible()`, `excludedDigest`, `scopeTotal`, `postings`, `previewRows`, `generate()`, `generateFromSelection()`, `preview`, `commitExport()`, `existingExportForPeriod`, `downloadExport()`, `emailExport()`, `buildMailto()`, `exports`, `hydrate()`. Persisted to LocalStorage. |
+| `useDatev` | `app/composables/useDatev.ts` | DATEV Buchungsstapel export — starts unconfigured with empty history; settings, period scope, manual selection, file generation, history | `settings`, `isConfigured`, `saveSettings()`, `switchChart()`, `periodFrom`/`periodTo`, `monthShortcuts`, `setPeriod()`, `eligibleReservations`, `isEligible()`, `excludedDigest`, `scopeTotal`, `postings`, `previewRows`, `generate()`, `generateFromSelection()`, `preview`, `commitExport()`, `existingExportForPeriod`, `downloadExport()`, `emailExport()`, `buildMailto()`, `exports`, `hydrate()`. Persisted to LocalStorage. |
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
 
 ### State Management Rules
@@ -1565,6 +1590,13 @@ app/
 │   │   ├── CostFilters.vue       ← Includes integration filter select
 │   │   ├── CostTable.vue         ← Multi-currency, Acctg. Amount col, integration badge
 │   │   ├── CostsTab.vue
+│   │   ├── DatevExportSettings.vue ← Sheet body: guided setup when unconfigured, flat form after
+│   │   ├── DatevExportTab.vue    ← Exports tab: setup card / generator / review / history
+│   │   ├── DatevSetupWizard.vue  ← 3-step first-run setup + success panel
+│   │   ├── DatevFieldsAdvisor.vue   ← Shared fields: Berater, Mandant, fiscal-year start
+│   │   ├── DatevFieldsAccounts.vue  ← Shared fields: SKR picker, Debitor/Erlös, channel accounts
+│   │   ├── DatevFieldsHandover.vue  ← Shared fields: include-cancelled, advisor e-mail
+│   │   ├── DatevPreview.vue      ← Reviewable file: header facts + posting rows
 │   │   ├── IntegrationsTab.vue
 │   │   ├── JurnalIntegration.vue ← Locks Bexio-mapped listings
 │   │   ├── OverviewTab.vue
@@ -1575,6 +1607,7 @@ app/
 │   │   └── data/
 │   │       ├── bexio.ts          ← Bexio listing data (Swiss properties)
 │   │       ├── costs.ts          ← CostEntry interface (linkedTaskId), mockCosts (IDR + CHF)
+│   │       ├── datev.ts          ← DatevSettings, SKR defaults, setup steps + per-step validation, exampleDatevSettings
 │   │       ├── integrations.ts
 │   │       ├── jurnal.ts
 │   │       ├── overview.ts

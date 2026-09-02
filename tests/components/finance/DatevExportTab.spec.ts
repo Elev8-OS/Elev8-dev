@@ -5,6 +5,7 @@
 
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { exampleDatevSettings } from '~/components/finance/data/datev'
 import DatevExportTab from '~/components/finance/DatevExportTab.vue'
 import DatevLogo from '~/components/finance/DatevLogo.vue'
 import DatevPreview from '~/components/finance/DatevPreview.vue'
@@ -27,6 +28,14 @@ function findButton(wrapper: ReturnType<typeof mount>, label: string) {
   return wrapper.findAll('button').find(b => b.text().trim() === label)
 }
 
+/** A tenant starts unconfigured; the generator only exists after setup. */
+function configure() {
+  useDatev().saveSettings({
+    ...exampleDatevSettings,
+    channelAccounts: { ...exampleDatevSettings.channelAccounts },
+  })
+}
+
 describe('datevExportTab', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -38,19 +47,18 @@ describe('datevExportTab', () => {
   // route change. It previously navigated to ?tab=integrations on the same page,
   // which never remounted anything and left the button dead.
   it('switches to the Integrations tab and requests the DATEV sheet on Configure', async () => {
+    configure()
     const wrapper = mount(DatevExportTab, { global })
 
-    const configure = findButton(wrapper, 'Configure')
-    expect(configure).toBeDefined()
-    await configure!.trigger('click')
+    const configureButton = findButton(wrapper, 'Configure')
+    expect(configureButton).toBeDefined()
+    await configureButton!.trigger('click')
 
     expect(useState('finance-active-tab').value).toBe('integrations')
     expect(useState('finance-open-integration').value).toBe('datev')
   })
 
   it('does the same from the unconfigured state via Set up DATEV', async () => {
-    const { settings } = useDatev()
-    settings.value = { ...settings.value, beraternummer: '', mandantennummer: '' }
     const wrapper = mount(DatevExportTab, { global })
 
     const setup = findButton(wrapper, 'Set up DATEV')
@@ -61,17 +69,23 @@ describe('datevExportTab', () => {
     expect(useState('finance-open-integration').value).toBe('datev')
   })
 
-  it('prompts for setup when Berater/Mandant are missing', () => {
-    const { settings } = useDatev()
-    settings.value = { ...settings.value, beraternummer: '', mandantennummer: '' }
-
+  // A fresh tenant lands here, so this is the default state — not an edge case.
+  it('prompts for setup out of the box, before any settings exist', () => {
     const wrapper = mount(DatevExportTab, { global })
-    expect(wrapper.text()).toContain('Set up DATEV')
-    expect(wrapper.text()).not.toContain('Create DATEV file')
+    const text = wrapper.text()
+
+    expect(text).toContain('Set up DATEV')
+    expect(text).not.toContain('Create DATEV file')
+    // The one-time path is spelled out rather than left implicit.
+    expect(text).toContain('Pick a period')
+    expect(text).toContain('Hand the file over')
+    // No history card at all before setup — there is nothing to have exported.
+    expect(text).not.toContain('Export history')
   })
 
   it('shows the generator with a live scope line once configured', () => {
     const { setPeriod } = useDatev()
+    configure()
     setPeriod('2026-08-01', '2026-08-31')
 
     const wrapper = mount(DatevExportTab, { global })
@@ -85,15 +99,23 @@ describe('datevExportTab', () => {
     expect(text).toContain('1 cancelled')
   })
 
-  it('renders the export history seeded from mock data', () => {
+  it('opens the history empty once configured, then lists what was handed over', async () => {
+    const { setPeriod, generate, commitExport } = useDatev()
+    configure()
+    setPeriod('2026-08-01', '2026-08-31')
+
     const wrapper = mount(DatevExportTab, { global })
-    const text = wrapper.text()
-    expect(text).toContain('Export history')
-    expect(text).toContain('EXTF_Buchungsstapel_2026-07.csv')
+    expect(wrapper.text()).toContain('No exports yet')
+
+    commitExport((await generate())!)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).toContain('EXTF_Buchungsstapel_2026-08.csv')
   })
 
   it('swaps the generator for the reviewable file after generating', async () => {
     const { setPeriod, generate } = useDatev()
+    configure()
     setPeriod('2026-08-01', '2026-08-31')
 
     const wrapper = mount(DatevExportTab, { global })

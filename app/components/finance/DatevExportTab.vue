@@ -52,6 +52,22 @@ const excludedTotal = computed(() =>
   excludedDigest.value.reduce((sum, row) => sum + row.count, 0),
 )
 
+/** The one-time path into a working handover, shown before setup exists. */
+const setupOutline = [
+  {
+    title: 'Set up DATEV',
+    detail: 'Beraternummer, Mandantennummer, SKR03 or SKR04, and the revenue accounts.',
+  },
+  {
+    title: 'Pick a period',
+    detail: 'EUR bookings are dated by check-out and become one Buchungssatz each.',
+  },
+  {
+    title: 'Hand the file over',
+    detail: 'Review it, then download the EXTF file or open the prefilled e-mail draft.',
+  },
+]
+
 function formatEur(value: number): string {
   return value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -111,22 +127,51 @@ function handleDelete(id: string) {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- ── Not configured ────────────────────────────────────────────── -->
+    <!-- ── Not set up ────────────────────────────────────────────────── -->
     <div v-if="!isConfigured" class="rounded-lg border bg-card p-6">
-      <div class="flex items-start gap-4">
-        <FinanceDatevLogo class="h-8 w-auto shrink-0" />
-        <div class="flex-1">
-          <h3 class="text-sm font-semibold">
-            DATEV Buchungsstapel
-          </h3>
-          <p class="mt-1 max-w-xl text-sm text-muted-foreground">
-            Generate a posting batch your German tax advisor imports in one click. Before you can
-            create a file, add the Beraternummer and Mandantennummer — your advisor provides both.
-          </p>
-          <Button class="mt-4" size="sm" @click="openDatevSettings">
+      <div class="flex flex-col gap-5">
+        <div class="flex items-start gap-4">
+          <FinanceDatevLogo class="h-8 w-auto shrink-0" />
+          <div class="flex-1">
+            <h3 class="text-sm font-semibold">
+              DATEV Buchungsstapel
+            </h3>
+            <p class="mt-1 max-w-xl text-sm text-muted-foreground">
+              Generate a posting batch your German tax advisor imports in one click. DATEV is a
+              file handoff, not a connection — nothing is ever sent automatically.
+            </p>
+          </div>
+        </div>
+
+        <!-- The three things that happen once, in order. -->
+        <ol class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <li
+            v-for="(item, index) in setupOutline"
+            :key="item.title"
+            class="flex flex-col gap-1 rounded-md border bg-muted/30 p-3"
+          >
+            <span class="flex items-center gap-2 text-xs font-medium">
+              <span
+                class="flex size-5 items-center justify-center rounded-full border border-input text-[10px] text-muted-foreground"
+              >
+                {{ index + 1 }}
+              </span>
+              {{ item.title }}
+            </span>
+            <span class="text-xs leading-relaxed text-muted-foreground">
+              {{ item.detail }}
+            </span>
+          </li>
+        </ol>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <Button size="sm" @click="openDatevSettings">
             Set up DATEV
             <Icon name="lucide:arrow-right" class="ml-1.5 size-4" />
           </Button>
+          <p class="text-xs text-muted-foreground">
+            Takes three steps. Your advisor supplies the Beraternummer and Mandantennummer.
+          </p>
         </div>
       </div>
     </div>
@@ -259,7 +304,7 @@ function handleDelete(id: string) {
     </div>
 
     <!-- ── History ───────────────────────────────────────────────────── -->
-    <div class="rounded-lg border bg-card">
+    <div v-if="isConfigured || exports.length > 0" class="rounded-lg border bg-card">
       <div class="border-b px-4 py-3">
         <h3 class="text-sm font-semibold">
           Export history
@@ -271,7 +316,7 @@ function handleDelete(id: string) {
 
       <div v-if="exports.length === 0" class="px-4 py-10 text-center">
         <p class="text-sm text-muted-foreground">
-          No exports yet.
+          No exports yet. Your first file will be listed here.
         </p>
       </div>
 

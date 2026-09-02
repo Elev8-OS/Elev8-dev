@@ -1,6 +1,6 @@
 /**
  * DATEV Buchungsstapel export — per-tenant settings, chart-of-accounts
- * defaults, and mock export history.
+ * defaults, and the first-run setup steps.
  *
  * Every account number here is a *default suggestion*. The authoritative values
  * always come from the tenant's tax advisor, which is why they are editable
@@ -153,6 +153,52 @@ export function validateDatevSettings(settings: DatevSettings): Record<string, s
   return errors
 }
 
+/**
+ * First-run setup, split into the three questions a tenant has to answer.
+ * A new tenant starts unconfigured, so this is the path they actually walk;
+ * the flat form is the "come back and change one number" surface.
+ */
+export const DATEV_SETUP_STEPS = [
+  {
+    id: 'advisor',
+    title: 'Advisor & client',
+    description: 'The two numbers that route the batch to your file at the Kanzlei.',
+  },
+  {
+    id: 'accounts',
+    title: 'Kontenrahmen & accounts',
+    description: 'Which chart your advisor books on, and where revenue lands.',
+  },
+  {
+    id: 'handover',
+    title: 'Handover',
+    description: 'How cancellations are posted and who receives the file.',
+  },
+] as const
+
+export type DatevSetupStepId = (typeof DATEV_SETUP_STEPS)[number]['id']
+
+/** Which validation keys belong to which step, so a step gates on its own fields. */
+const SETUP_STEP_FIELDS: Record<DatevSetupStepId, (key: string) => boolean> = {
+  advisor: key => key === 'beraternummer' || key === 'mandantennummer',
+  accounts: key => key === 'debitorenkonto' || key === 'erloeskonto' || key.startsWith('channel:'),
+  handover: key => key === 'advisorEmail',
+}
+
+/**
+ * Errors for one wizard step only. Validating the whole object per step would
+ * light up fields the tenant has not reached yet.
+ */
+export function validateDatevSetupStep(
+  settings: DatevSettings,
+  step: DatevSetupStepId,
+): Record<string, string> {
+  const belongsToStep = SETUP_STEP_FIELDS[step]
+  return Object.fromEntries(
+    Object.entries(validateDatevSettings(settings)).filter(([key]) => belongsToStep(key)),
+  )
+}
+
 /** One generated file, kept so a period can be re-downloaded and audited. */
 export interface DatevExportRecord {
   id: string
@@ -173,43 +219,12 @@ export interface DatevExportRecord {
   emailed: boolean
 }
 
-export const mockDatevExports: DatevExportRecord[] = [
-  {
-    id: 'datev-exp-2026-06',
-    periodFrom: '2026-06-01',
-    periodTo: '2026-06-30',
-    generatedAt: '2026-07-03T09:12:00Z',
-    generatedBy: 'Komang Juliantara',
-    recordCount: 11,
-    totalAmount: 14680.0,
-    currency: 'EUR',
-    filename: 'EXTF_Buchungsstapel_2026-06.csv',
-    content: '',
-    beraternummer: '1234567',
-    mandantennummer: '10234',
-    skr: 'SKR03',
-    emailed: true,
-  },
-  {
-    id: 'datev-exp-2026-07',
-    periodFrom: '2026-07-01',
-    periodTo: '2026-07-31',
-    generatedAt: '2026-08-04T08:40:00Z',
-    generatedBy: 'Komang Juliantara',
-    recordCount: 14,
-    totalAmount: 19310.0,
-    currency: 'EUR',
-    filename: 'EXTF_Buchungsstapel_2026-07.csv',
-    content: '',
-    beraternummer: '1234567',
-    mandantennummer: '10234',
-    skr: 'SKR03',
-    emailed: true,
-  },
-]
-
-/** Pre-filled mock settings used when the tenant has never opened the form. */
-export const mockDatevSettings: DatevSettings = {
+/**
+ * A fully configured example, kept as a fixture for tests and as the shape the
+ * setup flow produces. The app itself never seeds this — `useDatev` starts a
+ * tenant on `createDefaultDatevSettings()` so "not set up yet" is a real state.
+ */
+export const exampleDatevSettings: DatevSettings = {
   beraternummer: '1234567',
   mandantennummer: '10234',
   skr: 'SKR03',

@@ -1,4 +1,9 @@
+import type { DatevSettings } from '~/components/finance/data/datev'
 import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  exampleDatevSettings,
+  validateDatevSetupStep,
+} from '~/components/finance/data/datev'
 import { useDatev } from '~/composables/useDatev'
 import { useReservations } from '~/composables/useReservations'
 import { DATEV_FIELD_COUNT } from '~/lib/datev-extf'
@@ -29,6 +34,20 @@ function splitRecord(line: string): string[] {
 }
 
 const AUGUST = { from: '2026-08-01', to: '2026-08-31' }
+
+/**
+ * A tenant starts unconfigured, so anything that produces a file has to walk
+ * setup first. This is what finishing the wizard leaves behind.
+ */
+function configure(overrides: Partial<DatevSettings> = {}) {
+  const { saveSettings } = useDatev()
+  const result = saveSettings({
+    ...exampleDatevSettings,
+    channelAccounts: { ...exampleDatevSettings.channelAccounts },
+    ...overrides,
+  })
+  expect(result.saved).toBe(true)
+}
 
 // August 2026 EUR check-outs in the mock data: 11 completed + 1 cancelled.
 const AUGUST_ELIGIBLE = 11
@@ -91,7 +110,10 @@ describe('scope', () => {
 })
 
 describe('posting lines', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    configure()
+  })
 
   it('posts the debtor account against the channel revenue account', () => {
     const { settings, setPeriod, eligibleReservations, postings } = useDatev()
@@ -135,7 +157,10 @@ describe('posting lines', () => {
 })
 
 describe('generate', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    configure()
+  })
 
   it('builds one 125-field record per eligible booking', async () => {
     const { setPeriod, generate } = useDatev()
@@ -205,7 +230,10 @@ describe('generate', () => {
 })
 
 describe('manual selection export', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    configure()
+  })
 
   function pick(ids: string[]) {
     const { reservations } = useReservations()
@@ -295,7 +323,10 @@ describe('manual selection export', () => {
 })
 
 describe('export history', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    configure()
+  })
 
   it('warns when the period was already exported', async () => {
     const { setPeriod, generate, commitExport, existingExportForPeriod } = useDatev()
@@ -344,7 +375,10 @@ describe('export history', () => {
 })
 
 describe('settings', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    configure()
+  })
 
   it('rejects a malformed Beraternummer', () => {
     const { settings, saveSettings } = useDatev()
@@ -395,5 +429,64 @@ describe('settings', () => {
     expect(mailto).toContain('01.08.2026 – 31.08.2026')
     expect(mailto).toContain('EXTF_Buchungsstapel_2026-08.csv')
     expect(mailto).toContain(String(AUGUST_ELIGIBLE))
+  })
+})
+
+describe('first-run setup', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('starts a tenant unconfigured with no export history', () => {
+    const { settings, isConfigured, exports } = useDatev()
+
+    expect(isConfigured.value).toBe(false)
+    expect(settings.value.beraternummer).toBe('')
+    expect(settings.value.mandantennummer).toBe('')
+    // Accounts are pre-seeded suggestions — only the advisor's numbers are blank.
+    expect(settings.value.erloeskonto).toBe('8400')
+    expect(exports.value).toHaveLength(0)
+  })
+
+  it('blocks both export paths until setup is finished', async () => {
+    const { setPeriod, generate, generateFromSelection, eligibleReservations } = useDatev()
+    setPeriod(AUGUST.from, AUGUST.to)
+
+    expect(eligibleReservations.value.length).toBeGreaterThan(0)
+    expect(await generate()).toBeNull()
+    const { record } = await generateFromSelection(eligibleReservations.value)
+    expect(record).toBeNull()
+  })
+
+  it('reports errors for the step being filled in, not for later ones', () => {
+    const { settings } = useDatev()
+
+    // Step 1 is what an empty tenant fails on.
+    expect(Object.keys(validateDatevSetupStep(settings.value, 'advisor'))).toEqual([
+      'beraternummer',
+      'mandantennummer',
+    ])
+    // The seeded accounts and the optional e-mail are already valid.
+    expect(validateDatevSetupStep(settings.value, 'accounts')).toEqual({})
+    expect(validateDatevSetupStep(settings.value, 'handover')).toEqual({})
+  })
+
+  it('scopes a bad account to the accounts step and a bad e-mail to handover', () => {
+    const broken: DatevSettings = {
+      ...exampleDatevSettings,
+      erloeskonto: '84',
+      advisorEmail: 'not-an-email',
+    }
+
+    expect(validateDatevSetupStep(broken, 'advisor')).toEqual({})
+    expect(Object.keys(validateDatevSetupStep(broken, 'accounts'))).toEqual(['erloeskonto'])
+    expect(Object.keys(validateDatevSetupStep(broken, 'handover'))).toEqual(['advisorEmail'])
+  })
+
+  it('unlocks the generator once setup is saved', async () => {
+    const { setPeriod, generate, isConfigured } = useDatev()
+    setPeriod(AUGUST.from, AUGUST.to)
+    configure()
+
+    expect(isConfigured.value).toBe(true)
+    expect(await generate()).not.toBeNull()
   })
 })

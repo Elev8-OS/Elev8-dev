@@ -8,8 +8,6 @@ import {
   DATEV_HISTORY_STORAGE_KEY,
   DATEV_STORAGE_KEY,
   isDatevConfigured,
-  mockDatevExports,
-  mockDatevSettings,
   validateDatevSettings,
 } from '@/components/finance/data/datev'
 import { getEurListings } from '@/components/finance/data/lexware-invoices'
@@ -38,9 +36,10 @@ export interface SelectionExport {
  * tagged 'EUR'), so both German-market surfaces agree on which properties count.
  */
 export function useDatev() {
-  const settings = useState<DatevSettings>('datev-settings', () => ({ ...mockDatevSettings }))
-  const exports = useState<DatevExportRecord[]>('datev-exports', () =>
-    mockDatevExports.map(e => ({ ...e })))
+  // A tenant starts unconfigured with no history: DATEV only exists once the
+  // advisor's numbers are entered, and nothing was handed over before that.
+  const settings = useState<DatevSettings>('datev-settings', createDefaultDatevSettings)
+  const exports = useState<DatevExportRecord[]>('datev-exports', () => [])
   const isHydrated = useState<boolean>('datev-hydrated', () => false)
 
   const isGenerating = ref(false)
@@ -445,7 +444,7 @@ export function useDatev() {
         exports.value = JSON.parse(storedHistory) as DatevExportRecord[]
     }
     catch {
-      // Corrupted storage falls back to the seeded mock values.
+      // Corrupted storage falls back to the unconfigured defaults.
     }
   }
 
