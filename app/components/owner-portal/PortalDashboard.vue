@@ -17,14 +17,19 @@ const dashboard = useOwnerDashboard()
 const currency = computed(() => dashboard.timeSeries.value.currency)
 const current = computed(() => dashboard.currentPeriod.value)
 
+/** `2026-09-14` -> `14 Sep`, so the list reads like a date and not an id. */
+function formatArrival(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+}
+
 const kpis = computed(() => {
   if (!current.value)
     return []
   return [
-    { key: 'grossRevenue' as const, label: 'Gross Revenue', value: `${currency.value} ${Math.round(current.value.grossRevenue).toLocaleString()}` },
-    { key: 'netRevenue' as const, label: 'Net Revenue', value: `${currency.value} ${Math.round(current.value.netRevenue).toLocaleString()}` },
+    { key: 'grossRevenue' as const, label: 'Gross revenue', value: `${currency.value} ${Math.round(current.value.grossRevenue).toLocaleString('id-ID')}` },
+    { key: 'netRevenue' as const, label: 'Net revenue', value: `${currency.value} ${Math.round(current.value.netRevenue).toLocaleString('id-ID')}` },
     { key: 'occupancy' as const, label: 'Occupancy', value: `${Math.round(current.value.occupancy * 100)}%` },
-    { key: 'adr' as const, label: 'ADR', value: `${currency.value} ${Math.round(current.value.adr).toLocaleString()}` },
+    { key: 'adr' as const, label: 'ADR', value: `${currency.value} ${Math.round(current.value.adr).toLocaleString('id-ID')}` },
   ].filter(k => portal.canViewDashboardField(k.key))
 })
 </script>
@@ -34,10 +39,10 @@ const kpis = computed(() => {
     <div class="flex items-end justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">
-          Owner dashboard
+          Overview
         </h1>
         <p class="text-sm text-muted-foreground">
-          Your property performance at a glance.
+          How your property has been doing over the last 12 months.
         </p>
       </div>
       <PortalPropertyPicker
@@ -54,10 +59,10 @@ const kpis = computed(() => {
     >
       <Icon name="lucide:eye-off" class="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
       <h2 class="mt-3 font-medium">
-        No metrics are visible
+        Nothing to show here yet
       </h2>
       <p class="mt-1 text-sm text-muted-foreground">
-        Contact your property manager to update your visibility settings.
+        Your manager decides which figures appear on this page. Ask them to turn some on.
       </p>
     </div>
 
@@ -123,7 +128,7 @@ const kpis = computed(() => {
       class="rounded-lg border bg-card p-4"
     >
       <h2 class="font-medium">
-        Upcoming reservations
+        Who is coming next
       </h2>
       <div class="mt-3 divide-y">
         <div
@@ -132,7 +137,9 @@ const kpis = computed(() => {
           class="flex justify-between py-3 text-sm"
         >
           <span>{{ reservation.guestName }}</span>
-          <span class="text-muted-foreground">{{ reservation.checkIn }} · {{ reservation.nights }} nights</span>
+          <span class="text-muted-foreground">
+            {{ formatArrival(reservation.checkIn) }} · {{ reservation.nights }} night{{ reservation.nights === 1 ? '' : 's' }}
+          </span>
         </div>
       </div>
     </div>

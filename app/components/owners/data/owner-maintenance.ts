@@ -49,6 +49,12 @@ export interface MaintenanceRecord {
   photosAfter?: string[]
   /** Vendor invoice document id (links into the Document Center). */
   invoiceId?: string
+  /**
+   * The mirrored Tasks-module task (PRD 5.4.3). Staff work the repair through
+   * the normal task lifecycle; this id is the only link between the two, so
+   * status can be kept in step in both directions.
+   */
+  taskId?: string
   /** Statement period (YYYY-MM) this record was synced to as a deduction. */
   syncedToStatementPeriod?: string
   createdAt: string
@@ -98,6 +104,7 @@ export const mockMaintenanceRecords: MaintenanceRecord[] = [
   // Completed — below threshold, never needed approval. Synced to a statement period.
   {
     id: 'mnt-1',
+    taskId: 'TASK-OWN-001',
     ownerId: 'own-1',
     listingId: 'lst-1',
     title: 'Garden sprinkler valve replacement',
@@ -119,6 +126,7 @@ export const mockMaintenanceRecords: MaintenanceRecord[] = [
   // Awaiting owner approval — above threshold, owner has not responded yet.
   {
     id: 'mnt-2',
+    taskId: 'TASK-OWN-002',
     ownerId: 'own-2',
     listingId: 'lst-8',
     title: 'AC unit not cooling — main bedroom',
@@ -136,6 +144,7 @@ export const mockMaintenanceRecords: MaintenanceRecord[] = [
   // did not respond in time, staff overrode with a retroactive note.
   {
     id: 'mnt-3',
+    taskId: 'TASK-OWN-003',
     ownerId: 'own-1',
     listingId: 'lst-1',
     title: 'Emergency: water heater failure',
@@ -162,6 +171,7 @@ export const mockMaintenanceRecords: MaintenanceRecord[] = [
   // In progress — below threshold, vendor working.
   {
     id: 'mnt-4',
+    taskId: 'TASK-OWN-004',
     ownerId: 'own-2',
     listingId: 'lst-3',
     title: 'Pool pump filter replacement',

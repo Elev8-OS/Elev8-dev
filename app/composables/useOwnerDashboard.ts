@@ -18,6 +18,12 @@ import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
 import { useOwners } from '~/composables/useOwners'
 
+/** One month of revenue split by channel. `period` stays a `YYYY-MM` label. */
+export interface OwnerSourcesRow {
+  period: string
+  [channel: string]: string | number
+}
+
 export interface OwnerDashboardMonth {
   period: string
   grossRevenue: number
@@ -106,7 +112,7 @@ export function useOwnerDashboard(): {
   currentPeriod: ComputedRef<OwnerDashboardMonth | null>
   monthlyRevenueSeries: ComputedRef<{ period: string, grossRevenue: number, netRevenue: number }[]>
   monthlyOccupancyAdrSeries: ComputedRef<{ period: string, occupancy: number, adr: number }[]>
-  monthlySourcesSeries: ComputedRef<Record<string, number>[]>
+  monthlySourcesSeries: ComputedRef<OwnerSourcesRow[]>
   monthlyRatingsSeries: ComputedRef<{ period: string, averageRating: number | null, ratingsCount: number }[]>
   yoyChange: (field: 'grossRevenue' | 'netRevenue' | 'occupancy' | 'adr') => ComputedRef<OwnerYoYChange | null>
   hasYearOverYearData: ComputedRef<boolean>
@@ -249,7 +255,7 @@ export function useOwnerDashboard(): {
     if (!canViewDashboardField('bookingSources'))
       return []
     return months.value.map((m) => {
-      const row: Record<string, number> = { period: Number(m.period.replace('-', '')) }
+      const row: OwnerSourcesRow = { period: m.period }
       for (const src of m.sources) row[src.source] = src.revenue
       return row
     })

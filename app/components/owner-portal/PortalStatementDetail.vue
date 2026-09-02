@@ -98,7 +98,7 @@ function openIssue(line: OwnerStatementLine) {
 }
 
 function formatCurrency(amount: number) {
-  return `${currency.value} ${amount.toLocaleString('en-US')}`
+  return `${currency.value} ${amount.toLocaleString('id-ID')}`
 }
 
 function hasOpenIssue(lineId: string) {

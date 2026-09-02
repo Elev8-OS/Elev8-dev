@@ -17,7 +17,7 @@ function listingName(listingId: string) {
 }
 
 function formatCurrency(currency: string, amount: number) {
-  return `${currency} ${amount.toLocaleString('en-US')}`
+  return `${currency} ${amount.toLocaleString('id-ID')}`
 }
 </script>
 

@@ -119,7 +119,7 @@ describe('owner portal statements', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('25,180,000')
+    expect(wrapper.text()).toContain('25.180.000')
     expect(wrapper.text()).toContain('Gross booking revenue')
     expect(wrapper.findAll('input, textarea, select').length).toBe(0)
   })

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mockOwnerDocuments } from '~/components/owners/data/owner-documents'
+import {
+  mockOwnerDocuments,
+  OWNER_DOCUMENT_MAX_BYTES,
+  validateOwnerDocumentFile,
+} from '~/components/owners/data/owner-documents'
 import { useOwnerDocuments } from '~/composables/useOwnerDocuments'
 
 interface AlertCall {
@@ -109,5 +113,99 @@ describe('useOwnerDocuments', () => {
     expect(result.ok).toBe(true)
     if (result.ok)
       expect(result.fileName).toContain('pbb-2026')
+  })
+  it('keeps the real file metadata when a file is attached', () => {
+    const { uploadDocument } = useOwnerDocuments()
+    const result = uploadDocument({
+      title: 'Insurance Policy 2027',
+      category: 'insurance',
+      visibility: 'all_owners',
+      listingIds: ['lst-1'],
+      fileName: 'polis-2027.pdf',
+      fileSize: 204_800,
+      mimeType: 'application/pdf',
+      content: 'POLICY BODY',
+    }, 'staff-1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(result.document.fileName).toBe('polis-2027.pdf')
+    expect(result.document.fileSize).toBe(204_800)
+    expect(result.document.mimeType).toBe('application/pdf')
+    expect(result.document.content).toBe('POLICY BODY')
+  })
+
+  it('still synthesizes filename, size and body when no file is attached', () => {
+    const { uploadDocument } = useOwnerDocuments()
+    const result = uploadDocument({
+      title: 'Board Minutes March',
+      category: 'other',
+      visibility: 'all_owners',
+      listingIds: ['lst-1'],
+    }, 'staff-1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(result.document.fileName).toBe('board-minutes-march.pdf')
+    expect(result.document.mimeType).toBe('application/pdf')
+    expect(result.document.fileSize).toBe(512)
+    expect(result.document.content).toContain('Board Minutes March')
+  })
+  // --- Upload-form file rules ---------------------------------------------
+
+  it('accepts a supported file within the size cap', () => {
+    expect(validateOwnerDocumentFile({ name: 'polis-2027.pdf', size: 204_800 })).toBeNull()
+    expect(validateOwnerDocumentFile({ name: 'NOTES.TXT', size: 12 })).toBeNull()
+    expect(validateOwnerDocumentFile({ name: 'scan.jpeg', size: OWNER_DOCUMENT_MAX_BYTES })).toBeNull()
+  })
+
+  it('rejects unsupported extensions, empty files and oversized files', () => {
+    expect(validateOwnerDocumentFile({ name: 'archive.zip', size: 100 }))
+      .toMatch(/Unsupported file type/)
+    expect(validateOwnerDocumentFile({ name: 'noextension', size: 100 }))
+      .toMatch(/Unsupported file type/)
+    expect(validateOwnerDocumentFile({ name: 'empty.pdf', size: 0 }))
+      .toBe('That file is empty.')
+    expect(validateOwnerDocumentFile({ name: 'huge.pdf', size: OWNER_DOCUMENT_MAX_BYTES + 1 }))
+      .toMatch(/The limit is 10\.0 MB\./)
+  })
+
+  // --- Audience resolution (what the upload toast reports) -----------------
+
+  it('resolves the audience of a specific-owner document', () => {
+    const { documents, audienceForDocument } = useOwnerDocuments()
+    const doc = documents.value.find(d => d.visibility === 'specific_owner')!
+    expect(audienceForDocument(doc)).toEqual(doc.ownerIds)
+  })
+
+  it('resolves an all-owners document to every owner mapped to its listings', () => {
+    const { uploadDocument, audienceForDocument } = useOwnerDocuments()
+    // lst-3 is co-owned 50/50 by own-2 and own-3.
+    const result = uploadDocument({
+      title: 'Shared Villa Notice',
+      category: 'other',
+      visibility: 'all_owners',
+      listingIds: ['lst-3'],
+    }, 'staff-1')
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(audienceForDocument(result.document).sort()).toEqual(['own-2', 'own-3'])
+  })
+
+  it('reports an empty audience for a listing nobody owns', () => {
+    const { uploadDocument, audienceForDocument } = useOwnerDocuments()
+    const result = uploadDocument({
+      title: 'Orphan Notice',
+      category: 'other',
+      visibility: 'all_owners',
+      listingIds: ['lst-16'],
+    }, 'staff-1')
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(audienceForDocument(result.document)).toEqual([])
   })
 })

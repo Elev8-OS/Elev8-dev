@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
+import { listings } from '@/components/listings/data/listings'
 import { columns } from '@/components/tasks/components/columns'
 import DataTable from '@/components/tasks/components/DataTable.vue'
 import { assigneeOptions, priorities } from '@/components/tasks/data/data'
 import { useHostBuddyInventorySync } from '@/composables/useHostBuddyInventorySync'
-import { useTaskStore } from '@/composables/useTaskStore'
 import { useTaskDetail } from '@/composables/useTaskDetail'
-import { listings } from '@/components/listings/data/listings'
+import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
+import { useTaskStore } from '@/composables/useTaskStore'
 
 const { tasks, addTask } = useTaskStore()
+const { ownerForTask, notifyApprovalRequested } = useTaskOwnerApproval()
 
 const { selectedTask, closeTaskDetail } = useTaskDetail()
 const detailSheetOpen = computed({
@@ -31,6 +33,14 @@ const newDescription = ref('')
 const isDetecting = ref(false)
 const newImages = ref<string[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
+
+// --- Owner cost approval -----------------------------------------------------
+// Ticking this holds the task until the owner approves the quoted cost.
+const needsOwnerApproval = ref(false)
+const newEstimatedCost = ref<number>(0)
+
+/** The owner who would be asked, derived from the selected listing. */
+const approvalOwner = computed(() => ownerForTask({ listing: newListing.value }))
 
 // Listing picker state
 const listingPopoverOpen = ref(false)
@@ -126,6 +136,8 @@ function removeNewImage(index: number) {
 function resetForm() {
   newTitle.value = ''
   newListing.value = ''
+  needsOwnerApproval.value = false
+  newEstimatedCost.value = 0
   assignee.value = ''
   assigneeType.value = 'role'
   dueDate.value = ''
@@ -142,7 +154,7 @@ function handleCreateTask() {
   if (!newTitle.value.trim())
     return
   const detection = detected.value
-  addTask({
+  const created = addTask({
     title: newTitle.value.trim(),
     status: 'todo',
     assignee: assignee.value || undefined,
@@ -157,8 +169,30 @@ function handleCreateTask() {
     linkedInventoryEntryId: detection?.entryId,
     conditionBefore: detection ? 'good' : undefined,
     detectedByHostBuddy: detection ? true : undefined,
+    // Owner cost approval — the task is held until the owner decides.
+    ownerApprovalRequired: needsOwnerApproval.value ? true : undefined,
+    ownerApprovalStatus: needsOwnerApproval.value ? 'pending' : undefined,
+    estimatedCost: needsOwnerApproval.value ? newEstimatedCost.value : undefined,
+    ownerId: needsOwnerApproval.value ? approvalOwner.value?.id : undefined,
+    ownerVisible: needsOwnerApproval.value ? true : undefined,
+    // The approval state lives in the timeline, so the wait starts there too.
+    statusUpdates: needsOwnerApproval.value
+      ? [{
+          date: new Date().toISOString(),
+          actor: { name: 'Komang Juliantara', kind: 'staff' as const },
+          icon: 'lucide:clock',
+          note: `sent the IDR ${newEstimatedCost.value.toLocaleString('en-US')} quote to ${approvalOwner.value?.name ?? 'the owner'} for approval`,
+          progress: 0,
+        }]
+      : undefined,
   })
-  toast.success(detection ? `Task created — HostBuddy linked ${detection.itemName}` : 'Task created')
+  if (needsOwnerApproval.value) {
+    notifyApprovalRequested(created)
+    toast.success(`Task created — waiting on ${approvalOwner.value?.name ?? 'the owner'} to approve the cost.`)
+  }
+  else {
+    toast.success(detection ? `Task created — HostBuddy linked ${detection.itemName}` : 'Task created')
+  }
   newTaskOpen.value = false
   resetForm()
 }
@@ -301,6 +335,50 @@ const todayDate = formatDate(new Date())
                 </Command>
               </PopoverContent>
             </Popover>
+          </div>
+
+          <!-- Owner cost approval — holds the task until the owner decides. -->
+          <div class="rounded-md border p-3 space-y-3">
+            <div
+              class="flex items-start gap-2.5 cursor-pointer"
+              role="checkbox"
+              :aria-checked="needsOwnerApproval"
+              tabindex="0"
+              @click="needsOwnerApproval = !needsOwnerApproval"
+              @keydown.space.prevent="needsOwnerApproval = !needsOwnerApproval"
+            >
+              <div
+                class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                :class="needsOwnerApproval ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+              >
+                <Icon v-if="needsOwnerApproval" name="lucide:check" class="size-3" />
+              </div>
+              <div class="space-y-0.5">
+                <p class="text-sm font-medium leading-none">
+                  Needs owner approval before work starts
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  The owner is charged for this. They see the quote in their portal and must approve it first.
+                </p>
+              </div>
+            </div>
+
+            <div v-if="needsOwnerApproval" class="space-y-3 border-t pt-3">
+              <div class="space-y-1.5">
+                <Label for="task-estimated-cost">Estimated cost (IDR)</Label>
+                <Input id="task-estimated-cost" v-model.number="newEstimatedCost" type="number" min="0" step="50000" />
+              </div>
+              <p v-if="!newListing" class="text-xs text-destructive">
+                Pick a listing so we know which owner to ask.
+              </p>
+              <p v-else-if="!approvalOwner" class="text-xs text-destructive">
+                No owner is mapped to that listing — nobody can approve it.
+              </p>
+              <p v-else class="text-xs text-muted-foreground">
+                <Icon name="lucide:user-round-check" class="mr-1 inline size-3" />
+                {{ approvalOwner.name }} will be asked to approve.
+              </p>
+            </div>
           </div>
 
           <div v-if="newTitle.trim() && newListing" class="rounded-md border px-3 py-2.5 flex items-start gap-2.5" :class="detected ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20' : 'border-border bg-muted/40'">

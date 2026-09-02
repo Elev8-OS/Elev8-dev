@@ -9,7 +9,6 @@ import OwnersTable from '~/components/owners/OwnersTable.vue'
 import OwnerStatementsPanel from '~/components/owners/OwnerStatementsPanel.vue'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
-import { Card, CardContent } from '~/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { Skeleton } from '~/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
@@ -19,13 +18,11 @@ import UserDetailSheet from '~/components/users/UserDetailSheet.vue'
 import UsersTable from '~/components/users/UsersTable.vue'
 import { useOwners } from '~/composables/useOwners'
 import { useRoles } from '~/composables/useRoles'
-import { useUsers } from '~/composables/useUsers'
 
 definePageMeta({
   layout: 'default',
 })
 
-const { totalCount, activeUsers, inactiveUsers } = useUsers()
 const { roles } = useRoles()
 const { owners } = useOwners()
 
@@ -103,40 +100,6 @@ function onSelectOwner(owner: Owner) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-
-      <!-- KPI strip -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent class="p-4">
-            <div class="text-xs text-muted-foreground uppercase tracking-wide">
-              Total users
-            </div>
-            <div class="text-2xl font-bold mt-1">
-              {{ totalCount }}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="p-4">
-            <div class="text-xs text-muted-foreground uppercase tracking-wide">
-              Active
-            </div>
-            <div class="text-2xl font-bold mt-1 text-green-600">
-              {{ activeUsers.length }}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="p-4">
-            <div class="text-xs text-muted-foreground uppercase tracking-wide">
-              Inactive
-            </div>
-            <div class="text-2xl font-bold mt-1 text-muted-foreground">
-              {{ inactiveUsers.length }}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <!-- Tabs -->

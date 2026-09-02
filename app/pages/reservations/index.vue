@@ -5,10 +5,13 @@ import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalize
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import OwnerStayApprovalsPanel from '~/components/owners/OwnerStayApprovalsPanel.vue'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
 import ReservationTable from '~/components/reservations/ReservationTable.vue'
+import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
+import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const router = useRouter()
@@ -167,6 +170,63 @@ const statCards = computed(() => [
 function applyStatFilter(status: string) {
   filters.value.status = filters.value.status === status ? 'all' : status as any
 }
+
+// --- Owner stay requests, actioned from the row (R47 mirror) ---------------
+// An `owner_request` row is the mirror of an OwnerStay awaiting a decision.
+// Staff can approve or reject it here instead of going to the Cockpit queue.
+
+const { stayForReservation } = useOwnerStays()
+const { pendingRequestForStay, approveRequest, rejectRequest, pendingRequests } = useOwnerStayApprovals()
+
+const rejectTarget = ref<ReservationEntry | null>(null)
+const rejectReason = ref('')
+
+/** Resolve the open approval request behind an `owner_request` reservation row. */
+function requestForReservation(reservation: ReservationEntry) {
+  const stay = stayForReservation(reservation.id, reservation.bookingNote)
+  return stay ? pendingRequestForStay(stay.id) : undefined
+}
+
+function approveOwnerStay(reservation: ReservationEntry) {
+  const request = requestForReservation(reservation)
+  if (!request) {
+    toast.error('No open owner stay request is linked to this reservation.')
+    return
+  }
+  const result = approveRequest(request.id, 'staff-1')
+  if (result.ok)
+    toast.success('Owner stay approved — cleaning and access are being provisioned.')
+  else
+    toast.error('Could not approve this owner stay.')
+}
+
+function openRejectOwnerStay(reservation: ReservationEntry) {
+  if (!requestForReservation(reservation)) {
+    toast.error('No open owner stay request is linked to this reservation.')
+    return
+  }
+  rejectTarget.value = reservation
+  rejectReason.value = ''
+}
+
+function confirmRejectOwnerStay() {
+  const reservation = rejectTarget.value
+  if (!reservation)
+    return
+  const request = requestForReservation(reservation)
+  if (!request) {
+    toast.error('No open owner stay request is linked to this reservation.')
+    rejectTarget.value = null
+    return
+  }
+  const result = rejectRequest(request.id, 'staff-1', rejectReason.value.trim())
+  if (result.ok)
+    toast.success('Owner stay rejected — the owner sees your reason in the portal.')
+  else
+    toast.error('Could not reject this owner stay.')
+  rejectTarget.value = null
+  rejectReason.value = ''
+}
 </script>
 
 <template>
@@ -205,6 +265,27 @@ function applyStatFilter(status: string) {
         </div>
       </button>
     </div>
+
+    <!-- Owner stay requests awaiting a decision. Hidden when the queue is
+         empty so it never adds noise to a page that is mostly guest
+         bookings. Same panel the Cockpit uses. -->
+    <Card v-if="pendingRequests.length" class="bg-muted/40">
+      <CardHeader class="pb-3">
+        <CardTitle class="flex items-center gap-2 text-base">
+          <Icon name="lucide:user-round-check" class="size-4 text-muted-foreground" />
+          Pending owner stay requests
+          <Badge variant="destructive">
+            {{ pendingRequests.length }}
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Approve to confirm the owner's dates, or reject with a reason the owner sees in their portal.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <OwnerStayApprovalsPanel />
+      </CardContent>
+    </Card>
 
     <!-- Filter bar -->
     <div class="flex flex-wrap items-center gap-3">
@@ -389,6 +470,8 @@ function applyStatFilter(status: string) {
       @open-guest="openGuest"
       @open-detail="openDetail"
       @copy-id="copyId"
+      @approve-owner-stay="approveOwnerStay"
+      @reject-owner-stay="openRejectOwnerStay"
     />
 
     <ReservationDetailSheet
@@ -401,5 +484,38 @@ function applyStatFilter(status: string) {
     <NewReservationDialog
       v-model:open="createOpen"
     />
+
+    <!-- Reject an owner stay request straight from the reservations row. -->
+    <Dialog :open="!!rejectTarget" @update:open="(v: boolean) => { if (!v) rejectTarget = null }">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reject owner stay</DialogTitle>
+          <DialogDescription>
+            {{ rejectTarget?.guestName }} · {{ rejectTarget?.checkIn }} → {{ rejectTarget?.checkOut }}.
+            The reason is shown to the owner in their portal.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Label for="reject-owner-stay-reason">Reason</Label>
+          <Textarea
+            id="reject-owner-stay-reason"
+            v-model="rejectReason"
+            placeholder="e.g. Dates overlap a confirmed guest booking with high revenue"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="rejectTarget = null">
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            :disabled="!rejectReason.trim()"
+            @click="confirmRejectOwnerStay"
+          >
+            Reject stay
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

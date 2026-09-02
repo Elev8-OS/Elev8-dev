@@ -45,7 +45,8 @@ const emit = defineEmits<{
 const { mappings: existingMappings } = useOwners()
 
 // Cached `listings.value` array — used to populate the property picker.
-// Picker options are keyed by listing name, so we keep an id↔name index.
+// Options carry the listing `id`, so the picker emits ids (not names) and the
+// draft's `listingId` can be bound to it directly.
 const listingOptions = computed(() =>
   listings.value.map(l => ({
     id: l.id,
@@ -55,13 +56,6 @@ const listingOptions = computed(() =>
     region: l.tags?.[0] ?? 'All',
   })),
 )
-
-const listingIdByName = computed(() => {
-  const map = new Map<string, string>()
-  for (const l of listingOptions.value)
-    map.set(l.name, l.id)
-  return map
-})
 
 function listingNameById(id: string): string | undefined {
   return listingOptions.value.find(l => l.id === id)?.name
@@ -193,18 +187,16 @@ function patchOperationalFee(index: number, percentage: number) {
 
 /**
  * Handle a selection from the shared property picker. The picker is
- * single-select here — it emits an array with the chosen listing name
- * (or an empty array when cleared).
+ * single-select here and its options carry a stable `id`, so it emits an
+ * array with the chosen listing id (or an empty array when cleared).
  */
-function selectListing(index: number, names: string[]) {
-  const name = names[0]
-  if (!name) {
+function selectListing(index: number, ids: string[]) {
+  const listingId = ids[0]
+  if (!listingId || listingId === 'All Properties') {
     patchMapping(index, { listingId: '' })
     return
   }
-  const listingId = listingIdByName.value.get(name)
-  if (listingId)
-    patchMapping(index, { listingId })
+  patchMapping(index, { listingId })
 }
 
 // Aggregate ownership per (listingId, unitId) scope across the local draft
@@ -289,7 +281,7 @@ const cumulativeOverflow = computed<{ scope: string, total: number, existing: nu
                   </Label>
                   <SharedPropertyPicker
                     :id="`listing-${index}`"
-                    :model-value="draft.mapping.listingId ? [listingNameById(draft.mapping.listingId) ?? ''] : []"
+                    :model-value="draft.mapping.listingId ? [draft.mapping.listingId] : []"
                     :options="listingOptions"
                     :multi-select="false"
                     @update:model-value="(v) => selectListing(index, v)"

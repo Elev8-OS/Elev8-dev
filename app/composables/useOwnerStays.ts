@@ -7,8 +7,10 @@ import type {
   OwnerStaySyncState,
   OwnerStaySyncTarget,
 } from '~/components/owners/data/owner-stays'
+import type { ReservationStatus } from '~/components/reservations/data/reservations'
 import { CANCEL_CUTOFF_HOURS, mockOwnerStays } from '~/components/owners/data/owner-stays'
 import { useNotifications } from '~/composables/useNotifications'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 export type OwnerStayConflictType = 'guest_reservation' | 'blocked_date' | 'owner_stay'
 
@@ -251,6 +253,61 @@ function emitOwnerStayAlert(
 
 export function useOwnerStays() {
   const stays = useState<OwnerStay[]>('elev8-owner-stays', () => clone(mockOwnerStays))
+
+  /**
+   * Every owner stay is mirrored into the Reservations module so staff see
+   * owner-occupied dates on the Reservations page alongside guest bookings.
+   * The link is `OwnerStay.reservationId`; `bookingNote` is kept as a
+   * fallback match for stays seeded before the id was stored.
+   */
+  function ownerStayBookingNote(stayId: string): string {
+    return `Owner request ${stayId}`
+  }
+
+  /**
+   * Resolve the owner stay behind a reservation row. Prefers the stored
+   * `reservationId` link and falls back to the `bookingNote` marker, mirroring
+   * how `setMirroredReservationStatus` matches in the other direction.
+   */
+  function stayForReservation(
+    reservationId: string,
+    bookingNote?: string,
+  ): OwnerStay | undefined {
+    const byId = stays.value.find(stay => stay.reservationId === reservationId)
+    if (byId)
+      return byId
+    if (!bookingNote?.startsWith('Owner request '))
+      return undefined
+    const stayId = bookingNote.slice('Owner request '.length).trim()
+    return stays.value.find(stay => stay.id === stayId)
+  }
+
+  /** Attach the mirrored reservation id to a stay (one-way, id is never reused). */
+  function linkReservation(stayId: string, reservationId: string | undefined): void {
+    if (!reservationId)
+      return
+    stays.value = stays.value.map(stay => stay.id === stayId
+      ? { ...stay, reservationId, updatedAt: nowIso() }
+      : stay)
+  }
+
+  /**
+   * Move the mirrored reservation of a stay to `status`. Matches on the
+   * stored `reservationId` first and falls back to the `bookingNote`
+   * marker, so pre-existing rows keep working.
+   */
+  function setMirroredReservationStatus(
+    stay: Pick<OwnerStay, 'id' | 'reservationId'>,
+    status: ReservationStatus,
+    blockReason?: string,
+  ): void {
+    const { reservations } = useReservationsModule()
+    const note = ownerStayBookingNote(stay.id)
+    reservations.value = reservations.value.map(reservation =>
+      reservation.id === stay.reservationId || reservation.bookingNote === note
+        ? { ...reservation, status, ...(blockReason ? { blockReason } : {}) }
+        : reservation)
+  }
 
   function detectConflicts(input: DetectConflictsInput): OwnerStayConflict[] {
     if (!hasValidDateRange(input))
@@ -568,6 +625,9 @@ export function useOwnerStays() {
           updatedAt: timestamp,
         }
       : stay)
+    // Release the mirrored reservation so cancelled owner dates stop
+    // showing as occupied on the Reservations page.
+    setMirroredReservationStatus(current, 'cancelled')
     emitOwnerStayAlert('OWNER_STAY_CANCELLED', 'WARNING', {
       stayId,
       ownerId: current.ownerId,
@@ -665,5 +725,8 @@ export function useOwnerStays() {
     retrySync,
     ownerUseNightsForYear,
     getCapWarning,
+    linkReservation,
+    setMirroredReservationStatus,
+    stayForReservation,
   }
 }

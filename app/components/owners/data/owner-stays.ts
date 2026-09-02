@@ -173,6 +173,7 @@ export const mockOwnerStays: OwnerStay[] = [
     countsAgainstOwnerUseCap: true,
     status: 'cancelled',
     source: 'owner_request',
+    reservationId: 'ost-res-4',
     notes: 'Cancelled — booked a guest stay instead.',
     syncState: {
       cockpit: 'synced',
@@ -197,6 +198,7 @@ export const mockOwnerStays: OwnerStay[] = [
     countsAgainstOwnerUseCap: true,
     status: 'pending_approval',
     source: 'owner_request',
+    reservationId: 'ost-res-5',
     notes: 'Family holiday during high season',
     syncState: {
       cockpit: 'pending',
@@ -220,6 +222,7 @@ export const mockOwnerStays: OwnerStay[] = [
     status: 'rejected',
     source: 'owner_request',
     approval: { decidedBy: 'staff-1', decidedAt: '2026-08-10T08:00:00.000Z', reason: 'Dates overlap a confirmed guest booking with high revenue.' },
+    reservationId: 'ost-res-6',
     notes: 'Requested late summer stay',
     syncState: {
       cockpit: 'pending',

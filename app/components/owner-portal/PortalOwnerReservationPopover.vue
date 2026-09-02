@@ -16,8 +16,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
-  edit: [value: OwnerReservation]
-  remove: [value: OwnerReservation]
+  'edit': [value: OwnerReservation]
+  'remove': [value: OwnerReservation]
 }>()
 
 const channelLabel: Record<OwnerReservationChannel, string> = {
@@ -27,7 +27,7 @@ const channelLabel: Record<OwnerReservationChannel, string> = {
   vrbo: 'Vrbo',
 }
 
-const variant = (status: OwnerReservation['status']) => {
+function variant(status: OwnerReservation['status']) {
   if (status === 'confirmed')
     return 'default'
   if (status === 'pending')

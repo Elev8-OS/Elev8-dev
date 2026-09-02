@@ -1,9 +1,16 @@
 <script setup lang="ts">
+import type { DateRange } from 'reka-ui'
 import type { OwnerBookingMode } from '~/components/owners/data/owner-quotas'
 import type { OwnerStay, OwnerStaySyncTarget } from '~/components/owners/data/owner-stays'
 import type { OwnerStayConflict, OwnerUseCapWarning } from '~/composables/useOwnerStays'
+import { CalendarDate } from '@internationalized/date'
 import { toast } from 'vue-sonner'
+import BaseDateRangePicker from '~/components/base/DateRangePicker.vue'
+import { listings } from '~/components/listings/data/listings'
 import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
+import { mockOwnerRooms, mockOwnerRoomTypes } from '~/components/owners/data/owner-reservations-seed'
+import SharedPropertyPicker from '~/components/shared/PropertyPicker.vue'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import { useOwners } from '~/composables/useOwners'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
@@ -34,7 +41,7 @@ const open = computed<boolean>({
 const { updateStay, detectConflicts, getCapWarning } = useOwnerStays()
 const { requestStay } = useOwnerStayApprovals()
 const { getBookingMode, checkQuota } = useOwnerQuotas()
-const { byId } = useOwners()
+const { byId, mappings } = useOwners()
 
 /** Per-owner annual use cap; 0 / absent means no cap. */
 const ownerAnnualCap = computed(() => {
@@ -51,10 +58,89 @@ const bookingMode = computed<OwnerBookingMode>(() =>
 
 const initialCheckIn = props.stay?.checkIn ?? props.defaultCheckIn ?? ''
 const unitId = ref(props.stay?.unitId ?? '')
+
+/**
+ * Only the properties this owner actually holds. Options carry `id`, so the
+ * picker emits listing ids and binds straight to `listingId`.
+ */
+const propertyOptions = computed(() => {
+  const owned = new Set(
+    mappings.value.filter(m => m.ownerId === props.ownerId).map(m => m.listingId),
+  )
+  return listings.value
+    .filter(l => owned.has(l.id))
+    .map(l => ({
+      id: l.id,
+      name: l.name,
+      city: l.location.split(',')[0]?.trim() ?? l.location,
+      region: l.tags?.[0] ?? 'All',
+    }))
+})
+
+/** Rooms of the selected property, labelled with their type. */
+/**
+ * Reka UI reserves the empty string for "no selection", so a `SelectItem`
+ * with `value=""` is invalid and takes the rest of the list down with it.
+ * The whole-property choice therefore needs a real sentinel value.
+ */
+const WHOLE_PROPERTY = '__whole_property__'
+
+const roomOptions = computed(() => {
+  const typeName = new Map(mockOwnerRoomTypes.map(rt => [rt.id, rt.name]))
+  return mockOwnerRooms
+    .filter(r => r.listingId === listingId.value)
+    .map(r => ({
+      id: r.id,
+      label: typeName.has(r.roomTypeId) ? `${typeName.get(r.roomTypeId)} · ${r.label}` : r.label,
+    }))
+})
+
+/** Switching property invalidates any room already chosen. */
+function selectProperty(ids: string[]) {
+  const next = ids[0]
+  if (!next || next === 'All Properties')
+    return
+  listingId.value = next
+  unitId.value = ''
+}
 const checkIn = ref(props.stay?.checkIn ?? initialCheckIn)
 const checkOut = ref(props.stay?.checkOut ?? '')
 const guestCount = ref(props.stay?.guestCount ?? 2)
 const notes = ref(props.stay?.notes ?? '')
+
+/**
+ * The two ISO date refs stay the source of truth (validation and save read
+ * them); this is a two-way view of them for the range picker.
+ */
+function toCalendarDate(iso: string): CalendarDate | undefined {
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day)
+    return undefined
+  return new CalendarDate(year, month, day)
+}
+
+function toIsoDate(date: { year: number, month: number, day: number }): string {
+  return `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`
+}
+
+const stayRange = computed<DateRange>({
+  get: () => ({
+    start: checkIn.value ? toCalendarDate(checkIn.value) : undefined,
+    end: checkOut.value ? toCalendarDate(checkOut.value) : undefined,
+  }),
+  set: (range) => {
+    checkIn.value = range.start ? toIsoDate(range.start) : ''
+    checkOut.value = range.end ? toIsoDate(range.end) : ''
+  },
+})
+
+/** Nights in the selected range, so the owner sees the length as they pick. */
+const selectedNights = computed(() => {
+  if (!checkIn.value || !checkOut.value)
+    return 0
+  const ms = Date.parse(`${checkOut.value}T00:00:00`) - Date.parse(`${checkIn.value}T00:00:00`)
+  return ms > 0 ? Math.round(ms / 86_400_000) : 0
+})
 const conflicts = ref<OwnerStayConflict[]>([])
 const capWarning = ref<OwnerUseCapWarning | undefined>()
 const quotaWarning = ref('')
@@ -206,13 +292,57 @@ async function save() {
           </p>
         </div>
         <div><Label for="stay-guest">Guest name</Label><Input id="stay-guest" v-model="guestName" placeholder="Owner or guest name" /></div>
-        <div><Label for="stay-property">Property</Label><Input id="stay-property" v-model="listingId" /></div>
-        <div class="grid grid-cols-2 gap-3">
-          <div><Label for="stay-room">Room (optional)</Label><Input id="stay-room" v-model="unitId" placeholder="Room ID" /></div>
-          <div><Label for="stay-guests">Guests</Label><Input id="stay-guests" v-model.number="guestCount" type="number" min="1" /></div>
+        <div class="space-y-1.5">
+          <Label>Property</Label>
+          <SharedPropertyPicker
+            :model-value="listingId ? [listingId] : []"
+            :options="propertyOptions"
+            :multi-select="false"
+            @update:model-value="selectProperty"
+          />
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div><Label for="stay-in">Check-in</Label><Input id="stay-in" v-model="checkIn" type="date" /></div><div><Label for="stay-out">Check-out</Label><Input id="stay-out" v-model="checkOut" type="date" /></div>
+          <div class="space-y-1.5">
+            <Label for="stay-room">Room</Label>
+            <Select
+              :model-value="unitId || WHOLE_PROPERTY"
+              :disabled="!roomOptions.length"
+              @update:model-value="(value: unknown) => {
+                const next = String(value ?? '')
+                unitId = next === WHOLE_PROPERTY ? '' : next
+              }"
+            >
+              <SelectTrigger id="stay-room">
+                <SelectValue :placeholder="roomOptions.length ? 'Whole property' : 'No rooms listed'" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="WHOLE_PROPERTY">
+                  Whole property
+                </SelectItem>
+                <SelectItem v-for="room in roomOptions" :key="room.id" :value="room.id">
+                  {{ room.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">
+              Leave as whole property to block every room.
+            </p>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="stay-guests">Guests</Label>
+            <Input id="stay-guests" v-model.number="guestCount" type="number" min="1" />
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <Label for="stay-dates">Dates</Label>
+          <BaseDateRangePicker
+            id="stay-dates"
+            v-model="stayRange"
+            placeholder="Pick your check-in and check-out"
+          />
+          <p v-if="selectedNights" class="text-xs text-muted-foreground">
+            {{ selectedNights }} night{{ selectedNights === 1 ? '' : 's' }}
+          </p>
         </div>
         <div><Label for="stay-notes">Notes</Label><Textarea id="stay-notes" v-model="notes" /></div>
         <Alert v-if="error" variant="destructive">
