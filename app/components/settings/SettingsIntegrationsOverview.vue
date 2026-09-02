@@ -2,10 +2,11 @@
 import { computed, ref } from 'vue'
 import SettingsApoaIntegration from './ApoaIntegration.vue'
 import SettingsAvsMeldescheinIntegration from './AvsMeldescheinIntegration.vue'
-import SettingsFeratelIntegration from './FeratelIntegration.vue'
 import { payoutAccounts } from './data/payouts'
 import SettingsEmailIntegration from './EmailIntegration.vue'
+import SettingsFeratelIntegration from './FeratelIntegration.vue'
 import SettingsMinutIntegration from './MinutIntegration.vue'
+import SettingsPriceLabsIntegration from './PriceLabsIntegration.vue'
 import SettingsSmartLockIntegration from './SmartLockIntegration.vue'
 import SettingsThreeCxIntegration from './ThreeCxIntegration.vue'
 import SettingsWhatsAppIntegration from './WhatsAppIntegration.vue'
@@ -15,13 +16,14 @@ const { isConnected: threeCxConnected, activeAccount: threeCxAccount } = useThre
 const smartLock = useSmartLock()
 const { isConnected: minutConnected, devices: minutDevices } = useMinut()
 const { isConnected: emailConnected, activeAccount: emailAccount, hasPendingCustom: emailPending } = useEmailIntegration()
+const priceLabs = usePriceLabs()
 const gr = useGuestRegistration()
 
-type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email' | 'apoa' | 'avs' | 'feratel'
+type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email' | 'apoa' | 'avs' | 'feratel' | 'pricelabs'
 
 const openIntegration = ref<IntegrationId | null>(null)
 const sheetOpen = computed({
-  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs', 'feratel'].includes(openIntegration.value ?? ''),
+  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs', 'feratel', 'pricelabs'].includes(openIntegration.value ?? ''),
   set: (val) => {
     if (!val)
       openIntegration.value = null
@@ -37,6 +39,8 @@ const activeComponent = computed(() => {
     return SettingsSmartLockIntegration
   if (openIntegration.value === 'minut')
     return SettingsMinutIntegration
+  if (openIntegration.value === 'pricelabs')
+    return SettingsPriceLabsIntegration
   if (openIntegration.value === 'email')
     return SettingsEmailIntegration
   if (openIntegration.value === 'apoa')
@@ -57,6 +61,8 @@ const activeSheetTitle = computed(() => {
     return 'Smart Lock'
   if (openIntegration.value === 'minut')
     return 'Minut (Noise & Sensor Monitoring)'
+  if (openIntegration.value === 'pricelabs')
+    return 'PriceLabs (Revenue Management)'
   if (openIntegration.value === 'email')
     return 'Email (Sending Domain)'
   if (openIntegration.value === 'apoa')
@@ -137,21 +143,36 @@ const payoutPill = computed(() => {
   return { label: `${count} account${count !== 1 ? 's' : ''}`, tone: 'connected' as const }
 })
 
-const statusToneClass: Record<'connected' | 'idle', string> = {
+const statusToneClass: Record<'connected' | 'pending' | 'idle', string> = {
   connected: 'bg-green-50 text-green-700',
+  pending: 'bg-amber-50 text-amber-700',
   idle: 'bg-muted text-muted-foreground',
 }
 
-const statusDotClass: Record<'connected' | 'idle', string> = {
+const statusDotClass: Record<'connected' | 'pending' | 'idle', string> = {
   connected: 'bg-green-500',
+  pending: 'bg-amber-500',
   idle: 'bg-muted-foreground/50',
 }
+
+/**
+ * Connected is not the same as syncing: a key can be valid while no unit is
+ * mapped or enabled, and that reads as pending rather than green.
+ */
+const priceLabsPill = computed(() => {
+  if (!priceLabs.isConnected.value)
+    return { label: 'Not connected', tone: 'idle' as const }
+  const syncing = priceLabs.syncingUnits.value.length
+  if (syncing === 0)
+    return { label: 'Connected · no unit syncing', tone: 'pending' as const }
+  return { label: `Syncing ${syncing} unit${syncing !== 1 ? 's' : ''}`, tone: 'connected' as const }
+})
 
 function openSheet(id: IntegrationId) {
   openIntegration.value = id
 }
 
-type IntegrationGroup = 'all' | 'messaging' | 'devices' | 'payments' | 'government'
+type IntegrationGroup = 'all' | 'messaging' | 'devices' | 'revenue' | 'payments' | 'government'
 
 const activeGroup = ref<IntegrationGroup>('all')
 
@@ -159,6 +180,7 @@ const groupOptions: { value: IntegrationGroup, label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'messaging', label: 'Messaging & Communication' },
   { value: 'devices', label: 'Devices & Sensors' },
+  { value: 'revenue', label: 'Revenue Management' },
   { value: 'payments', label: 'Payments' },
   { value: 'government', label: 'Government Integration' },
 ]
@@ -326,6 +348,42 @@ function isGroupVisible(group: Exclude<IntegrationGroup, 'all'>): boolean {
           </p>
           <Button variant="outline" size="sm" class="self-start" @click="openSheet('minut')">
             {{ minutConnected ? 'Manage' : 'Connect' }}
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Revenue Management group -->
+    <div v-if="isGroupVisible('revenue')" class="space-y-3">
+      <div class="flex items-center gap-2">
+        <Icon name="lucide:trending-up" class="size-4 text-muted-foreground" />
+        <h3 class="text-sm font-semibold tracking-tight">
+          Revenue Management
+        </h3>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- PriceLabs -->
+        <div class="flex flex-col rounded-lg border bg-card p-4 transition-colors hover:border-border/80">
+          <div class="mb-3 flex items-start justify-between">
+            <div class="flex h-9 w-9 items-center justify-center rounded-md border bg-violet-500/10">
+              <Icon name="lucide:trending-up" class="size-5 text-violet-600" />
+            </div>
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+              :class="statusToneClass[priceLabsPill.tone]"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass[priceLabsPill.tone]" />
+              {{ priceLabsPill.label }}
+            </span>
+          </div>
+          <p class="mb-1 text-sm font-medium">
+            PriceLabs
+          </p>
+          <p class="mb-4 flex-1 text-xs text-muted-foreground leading-relaxed">
+            Push listings, availability and reservations, read computed prices and market data back, and keep every pricing setting in Elev8.
+          </p>
+          <Button variant="outline" size="sm" class="self-start" @click="openSheet('pricelabs')">
+            {{ priceLabs.isConnected.value ? 'Manage' : 'Connect' }}
           </Button>
         </div>
       </div>
