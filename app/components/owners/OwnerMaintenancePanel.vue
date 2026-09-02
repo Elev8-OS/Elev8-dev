@@ -22,7 +22,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { useOwnerMaintenance } from '~/composables/useOwnerMaintenance'
 import { useOwners } from '~/composables/useOwners'
 
-const { records, openApprovals, createRecord, emergencyOverride, completeRecord, syncToStatement, taskForRecord } = useOwnerMaintenance()
+const { records, openApprovals, createRecord, emergencyOverride, completeRecord, syncToStatement } = useOwnerMaintenance()
 const { byId, owners, mappings } = useOwners()
 
 const listingById = computed(() => new Map(listings.value.map(l => [l.id, l])))

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
+import { listings } from '@/components/listings/data/listings'
 import { columns } from '@/components/tasks/components/columns'
 import DataTable from '@/components/tasks/components/DataTable.vue'
 import { assigneeOptions, priorities } from '@/components/tasks/data/data'
 import { useHostBuddyInventorySync } from '@/composables/useHostBuddyInventorySync'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskStore } from '@/composables/useTaskStore'
-import { useTaskDetail } from '@/composables/useTaskDetail'
-import { listings } from '@/components/listings/data/listings'
 
 const { tasks, addTask } = useTaskStore()
 const { ownerForTask, notifyApprovalRequested } = useTaskOwnerApproval()

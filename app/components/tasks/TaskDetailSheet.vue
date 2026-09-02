@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { Task } from '@/components/tasks/data/schema'
 import { toast } from 'vue-sonner'
+import { assigneeOptions, priorities, statuses } from '@/components/tasks/data/data'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskStore } from '@/composables/useTaskStore'
-import { assigneeOptions, statuses, priorities } from '@/components/tasks/data/data'
 
 const props = defineProps<{
   task: Task | null
@@ -276,30 +276,52 @@ function formatDate(iso: string): string {
             <!-- Info grid -->
             <div class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div>
-                <p class="text-xs text-muted-foreground">Listing</p>
-                <p class="font-medium">{{ task.listing || '—' }}</p>
+                <p class="text-xs text-muted-foreground">
+                  Listing
+                </p>
+                <p class="font-medium">
+                  {{ task.listing || '—' }}
+                </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground">Due Date</p>
+                <p class="text-xs text-muted-foreground">
+                  Due Date
+                </p>
                 <p class="font-medium" :class="task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== 'done' && task.status !== 'canceled' ? 'text-destructive' : ''">
                   {{ task.dueDate ? formatDate(task.dueDate) : '—' }}
                 </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground">Status</p>
-                <p class="font-medium">{{ statuses.find(s => s.value === task.status)?.label || task.status }}</p>
+                <p class="text-xs text-muted-foreground">
+                  Status
+                </p>
+                <p class="font-medium">
+                  {{ statuses.find(s => s.value === task.status)?.label || task.status }}
+                </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground">Priority</p>
-                <p class="font-medium">{{ priorities.find(p => p.value === task.priority)?.label || task.priority }}</p>
+                <p class="text-xs text-muted-foreground">
+                  Priority
+                </p>
+                <p class="font-medium">
+                  {{ priorities.find(p => p.value === task.priority)?.label || task.priority }}
+                </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground">Assignee</p>
-                <p class="font-medium">{{ getAssigneeLabel(task.assignee) }}</p>
+                <p class="text-xs text-muted-foreground">
+                  Assignee
+                </p>
+                <p class="font-medium">
+                  {{ getAssigneeLabel(task.assignee) }}
+                </p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground">Created</p>
-                <p class="font-medium">{{ task.createdAt ? formatDate(task.createdAt) : '—' }}</p>
+                <p class="text-xs text-muted-foreground">
+                  Created
+                </p>
+                <p class="font-medium">
+                  {{ task.createdAt ? formatDate(task.createdAt) : '—' }}
+                </p>
               </div>
             </div>
 
@@ -311,13 +333,19 @@ function formatDate(iso: string): string {
 
             <!-- Description -->
             <div v-if="task.description">
-              <h4 class="mb-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</h4>
-              <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ task.description }}</p>
+              <h4 class="mb-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Description
+              </h4>
+              <p class="text-sm leading-relaxed whitespace-pre-wrap">
+                {{ task.description }}
+              </p>
             </div>
 
             <!-- Progress -->
             <div>
-              <h4 class="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Progress</h4>
+              <h4 class="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Progress
+              </h4>
               <div class="flex items-center gap-3">
                 <div class="h-2 flex-1 overflow-hidden rounded-full bg-primary/20">
                   <div
@@ -408,7 +436,9 @@ function formatDate(iso: string): string {
 
             <!-- Images -->
             <div v-if="task.images && task.images.length">
-              <h4 class="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Images</h4>
+              <h4 class="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Images
+              </h4>
               <div class="grid grid-cols-3 gap-2">
                 <div v-for="(img, idx) in task.images" :key="idx" class="relative group">
                   <img
@@ -493,8 +523,12 @@ function formatDate(iso: string): string {
                         <div v-if="entry.cost.receipt" class="mt-2 flex items-center gap-2 border-t pt-2">
                           <Icon name="lucide:receipt" class="size-4 shrink-0 text-muted-foreground" />
                           <div class="min-w-0 flex-1">
-                            <p class="truncate text-xs font-medium">{{ entry.cost.receipt.fileName }}</p>
-                            <p class="text-xs text-muted-foreground">{{ fmtSize(entry.cost.receipt.fileSize) }}</p>
+                            <p class="truncate text-xs font-medium">
+                              {{ entry.cost.receipt.fileName }}
+                            </p>
+                            <p class="text-xs text-muted-foreground">
+                              {{ fmtSize(entry.cost.receipt.fileSize) }}
+                            </p>
                           </div>
                           <Button variant="ghost" size="sm" class="h-7 text-xs" @click="viewReceipt(entry.cost)">
                             View
@@ -522,7 +556,9 @@ function formatDate(iso: string): string {
       </template>
 
       <div v-else class="flex flex-1 items-center justify-center">
-        <p class="text-sm text-muted-foreground">Select a task to view details.</p>
+        <p class="text-sm text-muted-foreground">
+          Select a task to view details.
+        </p>
       </div>
     </SheetContent>
 

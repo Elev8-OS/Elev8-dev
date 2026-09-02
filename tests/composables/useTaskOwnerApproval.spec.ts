@@ -116,7 +116,10 @@ describe('useTaskOwnerApproval', () => {
   it('refuses to complete a task still waiting on the owner', () => {
     const { completeWithReceipt } = useTaskOwnerApproval()
     const result = completeWithReceipt('TASK-OWN-002', {
-      fileName: 'r.pdf', fileSize: 100, mimeType: 'application/pdf', amount: 1_000_000,
+      fileName: 'r.pdf',
+      fileSize: 100,
+      mimeType: 'application/pdf',
+      amount: 1_000_000,
     })
     expect(result.ok).toBe(false)
     if (!result.ok)
@@ -138,7 +141,10 @@ describe('useTaskOwnerApproval', () => {
     ownerApprove('TASK-OWN-002')
 
     const result = completeWithReceipt('TASK-OWN-002', {
-      fileName: 'r.pdf', fileSize: 100, mimeType: 'application/pdf', amount: 0,
+      fileName: 'r.pdf',
+      fileSize: 100,
+      mimeType: 'application/pdf',
+      amount: 0,
     })
     expect(result.ok).toBe(false)
     if (!result.ok)
@@ -150,7 +156,10 @@ describe('useTaskOwnerApproval', () => {
     ownerApprove('TASK-OWN-002')
 
     const result = completeWithReceipt('TASK-OWN-002', {
-      fileName: 'receipt-ac.jpg', fileSize: 240_000, mimeType: 'image/jpeg', amount: 1_180_000,
+      fileName: 'receipt-ac.jpg',
+      fileSize: 240_000,
+      mimeType: 'image/jpeg',
+      amount: 1_180_000,
     })
     expect(result.ok).toBe(true)
 
@@ -206,7 +215,10 @@ describe('useTaskOwnerApproval', () => {
     const before = taskById('TASK-OWN-002')!.statusUpdates?.length ?? 0
 
     completeWithReceipt('TASK-OWN-002', {
-      fileName: 'receipt-ac.jpg', fileSize: 240_000, mimeType: 'image/jpeg', amount: 1_180_000,
+      fileName: 'receipt-ac.jpg',
+      fileSize: 240_000,
+      mimeType: 'image/jpeg',
+      amount: 1_180_000,
     })
 
     const task = taskById('TASK-OWN-002')!
@@ -233,7 +245,10 @@ describe('useTaskOwnerApproval', () => {
     const { ownerApprove, completeWithReceipt } = useTaskOwnerApproval()
     ownerApprove('TASK-OWN-002')
     completeWithReceipt('TASK-OWN-002', {
-      fileName: 'r.pdf', fileSize: 100, mimeType: 'application/pdf', amount: 1_400_000,
+      fileName: 'r.pdf',
+      fileSize: 100,
+      mimeType: 'application/pdf',
+      amount: 1_400_000,
     })
 
     const last = (taskById('TASK-OWN-002')!.statusUpdates ?? []).at(-1)!

@@ -56,7 +56,6 @@ afterEach(() => {
 })
 
 describe('portalReservationCalendar', () => {
-
   it('shows a room-specific owner stay only on that room row', async () => {
     const inMezzanine = makeReservation({
       id: 'o-room',
