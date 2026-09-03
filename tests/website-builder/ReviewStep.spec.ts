@@ -69,6 +69,18 @@ describe('reviewStep mode toggle', () => {
     const last = emitted[emitted.length - 1]![0] as ReturnType<typeof baseSelection>
     expect(last.config.mode).toBe('manual')
   })
+
+  it('shows the manual review add button in both modes', () => {
+    // Auto mode
+    const wrapperAuto = mountStep()
+    const buttonAuto = wrapperAuto.findAll('button').find(b => b.text().trim() === 'Manual Review')
+    expect(buttonAuto).toBeTruthy()
+
+    // Manual mode
+    const wrapperManual = mountStep(baseSelection({ mode: 'manual' }))
+    const buttonManual = wrapperManual.findAll('button').find(b => b.text().trim() === 'Manual Review')
+    expect(buttonManual).toBeTruthy()
+  })
 })
 
 describe('reviewStep auto pool', () => {

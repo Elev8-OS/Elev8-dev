@@ -488,11 +488,15 @@ function handleBack() {
           <Icon :name="allSelected ? 'i-lucide-square' : 'i-lucide-check-square'" class="size-3.5 mr-1" />
           {{ allSelected ? 'Deselect All' : 'Select All' }}
         </Button>
-        <Button variant="outline" size="sm" class="text-xs h-7" @click="openManualDialog">
-          <Icon name="i-lucide-plus" class="size-3.5 mr-1" />
-          Manual Review
-        </Button>
       </div>
+    </div>
+
+    <!-- Manual review add button (visible in both modes) -->
+    <div class="flex justify-end">
+      <Button variant="outline" size="sm" class="text-xs h-7" @click="openManualDialog">
+        <Icon name="i-lucide-plus" class="size-3.5 mr-1" />
+        Manual Review
+      </Button>
     </div>
 
     <!-- Manual review chips (inline) -->
