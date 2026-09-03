@@ -13,7 +13,7 @@ import {
   getDisplayScore,
 } from '~/components/review-hub/data/types'
 import { getListingsForProperties } from '~/components/website-builder/data/property-listings'
-import { meetsMinCount, resolveAutoReviews } from '~/components/website-builder/data/review-config'
+import { compareByReceivedDesc, meetsMinCount, resolveAutoReviews } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import { useReviewHub } from '~/composables/useReviewHub'
 
@@ -163,14 +163,22 @@ const resolvedReviews = computed(() =>
         getListingsForProperties(props.property.propertyIds),
         reviewConfig.value,
       )
-    : reviewRecords.value.filter(r => props.reviews.selectedReviewIds.includes(r.id)),
+    : reviewRecords.value
+        .filter(r => props.reviews.selectedReviewIds.includes(r.id))
+        .sort(compareByReceivedDesc),
 )
 
-const sectionHidden = computed(() => !meetsMinCount(
-  resolvedReviews.value.length,
-  props.reviews.manualReviews.length,
-  reviewConfig.value,
-))
+// Manual is an explicit, host-made decision — the minimum-count safety net only guards
+// against Auto's rules surfacing a near-empty section, and Manual's control for it
+// (ReviewAutoSettings) is not even reachable in that mode.
+const sectionHidden = computed(() =>
+  isAutoMode.value
+  && !meetsMinCount(
+    resolvedReviews.value.length,
+    props.reviews.manualReviews.length,
+    reviewConfig.value,
+  ),
+)
 
 // Load more, exactly as a visitor will meet it.
 const visibleCount = ref(reviewConfig.value.batchSize)

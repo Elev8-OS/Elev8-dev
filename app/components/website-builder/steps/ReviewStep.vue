@@ -112,22 +112,27 @@ function setMode(mode: WebsiteReviewConfig['mode']) {
   emitUpdate()
 }
 
-// A threshold change can drop a review that was featured on the main page. Leaving a stale
-// id in place would publish a review the rules no longer allow.
-watch([autoReviews, isAuto], () => {
-  if (!isAuto.value)
-    return
-  const pool = new Set(autoReviews.value.map(r => r.id))
+const selectedRecords = computed(() => {
+  const ids = new Set(selectedReviewIds.value)
+  return candidateReviews.value.filter(r => ids.has(r.id))
+})
+
+// Whichever list is authoritative for the current mode — this is also what actually
+// publishes, so pruning against it (rather than special-casing Auto) keeps a mode switch
+// in sync too, not just a rule change within Auto.
+const featuredPool = computed(() => (isAuto.value ? autoReviews.value : selectedRecords.value))
+
+// A rule change, a mode switch, or losing a pick can each drop a review that was featured
+// on the main page. Leaving a stale id in place would publish a review that mode no longer
+// allows. The length guard keeps this from re-emitting once the id is already gone (e.g.
+// `toggleReview` already pruned it) and stops the watcher from looping.
+watch(featuredPool, () => {
+  const pool = new Set(featuredPool.value.map(r => r.id))
   const pruned = featuredReviewIds.value.filter(id => pool.has(id))
   if (pruned.length !== featuredReviewIds.value.length) {
     featuredReviewIds.value = pruned
     emitUpdate()
   }
-})
-
-const selectedRecords = computed(() => {
-  const ids = new Set(selectedReviewIds.value)
-  return candidateReviews.value.filter(r => ids.has(r.id))
 })
 
 // Group candidate reviews by property (a review's listing maps back to its property)
@@ -263,8 +268,6 @@ function toggleFeaturedManual(id: string) {
   else featuredManualReviewIds.value.splice(idx, 1)
   emitUpdate()
 }
-
-const featuredPool = computed(() => (isAuto.value ? autoReviews.value : selectedRecords.value))
 
 const totalSelected = computed(() =>
   (isAuto.value ? autoReviews.value.length : selectedReviewIds.value.length)

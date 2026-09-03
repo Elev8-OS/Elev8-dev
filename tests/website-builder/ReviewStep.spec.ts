@@ -117,6 +117,41 @@ describe('reviewStep auto pool', () => {
   })
 })
 
+describe('reviewStep featured ids across modes', () => {
+  it('prunes a featured id when switching from Auto to Manual with nothing selected', async () => {
+    // rr-014 is one of the five reviews the default rules resolve for prop-1.
+    const selection = baseSelection()
+    selection.featuredReviewIds = ['rr-014']
+    const wrapper = mountStep(selection)
+
+    const manualButton = wrapper.findAll('button').find(b => b.text().trim() === 'Manual')
+    await manualButton!.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('update:modelValue')!
+    const last = emitted[emitted.length - 1]![0] as ReturnType<typeof baseSelection>
+    expect(last.featuredReviewIds).not.toContain('rr-014')
+  })
+
+  it('still prunes a featured id that falls out of the Auto pool (mode unchanged)', async () => {
+    // Same scenario as the existing threshold-change test above, kept here to make the
+    // Auto-direction guarantee explicit alongside the new Manual-direction test.
+    const selection = baseSelection()
+    selection.featuredReviewIds = ['rr-007', 'rr-001']
+    const wrapper = mountStep(selection)
+
+    const config = createDefaultReviewConfig()
+    config.channels.direct.enabled = false
+    await wrapper.findComponent(ReviewAutoSettings).vm.$emit('update:modelValue', config)
+    await wrapper.vm.$nextTick()
+
+    const emitted = wrapper.emitted('update:modelValue')!
+    const last = emitted[emitted.length - 1]![0] as ReturnType<typeof baseSelection>
+    expect(last.featuredReviewIds).not.toContain('rr-007')
+    expect(last.featuredReviewIds).toContain('rr-001')
+  })
+})
+
 describe('reviewStep validity', () => {
   function nextButton(wrapper: ReturnType<typeof mountStep>) {
     return wrapper.findAll('button').find(b => b.text().trim().startsWith('Next'))!

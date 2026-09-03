@@ -78,10 +78,37 @@ describe('previewStep review summary', () => {
     expect(text).toContain('2 reviews selected')
   })
 
-  it('warns when the section would be hidden by the minimum count', () => {
+  it('warns when the section would be hidden by the minimum count in auto mode', () => {
     const config = createDefaultReviewConfig()
     config.minCountToShow = 20
     expect(mountPreview(config).text()).toContain('hidden')
+  })
+
+  it('does not warn about the minimum count in manual mode, even with a small selection', () => {
+    // minCountToShow can only be edited in Auto's ReviewAutoSettings, so Manual must never
+    // be gated by it — the host would have no reachable control to lower the threshold.
+    const config = createDefaultReviewConfig()
+    config.mode = 'manual'
+    config.minCountToShow = 20
+    const text = mountPreview(config, { selectedReviewIds: ['rr-001'] }).text()
+    expect(text).not.toContain('hidden')
+  })
+})
+
+describe('previewStep manual mode review order', () => {
+  it('orders picked reviews newest first, with an undated review sorting last', () => {
+    // rr-011 (2026-07-01) > rr-001 (2026-06-25) > rr-008 (review_received_at: null).
+    // Picked out of order on purpose to prove the view sorts rather than preserving
+    // selection order.
+    const config = createDefaultReviewConfig()
+    config.mode = 'manual'
+    const wrapper = mountPreview(config, { selectedReviewIds: ['rr-008', 'rr-001', 'rr-011'] })
+
+    const cards = wrapper.findAll('[data-testid="preview-review-card"]').map(c => c.text())
+    expect(cards).toHaveLength(3)
+    expect(cards[0]).toContain('Clara Fischer') // rr-011
+    expect(cards[1]).toContain('Sarah Chen') // rr-001
+    expect(cards[2]).toContain('David Park') // rr-008, undated
   })
 })
 

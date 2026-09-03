@@ -66,6 +66,17 @@ function hasText(record: ReviewRecord): boolean {
 }
 
 /**
+ * Newest first; a review without a received date sorts last rather than jumping to the
+ * top as epoch 0. Shared so Auto's resolved pool and Manual's picked list order the same
+ * way in the wizard preview and the published site.
+ */
+export function compareByReceivedDesc(a: ReviewRecord, b: ReviewRecord): number {
+  const left = a.review_received_at ? Date.parse(a.review_received_at) : -Infinity
+  const right = b.review_received_at ? Date.parse(b.review_received_at) : -Infinity
+  return right - left
+}
+
+/**
  * Every review that should appear on the published site, newest first, uncapped.
  *
  * Pure: does not mutate `records`. `batchSize` and `minCountToShow` are display
@@ -98,12 +109,7 @@ export function resolveAutoReviews(
         return false
       return true
     })
-    .sort((a, b) => {
-      // Undated reviews sort last rather than jumping to the top as epoch 0.
-      const left = a.review_received_at ? Date.parse(a.review_received_at) : -Infinity
-      const right = b.review_received_at ? Date.parse(b.review_received_at) : -Infinity
-      return right - left
-    })
+    .sort(compareByReceivedDesc)
 }
 
 export interface AutoReviewStats {
