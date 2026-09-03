@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { ReviewRecord } from '~/components/review-hub/data/types'
+import { describe, expect, it } from 'vitest'
 import { mockReviewRecords } from '~/components/review-hub/data/mock-review-records'
 import {
   autoReviewStats,

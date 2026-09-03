@@ -3,8 +3,8 @@ import type { PropertySelection } from '~/components/website-builder/steps/Prope
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
-import { websites } from '~/components/website-builder/data/websites'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
+import { websites } from '~/components/website-builder/data/websites'
 
 definePageMeta({
   layout: 'default',
