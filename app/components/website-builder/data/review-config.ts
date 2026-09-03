@@ -105,3 +105,34 @@ export function resolveAutoReviews(
       return right - left
     })
 }
+
+export interface AutoReviewStats {
+  total: number
+  byChannel: Record<ReviewSource, number>
+}
+
+/** Pool size overall and per channel, for the live match line in the rules form. */
+export function autoReviewStats(
+  records: ReviewRecord[],
+  listingIds: string[],
+  config: WebsiteReviewConfig,
+): AutoReviewStats {
+  const resolved = resolveAutoReviews(records, listingIds, config)
+  const byChannel: Record<ReviewSource, number> = { airbnb: 0, booking_com: 0, direct: 0 }
+  for (const record of resolved)
+    byChannel[record.source] += 1
+  return { total: resolved.length, byChannel }
+}
+
+/**
+ * Whether the published site should render its reviews section at all.
+ * Manual testimonials count, so a new property with two host-written reviews and one
+ * matching guest review still clears the default gate of 3.
+ */
+export function meetsMinCount(
+  autoTotal: number,
+  manualCount: number,
+  config: WebsiteReviewConfig,
+): boolean {
+  return autoTotal + manualCount >= config.minCountToShow
+}

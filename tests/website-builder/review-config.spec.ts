@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { ReviewRecord } from '~/components/review-hub/data/types'
 import { mockReviewRecords } from '~/components/review-hub/data/mock-review-records'
 import {
+  autoReviewStats,
   cloneReviewConfig,
   createDefaultReviewConfig,
+  meetsMinCount,
   nativeToNormalized,
   resolveAutoReviews,
   thresholdOptions,
@@ -227,5 +229,50 @@ describe('resolveAutoReviews', () => {
     const snapshot = mockReviewRecords.map(r => r.id)
     resolveAutoReviews(mockReviewRecords, PROP_1_LISTINGS, createDefaultReviewConfig())
     expect(mockReviewRecords.map(r => r.id)).toEqual(snapshot)
+  })
+})
+
+describe('autoReviewStats', () => {
+  it('counts the pool per channel and in total', () => {
+    const stats = autoReviewStats(mockReviewRecords, PROP_1_LISTINGS, createDefaultReviewConfig())
+    expect(stats.total).toBe(5)
+    expect(stats.byChannel).toEqual({ airbnb: 2, booking_com: 1, direct: 2 })
+  })
+
+  it('has per-channel counts that sum to the total', () => {
+    const stats = autoReviewStats(mockReviewRecords, PROP_1_LISTINGS, createDefaultReviewConfig())
+    const sum = Object.values(stats.byChannel).reduce((a, b) => a + b, 0)
+    expect(sum).toBe(stats.total)
+  })
+
+  it('reports zero for a channel with no passing reviews rather than omitting it', () => {
+    const config = createDefaultReviewConfig()
+    config.channels.direct.enabled = false
+    const stats = autoReviewStats(mockReviewRecords, PROP_1_LISTINGS, config)
+    expect(stats.byChannel.direct).toBe(0)
+  })
+
+  it('reports an empty pool with no listings in scope', () => {
+    const stats = autoReviewStats(mockReviewRecords, [], createDefaultReviewConfig())
+    expect(stats.total).toBe(0)
+    expect(stats.byChannel).toEqual({ airbnb: 0, booking_com: 0, direct: 0 })
+  })
+})
+
+describe('meetsMinCount', () => {
+  it('counts manual testimonials toward the gate', () => {
+    const config = createDefaultReviewConfig() // minCountToShow: 3
+    expect(meetsMinCount(1, 2, config)).toBe(true)
+    expect(meetsMinCount(1, 1, config)).toBe(false)
+  })
+
+  it('passes on the boundary', () => {
+    expect(meetsMinCount(3, 0, createDefaultReviewConfig())).toBe(true)
+  })
+
+  it('always passes when the gate is zero', () => {
+    const config = createDefaultReviewConfig()
+    config.minCountToShow = 0
+    expect(meetsMinCount(0, 0, config)).toBe(true)
   })
 })
