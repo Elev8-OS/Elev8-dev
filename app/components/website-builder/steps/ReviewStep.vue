@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import type { ReviewRecord, ReviewSource } from '~/components/review-hub/data/types'
+import type { AutoReviewStats, WebsiteReviewConfig } from '~/components/website-builder/data/review-config'
 import type { ManualReview } from '~/components/website-builder/data/websites'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import { channelIcons, channelLabels, getDisplayMax, getDisplayScore } from '~/components/review-hub/data/types'
 import { getListingsForProperties, propertyNames } from '~/components/website-builder/data/property-listings'
+import {
+  autoReviewStats,
+  cloneReviewConfig,
+  createDefaultReviewConfig,
+  resolveAutoReviews,
+} from '~/components/website-builder/data/review-config'
 import { useReviewHub } from '~/composables/useReviewHub'
 
 export interface ReviewSelection {
@@ -12,6 +19,7 @@ export interface ReviewSelection {
   featuredReviewIds: string[]
   manualReviews: ManualReview[]
   featuredManualReviewIds: string[]
+  config: WebsiteReviewConfig
 }
 
 const props = defineProps<{
@@ -31,13 +39,17 @@ const selectedReviewIds = ref<string[]>([...props.modelValue.selectedReviewIds])
 const featuredReviewIds = ref<string[]>([...props.modelValue.featuredReviewIds])
 const manualReviews = ref<ManualReview[]>([...props.modelValue.manualReviews])
 const featuredManualReviewIds = ref<string[]>([...props.modelValue.featuredManualReviewIds])
-const minRating = ref(8)
+const config = ref<WebsiteReviewConfig>(
+  cloneReviewConfig(props.modelValue.config ?? createDefaultReviewConfig()),
+)
+const isAuto = computed(() => config.value.mode === 'auto')
 
 watch(() => props.modelValue, (val) => {
   selectedReviewIds.value = [...val.selectedReviewIds]
   featuredReviewIds.value = [...val.featuredReviewIds]
   manualReviews.value = [...val.manualReviews]
   featuredManualReviewIds.value = [...val.featuredManualReviewIds]
+  config.value = cloneReviewConfig(val.config ?? createDefaultReviewConfig())
 }, { deep: true })
 
 watch(() => props.propertyIds, () => {
@@ -55,6 +67,7 @@ function emitUpdate() {
     featuredReviewIds: [...featuredReviewIds.value],
     manualReviews: [...manualReviews.value],
     featuredManualReviewIds: [...featuredManualReviewIds.value],
+    config: cloneReviewConfig(config.value),
   })
 }
 
@@ -66,17 +79,50 @@ function toggleFeatured(id: string) {
   emitUpdate()
 }
 
-const ratingOptions = [10, 9, 8, 7, 6]
+const listingIds = computed(() => getListingsForProperties(props.propertyIds))
 
+// Manual mode: everything in scope except Airbnb double-blind reviews. No rating floor,
+// because the score badge is on every row and picking is the point of this mode.
 const candidateReviews = computed<ReviewRecord[]>(() => {
-  const listingIds = getListingsForProperties(props.propertyIds)
-  if (listingIds.length === 0)
+  if (listingIds.value.length === 0)
     return []
   return reviewRecords.value.filter(r =>
-    listingIds.includes(r.listing_id)
-    && !r.is_hidden
-    && (r.guest_rating_overall ?? 0) >= minRating.value,
+    listingIds.value.includes(r.listing_id) && !r.is_hidden,
   )
+})
+
+// Auto mode: the rules decide, uncapped and newest first.
+const autoReviews = computed<ReviewRecord[]>(() =>
+  resolveAutoReviews(reviewRecords.value, listingIds.value, config.value),
+)
+
+const autoStats = computed<AutoReviewStats>(() =>
+  autoReviewStats(reviewRecords.value, listingIds.value, config.value),
+)
+
+function updateConfig(next: WebsiteReviewConfig) {
+  config.value = cloneReviewConfig(next)
+  emitUpdate()
+}
+
+function setMode(mode: WebsiteReviewConfig['mode']) {
+  if (config.value.mode === mode)
+    return
+  config.value = { ...cloneReviewConfig(config.value), mode }
+  emitUpdate()
+}
+
+// A threshold change can drop a review that was featured on the main page. Leaving a stale
+// id in place would publish a review the rules no longer allow.
+watch([autoReviews, isAuto], () => {
+  if (!isAuto.value)
+    return
+  const pool = new Set(autoReviews.value.map(r => r.id))
+  const pruned = featuredReviewIds.value.filter(id => pool.has(id))
+  if (pruned.length !== featuredReviewIds.value.length) {
+    featuredReviewIds.value = pruned
+    emitUpdate()
+  }
 })
 
 const selectedRecords = computed(() => {
@@ -219,11 +265,39 @@ function toggleFeaturedManual(id: string) {
   emitUpdate()
 }
 
-const totalSelected = computed(() => selectedReviewIds.value.length + manualReviews.value.length)
+const featuredPool = computed(() => (isAuto.value ? autoReviews.value : selectedRecords.value))
+
+const totalSelected = computed(() =>
+  (isAuto.value ? autoReviews.value.length : selectedReviewIds.value.length)
+  + manualReviews.value.length,
+)
+
 const featuredCount = computed(() => featuredReviewIds.value.length + featuredManualReviewIds.value.length)
-const isValid = computed(() => totalSelected.value > 0)
+
+const anyChannelEnabled = computed(() =>
+  Object.values(config.value.channels).some(rule => rule.enabled),
+)
+
+const isValid = computed(() => {
+  if (!isAuto.value)
+    return selectedReviewIds.value.length > 0 || manualReviews.value.length > 0
+  return anyChannelEnabled.value
+    && (autoReviews.value.length > 0 || manualReviews.value.length > 0)
+})
+
+// Advisory when a manual testimonial would still render, blocking when nothing would.
+const autoWarning = computed(() => {
+  if (!isAuto.value || autoReviews.value.length > 0)
+    return null
+  if (!anyChannelEnabled.value)
+    return 'Every channel is switched off, so no guest review can appear. Enable at least one.'
+  if (config.value.requireText)
+    return 'No review clears these rules. Try a lower minimum rating, or allow reviews without a written comment.'
+  return 'No review clears these rules. Try a lower minimum rating.'
+})
 
 const previewOpen = ref(false)
+const mainPageOpen = ref(false)
 
 // ── Property filter + collapse (scale for many properties) ───────
 const activePropertyFilter = ref<'all' | string>('all')
@@ -293,8 +367,100 @@ function handleBack() {
       </p>
     </div>
 
+    <!-- Mode toggle -->
+    <div class="flex items-center gap-1 rounded-lg border p-1 w-fit">
+      <Button
+        :variant="isAuto ? 'default' : 'ghost'"
+        size="sm"
+        class="h-7 text-xs"
+        @click="setMode('auto')"
+      >
+        <Icon name="i-lucide-wand-sparkles" class="size-3.5 mr-1" />
+        Auto
+      </Button>
+      <Button
+        :variant="isAuto ? 'ghost' : 'default'"
+        size="sm"
+        class="h-7 text-xs"
+        @click="setMode('manual')"
+      >
+        <Icon name="i-lucide-hand" class="size-3.5 mr-1" />
+        Manual
+      </Button>
+    </div>
+    <p class="text-xs text-muted-foreground -mt-3">
+      {{ isAuto
+        ? 'Reviews that clear your rules appear automatically, including new ones after publishing.'
+        : 'You pick each review by hand. New reviews will not appear until you edit this website.' }}
+    </p>
+
+    <template v-if="isAuto">
+      <WebsiteBuilderStepsReviewAutoSettings
+        :model-value="config"
+        :stats="autoStats"
+        @update:model-value="updateConfig"
+      />
+
+      <div v-if="autoWarning" class="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+        <Icon name="i-lucide-alert-triangle" class="size-4 shrink-0 mt-0.5 text-amber-600" />
+        <span>{{ autoWarning }}</span>
+      </div>
+
+      <!-- Featuring over the resolved pool: star toggles only, no include checkboxes. -->
+      <div v-if="autoReviews.length > 0" class="rounded-lg border">
+        <button
+          type="button"
+          class="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium"
+          @click="mainPageOpen = !mainPageOpen"
+        >
+          <Icon name="i-lucide-star" class="size-4 text-muted-foreground" />
+          Choose main page reviews
+          <span class="text-xs font-normal text-muted-foreground">
+            {{ featuredReviewIds.length }} of {{ autoReviews.length }}
+          </span>
+          <Icon
+            :name="mainPageOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+            class="size-4 ml-auto text-muted-foreground"
+          />
+        </button>
+        <div v-if="mainPageOpen" class="space-y-1.5 border-t px-3 py-2">
+          <div
+            v-for="review in autoReviews"
+            :key="review.id"
+            class="flex items-center gap-2.5 rounded-lg border px-3 py-2"
+          >
+            <span class="text-sm font-medium min-w-0 truncate">{{ review.guest_name }}</span>
+            <Badge variant="secondary" class="shrink-0 text-[10px] px-1.5 py-0">
+              {{ getDisplayScore(review.guest_rating_overall, review.source) }}/{{ getDisplayMax(review.source) }}
+            </Badge>
+            <Badge variant="outline" class="shrink-0 text-[10px] px-1.5 py-0">
+              <Icon :name="channelIcons[review.source]" class="size-3 mr-0.5" />
+              {{ channelLabels[review.source] }}
+            </Badge>
+            <span class="text-xs text-muted-foreground flex-1 min-w-0 truncate hidden sm:inline">
+              {{ review.guest_review_text || 'No written review' }}
+            </span>
+            <button
+              type="button"
+              class="shrink-0 flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+              :class="featuredReviewIds.includes(review.id)
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'text-muted-foreground hover:bg-muted/50'"
+              @click="toggleFeatured(review.id)"
+            >
+              <Icon
+                :name="featuredReviewIds.includes(review.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+                class="size-3"
+              />
+              Main Page
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <!-- Toolbar: filter + global actions -->
-    <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
+    <div v-if="!isAuto" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 p-3">
       <div class="flex items-center gap-3">
         <Label class="text-sm font-medium shrink-0">Property</Label>
         <Select :model-value="activePropertyFilter" @update:model-value="activePropertyFilter = $event as string">
@@ -307,17 +473,6 @@ function handleBack() {
             </SelectItem>
             <SelectItem v-for="group in reviewGroups" :key="group.propertyId" :value="group.propertyId">
               {{ group.propertyName }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <Label class="text-sm font-medium shrink-0">Min rating</Label>
-        <Select :model-value="minRating" @update:model-value="minRating = $event as number">
-          <SelectTrigger class="w-20">
-            <SelectValue placeholder="Rating" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="r in ratingOptions" :key="r" :value="r">
-              {{ r }}+
             </SelectItem>
           </SelectContent>
         </Select>
@@ -382,7 +537,7 @@ function handleBack() {
     </div>
 
     <!-- Review list, grouped by property -->
-    <div v-if="candidateReviews.length > 0" class="space-y-2">
+    <div v-if="!isAuto && candidateReviews.length > 0" class="space-y-2">
       <div
         v-for="group in filteredGroups"
         :key="group.propertyId"
@@ -482,7 +637,7 @@ function handleBack() {
       </div>
     </div>
 
-    <div v-else class="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 gap-2 text-muted-foreground">
+    <div v-else-if="!isAuto" class="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 gap-2 text-muted-foreground">
       <Icon name="i-lucide-star" class="size-8" />
       <p class="text-sm">
         No reviews match. Add a manual testimonial above.
@@ -509,7 +664,7 @@ function handleBack() {
         />
       </button>
       <div v-if="previewOpen" class="grid grid-cols-1 gap-3 border-t p-4 @xl/main:grid-cols-2">
-        <div v-for="r in selectedRecords" :key="r.id" class="rounded-lg border bg-card p-4">
+        <div v-for="r in featuredPool" :key="r.id" class="rounded-lg border bg-card p-4">
           <div class="flex items-center justify-between mb-1">
             <span class="text-sm font-medium">{{ r.guest_name }}</span>
             <span class="text-sm font-semibold">{{ getDisplayScore(r.guest_rating_overall, r.source) }}/{{ getDisplayMax(r.source) }}</span>
