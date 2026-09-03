@@ -60,3 +60,48 @@ export function thresholdOptions(source: ReviewSource): number[] {
   const max = getDisplayMax(source)
   return [0, 1, 2, 3, 4].map(step => max - step * 0.5)
 }
+
+function hasText(record: ReviewRecord): boolean {
+  return (record.guest_review_text ?? '').trim() !== ''
+}
+
+/**
+ * Every review that should appear on the published site, newest first, uncapped.
+ *
+ * Pure: does not mutate `records`. `batchSize` and `minCountToShow` are display
+ * settings and deliberately play no part here.
+ */
+export function resolveAutoReviews(
+  records: ReviewRecord[],
+  listingIds: string[],
+  config: WebsiteReviewConfig,
+): ReviewRecord[] {
+  if (listingIds.length === 0)
+    return []
+  const inScope = new Set(listingIds)
+
+  return records
+    .filter((record) => {
+      if (!inScope.has(record.listing_id))
+        return false
+      // Airbnb double-blind reviews are not public yet.
+      if (record.is_hidden)
+        return false
+      const rule = config.channels[record.source]
+      if (!rule?.enabled)
+        return false
+      if (record.guest_rating_overall === null)
+        return false
+      if (record.guest_rating_overall < nativeToNormalized(rule.minRating, record.source))
+        return false
+      if (config.requireText && !hasText(record))
+        return false
+      return true
+    })
+    .sort((a, b) => {
+      // Undated reviews sort last rather than jumping to the top as epoch 0.
+      const left = a.review_received_at ? Date.parse(a.review_received_at) : -Infinity
+      const right = b.review_received_at ? Date.parse(b.review_received_at) : -Infinity
+      return right - left
+    })
+}
