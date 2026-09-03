@@ -1,11 +1,21 @@
 <script setup lang="ts">
+import type { ReviewSource } from '~/components/review-hub/data/types'
 import type { Website } from '~/components/website-builder/data/websites'
 import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { toast } from 'vue-sonner'
+import {
+  channelIcons,
+  channelLabels,
+  getDisplayMax,
+  getDisplayScore,
+} from '~/components/review-hub/data/types'
+import { getListingsForProperties } from '~/components/website-builder/data/property-listings'
+import { meetsMinCount, resolveAutoReviews } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
+import { useReviewHub } from '~/composables/useReviewHub'
 
 // Re-export for convenience
 export type { PropertySelection, Template, WebsiteSettings }
@@ -132,6 +142,47 @@ const roomTypeConfig: Record<Room['type'], { label: string, variant: 'default' |
   outdoor: { label: 'Outdoor', variant: 'outline', icon: 'i-lucide-trees' },
 }
 
+// ── Review resolution (mirrors what the published site will render) ─────
+const { reviewRecords } = useReviewHub()
+
+const reviewConfig = computed(() => props.reviews.config)
+const isAutoMode = computed(() => reviewConfig.value.mode === 'auto')
+
+const CHANNELS: ReviewSource[] = ['airbnb', 'booking_com', 'direct']
+
+const activeRules = computed(() =>
+  CHANNELS
+    .filter(source => reviewConfig.value.channels[source].enabled)
+    .map(source => `${channelLabels[source]} ${reviewConfig.value.channels[source].minRating}+`),
+)
+
+const resolvedReviews = computed(() =>
+  isAutoMode.value
+    ? resolveAutoReviews(
+        reviewRecords.value,
+        getListingsForProperties(props.property.propertyIds),
+        reviewConfig.value,
+      )
+    : reviewRecords.value.filter(r => props.reviews.selectedReviewIds.includes(r.id)),
+)
+
+const sectionHidden = computed(() => !meetsMinCount(
+  resolvedReviews.value.length,
+  props.reviews.manualReviews.length,
+  reviewConfig.value,
+))
+
+// Load more, exactly as a visitor will meet it.
+const visibleCount = ref(reviewConfig.value.batchSize)
+watch([resolvedReviews, () => reviewConfig.value.batchSize], () => {
+  visibleCount.value = reviewConfig.value.batchSize
+})
+const visibleReviews = computed(() => resolvedReviews.value.slice(0, visibleCount.value))
+const hasMoreReviews = computed(() => visibleCount.value < resolvedReviews.value.length)
+function loadMoreReviews() {
+  visibleCount.value += reviewConfig.value.batchSize
+}
+
 // ── Actions ──────────────────────────────────────────────────────
 const isPublishing = ref(false)
 const route = useRoute()
@@ -156,6 +207,7 @@ function persistWebsite(status: Website['status'], message: string) {
           featuredReviewIds: props.reviews.featuredReviewIds,
           manualReviews: props.reviews.manualReviews,
           featuredManualReviewIds: props.reviews.featuredManualReviewIds,
+          reviewConfig: props.reviews.config,
         }
       }
     }
@@ -173,6 +225,7 @@ function persistWebsite(status: Website['status'], message: string) {
         featuredReviewIds: props.reviews.featuredReviewIds,
         manualReviews: props.reviews.manualReviews,
         featuredManualReviewIds: props.reviews.featuredManualReviewIds,
+        reviewConfig: props.reviews.config,
       })
     }
     toast.success(message)
@@ -414,10 +467,27 @@ function handleBack() {
         </div>
       </CardHeader>
       <CardContent class="space-y-3">
-        <div class="flex items-center gap-2 text-sm">
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <Badge variant="outline" class="text-[10px] px-1.5 py-0">
+            {{ isAutoMode ? 'Auto' : 'Manual' }}
+          </Badge>
           <Icon name="i-lucide-star" class="size-4 text-muted-foreground" />
-          <span class="font-medium">{{ reviews.selectedReviewIds.length + reviews.manualReviews.length }}</span>
-          <span class="text-muted-foreground">review{{ reviews.selectedReviewIds.length + reviews.manualReviews.length !== 1 ? 's' : '' }} selected</span>
+          <span class="font-medium">{{ resolvedReviews.length + reviews.manualReviews.length }}</span>
+          <span class="text-muted-foreground">{{ ' ' }}{{ isAutoMode
+            ? `review${resolvedReviews.length + reviews.manualReviews.length === 1 ? ' matches' : 's match'}`
+            : `review${resolvedReviews.length + reviews.manualReviews.length === 1 ? '' : 's'} selected` }}</span>
+        </div>
+        <div v-if="isAutoMode" class="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span v-if="activeRules.length > 0">{{ activeRules.join(' · ') }}</span>
+          <span v-else class="text-destructive">Every channel is switched off</span>
+          <span>· {{ reviewConfig.batchSize }} per batch, no total limit</span>
+        </div>
+        <div v-if="sectionHidden" class="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+          <Icon name="i-lucide-eye-off" class="size-3.5 shrink-0 mt-0.5 text-amber-600" />
+          <span>
+            The reviews section stays hidden until at least
+            {{ reviewConfig.minCountToShow }} reviews match.
+          </span>
         </div>
         <div v-if="reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length > 0" class="flex items-center gap-2 text-sm">
           <Icon name="i-lucide-star" class="size-4 text-primary" />
@@ -438,6 +508,44 @@ function handleBack() {
               Manual
             </Badge>
           </div>
+        </div>
+
+        <div v-if="visibleReviews.length > 0" class="space-y-3 border-t pt-3">
+          <p class="text-xs font-medium text-muted-foreground">
+            Reviews page preview
+          </p>
+          <div class="grid grid-cols-1 gap-3 @xl/main:grid-cols-2">
+            <div
+              v-for="r in visibleReviews"
+              :key="r.id"
+              data-testid="preview-review-card"
+              class="rounded-lg border bg-card p-4"
+            >
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-medium">{{ r.guest_name }}</span>
+                <span class="text-sm font-semibold">
+                  {{ getDisplayScore(r.guest_rating_overall, r.source) }}/{{ getDisplayMax(r.source) }}
+                </span>
+              </div>
+              <p class="text-sm text-muted-foreground line-clamp-3">
+                {{ r.guest_review_text || 'No written review' }}
+              </p>
+              <div class="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                <Icon :name="channelIcons[r.source]" class="size-3" />
+                {{ channelLabels[r.source] }}
+              </div>
+            </div>
+          </div>
+          <button
+            v-if="hasMoreReviews"
+            type="button"
+            data-testid="preview-load-more"
+            class="w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed py-2 text-xs text-muted-foreground hover:bg-muted/50"
+            @click="loadMoreReviews"
+          >
+            <Icon name="i-lucide-chevron-down" class="size-3" />
+            Load more reviews
+          </button>
         </div>
       </CardContent>
     </Card>
