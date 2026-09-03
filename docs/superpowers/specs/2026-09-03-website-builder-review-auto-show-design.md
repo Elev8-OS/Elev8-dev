@@ -261,10 +261,20 @@ the actual behavior before publishing.
 
 - **Homepage section** renders featured reviews only, in both modes
 - **Reviews page** renders the resolved pool (Auto) or the selected list (Manual), newest first,
-  `batchSize` at a time behind Load more
-- **Section gate**: the whole reviews section is hidden when resolved + manual count is below
-  `minCountToShow`. Manual testimonials count toward that total, so a brand-new property with
-  two host testimonials and one matching review still shows its section at the default of 3
+  `batchSize` at a time behind Load more. Both modes order through the same
+  `compareByReceivedDesc` comparator exported from `review-config.ts`, so an undated review
+  sorts last in either mode rather than the two branches drifting apart
+- **Section gate (Auto mode only)**: the whole reviews section is hidden when resolved + manual
+  count is below `minCountToShow`. Manual testimonials count toward that total, so a brand-new
+  property with two host testimonials and one matching review still shows its section at the
+  default of 3.
+
+  The gate does **not** apply in Manual mode. It exists so auto rules cannot surface a
+  near-empty section on a property with few reviews, and `minCountToShow` is only editable in
+  the Auto rules form. Applying it to a hand-picked selection would let an unreachable control
+  silently suppress reviews the host chose deliberately: they would pass step-3 validation,
+  be told at Preview that the section stays hidden, and have no way to lower the bar. Decided
+  during implementation, after the whole-branch review found exactly that trap.
 
 ## Validation
 
@@ -281,7 +291,7 @@ warning is advisory when a manual testimonial exists, blocking when nothing at a
 
 ## Testing
 
-`tests/components/website-builder/review-config.spec.ts`:
+`tests/website-builder/review-config.spec.ts`:
 
 - `nativeToNormalized`: Airbnb 4.5 -> 9, Booking.com 9 -> 9, Direct 4.5 -> 9
 - `thresholdOptions` shape per channel
@@ -295,7 +305,7 @@ warning is advisory when a manual testimonial exists, blocking when nothing at a
 - `minCountToShow` does not filter the pool, it only gates the section flag
 - `autoReviewStats` per-channel counts sum to `total`
 
-`tests/components/website-builder/ReviewAutoSettings.spec.ts`: renders three channel rows,
+`tests/website-builder/ReviewAutoSettings.spec.ts`: renders three channel rows,
 toggling a channel switch emits an updated config, changing a threshold emits native scale.
 
 `tests/components/review-hub/`: a `getDisplayScore('direct')` case asserting 10 renders as
