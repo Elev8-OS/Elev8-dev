@@ -204,8 +204,7 @@ const manualForm = ref({ guestName: '', rating: 8, text: '', listingId: '', chan
 
 // Listings available for manual reviews = those mapped to the selected properties
 const manualListingOptions = computed(() => {
-  const listingIds = getListingsForProperties(props.propertyIds)
-  return listings.value.filter(l => listingIds.includes(l.id))
+  return listings.value.filter(l => listingIds.value.includes(l.id))
 })
 
 const channelOptions: { value: ReviewSource, label: string, icon: string }[] = [
@@ -449,7 +448,7 @@ function handleBack() {
               @click="toggleFeatured(review.id)"
             >
               <Icon
-                :name="featuredReviewIds.includes(review.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+                name="i-lucide-star"
                 class="size-3"
               />
               Main Page
@@ -477,9 +476,8 @@ function handleBack() {
           </SelectContent>
         </Select>
       </div>
-      <div class="flex items-center gap-2">
+      <div v-if="candidateReviews.length > 0" class="flex items-center gap-2">
         <Button
-          v-if="candidateReviews.length > 0"
           variant="ghost"
           size="sm"
           class="text-xs h-7"
@@ -529,7 +527,7 @@ function handleBack() {
           @click="toggleFeaturedManual(m.id)"
         >
           <Icon
-            :name="featuredManualReviewIds.includes(m.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+            name="i-lucide-star"
             class="size-3"
           />
           Main Page
@@ -616,7 +614,7 @@ function handleBack() {
               @click.stop="toggleFeatured(review.id)"
             >
               <Icon
-                :name="featuredReviewIds.includes(review.id) ? 'i-lucide-star' : 'i-lucide-star-outline'"
+                name="i-lucide-star"
                 class="size-3"
               />
               Main Page
@@ -657,7 +655,7 @@ function handleBack() {
       >
         <Icon name="i-lucide-eye" class="size-4 text-muted-foreground" />
         Website Preview
-        <span class="text-xs text-muted-foreground font-normal">{{ totalSelected }} selected</span>
+        <span class="text-xs text-muted-foreground font-normal">{{ totalSelected }} {{ isAuto ? 'matching' : 'selected' }}</span>
         <span v-if="featuredCount > 0" class="flex items-center gap-1 text-xs font-medium text-primary">
           <Icon name="i-lucide-star" class="size-3" />
           {{ featuredCount }} on main page

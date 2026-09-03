@@ -99,9 +99,10 @@ describe('reviewStep auto pool', () => {
     expect(wrapper.findComponent(ReviewAutoSettings).props('stats').total).toBe(3)
   })
 
-  it('prunes a featured id that falls out of the pool', async () => {
+  it('prunes a featured id that falls out of the pool, but keeps a surviving one', async () => {
     const selection = baseSelection()
-    selection.featuredReviewIds = ['rr-007'] // a Direct review
+    // rr-007 is Direct (falls out when Direct is disabled); rr-001 is Airbnb (survives).
+    selection.featuredReviewIds = ['rr-007', 'rr-001']
     const wrapper = mountStep(selection)
 
     const config = createDefaultReviewConfig()
@@ -112,6 +113,7 @@ describe('reviewStep auto pool', () => {
     const emitted = wrapper.emitted('update:modelValue')!
     const last = emitted[emitted.length - 1]![0] as ReturnType<typeof baseSelection>
     expect(last.featuredReviewIds).not.toContain('rr-007')
+    expect(last.featuredReviewIds).toContain('rr-001')
   })
 })
 
@@ -157,6 +159,66 @@ describe('reviewStep manual candidates', () => {
     // lst-1 holds 6 records (rr-003 hidden) and lst-5 holds 4, so 9 are pickable.
     // Under the old 8+ floor this list would have shown 6.
     expect(wrapper.text()).toContain('/9 selected')
+  })
+})
+
+describe('reviewStep manual UI stays out of auto mode', () => {
+  it('hides the manual toolbar and grouped list in auto mode', () => {
+    const wrapper = mountStep()
+    // "Property" only appears in the manual-mode filter toolbar; the grouped list rows
+    // and the "No reviews match" empty state are also manual-only.
+    expect(wrapper.text()).not.toContain('Property')
+    expect(wrapper.text()).not.toContain('Select All')
+    expect(wrapper.text()).not.toContain('No reviews match. Add a manual testimonial above.')
+  })
+
+  it('shows the manual toolbar and grouped list in manual mode', () => {
+    const wrapper = mountStep(baseSelection({ mode: 'manual' }))
+    expect(wrapper.text()).toContain('Property')
+    expect(wrapper.text()).toContain('Select All')
+  })
+})
+
+describe('reviewStep collapsible preview pool', () => {
+  function openPreview(wrapper: ReturnType<typeof mountStep>) {
+    return wrapper.findAll('button').find(b => b.text().includes('Website Preview'))!
+  }
+
+  // Preview cards use a class combo ("rounded-lg border bg-card p-4") that is unique to
+  // the collapsible preview — the grouped candidate list and main-page list use a
+  // different combo — so this scopes assertions to the preview panel only.
+  function previewCardsText(wrapper: ReturnType<typeof mountStep>): string {
+    return wrapper.findAll('.rounded-lg.border.bg-card.p-4').map(c => c.text()).join(' | ')
+  }
+
+  it('previews the resolved pool in auto mode', async () => {
+    const wrapper = mountStep()
+    await openPreview(wrapper).trigger('click')
+    // The five reviews the default rules resolve for prop-1.
+    const text = previewCardsText(wrapper)
+    for (const name of ['Isabella Rossi', 'Clara Fischer', 'Elena Kowalski', 'Sarah Chen', 'Anna Schmidt'])
+      expect(text).toContain(name)
+  })
+
+  it('previews only the picked records in manual mode', async () => {
+    const selection = baseSelection({ mode: 'manual' })
+    selection.selectedReviewIds = ['rr-001'] // Sarah Chen
+    const wrapper = mountStep(selection)
+    await openPreview(wrapper).trigger('click')
+
+    const text = previewCardsText(wrapper)
+    expect(text).toContain('Sarah Chen')
+    // Thomas Mueller (rr-002) is a candidate but was never selected.
+    expect(text).not.toContain('Thomas Mueller')
+  })
+})
+
+describe('reviewStep zero-match warning', () => {
+  it('mentions allowing reviews without text when requireText is on and nothing matches', () => {
+    // An unmapped property resolves to an empty listing scope, so the pool is empty
+    // while every channel stays enabled and requireText stays at its default (true).
+    const wrapper = mountStep(baseSelection(), ['prop-does-not-exist'])
+    expect(wrapper.text()).toContain('allow reviews without a written comment')
   })
 })
 
