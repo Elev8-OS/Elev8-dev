@@ -1,4 +1,5 @@
 import type { ReviewSource } from '~/components/review-hub/data/types'
+import type { WebsiteReviewConfig } from '~/components/website-builder/data/review-config'
 
 // Shared website-builder data. Originally lived inline in
 // `app/pages/website-builder/index.vue` — extracted so other surfaces
@@ -30,6 +31,9 @@ export interface Website {
   featuredReviewIds?: string[]
   manualReviews?: ManualReview[]
   featuredManualReviewIds?: string[]
+  // Optional so the seeded mock websites need no migration; readers fall back
+  // to createDefaultReviewConfig().
+  reviewConfig?: WebsiteReviewConfig
   // Website Builder properties this site markets — the same ids PropertyStep
   // collects. Resolve to listings with `getListingIdsForWebsite`. Optional:
   // an older website with no coverage recorded is treated as covering

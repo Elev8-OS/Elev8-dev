@@ -933,6 +933,60 @@ interface ReviewRecord {
 - All scores in 0-10 Channex format, realistic tags on Airbnb records
 - 10 SOR records with cleaning_score 2-5, house_rule_flags 0-3, communication_score 3-5
 
+### Website Builder Review Rules (`app/components/website-builder/`)
+
+The wizard's Reviews step (`ReviewStep.vue`, step in the Create/Edit flow) decides which guest
+reviews from Review Hub appear on a generated website. It has two modes:
+
+- **Auto** (the default for a new website): the host sets a minimum rating per channel, in
+  that channel's own native scale, and every review clearing its channel's rule appears,
+  uncapped, newest first. New reviews that arrive after publishing appear automatically too.
+- **Manual**: the host hand-picks reviews one by one. Its candidate list is everything in
+  scope except Airbnb double-blind (`is_hidden`) reviews. There is intentionally no rating
+  floor here, because the score badge is shown on every row and picking is the point of this
+  mode.
+
+**`review-config.ts`** (`app/components/website-builder/data/review-config.ts`) is the single
+home for the rules, framework-free on purpose (the wizard owns the reactive state and calls
+into it):
+- `WebsiteReviewConfig`: `{ mode, channels: Record<ReviewSource, ReviewChannelRule>, requireText, minCountToShow, batchSize }`
+- `ReviewChannelRule`: `{ enabled, minRating }`, stored in the channel's **native** scale
+  (Airbnb/Direct 0-5, Booking.com 0-10), while the Review Hub store normalizes every score to
+  0-10 (Channex `guest_rating_overall`). `nativeToNormalized(rating, source)` bridges the two,
+  so a host setting "4.5+" on Airbnb always means the same bar as "9+" on Booking.com
+- `createDefaultReviewConfig()`: `mode: 'auto'`, all 3 channels enabled at 4.5 (Airbnb/Direct)
+  or 9 (Booking.com), `requireText: true`, `minCountToShow: 3`, `batchSize: 12`
+- `resolveAutoReviews(records, listingIds, config)`: the resolved pool. In scope, not
+  `is_hidden`, channel enabled, rating clears `nativeToNormalized(minRating)`, has text when
+  `requireText` is on. Uncapped and sorted newest-first by `review_received_at`. Pure, never
+  mutates `records`
+- `autoReviewStats(records, listingIds, config)`: `{ total, byChannel }` for the live match
+  count in the rules form
+- `meetsMinCount(autoTotal, manualCount, config)`: whether the published site should render
+  its reviews section at all. Manual testimonials count toward `minCountToShow`, so a new
+  property with host-written testimonials can clear the gate before any guest review does
+
+**Display and pagination:**
+- `batchSize` is not a cap. `PreviewStep.vue` renders `batchSize` reviews at a time behind a
+  **Load more reviews** button that appends another batch per click and disappears once every
+  matching review has been shown
+- `minCountToShow` hides the entire reviews section on the published site until the combined
+  auto + manual count reaches it
+
+**Persistence:** `Website.reviewConfig?: WebsiteReviewConfig` (`app/components/website-builder/data/websites.ts`)
+is optional so the seeded mock websites need no migration. Readers fall back to
+`createDefaultReviewConfig()` when it is missing. `app/pages/website-builder/create.vue` seeds
+a fresh default config for a new website and restores `site.reviewConfig ?? createDefaultReviewConfig()`
+when editing an existing one, so reopening a published site returns it in the mode and with the
+rules it was saved with.
+
+**Related fix (`app/components/review-hub/data/types.ts`):** `getDisplayScore()` used to halve
+only for `source === 'airbnb'`, so a Direct review (also a 5-star channel) rendered as `10.0/5`
+instead of `5.0/5`. It now derives the halving from `getDisplayMax(source) === 5` (true for
+both Airbnb and Direct, false for Booking.com's 10-point scale). Since `FeedTable.vue` and
+`DetailGuestPanel.vue` both call the shared `getDisplayScore()` helper, this one change
+corrected their Direct-channel display too.
+
 ### Payment Request Module (`app/components/payment-request/`)
 
 **Full UI spec** → `docs/superpowers/specs/2026-06-18-payment-request-design.md`

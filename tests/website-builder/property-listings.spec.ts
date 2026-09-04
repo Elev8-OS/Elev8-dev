@@ -1,6 +1,7 @@
 import type { Website } from '../../app/components/website-builder/data/websites'
 import { describe, expect, it } from 'vitest'
 import { getListingsForProperties, getListingsForProperty, propertyListingMap, propertyNames } from '../../app/components/website-builder/data/property-listings'
+import { createDefaultReviewConfig } from '../../app/components/website-builder/data/review-config'
 
 describe('propertyListingMap', () => {
   it('maps every property id to at least one listing id', () => {
@@ -57,5 +58,35 @@ describe('website type', () => {
     expect(site.featuredReviewIds).toHaveLength(1)
     expect(site.featuredManualReviewIds).toHaveLength(1)
     expect(site.manualReviews[0].guestName).toBe('G')
+  })
+
+  it('accepts an optional reviewConfig', () => {
+    const site: Website = {
+      id: 'y',
+      name: 'Y',
+      url: 'y.com',
+      status: 'draft',
+      template: 'Beach House',
+      visits: 0,
+      lastUpdated: '2026-01-01T00:00:00Z',
+      thumbnail: null,
+      reviewConfig: createDefaultReviewConfig(),
+    }
+    expect(site.reviewConfig?.mode).toBe('auto')
+    expect(site.reviewConfig?.channels.booking_com.minRating).toBe(9)
+  })
+
+  it('is valid without a reviewConfig, so seeded websites need no migration', () => {
+    const site: Website = {
+      id: 'z',
+      name: 'Z',
+      url: 'z.com',
+      status: 'draft',
+      template: 'Beach House',
+      visits: 0,
+      lastUpdated: '2026-01-01T00:00:00Z',
+      thumbnail: null,
+    }
+    expect(site.reviewConfig).toBeUndefined()
   })
 })

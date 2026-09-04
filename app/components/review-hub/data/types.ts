@@ -95,7 +95,8 @@ export function getDisplayMax(source: ReviewSource): number {
 
 export function getDisplayScore(overallScore: number | null, source: ReviewSource): string {
   if (overallScore === null) return '-'
-  if (source === 'airbnb') return (overallScore / 2).toFixed(1)
+  // Every channel whose display max is 5 needs halving; only Booking.com is a 10-point scale.
+  if (getDisplayMax(source) === 5) return (overallScore / 2).toFixed(1)
   return overallScore.toFixed(1)
 }
 
