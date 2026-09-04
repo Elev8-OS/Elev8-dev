@@ -29,3 +29,14 @@ export function getListingsForProperties(propertyIds: string[]): string[] {
   }
   return [...seen]
 }
+
+/**
+ * Listing ids a website covers, resolved through the properties it markets.
+ *
+ * A website with no `propertyIds` recorded returns an empty array, which
+ * callers must read as "coverage unknown", not "covers nothing" — see
+ * `websiteCoversScope` in the promo-code form module.
+ */
+export function getListingIdsForWebsite(website: { propertyIds?: string[] }): string[] {
+  return getListingsForProperties(website.propertyIds ?? [])
+}

@@ -30,6 +30,11 @@ export interface Website {
   featuredReviewIds?: string[]
   manualReviews?: ManualReview[]
   featuredManualReviewIds?: string[]
+  // Website Builder properties this site markets — the same ids PropertyStep
+  // collects. Resolve to listings with `getListingIdsForWebsite`. Optional:
+  // an older website with no coverage recorded is treated as covering
+  // everything rather than nothing, so nothing silently disappears.
+  propertyIds?: string[]
 }
 
 export const websites = ref<Website[]>([
@@ -42,6 +47,7 @@ export const websites = ref<Website[]>([
     visits: 2847,
     lastUpdated: '2025-04-20T10:30:00Z',
     thumbnail: null,
+    propertyIds: ['prop-1'],
   },
   {
     id: '2',
@@ -52,6 +58,7 @@ export const websites = ref<Website[]>([
     visits: 1523,
     lastUpdated: '2025-04-18T14:15:00Z',
     thumbnail: null,
+    propertyIds: ['prop-2'],
   },
   {
     id: '3',
@@ -62,6 +69,7 @@ export const websites = ref<Website[]>([
     visits: 0,
     lastUpdated: '2025-04-25T09:00:00Z',
     thumbnail: null,
+    propertyIds: ['prop-3'],
   },
   {
     id: '4',
@@ -72,5 +80,6 @@ export const websites = ref<Website[]>([
     visits: 0,
     lastUpdated: '2025-04-28T16:45:00Z',
     thumbnail: null,
+    propertyIds: ['prop-3', 'prop-4'],
   },
 ])
