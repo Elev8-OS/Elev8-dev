@@ -3,6 +3,7 @@ import type { PropertySelection } from '~/components/website-builder/steps/Prope
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
+import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 
 definePageMeta({
@@ -41,6 +42,7 @@ const reviewSelection = ref<ReviewSelection>({
   featuredReviewIds: [],
   manualReviews: [],
   featuredManualReviewIds: [],
+  config: createDefaultReviewConfig(),
 })
 
 // ── Edit mode: prefill from existing website ─────────────────────
@@ -72,6 +74,7 @@ if (import.meta.client && editingWebsite.value) {
     featuredReviewIds: site.featuredReviewIds ?? [],
     manualReviews: site.manualReviews ?? [],
     featuredManualReviewIds: site.featuredManualReviewIds ?? [],
+    config: site.reviewConfig ?? createDefaultReviewConfig(),
   }
   currentStep.value = 1
 }
@@ -90,7 +93,9 @@ function goNext() {
   else if (currentStep.value === 2 && propertySelection.value.propertyIds.length > 0 && propertySelection.value.roomIds.length > 0) {
     currentStep.value = 3
   }
-  else if (currentStep.value === 3 && (reviewSelection.value.selectedReviewIds.length > 0 || reviewSelection.value.manualReviews.length > 0)) {
+  // ReviewStep owns review validity (it differs by Auto/Manual mode) and only emits
+  // `next` when its own rules pass, so this step just advances.
+  else if (currentStep.value === 3) {
     currentStep.value = 4
   }
 }
