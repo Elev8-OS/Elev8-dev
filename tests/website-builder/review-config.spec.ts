@@ -8,6 +8,7 @@ import {
   meetsMinCount,
   nativeToNormalized,
   resolveAutoReviews,
+  resolveRuleMatches,
   thresholdOptions,
 } from '~/components/website-builder/data/review-config'
 
@@ -274,5 +275,50 @@ describe('meetsMinCount', () => {
     const config = createDefaultReviewConfig()
     config.minCountToShow = 0
     expect(meetsMinCount(0, 0, config)).toBe(true)
+  })
+})
+
+describe('excludedReviewIds', () => {
+  it('drops a hand-hidden review from what publishes', () => {
+    const config = createDefaultReviewConfig()
+    const all = resolveAutoReviews(mockReviewRecords, PROP_1_LISTINGS, config).map(r => r.id)
+    config.excludedReviewIds = [all[0]!]
+
+    const ids = resolveAutoReviews(mockReviewRecords, PROP_1_LISTINGS, config).map(r => r.id)
+    expect(ids).not.toContain(all[0])
+    expect(ids).toHaveLength(all.length - 1)
+  })
+
+  it('keeps it in the rule matches, so the picker can still offer it back', () => {
+    const config = createDefaultReviewConfig()
+    const all = resolveRuleMatches(mockReviewRecords, PROP_1_LISTINGS, config).map(r => r.id)
+    config.excludedReviewIds = [all[0]!]
+
+    expect(resolveRuleMatches(mockReviewRecords, PROP_1_LISTINGS, config).map(r => r.id)).toEqual(all)
+  })
+
+  it('leaves the live count reporting only what publishes', () => {
+    const config = createDefaultReviewConfig()
+    const before = autoReviewStats(mockReviewRecords, PROP_1_LISTINGS, config).total
+    config.excludedReviewIds = [resolveAutoReviews(mockReviewRecords, PROP_1_LISTINGS, config)[0]!.id]
+
+    expect(autoReviewStats(mockReviewRecords, PROP_1_LISTINGS, config).total).toBe(before - 1)
+  })
+
+  it('treats a config saved before the field as hiding nothing', () => {
+    const config = createDefaultReviewConfig()
+    delete config.excludedReviewIds
+
+    expect(() => resolveAutoReviews(mockReviewRecords, PROP_1_LISTINGS, config)).not.toThrow()
+    expect(resolveAutoReviews(mockReviewRecords, PROP_1_LISTINGS, config)).toHaveLength(5)
+  })
+
+  it('clones the exclusions instead of sharing the array', () => {
+    const config = createDefaultReviewConfig()
+    config.excludedReviewIds = ['rr-001']
+    const copy = cloneReviewConfig(config)
+    copy.excludedReviewIds!.push('rr-011')
+
+    expect(config.excludedReviewIds).toEqual(['rr-001'])
   })
 })

@@ -23,6 +23,17 @@ export interface WebsiteReviewConfig {
   requireText: boolean
   minCountToShow: number // hide the whole section below this many matches
   batchSize: number // Load more batch; there is no cap on the total
+  /**
+   * Reviews the host has hidden by hand despite them clearing the rules — the escape hatch
+   * Auto mode needs for the one review a rule cannot describe. Optional so a website saved
+   * before this existed needs no migration; read it through `excludedIds()`.
+   */
+  excludedReviewIds?: string[]
+}
+
+/** Exclusions of a config that may predate the field. */
+export function excludedIds(config: WebsiteReviewConfig): string[] {
+  return config.excludedReviewIds ?? []
 }
 
 export function createDefaultReviewConfig(): WebsiteReviewConfig {
@@ -36,6 +47,7 @@ export function createDefaultReviewConfig(): WebsiteReviewConfig {
     requireText: true,
     minCountToShow: 3,
     batchSize: 12,
+    excludedReviewIds: [],
   }
 }
 
@@ -47,6 +59,7 @@ export function cloneReviewConfig(config: WebsiteReviewConfig): WebsiteReviewCon
       booking_com: { ...config.channels.booking_com },
       direct: { ...config.channels.direct },
     },
+    excludedReviewIds: [...excludedIds(config)],
   }
 }
 
@@ -77,12 +90,14 @@ export function compareByReceivedDesc(a: ReviewRecord, b: ReviewRecord): number 
 }
 
 /**
- * Every review that should appear on the published site, newest first, uncapped.
+ * Every review the rules admit, newest first — **before** the host's hand-picked
+ * exclusions. This is what the Auto picker lists, so a hidden review stays on screen
+ * (unticked) and can be brought back; use `resolveAutoReviews` for what actually publishes.
  *
  * Pure: does not mutate `records`. `batchSize` and `minCountToShow` are display
  * settings and deliberately play no part here.
  */
-export function resolveAutoReviews(
+export function resolveRuleMatches(
   records: ReviewRecord[],
   listingIds: string[],
   config: WebsiteReviewConfig,
@@ -110,6 +125,19 @@ export function resolveAutoReviews(
       return true
     })
     .sort(compareByReceivedDesc)
+}
+
+/**
+ * Every review that should appear on the published site: the rule matches minus anything
+ * the host hid by hand.
+ */
+export function resolveAutoReviews(
+  records: ReviewRecord[],
+  listingIds: string[],
+  config: WebsiteReviewConfig,
+): ReviewRecord[] {
+  const excluded = new Set(excludedIds(config))
+  return resolveRuleMatches(records, listingIds, config).filter(r => !excluded.has(r.id))
 }
 
 export interface AutoReviewStats {

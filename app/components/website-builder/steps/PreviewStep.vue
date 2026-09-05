@@ -211,6 +211,7 @@ function persistWebsite(status: Website['status'], message: string) {
           status,
           template: props.template?.name ?? existing.template,
           lastUpdated: new Date().toISOString(),
+          propertyIds: props.property.propertyIds,
           reviewIds: props.reviews.selectedReviewIds,
           featuredReviewIds: props.reviews.featuredReviewIds,
           manualReviews: props.reviews.manualReviews,
@@ -229,6 +230,7 @@ function persistWebsite(status: Website['status'], message: string) {
         visits: 0,
         lastUpdated: new Date().toISOString(),
         thumbnail: null,
+        propertyIds: props.property.propertyIds,
         reviewIds: props.reviews.selectedReviewIds,
         featuredReviewIds: props.reviews.featuredReviewIds,
         manualReviews: props.reviews.manualReviews,
@@ -241,8 +243,21 @@ function persistWebsite(status: Website['status'], message: string) {
   }, 800)
 }
 
+// Saving a live site as a draft *is* unpublishing it, so on a published site the button
+// says so — and asks first, since it takes the site off the internet.
+const editingWebsite = computed(() =>
+  editId.value ? websites.value.find(w => w.id === editId.value) ?? null : null,
+)
+const isEditingPublished = computed(() => editingWebsite.value?.status === 'published')
+const unpublishOpen = ref(false)
+
 function saveDraft() {
   persistWebsite('draft', 'Website saved as draft')
+}
+
+function unpublishWebsite() {
+  unpublishOpen.value = false
+  persistWebsite('draft', 'Website unpublished — it is a draft again')
 }
 
 function publishWebsite() {
@@ -497,10 +512,11 @@ function handleBack() {
             {{ reviewConfig.minCountToShow }} reviews match.
           </span>
         </div>
-        <div v-if="reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length > 0" class="flex items-center gap-2 text-sm">
+        <!-- Every published review is also on the home page, so this states the rule
+             rather than counting a hand-picked subset. -->
+        <div v-if="resolvedReviews.length + reviews.manualReviews.length > 0" class="flex items-center gap-2 text-sm">
           <Icon name="i-lucide-star" class="size-4 text-primary" />
-          <span class="font-medium">{{ reviews.featuredReviewIds.length + reviews.featuredManualReviewIds.length }}</span>
-          <span class="text-muted-foreground">featured on main page</span>
+          <span class="text-muted-foreground">All of them show on the home page</span>
         </div>
         <div v-if="reviews.manualReviews.length > 0" class="flex flex-wrap gap-2">
           <div
@@ -565,16 +581,42 @@ function handleBack() {
         Back
       </Button>
       <div class="flex items-center gap-2">
-        <Button variant="outline" :disabled="isPublishing" @click="saveDraft">
+        <Button
+          v-if="isEditingPublished"
+          variant="outline"
+          data-testid="preview-unpublish"
+          :disabled="isPublishing"
+          @click="unpublishOpen = true"
+        >
+          <Icon name="i-lucide-eye-off" class="size-4 mr-2" />
+          Unpublish
+        </Button>
+        <Button v-else variant="outline" :disabled="isPublishing" @click="saveDraft">
           <Icon name="i-lucide-file-text" class="size-4 mr-2" />
           Save as Draft
         </Button>
         <Button :disabled="isPublishing" @click="publishWebsite">
           <Icon v-if="isPublishing" name="i-lucide-loader-2" class="size-4 mr-2 animate-spin" />
           <Icon v-else name="i-lucide-rocket" class="size-4 mr-2" />
-          Publish Website
+          {{ isEditingPublished ? 'Update Website' : 'Publish Website' }}
         </Button>
       </div>
     </div>
+
+    <AlertDialog v-model:open="unpublishOpen">
+      <AlertDialogContent>
+        <AlertDialogTitle>Unpublish {{ settings.name }}?</AlertDialogTitle>
+        <AlertDialogDescription>
+          Visitors to {{ settings.domain }} will no longer see the site. Nothing is deleted —
+          your edits are saved as a draft, and you can publish it again at any time.
+        </AlertDialogDescription>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction data-testid="preview-unpublish-confirm" @click="unpublishWebsite">
+            Unpublish
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
