@@ -87,3 +87,21 @@ export const websites = ref<Website[]>([
     propertyIds: ['prop-3', 'prop-4'],
   },
 ])
+
+/**
+ * Flips a website between published and draft.
+ *
+ * Unpublishing is not a delete: the site keeps its content, its review rules and its
+ * property coverage, it just stops being served — so a host can take a site down for a
+ * season and put it back without rebuilding it. Spread mutation, so the `ref` stays
+ * reactive for the cards reading it.
+ */
+export function setWebsiteStatus(id: string, status: WebsiteStatus): Website | null {
+  const index = websites.value.findIndex(w => w.id === id)
+  const existing = websites.value[index]
+  if (!existing)
+    return null
+  const updated: Website = { ...existing, status, lastUpdated: new Date().toISOString() }
+  websites.value[index] = updated
+  return updated
+}
