@@ -50,10 +50,17 @@ const detail = computed(() => {
 </script>
 
 <template>
+  <!--
+    Solid red in both themes, on purpose. The `destructive` token resolves to a lighter red
+    under `.dark`, where white text on it only reaches ~2.6:1, and the Button recipe's
+    `dark:bg-destructive/60` reads as muted brick across a full-width bar rather than an alert.
+    Palette reds keep one unmistakable surface with legible white text, the same way
+    `platform-console/BannerCard.vue` reaches for palette amber and green.
+  -->
   <div
     v-if="needsPaymentUpdate"
     role="alert"
-    class="flex items-center gap-3 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-destructive md:px-6 dark:bg-destructive/15"
+    class="flex items-center gap-3 bg-red-600 px-4 py-2 text-white md:px-6 dark:bg-red-700"
   >
     <Icon name="lucide:octagon-alert" class="size-4 shrink-0" />
 
@@ -63,9 +70,8 @@ const detail = computed(() => {
     </p>
 
     <Button
-      variant="destructive"
       size="sm"
-      class="h-7 shrink-0"
+      class="h-7 shrink-0 bg-white text-red-700 hover:bg-white/90 dark:bg-white dark:text-red-700"
       @click="dialogOpen = true"
     >
       Update payment
