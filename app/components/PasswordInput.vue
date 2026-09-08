@@ -3,6 +3,11 @@ import type { ComponentFieldBindingObject } from 'vee-validate'
 import type { HTMLAttributes } from 'vue'
 import { cn } from '~/lib/utils'
 
+// The root element is a positioning wrapper, so `id` / `aria-*` must land on
+// the inner Input instead. Otherwise a `<Label for>` or `<FormControl>` points
+// at a div and clicking the label never focuses the field.
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
   class?: HTMLAttributes['class']
   disabled?: boolean
@@ -11,6 +16,12 @@ const props = defineProps<{
   modelValue?: string
   placeholder?: string
 }>()
+
+const attrs = useAttrs()
+const forwardedAttrs = computed(() => {
+  const { class: _class, style: _style, ...rest } = attrs
+  return rest
+})
 
 const showModal = useModel(props, 'modelValue')
 
@@ -26,7 +37,7 @@ const showPassword = ref(false)
       :placeholder="props?.placeholder ? props.placeholder : 'Enter your password'"
       :disabled="props?.disabled"
       :autocomplete="props?.autocomplete"
-      v-bind="props?.componentField"
+      v-bind="{ ...forwardedAttrs, ...props?.componentField }"
     />
     <Button
       type="button"
@@ -44,7 +55,7 @@ const showPassword = ref(false)
       />
       <Icon v-else name="i-lucide-eye-off" class="size-4" aria-hidden="true" />
       <span class="sr-only">
-        {{ showPassword ? "Show password" : "Hide password" }}
+        {{ showPassword ? "Hide password" : "Show password" }}
       </span>
     </Button>
   </div>

@@ -198,6 +198,12 @@ export const navMenu: NavMenu[] = [
     heading: 'Pages',
     items: [
       {
+        title: 'Tenant Onboarding',
+        icon: 'i-lucide-rocket',
+        link: '/onboarding',
+        new: true,
+      },
+      {
         title: 'Authentication',
         icon: 'i-lucide-lock-keyhole-open',
         children: [
