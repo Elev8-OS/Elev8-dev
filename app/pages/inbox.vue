@@ -10,7 +10,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="-m-4 lg:-m-6 h-[calc(100dvh-6.5rem)] overflow-hidden">
+  <!--
+    `h-full` rather than a viewport calc: the layout column is a definite height
+    already, and a fixed `100dvh` minus a guess cannot know about the billing alert
+    or a broadcast banner, so it overshot and pushed the panels past the fold.
+  -->
+  <div class="-m-4 lg:-m-6 h-full overflow-hidden">
     <ClientOnly>
       <InboxLayout
         :default-layout="[18, 25, 42, 15]"
