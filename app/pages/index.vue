@@ -46,6 +46,7 @@ watch(isDesktop, () => {
         <Button>Download</Button>
       </div>
     </div>
+    <OnboardingChecklistCard />
     <main class="@container/main flex flex-1 flex-col gap-4 md:gap-8">
       <div class="grid grid-cols-1 gap-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
         <Card class="@container/card">

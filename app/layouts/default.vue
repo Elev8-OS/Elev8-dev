@@ -21,7 +21,14 @@
         <LayoutHeader />
         <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
           <PlatformConsoleBannerSlot />
-          <div class="@container/main p-4 lg:p-6 grow min-h-0">
+          <!-- Onboarding shows at most one banner, the highest priority one (PRD 9). -->
+          <OnboardingStatusBanner class="px-6 pt-4" />
+          <!--
+            `overflow-y-auto` is what makes the page scroll. The shell above is a hard
+            `h-svh` with `overflow-hidden` on two ancestors, so without a scroller here
+            any page taller than the viewport is simply clipped and unreachable.
+          -->
+          <div class="@container/main p-4 lg:p-6 grow min-h-0 overflow-y-auto">
             <slot />
           </div>
         </div>

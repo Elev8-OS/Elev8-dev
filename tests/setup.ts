@@ -1,5 +1,6 @@
 import { beforeEach, vi } from 'vitest'
 import { computed, onMounted, reactive, ref, resolveComponent, shallowRef, watch } from 'vue'
+import { useOnboarding } from '../app/composables/useOnboarding'
 import { useAssistant } from './utils/useAssistant-global'
 
 globalThis.toast = {
@@ -20,6 +21,8 @@ globalThis.resolveComponent = resolveComponent
 
 // Expose auto-imported composables so tests can call them without an import.
 globalThis.useAssistant = useAssistant
+// Components that render onboarding state resolve this as a Nuxt auto-import.
+globalThis.useOnboarding = useOnboarding
 
 // Lightweight useState shim — keyed on a global Map so multiple composables
 // can share state across calls. Mirrors Nuxt's useState API just enough

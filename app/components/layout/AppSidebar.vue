@@ -46,6 +46,19 @@ const teams: {
   : []
 
 const { sidebar } = useAppSettings()
+
+// A PMS_ONLY tenant does not get every module. Those entries are removed from
+// navigation rather than shown disabled (PRD 7.4). Every other model keeps the
+// menu it was given, so this is a no-op for them.
+const { moduleAvailable } = useOnboarding()
+const visibleMenu = computed<NavMenu[]>(() =>
+  props.menu
+    // A NavSectionTitle carries no `title`, so it is never gated.
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !('title' in item) || moduleAvailable(item.title)),
+    }))
+    .filter(group => group.items.length > 0))
 </script>
 
 <template>
@@ -61,7 +74,7 @@ const { sidebar } = useAppSettings()
       <Search v-if="showSearch" />
     </SidebarHeader>
     <SidebarContent>
-      <SidebarGroup v-for="(nav, indexGroup) in menu" :key="indexGroup">
+      <SidebarGroup v-for="(nav, indexGroup) in visibleMenu" :key="indexGroup">
         <SidebarGroupLabel v-if="nav.heading">
           {{ nav.heading }}
         </SidebarGroupLabel>
