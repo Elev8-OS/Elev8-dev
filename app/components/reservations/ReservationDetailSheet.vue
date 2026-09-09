@@ -6,6 +6,7 @@ import { cleanerOptions, cleaningJobStatusLabels } from '~/components/cleaning/d
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
+import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
@@ -561,6 +562,9 @@ function cleaningStatusLabel(job: CleaningJob): string {
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
+
+            <!-- Charges & extras (staff-posted folio) -->
+            <ReservationFolioSection :reservation="reservation" />
 
             <!-- Guest -->
             <div class="border-b px-5 py-4">

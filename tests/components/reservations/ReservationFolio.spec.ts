@@ -3,10 +3,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
 import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
+import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import { initialReservations } from '~/components/reservations/data/reservations'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '~/components/ui/accordion'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { ScrollArea } from '~/components/ui/scroll-area'
@@ -224,5 +227,149 @@ describe('FolioVoidDialog', () => {
     await body().findAll('button').find(b => b.text() === 'Void item')!.trigger('click')
 
     expect(wrapper.emitted('confirm')![0]![0]).toBe('Charged twice')
+  })
+})
+
+describe('ReservationFolioSection', () => {
+  const sectionComponents = {
+    ...components,
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+  }
+
+  /**
+   * The section is a collapsed Accordion, and reka-ui does not mount
+   * AccordionContent until it opens. Every assertion below is about the content,
+   * so the helper opens it first.
+   *
+   * The trigger is queried by `[data-slot="accordion-trigger"]` (the stable
+   * marker `AccordionTrigger.vue` renders), not "the first button in the
+   * wrapper" — the section root also contains the (closed) add/void dialogs,
+   * and a plain `find('button')` would silently start matching the wrong
+   * element the day either dialog renders a button while closed.
+   *
+   * No `Teleport` stub here: `DropdownMenuContent` and the dialog content
+   * both render through a real reka-ui portal, and `stubs: { Teleport: true }`
+   * would replace that subtree with an empty `<teleport-stub>` — exactly the
+   * failure mode called out in the comment on `body()` above. Leaving Teleport
+   * unstubbed and reading `document.body` (as that same pattern already does)
+   * is what lets the portalled content actually land.
+   */
+  async function mountSection(reservationId = 'res-3') {
+    const reservation = initialReservations.find(r => r.id === reservationId)!
+    const wrapper = mount(ReservationFolioSection, {
+      props: { reservation },
+      global: { components: sectionComponents },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-slot="accordion-trigger"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    return wrapper
+  }
+
+  it('renders every seeded item with its state', async () => {
+    const text = (await mountSection()).text()
+
+    expect(text).toContain('Minibar - Bintang Beer')
+    expect(text).toContain('Laundry - Express same day')
+    expect(text).toContain('Breakfast - Continental')
+    expect(text).toContain('Unpaid')
+    expect(text).toContain('Paid')
+    expect(text).toContain('Voided')
+  })
+
+  it('shows the void reason on a voided line', async () => {
+    expect((await mountSection()).text()).toContain('Charged twice at the desk.')
+  })
+
+  it('states the booking total, the extras and the combined total', async () => {
+    const text = (await mountSection()).text()
+
+    expect(text).toContain('Booking total')
+    expect(text).toContain('Extras')
+    expect(text).toContain('Total')
+  })
+
+  it('reports a refund due rather than a negative balance', async () => {
+    const wrapper = await mountSection()
+
+    // Extras 26.40 posted, 33.00 collected (laundry 13.20 + the voided breakfast 19.80),
+    // so the folio owes 6.60 back and never prints a negative balance.
+    expect(wrapper.text()).toContain('Refund due')
+    expect(wrapper.text()).toContain('6.6')
+    expect(wrapper.text()).not.toContain('-6.6')
+  })
+
+  it('offers Add item on a live stay', async () => {
+    const add = (await mountSection()).find('[data-testid="folio-add"]')
+
+    expect(add.exists()).toBe(true)
+    expect(add.attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables Add item on a cancelled stay and says why', async () => {
+    const cancelled = initialReservations.find(r => r.status === 'cancelled')!
+    const wrapper = mount(ReservationFolioSection, {
+      props: { reservation: cancelled },
+      global: { components: sectionComponents },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-slot="accordion-trigger"]').trigger('click')
+    await nextTick()
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="folio-add"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('cancelled')
+  })
+
+  it('shows an empty state on a stay with nothing posted', async () => {
+    const wrapper = await mountSection('res-1')
+
+    expect(wrapper.text()).toContain('Nothing posted yet')
+  })
+
+  /**
+   * DropdownMenuContent is unmounted until the menu opens and portals out of the
+   * wrapper, so it is read off document.body. One menu per mount: two open
+   * portals in one document make a negative assertion meaningless, since the
+   * other row's items are also on the page.
+   */
+  async function openRowMenu(rowIndex: number) {
+    const wrapper = await mountSection()
+    const rows = wrapper.findAll('[data-testid="folio-item-row"]')
+    expect(rows).toHaveLength(3)
+
+    await rows[rowIndex]!.find('[aria-label="Item actions"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    return document.body.textContent ?? ''
+  }
+
+  it('offers Remove but not Void on the unpaid row', async () => {
+    const menu = await openRowMenu(0)
+
+    expect(menu).toContain('Remove')
+    expect(menu).not.toContain('Void item')
+  })
+
+  it('offers Void but not Remove on the paid row', async () => {
+    const menu = await openRowMenu(1)
+
+    expect(menu).toContain('Void item')
+    expect(menu).not.toContain('Remove')
+  })
+
+  it('offers no actions at all on a voided row', async () => {
+    const wrapper = await mountSection()
+    const rows = wrapper.findAll('[data-testid="folio-item-row"]')
+
+    expect(rows[2]!.find('[aria-label="Item actions"]').exists()).toBe(false)
   })
 })
