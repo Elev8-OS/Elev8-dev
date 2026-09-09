@@ -1,4 +1,5 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
+import type { FolioItem } from '~/components/reservations/data/folio'
 
 export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
@@ -140,6 +141,11 @@ export interface ReservationEntry {
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number
   charges?: ReservationCharge[]
+  /**
+   * Items posted on the stay by staff (minibar, laundry, a spa slot booked at
+   * the desk). Optional, so every existing reservation keeps working untouched.
+   */
+  folioItems?: FolioItem[]
 }
 
 export interface GuestProfile {
@@ -901,8 +907,8 @@ export const initialReservations: ReservationEntry[] = [
       cleaningFee: 25,
       serviceFee: 0,
       tax: 15,
-      extras: 0,
-      guestPaid: 640,
+      extras: 26.4,
+      guestPaid: 666.4,
       commission: 64,
       payout: 576,
     },
@@ -911,6 +917,52 @@ export const initialReservations: ReservationEntry[] = [
     paymentRequestId: 'pr-006',
     guestGuideId: 'ggl-mock-002',
     upsellIds: ['ord-003'],
+    folioItems: [
+      {
+        id: 'fol-res3-1',
+        label: 'Minibar - Bintang Beer',
+        quantity: 2,
+        unitPrice: 6,
+        taxPercent: 10,
+        servicePercent: 0,
+        source: 'custom',
+        status: 'unpaid',
+        addedBy: 'Komang Juliantara',
+        addedAt: '2026-08-09T14:02:00Z',
+      },
+      {
+        id: 'fol-res3-2',
+        label: 'Laundry - Express same day',
+        quantity: 3,
+        unitPrice: 4,
+        taxPercent: 10,
+        servicePercent: 0,
+        note: 'Two shirts and one pair of trousers.',
+        source: 'custom',
+        status: 'paid',
+        paymentMethod: 'cash',
+        paidAt: '2026-08-10T09:15:00Z',
+        addedBy: 'Komang Juliantara',
+        addedAt: '2026-08-10T08:40:00Z',
+      },
+      {
+        id: 'fol-res3-3',
+        label: 'Breakfast - Continental',
+        quantity: 1,
+        unitPrice: 18,
+        taxPercent: 10,
+        servicePercent: 0,
+        source: 'custom',
+        status: 'voided',
+        paymentMethod: 'card',
+        paidAt: '2026-08-10T09:20:00Z',
+        voidReason: 'Charged twice at the desk.',
+        voidedAt: '2026-08-10T09:31:00Z',
+        voidedBy: 'Komang Juliantara',
+        addedBy: 'Komang Juliantara',
+        addedAt: '2026-08-10T07:55:00Z',
+      },
+    ],
     guests: [
       {
         id: 'occ-1',

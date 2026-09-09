@@ -18,6 +18,7 @@ import {
   validateFolioItemDraft,
 } from '~/components/reservations/data/folio'
 import type { FolioItem } from '~/components/reservations/data/folio'
+import { initialReservations } from '~/components/reservations/data/reservations'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 
@@ -423,5 +424,30 @@ describe('folioActivityEvent', () => {
 
     expect(event.title).toBe('Folio item charged to room')
     expect(event.title).not.toContain('Paid')
+  })
+})
+
+describe('seeded folio items', () => {
+  const seeded = initialReservations.find(r => r.id === 'res-3')!
+
+  it('gives the in-house stay one item in each state', () => {
+    const statuses = (seeded.folioItems ?? []).map(item => item.status)
+
+    expect(statuses).toContain('unpaid')
+    expect(statuses).toContain('paid')
+    expect(statuses).toContain('voided')
+  })
+
+  it('leaves the seeded stay with a refund due from the voided paid item', () => {
+    const summary = buildFolioSummary(seeded)
+
+    expect(summary.refundDue).toBeGreaterThan(0)
+    expect(summary.itemsTotal).toBeGreaterThan(0)
+  })
+
+  it('keeps priceDetails.extras in step with the live items', () => {
+    const summary = buildFolioSummary(seeded)
+
+    expect(seeded.priceDetails?.extras).toBe(summary.itemsTotal)
   })
 })
