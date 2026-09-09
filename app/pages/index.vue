@@ -3,6 +3,7 @@ import NumberFlow from '@number-flow/vue'
 import { TrendingDown, TrendingUp, TrendingUpIcon } from 'lucide-vue-next'
 
 const groDashboard = useGroDashboard()
+const gmDashboard = useGmDashboard()
 
 const dataCard = ref({
   totalRevenue: 0,
@@ -36,6 +37,9 @@ watch(isDesktop, () => {
 <template>
   <ChangelogPopup />
   <GroDashboard v-if="groDashboard.isGro.value" />
+  <!-- The General Manager reads the portfolio, not a queue, so the role gets
+       its own dashboard the same way the GRO persona does. -->
+  <GmDashboard v-else-if="gmDashboard.isGeneralManager.value" />
   <div v-else class="w-full flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <h2 class="text-2xl font-bold tracking-tight">

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { format, formatDistanceToNow } from 'date-fns'
 import { toast } from 'vue-sonner'
-import { resolveConversationTenantId } from '~/components/inbox/data/conversations'
+import { actionCategoryFor, resolveConversationTenantId } from '~/components/inbox/data/conversations'
 
 const gro = useGroScope()
 const inbox = useInbox()
@@ -47,22 +47,8 @@ function sentimentFor(sentiment: string) {
   return sentimentConfig[sentiment] ?? sentimentConfig.neutral!
 }
 
-const categoryConfig: Record<string, { label: string, class: string }> = {
-  cleanliness: { label: 'CLEANLINESS', class: 'border-green-500/40 text-green-600 dark:text-green-400' },
-  guest_requests: { label: 'GUEST REQUESTS', class: 'border-blue-500/40 text-blue-600 dark:text-blue-400' },
-  maintenance: { label: 'MAINTENANCE', class: 'border-amber-500/40 text-amber-600 dark:text-amber-400' },
-  reservation_changes: { label: 'RESERVATION CHANGES', class: 'border-purple-500/40 text-purple-600 dark:text-purple-400' },
-  check_in_detected: { label: 'CHECK IN DETECTED', class: 'border-cyan-500/40 text-cyan-600 dark:text-cyan-400' },
-  check_out_detected: { label: 'CHECK OUT DETECTED', class: 'border-cyan-500/40 text-cyan-600 dark:text-cyan-400' },
-  temperature: { label: 'TEMPERATURE', class: 'border-orange-500/40 text-orange-600 dark:text-orange-400' },
-  other: { label: 'OTHER', class: 'border-muted-foreground/40 text-muted-foreground' },
-}
-
-function categoryFor(conv: { actionCategory?: string }) {
-  if (conv.actionCategory && categoryConfig[conv.actionCategory])
-    return categoryConfig[conv.actionCategory]!
-  return categoryConfig.other!
-}
+// Shared with the GM dashboard's sentiment panel, see `actionCategoryConfig`.
+const categoryFor = actionCategoryFor
 
 function formatCreatedAt(iso: string) {
   return format(new Date(iso), 'MMM d h:mm a')

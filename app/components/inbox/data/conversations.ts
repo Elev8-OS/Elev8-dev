@@ -20,6 +20,29 @@ export type ActionCategory =
 
 export type ActionPriority = 'high' | 'medium' | 'default'
 
+/**
+ * Label and chip colour per action category. Lives here, next to the type it
+ * describes, because more than one dashboard renders these chips and a second
+ * copy would drift.
+ */
+export const actionCategoryConfig: Record<ActionCategory, { label: string, class: string }> = {
+  cleanliness: { label: 'CLEANLINESS', class: 'border-green-500/40 text-green-600 dark:text-green-400' },
+  guest_requests: { label: 'GUEST REQUESTS', class: 'border-blue-500/40 text-blue-600 dark:text-blue-400' },
+  maintenance: { label: 'MAINTENANCE', class: 'border-amber-500/40 text-amber-600 dark:text-amber-400' },
+  reservation_changes: { label: 'RESERVATION CHANGES', class: 'border-purple-500/40 text-purple-600 dark:text-purple-400' },
+  check_in_detected: { label: 'CHECK IN DETECTED', class: 'border-cyan-500/40 text-cyan-600 dark:text-cyan-400' },
+  check_out_detected: { label: 'CHECK OUT DETECTED', class: 'border-cyan-500/40 text-cyan-600 dark:text-cyan-400' },
+  temperature: { label: 'TEMPERATURE', class: 'border-orange-500/40 text-orange-600 dark:text-orange-400' },
+  other: { label: 'OTHER', class: 'border-muted-foreground/40 text-muted-foreground' },
+}
+
+/** Falls back to `other` for a missing or unrecognised category. */
+export function actionCategoryFor(conv: { actionCategory?: string }) {
+  if (conv.actionCategory && conv.actionCategory in actionCategoryConfig)
+    return actionCategoryConfig[conv.actionCategory as ActionCategory]
+  return actionCategoryConfig.other
+}
+
 export const DEFAULT_TENANT_ID = 't-1'
 
 export function resolveConversationTenantId(c: Conversation): string {
