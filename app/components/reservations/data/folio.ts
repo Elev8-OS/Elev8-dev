@@ -1,3 +1,5 @@
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
+
 export type FolioItemStatus = 'unpaid' | 'paid' | 'voided'
 export type FolioPaymentMethod = 'cash' | 'card' | 'room'
 export type FolioItemSource = 'catalog' | 'custom'
@@ -57,4 +59,58 @@ export function folioLineService(item: FolioPriceable): number {
 
 export function folioLineTotal(item: FolioPriceable): number {
   return roundFolioAmount(folioLineNet(item) + folioLineTax(item) + folioLineService(item))
+}
+
+export interface FolioSummary {
+  /** Room lines, charges and the payment fee, or totalPrice when there are no rooms. */
+  bookingTotal: number
+  /** Live (non-voided) staff items. */
+  itemsTotal: number
+  /** Voided staff items, kept for display only. */
+  voidedTotal: number
+  grandTotal: number
+  /** Extras actually collected, including a voided item that had been paid. */
+  itemsPaid: number
+  itemsBalance: number
+  refundDue: number
+}
+
+/** Mirrors ReservationRoomsSection.vue:460 so the folio cannot disagree with it. */
+export function folioPaymentFee(reservation: ReservationEntry, roomLinesTotal: number): number {
+  if (reservation.paymentFeeMode === 'card')
+    return roundFolioAmount(roomLinesTotal * 0.03)
+  if (reservation.paymentFeeMode === 'manual')
+    return roundFolioAmount(roomLinesTotal * ((reservation.paymentCustomFeePct ?? 0) / 100))
+  return 0
+}
+
+export function folioBookingTotal(reservation: ReservationEntry): number {
+  if (!reservation.rooms?.length)
+    return reservation.totalPrice
+
+  const rooms = reservation.rooms.reduce((sum, line) => sum + line.lineTotal, 0)
+  const charges = (reservation.charges ?? []).reduce((sum, charge) => sum + charge.amount, 0)
+  return roundFolioAmount(rooms + charges + folioPaymentFee(reservation, rooms))
+}
+
+export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
+  const items = reservation.folioItems ?? []
+  const sum = (list: FolioItem[]) => roundFolioAmount(list.reduce((total, item) => total + folioLineTotal(item), 0))
+
+  const bookingTotal = folioBookingTotal(reservation)
+  const itemsTotal = sum(items.filter(item => item.status !== 'voided'))
+  const voidedTotal = sum(items.filter(item => item.status === 'voided'))
+  // paidAt, not status: a voided item that was paid still owes a refund.
+  const itemsPaid = sum(items.filter(item => Boolean(item.paidAt)))
+  const itemsBalance = roundFolioAmount(itemsTotal - itemsPaid)
+
+  return {
+    bookingTotal,
+    itemsTotal,
+    voidedTotal,
+    grandTotal: roundFolioAmount(bookingTotal + itemsTotal),
+    itemsPaid,
+    itemsBalance,
+    refundDue: itemsBalance < 0 ? roundFolioAmount(-itemsBalance) : 0,
+  }
 }
