@@ -94,9 +94,9 @@ nothing changes visibly there.
 ### Rule 3: voiding reverses the charge, and the refund falls out of the arithmetic
 
 A voided item contributes 0 to the folio total regardless of its prior state.
-The balance is one expression, `balance = total - paid`. A paid item that gets
-voided therefore drives the balance negative, which the summary renders as
-`Refund due 18.00` instead of a balance. There is no separate credit-note
+The balance is one expression, `itemsBalance = itemsTotal - itemsPaid`. A paid
+item that gets voided therefore drives the balance negative, which the summary
+renders as `Refund due 18.00` instead of a balance. There is no separate credit-note
 concept and no second code path.
 
 ### Payment methods, and what "charge to room" means
@@ -130,10 +130,17 @@ money maths are testable without mounting anything. Same split as `datev.ts` and
 
 - `folioLineNet(item)` / `folioLineTax(item)` / `folioLineService(item)` / `folioLineTotal(item)`
 - `buildFolioSummary(reservation)` returns
-  `{ bookingTotal, itemsTotal, voidedTotal, grandTotal, paid, balance, refundDue }`.
+  `{ bookingTotal, itemsTotal, voidedTotal, grandTotal, itemsPaid, itemsBalance, refundDue }`.
   `bookingTotal` folds the room lines, `charges` and the payment fee exactly as
-  the detail sheet renders them today, so the folio cannot disagree with the
-  Rooms accordion directly above it.
+  `ReservationRoomsSection.vue:460` computes them, so the folio cannot disagree
+  with the Rooms accordion directly above it. A reservation with no `rooms`
+  contributes its `totalPrice`, which already includes its fees
+- **Paid and balance cover the extras only, and the labels say so.** Nothing on
+  `ReservationEntry` records whether the booking itself was settled, so the
+  folio does not claim to know. It shows `Booking total`, `Extras`, a combined
+  `Total`, then `Extras paid` and `Extras balance`. Rule 3's arithmetic applies
+  to the extras: `itemsBalance = itemsTotal - itemsPaid`, and a negative result
+  renders as `Refund due`.
 - `canDeleteFolioItem(item)` / `canVoidFolioItem(item)`
 - `validateFolioItemDraft(draft)` returns errors keyed by field: blank label,
   quantity below 1, price at or below 0, percentages outside 0 to 100
@@ -178,13 +185,27 @@ disabled and the reason in its tooltip rather than a silent no-op.
 **`FolioAddItemDialog.vue`** holds the two paths:
 
 1. **Catalog.** A searchable list of items belonging to active upsell services
-   whose `assignedListings` include this reservation's listing. A service with no
-   items is not pickable. Rows show service name, item name and price.
+   offered at this property. `UpsellService.assignedListings` holds listing
+   **names**, not ids (`upsell-services.ts:313`), so the match is against
+   `reservation.listingName`, the same name-matching rule the upsell lock-access
+   module already follows. A service with no items is not pickable. Rows show
+   service name, item name and price.
 2. **Custom item.** Label, quantity, unit price, tax percent, service percent,
    note.
 
 A property with no assigned services opens straight on the custom form rather
 than on an empty list.
+
+**Currency never gets converted.** The seeded upsell services are priced in IDR
+while several reservations are USD or EUR, so a catalog price and a folio are
+often in different currencies. Inventing an exchange rate to bridge them would
+put a fabricated number on a guest's bill, and hiding the item would leave staff
+without their catalog. So a row whose `service.currency` differs from
+`reservation.currency` stays listed, shows its price in its own currency, and
+carries a `Priced in IDR` badge; picking it copies the label and both
+percentages but leaves the unit price empty and focused, with the helper
+`Enter the amount in USD`. Services with `pricingEnabled: false` take the same
+path, since their item prices are not meant to be charged as-is.
 
 **`FolioVoidDialog.vue`** is the small reason prompt for voiding a paid item.
 
