@@ -176,6 +176,9 @@ export function createDefaultFolioItemDraft(): FolioItemDraft {
  * A catalog pick is a snapshot. The price transfers only when it can be charged
  * as-is: same currency, and the service actually prices its items. Otherwise the
  * amount is left for staff, because no exchange rate belongs on a guest's bill.
+ *
+ * A service with `pricingEnabled: false` lends no percentages either, matching
+ * `UpsellOrderCreator.vue:79`, which bills zero tax and zero service for one.
  */
 export function folioDraftFromCatalog(service: UpsellService, item: UpsellItem, reservationCurrency: string): FolioItemDraft {
   const usablePrice = service.pricingEnabled && service.currency === reservationCurrency

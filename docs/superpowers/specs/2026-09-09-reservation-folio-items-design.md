@@ -204,8 +204,14 @@ without their catalog. So a row whose `service.currency` differs from
 `reservation.currency` stays listed, shows its price in its own currency, and
 carries a `Priced in IDR` badge; picking it copies the label and both
 percentages but leaves the unit price empty and focused, with the helper
-`Enter the amount in USD`. Services with `pricingEnabled: false` take the same
-path, since their item prices are not meant to be charged as-is.
+`Enter the amount in USD`.
+
+A service with `pricingEnabled: false` also leaves the amount blank, but it
+transfers **no** percentages either: it has none to lend. `UpsellOrderCreator.vue:79`
+bills zero tax and zero service for such a service, and Rule 2 above binds the
+folio to that same arithmetic, so prefilling rates here would price a folio line
+differently from the identical upsell order. Only the label and the provenance
+ids carry over.
 
 **`FolioVoidDialog.vue`** is the small reason prompt for voiding a paid item.
 
