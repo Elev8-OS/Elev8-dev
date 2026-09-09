@@ -385,7 +385,7 @@ export const conversations: Conversation[] = [
     checkOut: '2026-04-23T11:00:00Z',
     verification: 'check_out',
     cleaningStatus: 'need_cleaning',
-    linkedUpsellOrderIds: [],
+    linkedUpsellOrderIds: ['ord-013'],
     guestLanguage: 'English',
   },
   {
@@ -572,7 +572,7 @@ export const conversations: Conversation[] = [
     checkOut: '2026-05-15T11:00:00Z',
     verification: 'unverified',
     cleaningStatus: 'cleaning_finished',
-    linkedUpsellOrderIds: [],
+    linkedUpsellOrderIds: ['ord-012'],
   },
   {
     id: 'conv-12',

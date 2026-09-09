@@ -25,6 +25,8 @@ export type AlertType
     | 'UPSELL_PAYMENT_RECEIVED'
     | 'UPSELL_FULFILLMENT_STARTED'
     | 'UPSELL_FULFILLMENT_COMPLETED'
+    | 'UPSELL_LOCK_ACCESS_ISSUED'
+    | 'UPSELL_LOCK_ACCESS_FAILED'
     | 'CALL_INCOMING'
     | 'CALL_MISSED'
     | 'CALL_COMPLETED'
@@ -114,6 +116,8 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   UPSELL_PAYMENT_RECEIVED: 'Upsell Payment Received',
   UPSELL_FULFILLMENT_STARTED: 'Upsell Fulfillment Started',
   UPSELL_FULFILLMENT_COMPLETED: 'Upsell Fulfillment Completed',
+  UPSELL_LOCK_ACCESS_ISSUED: 'Upsell Access Code Issued',
+  UPSELL_LOCK_ACCESS_FAILED: 'Upsell Access Code Not Issued',
   CALL_INCOMING: 'Incoming Call',
   CALL_MISSED: 'Missed Call',
   CALL_COMPLETED: 'Call Completed',
@@ -188,6 +192,8 @@ export const alertIcons: Record<AlertType, string> = {
   UPSELL_PAYMENT_RECEIVED: 'i-lucide-shopping-bag',
   UPSELL_FULFILLMENT_STARTED: 'i-lucide-shopping-bag',
   UPSELL_FULFILLMENT_COMPLETED: 'i-lucide-shopping-bag',
+  UPSELL_LOCK_ACCESS_ISSUED: 'i-lucide-key-round',
+  UPSELL_LOCK_ACCESS_FAILED: 'i-lucide-key-round',
   CALL_INCOMING: 'i-lucide-phone-incoming',
   CALL_MISSED: 'i-lucide-phone-missed',
   CALL_COMPLETED: 'i-lucide-phone',
@@ -262,6 +268,8 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   UPSELL_PAYMENT_RECEIVED: '/upsells?tab=orders',
   UPSELL_FULFILLMENT_STARTED: '/upsells?tab=orders',
   UPSELL_FULFILLMENT_COMPLETED: '/upsells?tab=orders',
+  UPSELL_LOCK_ACCESS_ISSUED: '/upsells?tab=orders',
+  UPSELL_LOCK_ACCESS_FAILED: '/upsells?tab=orders',
   CALL_INCOMING: '/inbox',
   CALL_MISSED: '/inbox',
   CALL_COMPLETED: '/inbox',
@@ -367,6 +375,10 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.serviceName || 'Upsell'} moved to fulfillment.`
     case 'UPSELL_FULFILLMENT_COMPLETED':
       return `${context.serviceName || 'Upsell'} completed.`
+    case 'UPSELL_LOCK_ACCESS_ISSUED':
+      return `${context.lockNames || 'Lock'} code issued to ${context.guestName || 'guest'} for ${context.serviceName || 'an upsell'}.`
+    case 'UPSELL_LOCK_ACCESS_FAILED':
+      return `${context.serviceName || 'Upsell'} paid, but no code was issued: ${context.reason || 'no matching lock at this property'}.`
     case 'CALL_INCOMING':
       return `${context.guestName || context.callerNumber || 'Unknown'}, ${context.listingName || context.listingId || 'Unknown listing'}${context.duration ? `, ${context.duration}` : ''}`
     case 'CALL_MISSED':

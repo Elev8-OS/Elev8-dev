@@ -2,7 +2,7 @@
 import { BALI_LISTINGS, UPSPELL_CATEGORIES } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 
-const { filterCategory, filterStatus, filterListing, clearFilters } = useUpsellServices()
+const { filterCategory, filterStatus, filterListing, filterLockAccess, clearFilters } = useUpsellServices()
 </script>
 
 <template>
@@ -56,6 +56,26 @@ const { filterCategory, filterStatus, filterListing, clearFilters } = useUpsellS
           </SelectItem>
           <SelectItem v-for="listing in BALI_LISTINGS" :key="listing" :value="listing">
             {{ listing }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs text-muted-foreground">Lock access</label>
+      <Select v-model="filterLockAccess">
+        <SelectTrigger class="h-8 w-44 text-sm">
+          <SelectValue placeholder="All" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">
+            All
+          </SelectItem>
+          <SelectItem value="lock">
+            Grants lock access
+          </SelectItem>
+          <SelectItem value="no_lock">
+            No lock access
           </SelectItem>
         </SelectContent>
       </Select>

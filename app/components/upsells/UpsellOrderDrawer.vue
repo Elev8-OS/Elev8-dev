@@ -135,6 +135,8 @@ function formatCurrency(amount: number, currency: string) {
 
           <Separator />
 
+          <UpsellsUpsellOrderLockAccess :order="order" />
+
           <div class="flex flex-col gap-2">
             <Label class="text-xs text-muted-foreground">Stay</Label>
             <div class="grid grid-cols-2 gap-3 text-sm">
