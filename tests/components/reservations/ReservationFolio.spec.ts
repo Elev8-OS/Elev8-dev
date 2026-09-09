@@ -323,26 +323,103 @@ describe('reservationFolioSection', () => {
     expect(text).toContain('Total')
   })
 
-  it('reports a refund due rather than a negative balance', async () => {
+  it('reports the gross refund row rather than a negative net balance', async () => {
     const wrapper = await mountSection()
 
-    // Extras 26.40 posted, 33.00 collected (laundry 13.20 + the voided breakfast 19.80),
-    // so the folio owes 6.60 back and never prints a negative balance.
+    // The voided, previously-paid breakfast (19.80) is refundable in full.
+    // That is a gross figure, computed from the voided-and-paid line itself,
+    // never from the sign of the net balance, so it never nets down to 6.60
+    // and never prints negative.
     expect(wrapper.text()).toContain('Refund due')
-    expect(wrapper.text()).toContain('6.6')
-    expect(wrapper.text()).not.toContain('-6.6')
+    expect(wrapper.text()).toContain('19.80')
+    expect(wrapper.text()).not.toContain('-19.80')
   })
 
-  it('shows the outstanding unpaid total alongside the refund due, rather than netting it away', async () => {
+  it('shows the outstanding unpaid total alongside the refund due, rather than netting them into one balance', async () => {
     const wrapper = await mountSection()
 
     // res-3: the minibar line (13.20) is still unpaid while the voided,
-    // previously-paid breakfast raises a 6.60 refund. Netting them into one
-    // balance would hide the 13.20 still owed.
+    // previously-paid breakfast (19.80) is fully refundable. Both are gross
+    // figures shown independently, each driven off its own lines rather than
+    // off whichever number is bigger.
     expect(wrapper.text()).toContain('Extras still due')
     expect(wrapper.text()).toContain('13.20')
     expect(wrapper.text()).toContain('Refund due')
-    expect(wrapper.text()).toContain('6.60')
+    expect(wrapper.text()).toContain('19.80')
+  })
+
+  it('still reconciles the two gross rows with a net line', async () => {
+    const wrapper = await mountSection()
+
+    // 13.20 still due against 19.80 refundable nets to a 6.60 refund, the
+    // same figure the old single-line summary showed, now stated as the
+    // net of the two rows above rather than in place of them.
+    expect(wrapper.text()).toContain('Refund 6.60')
+  })
+
+  it('shows both rows for the mirror case: a large unpaid item and a smaller voided-paid one', async () => {
+    const mirrored = {
+      ...initialReservations.find(r => r.id === 'res-3')!,
+      folioItems: [
+        {
+          id: 'fol-mirror-1',
+          label: 'Minibar - Beer',
+          quantity: 1,
+          unitPrice: 50,
+          taxPercent: 0,
+          servicePercent: 0,
+          source: 'custom' as const,
+          status: 'unpaid' as const,
+          addedBy: 'Komang Juliantara',
+          addedAt: '2026-09-09T10:00:00Z',
+        },
+        {
+          id: 'fol-mirror-2',
+          label: 'Breakfast - Continental',
+          quantity: 1,
+          unitPrice: 20,
+          taxPercent: 0,
+          servicePercent: 0,
+          source: 'custom' as const,
+          status: 'voided' as const,
+          paymentMethod: 'cash' as const,
+          paidAt: '2026-09-09T09:00:00Z',
+          voidReason: 'Guest cancelled the breakfast.',
+          voidedAt: '2026-09-09T09:30:00Z',
+          voidedBy: 'Komang Juliantara',
+          addedBy: 'Komang Juliantara',
+          addedAt: '2026-09-09T08:00:00Z',
+        },
+      ],
+    }
+
+    const wrapper = mount(ReservationFolioSection, {
+      props: { reservation: mirrored },
+      global: { components: sectionComponents },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-slot="accordion-trigger"]').trigger('click')
+    await nextTick()
+    await nextTick()
+
+    // itemsTotal 50 (unpaid), itemsPaid 20 (voided-but-paid), itemsBalance
+    // 30, refundDue 0: the sign-based field disappears here because the
+    // unpaid line outweighs the refundable one. unpaidTotal (50) and
+    // refundableTotal (20) must both still show regardless, since the desk
+    // collects 50 and refunds 20, not "balance 30". This is the case the
+    // whole fix exists for.
+    expect(wrapper.text()).toContain('Extras still due')
+    expect(wrapper.text()).toContain('50.00')
+    expect(wrapper.text()).toContain('Refund due')
+    expect(wrapper.text()).toContain('20.00')
+  })
+
+  it('reads as settled when nothing is owed and nothing is refundable', async () => {
+    const wrapper = await mountSection('res-1')
+
+    expect(wrapper.text()).toContain('Extras settled')
+    expect(wrapper.text()).not.toContain('Extras still due')
+    expect(wrapper.text()).not.toContain('Refund due')
   })
 
   it('offers Add item on a live stay', async () => {

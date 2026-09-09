@@ -94,10 +94,24 @@ nothing changes visibly there.
 ### Rule 3: voiding reverses the charge, and the refund falls out of the arithmetic
 
 A voided item contributes 0 to the folio total regardless of its prior state.
-The balance is one expression, `itemsBalance = itemsTotal - itemsPaid`. A paid
-item that gets voided therefore drives the balance negative, which the summary
-renders as `Refund due 18.00` instead of a balance. There is no separate credit-note
-concept and no second code path.
+The balance is one expression, `itemsBalance = itemsTotal - itemsPaid`, unchanged
+from the first version of this design. A paid item that gets voided drives that
+balance negative; `refundDue` is still exactly `-itemsBalance` when it is negative,
+0 otherwise, and every writer keeps computing it that way.
+
+What changed is what the summary block *shows*. `itemsBalance` and `refundDue`
+net a stay's still-unpaid lines against its voided-but-paid ones into one signed
+number, and which of "owed" or "refundable" that number reads as depends on
+which side is larger, which is not a fact a front-desk clerk can act on: it can
+flip from one checkout to the next as new items are posted. So the summary also
+carries two gross figures computed independently of that net, each straight off
+its own lines and never off the other: `unpaidTotal` (the live unpaid lines) and
+`refundableTotal` (the voided lines that had been paid). The panel shows each
+whenever it is non-zero, both at once if both apply, and a net line underneath
+reads the same `itemsBalance` / `refundDue` this rule always produced. There is
+still no separate credit-note concept and no second code path: the totals are
+the same arithmetic, stated in the two forms staff need side by side instead of
+being netted down to whichever is larger.
 
 ### Payment methods, and what "charge to room" means
 
@@ -130,7 +144,7 @@ money maths are testable without mounting anything. Same split as `datev.ts` and
 
 - `folioLineNet(item)` / `folioLineTax(item)` / `folioLineService(item)` / `folioLineTotal(item)`
 - `buildFolioSummary(reservation)` returns
-  `{ bookingTotal, itemsTotal, voidedTotal, grandTotal, itemsPaid, itemsBalance, refundDue }`.
+  `{ bookingTotal, itemsTotal, voidedTotal, grandTotal, itemsPaid, itemsBalance, refundDue, unpaidTotal, refundableTotal }`.
   `bookingTotal` folds the room lines, `charges` and the payment fee exactly as
   `ReservationRoomsSection.vue:460` computes them, so the folio cannot disagree
   with the Rooms accordion directly above it. A reservation with no `rooms`
@@ -138,9 +152,18 @@ money maths are testable without mounting anything. Same split as `datev.ts` and
 - **Paid and balance cover the extras only, and the labels say so.** Nothing on
   `ReservationEntry` records whether the booking itself was settled, so the
   folio does not claim to know. It shows `Booking total`, `Extras`, a combined
-  `Total`, then `Extras paid` and `Extras balance`. Rule 3's arithmetic applies
-  to the extras: `itemsBalance = itemsTotal - itemsPaid`, and a negative result
-  renders as `Refund due`.
+  `Total`, then `Extras paid`. Rule 3's net arithmetic still applies to the
+  extras (`itemsBalance = itemsTotal - itemsPaid`, negative reads as
+  `refundDue`), but the totals block shows two gross rows ahead of that net:
+  `unpaidTotal` (the live unpaid lines, "Extras still due") and
+  `refundableTotal` (the voided lines that had been paid, "Refund due"), each
+  computed straight off its own lines and shown whenever it is non-zero,
+  independently of the other. A net line beneath them restates `itemsBalance`
+  / `refundDue` so the arithmetic still reconciles, and the block reads as
+  settled when both gross figures are zero. The gross rows exist because the
+  net alone hides whichever side is smaller: a stay can owe money on one line
+  and owe a refund on another at the same time, and staff act on both, not on
+  whichever number happened to net out on top.
 - `canDeleteFolioItem(item)` / `canVoidFolioItem(item)`
 - `validateFolioItemDraft(draft)` returns errors keyed by field: blank label,
   quantity below 1, price at or below 0, percentages outside 0 to 100
@@ -162,11 +185,13 @@ cancel, refund policy, smart-lock issue) is what makes a catalog pick cheap, and
 it keeps one number for one charge instead of the same money living in two
 places.
 
-It also keeps `priceDetails.extras` and `priceDetails.guestPaid` in step when a
-reservation carries a `priceDetails` block, so the existing Price accordion does
-not contradict the folio underneath it. `totalPrice` is deliberately left alone:
-it is the booked room-and-fees price and much of the app reads it, so the grand
-total is derived, never stored.
+It also keeps `priceDetails.extras`, `priceDetails.guestPaid` and
+`priceDetails.payout` in step when a reservation carries a `priceDetails`
+block, so the existing Price accordion does not contradict the folio
+underneath it: `payout` moves by the same delta as `guestPaid`, while
+`commission` stays put, since a desk-posted extra carries no OTA commission.
+`totalPrice` is deliberately left alone: it is the booked room-and-fees price
+and much of the app reads it, so the grand total is derived, never stored.
 
 ### UI
 
@@ -252,6 +277,9 @@ load: an unpaid line, one paid in cash, and a voided paid line producing a
 - the snapshot rule: mutating the catalog service afterwards leaves the posted line untouched
 - a voided item contributes 0 whether it was paid or unpaid
 - a voided paid item produces a refund due rather than a negative balance label
+- `refundableTotal` is computed off the voided-and-paid lines themselves, so it
+  holds steady even when an unpaid line elsewhere outweighs it and `refundDue`
+  reads 0
 - `canDeleteFolioItem` / `canVoidFolioItem` per state
 - a charge-to-room item stays unpaid, still counts in the balance, and remains removable
 - `buildFolioSummary` agreeing with the detail sheet's booking lines, including the payment fee

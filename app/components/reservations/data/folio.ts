@@ -82,6 +82,14 @@ export interface FolioSummary {
    * owe unpaid money on another, and `itemsBalance` alone hides the second.
    */
   unpaidTotal: number
+  /**
+   * Voided items that had been paid: money the property took for a line it
+   * has since reversed. Computed from the voided-and-paid lines directly,
+   * never from the sign of the net balance, so it cannot disappear just
+   * because an unpaid line elsewhere outweighs it. `refundDue` stays the net
+   * projection; this is the gross figure a staff member actually refunds.
+   */
+  refundableTotal: number
 }
 
 /** Mirrors ReservationRoomsSection.vue:460 so the folio cannot disagree with it. */
@@ -113,6 +121,7 @@ export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
   const itemsPaid = sum(items.filter(item => Boolean(item.paidAt)))
   const itemsBalance = roundFolioAmount(itemsTotal - itemsPaid)
   const unpaidTotal = sum(items.filter(item => item.status === 'unpaid'))
+  const refundableTotal = sum(items.filter(item => item.status === 'voided' && Boolean(item.paidAt)))
 
   return {
     bookingTotal,
@@ -123,6 +132,7 @@ export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
     itemsBalance,
     refundDue: itemsBalance < 0 ? roundFolioAmount(-itemsBalance) : 0,
     unpaidTotal,
+    refundableTotal,
   }
 }
 
@@ -303,8 +313,8 @@ export function folioActivityEvent(
   // rather than trusting every call site to pass the right kind.
   const effectiveKind: FolioActivityKind = kind === 'paid' && item.paymentMethod === 'room' ? 'deferred' : kind
 
-  const unitPrice = item.unitPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })
-  const amount = `${folioLineTotal(item).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+  const unitPrice = item.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const amount = `${folioLineTotal(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
   const parts = [`${item.label} · ${item.quantity} × ${unitPrice} = ${amount}`]
 
   if (effectiveKind === 'paid' && item.paymentMethod)

@@ -527,3 +527,63 @@ describe('buildFolioSummary unpaidTotal', () => {
     expect(summary.refundDue).toBe(6.6)
   })
 })
+
+describe('buildFolioSummary refundableTotal', () => {
+  it('is zero when nothing has been voided', () => {
+    const summary = buildFolioSummary(reservation({
+      folioItems: [folioItem({ unitPrice: 12 })],
+    }))
+
+    expect(summary.refundableTotal).toBe(0)
+  })
+
+  it('is zero for a voided item that was never paid, since no money was taken', () => {
+    const summary = buildFolioSummary(reservation({
+      folioItems: [folioItem({ unitPrice: 18, status: 'voided', voidReason: 'wrong room' })],
+    }))
+
+    expect(summary.refundableTotal).toBe(0)
+  })
+
+  it('is the full line total for a voided item that had been paid', () => {
+    const summary = buildFolioSummary(reservation({
+      folioItems: [folioItem({
+        unitPrice: 18,
+        status: 'voided',
+        paymentMethod: 'cash',
+        paidAt: '2026-09-09T11:00:00Z',
+        voidReason: 'charged twice',
+      })],
+    }))
+
+    expect(summary.refundableTotal).toBe(18)
+  })
+
+  it('holds steady at 20 even while an unpaid line (50) outweighs it, unlike refundDue', () => {
+    // Post a 50.00 minibar line and leave it unpaid, then void a
+    // previously-paid 20.00 breakfast. itemsTotal 50, itemsPaid 20, so
+    // itemsBalance 30 and refundDue 0 (the sign-based field disappears).
+    // refundableTotal is computed from the voided-and-paid line itself, so
+    // it still reads 20 regardless of what else is owed.
+    const summary = buildFolioSummary(reservation({
+      folioItems: [
+        folioItem({ id: 'f1', label: 'Minibar', unitPrice: 50 }),
+        folioItem({
+          id: 'f2',
+          label: 'Breakfast',
+          unitPrice: 20,
+          status: 'voided',
+          paymentMethod: 'cash',
+          paidAt: '2026-09-09T11:00:00Z',
+          voidReason: 'guest cancelled',
+        }),
+      ],
+    }))
+
+    expect(summary.itemsTotal).toBe(50)
+    expect(summary.itemsPaid).toBe(20)
+    expect(summary.itemsBalance).toBe(30)
+    expect(summary.refundDue).toBe(0)
+    expect(summary.refundableTotal).toBe(20)
+  })
+})

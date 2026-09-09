@@ -22,6 +22,12 @@ function rangesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): bo
 }
 
 export function useReservationsModule() {
+  // Shallow copy: a reservation's array fields (folioItems, activity, rooms,
+  // charges...) are still the same array object as the seed's. Nothing
+  // mutates one of those arrays in place today, so this is latent, not live,
+  // but a future `push` onto e.g. `folioItems` would corrupt the shared seed
+  // across every test and every other reservation reusing it. Always
+  // spread-replace the array, never mutate it in place.
   const reservations = useState<ReservationEntry[]>('reservations-entries', () =>
     initialReservations.map(r => ({ ...r })))
   const guests = useState<GuestProfile[]>('reservations-guests', () =>

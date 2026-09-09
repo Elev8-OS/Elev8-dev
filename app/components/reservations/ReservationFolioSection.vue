@@ -206,25 +206,34 @@ watch(voidOpen, (open) => {
               <span class="text-muted-foreground">Extras paid</span>
               <span>{{ fmt(summary.itemsPaid) }}</span>
             </div>
-            <template v-if="summary.refundDue > 0">
-              <!--
-                A refund can be due on one line while another is still unpaid;
-                netting them into `itemsBalance` alone would hide the second.
-                Show both so nobody checks a guest out owing money nobody
-                collected.
-              -->
-              <div v-if="summary.unpaidTotal > 0" class="flex items-center justify-between font-medium">
-                <span>Extras still due</span>
-                <span>{{ fmt(summary.unpaidTotal) }}</span>
-              </div>
-              <div class="flex items-center justify-between font-medium text-destructive">
-                <span>Refund due</span>
-                <span>{{ fmt(summary.refundDue) }}</span>
-              </div>
-            </template>
+            <!--
+              Two independent gross rows, each shown whenever its own figure
+              is non-zero. Extras still due (unpaidTotal) and Refund due
+              (refundableTotal) are different things that net into the same
+              itemsBalance: a stay can owe money on one line and owe a refund
+              on another at the same time, and showing only whichever is
+              larger (or only the net) hides the other. Neither branches on
+              the sign of anything, so neither can disappear just because
+              the other outweighs it.
+            -->
+            <div v-if="summary.unpaidTotal > 0" class="flex items-center justify-between font-medium">
+              <span>Extras still due</span>
+              <span>{{ fmt(summary.unpaidTotal) }}</span>
+            </div>
+            <div v-if="summary.refundableTotal > 0" class="flex items-center justify-between font-medium text-destructive">
+              <span>Refund due</span>
+              <span>{{ fmt(summary.refundableTotal) }}</span>
+            </div>
+            <div
+              v-if="summary.unpaidTotal > 0 || summary.refundableTotal > 0"
+              class="flex items-center justify-between border-t pt-1 text-muted-foreground"
+            >
+              <span>Net of the above</span>
+              <span>{{ summary.refundDue > 0 ? `Refund ${fmt(summary.refundDue)}` : fmt(summary.itemsBalance) }}</span>
+            </div>
             <div v-else class="flex items-center justify-between font-medium">
-              <span>Extras balance</span>
-              <span>{{ fmt(summary.itemsBalance) }}</span>
+              <span>Extras settled</span>
+              <span>{{ fmt(0) }}</span>
             </div>
           </div>
 

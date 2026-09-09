@@ -166,6 +166,31 @@ describe('useReservationFolio', () => {
     // as guestPaid and commission is untouched.
     expect(after.payout).toBe(Math.round((before.payout + delta) * 100) / 100)
     expect(after.commission).toBe(before.commission)
+    // The invariant a refactor that recomputed absolutely (instead of by
+    // delta) would still pass here, since addItem's delta is the only write
+    // so far. It is the two writes below that would catch such a refactor.
+    expect(after.payout).toBe(Math.round((after.guestPaid - after.commission) * 100) / 100)
+  })
+
+  it('keeps payout = guestPaid - commission after markPaid, which patches through the same delta path', () => {
+    const folio = useReservationFolio()
+    const posted = folio.addItem(RES, draft())!
+
+    folio.markPaid(RES, posted.id, 'cash')
+
+    const { guestPaid, commission, payout } = reservation().priceDetails!
+    expect(payout).toBe(Math.round((guestPaid - commission) * 100) / 100)
+  })
+
+  it('keeps payout = guestPaid - commission after voidItem, the other delta exit path', () => {
+    const folio = useReservationFolio()
+    const posted = folio.addItem(RES, draft())!
+    folio.markPaid(RES, posted.id, 'card')
+
+    folio.voidItem(RES, posted.id, 'charged twice')
+
+    const { guestPaid, commission, payout } = reservation().priceDetails!
+    expect(payout).toBe(Math.round((guestPaid - commission) * 100) / 100)
   })
 
   it('will not re-defer an item already charged to room', () => {
