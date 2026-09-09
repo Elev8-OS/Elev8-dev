@@ -176,6 +176,9 @@ function lockName(lockId: string): string {
                 <p class="font-mono text-base font-bold tracking-widest">
                   {{ code.code }}
                 </p>
+                <p v-if="code.purpose" class="truncate text-[10px] font-medium text-amber-700">
+                  {{ code.purpose }}
+                </p>
                 <p class="text-[10px] text-muted-foreground">
                   {{ code.guestName || 'Guest' }} · expires {{ formatExpiry(code.endsAt) }}
                 </p>

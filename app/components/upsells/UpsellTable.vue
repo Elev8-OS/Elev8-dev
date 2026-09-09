@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UpsellService } from '@/components/upsells/data/upsell-services'
 import { toast } from 'vue-sonner'
+import { serviceGrantsLockAccess } from '@/components/upsells/data/lock-access'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 
 const emit = defineEmits<{
@@ -36,6 +37,12 @@ function priceRange(svc: UpsellService) {
   if (min === max)
     return formatPrice(min, svc.currency)
   return `${formatPrice(min, svc.currency)} – ${formatPrice(max, svc.currency).replace(`${svc.currency} `, '')}`
+}
+
+/** Lock access is an attribute, not a category, so it rides alongside the name as a badge. */
+function lockAccessLabel(svc: UpsellService) {
+  const names = svc.lockAccess?.lockNames ?? []
+  return names.length > 0 ? `Issues a code for ${names.join(', ')} on payment` : ''
 }
 
 const categoryBadgeClass: Record<string, string> = {
@@ -99,9 +106,26 @@ const categoryBadgeClass: Record<string, string> = {
             </div>
           </TableCell>
           <TableCell>
-            <p class="font-medium">
-              {{ svc.name }}
-            </p>
+            <div class="flex items-center gap-1.5">
+              <p class="font-medium">
+                {{ svc.name }}
+              </p>
+              <TooltipProvider v-if="serviceGrantsLockAccess(svc)">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <span
+                      class="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 p-1 text-amber-700"
+                      :aria-label="lockAccessLabel(svc)"
+                    >
+                      <Icon name="lucide:key-round" class="size-3" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {{ lockAccessLabel(svc) }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <p class="max-w-64 truncate text-xs text-muted-foreground">
               {{ svc.description }}
             </p>

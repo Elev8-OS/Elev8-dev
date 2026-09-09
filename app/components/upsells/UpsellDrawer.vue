@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { LockAccessConfig } from '@/components/upsells/data/lock-access'
 import type {
   BookingStatusFilter,
   OtaChannel,
@@ -17,6 +18,7 @@ import {
 } from '@/components/upsells/data/upsell-services'
 import { toast } from 'vue-sonner'
 import draggable from 'vuedraggable'
+import { listings as allListings } from '@/components/listings/data/listings'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { createDefaultLockAccessConfig } from '@/components/upsells/data/lock-access'
 import { BALI_LISTINGS } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 
@@ -100,6 +103,7 @@ const formItems = ref<UpsellItem[]>([])
 const formListings = ref<string[]>([])
 const formAvailability = ref<'always' | 'by_request'>('always')
 const formStatus = ref<'active' | 'inactive'>('active')
+const formLockAccess = ref<LockAccessConfig>(createDefaultLockAccessConfig())
 const formVisibility = ref<VisibilityConditions>(emptyVisibilityConditions())
 const formVisibilityMatchMode = ref<VisibilityMatchMode>('all')
 
@@ -212,6 +216,9 @@ watch(() => props.open, (open) => {
       formItems.value = props.service.items.map(i => ({ ...i }))
       formListings.value = [...props.service.assignedListings]
       formAvailability.value = props.service.availability
+      formLockAccess.value = props.service.lockAccess
+        ? { ...props.service.lockAccess, lockNames: [...props.service.lockAccess.lockNames] }
+        : createDefaultLockAccessConfig()
       formStatus.value = props.service.status
       formVisibility.value = { ...props.service.visibility }
       formVisibilityMatchMode.value = props.service.visibilityMatchMode
@@ -233,6 +240,7 @@ watch(() => props.open, (open) => {
       formItems.value = []
       formListings.value = []
       formAvailability.value = 'always'
+      formLockAccess.value = createDefaultLockAccessConfig()
       formStatus.value = 'active'
       formVisibility.value = emptyVisibilityConditions()
       formVisibilityMatchMode.value = 'all'
@@ -242,6 +250,71 @@ watch(() => props.open, (open) => {
     }
   }
 })
+
+const smartLock = useSmartLock()
+
+/** Listing ids behind the currently selected listing names. */
+const scopedListingIds = computed(() => {
+  const names = formListings.value.length > 0 ? formListings.value : BALI_LISTINGS
+  return names
+    .map(name => allListings.value.find(l => l.name === name)?.id)
+    .filter((id): id is string => Boolean(id))
+})
+
+/**
+ * Lock names available to grant, with how far each one reaches into the selected listings.
+ *
+ * Locks are matched by name rather than by id because one service covers many properties.
+ * Stating the coverage keeps the host from selling pool access at 16 villas when only 3
+ * have a pool gate paired.
+ */
+const lockNameOptions = computed(() => {
+  const counts = new Map<string, { name: string, listingIds: Set<string> }>()
+  for (const listingId of scopedListingIds.value) {
+    for (const lock of smartLock.getLocksForListing(listingId)) {
+      const key = lock.name.trim().toLowerCase()
+      if (!key)
+        continue
+      const entry = counts.get(key) ?? { name: lock.name, listingIds: new Set<string>() }
+      entry.listingIds.add(listingId)
+      counts.set(key, entry)
+    }
+  }
+  return [...counts.values()]
+    .map(e => ({ name: e.name, coveredListings: e.listingIds.size }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const scopedListingCount = computed(() => scopedListingIds.value.length)
+
+function isLockNameSelected(name: string) {
+  return formLockAccess.value.lockNames.some(n => n.trim().toLowerCase() === name.trim().toLowerCase())
+}
+
+function toggleLockName(name: string) {
+  const selected = isLockNameSelected(name)
+  formLockAccess.value = {
+    ...formLockAccess.value,
+    lockNames: selected
+      ? formLockAccess.value.lockNames.filter(n => n.trim().toLowerCase() !== name.trim().toLowerCase())
+      : [...formLockAccess.value.lockNames, name],
+  }
+}
+
+/** Names the host picked that no lock in the current listing scope answers to any more. */
+const strandedLockNames = computed(() =>
+  formLockAccess.value.lockNames.filter(
+    n => !lockNameOptions.value.some(o => o.name.trim().toLowerCase() === n.trim().toLowerCase()),
+  ),
+)
+
+function dropStrandedLockNames() {
+  const stranded = new Set(strandedLockNames.value.map(n => n.trim().toLowerCase()))
+  formLockAccess.value = {
+    ...formLockAccess.value,
+    lockNames: formLockAccess.value.lockNames.filter(n => !stranded.has(n.trim().toLowerCase())),
+  }
+}
 
 function addYoutubeLink() {
   const link = formNewYoutubeLink.value.trim()
@@ -390,6 +463,13 @@ function handleSave() {
     items: formItems.value,
     assignedListings: formListings.value,
     availability: formAvailability.value,
+    lockAccess: formLockAccess.value.enabled
+      ? {
+          enabled: true,
+          lockNames: [...formLockAccess.value.lockNames],
+          instructions: formLockAccess.value.instructions?.trim() || undefined,
+        }
+      : undefined,
     status: formStatus.value,
     visibility: { ...formVisibility.value },
     visibilityMatchMode: formVisibilityMatchMode.value,
@@ -704,6 +784,96 @@ function onOpenChange(val: boolean) {
                 <span class="text-xs text-muted-foreground">Requires confirmation first</span>
               </button>
             </div>
+          </div>
+
+          <Separator />
+
+          <!-- Smart lock access granted by this service -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex flex-col gap-0.5">
+                <Label class="flex items-center gap-2">
+                  <Icon name="lucide:key-round" class="h-4 w-4 text-amber-600" />
+                  Smart Lock Access
+                </Label>
+                <p class="text-xs text-muted-foreground">
+                  Issue the guest a door code automatically the moment this service is paid.
+                </p>
+              </div>
+              <Switch
+                :model-value="formLockAccess.enabled"
+                @update:model-value="(v: boolean) => formLockAccess = { ...formLockAccess, enabled: v }"
+              />
+            </div>
+
+            <template v-if="formLockAccess.enabled">
+              <div v-if="!smartLock.isConnected.value" class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                Smart Lock is not connected.
+                <NuxtLink to="/settings/integrations" class="text-primary underline">
+                  Connect it in Integrations
+                </NuxtLink>
+                to pick a lock.
+              </div>
+
+              <template v-else>
+                <div v-if="lockNameOptions.length === 0" class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                  No locks are paired at the {{ scopedListingCount }} selected
+                  {{ scopedListingCount === 1 ? 'listing' : 'listings' }} yet. Pair one in the
+                  listing's Settings tab, then come back.
+                </div>
+
+                <div v-else class="overflow-hidden rounded-md border">
+                  <div
+                    v-for="option in lockNameOptions"
+                    :key="option.name"
+                    class="flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-b-0 hover:bg-muted/50"
+                    @click="toggleLockName(option.name)"
+                  >
+                    <div
+                      class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                      :class="isLockNameSelected(option.name) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                    >
+                      <Icon v-if="isLockNameSelected(option.name)" name="lucide:check" class="size-3" />
+                    </div>
+                    <span class="text-sm">{{ option.name }}</span>
+                    <span class="ml-auto text-xs text-muted-foreground">
+                      Paired at {{ option.coveredListings }} of {{ scopedListingCount }}
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  v-if="strandedLockNames.length > 0"
+                  class="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs"
+                >
+                  <Icon name="lucide:triangle-alert" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  <div class="flex flex-col gap-1">
+                    <span>
+                      No lock named {{ strandedLockNames.join(', ') }} is paired at the selected
+                      listings any more. Guests buying this service there get no code.
+                    </span>
+                    <button type="button" class="w-fit text-primary underline" @click="dropStrandedLockNames">
+                      Remove {{ strandedLockNames.length === 1 ? 'it' : 'them' }}
+                    </button>
+                  </div>
+                </div>
+
+                <p class="text-xs text-muted-foreground">
+                  Locks are matched by name, so this keeps working when a device is swapped or
+                  re-paired. The code is valid from payment until noon on the check-out day.
+                </p>
+
+                <div class="flex flex-col gap-1.5">
+                  <Label class="text-xs font-normal text-muted-foreground">Instructions for the guest</Label>
+                  <Textarea
+                    :model-value="formLockAccess.instructions ?? ''"
+                    rows="2"
+                    placeholder="e.g. The gate is on the left of the pool deck."
+                    @update:model-value="(v: string | number) => formLockAccess = { ...formLockAccess, instructions: String(v) }"
+                  />
+                </div>
+              </template>
+            </template>
           </div>
         </div>
 

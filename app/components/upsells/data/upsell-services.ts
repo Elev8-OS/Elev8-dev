@@ -1,3 +1,5 @@
+import type { LockAccessConfig } from './lock-access'
+
 export type UpsellCategory
   = | 'Vehicle Rental'
     | 'Airport Transport'
@@ -244,6 +246,11 @@ export interface UpsellService {
   items: UpsellItem[]
   assignedListings: string[]
   availability: 'always' | 'by_request'
+  /**
+   * Buying this service hands the guest a smart-lock code. Optional so every existing
+   * service keeps working untouched.
+   */
+  lockAccess?: LockAccessConfig
   status: 'active' | 'inactive'
   visibility: VisibilityConditions
   visibilityMatchMode: VisibilityMatchMode
@@ -530,5 +537,61 @@ export const mockUpsellServices: UpsellService[] = [
     visibilityMatchMode: 'all',
     createdAt: '2026-04-01T09:00:00Z',
     updatedAt: '2026-04-01T09:00:00Z',
+  },
+  {
+    id: 'svc-011',
+    name: 'Pool & Wellness Area Access',
+    description: 'Unlock the shared pool deck and wellness area for the rest of your stay. Your personal gate code is issued the moment payment goes through.',
+    category: 'Activity',
+    currency: 'IDR',
+    youtubeLinks: [],
+    internalNotes: 'Code is issued automatically on payment. No staff action needed.',
+    notificationUsers: ['Komang Juliantara'],
+    pricingEnabled: true,
+    taxPercent: 11,
+    servicePercent: 0,
+    items: [
+      { id: 'itm-011a', name: 'Pool & Wellness Access', description: 'Gate code valid until check-out, for the whole booking party.', price: 350000 },
+    ],
+    assignedListings: BALI_LISTINGS,
+    availability: 'always',
+    lockAccess: {
+      enabled: true,
+      lockNames: ['Pool Gate'],
+      instructions: 'The gate is on the left of the pool deck. Enter the code, then press the key symbol.',
+    },
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-05-02T09:00:00Z',
+    updatedAt: '2026-05-02T09:00:00Z',
+  },
+  {
+    id: 'svc-012',
+    name: 'Private Workspace Access',
+    description: 'A quiet, air-conditioned office with a standing desk and fibre internet. Door code issued on payment, valid until check-out.',
+    category: 'Office Equipment',
+    currency: 'IDR',
+    youtubeLinks: [],
+    internalNotes: 'Confirm the office is not booked by another guest before approving.',
+    notificationUsers: ['Komang Juliantara'],
+    pricingEnabled: true,
+    taxPercent: 11,
+    servicePercent: 5,
+    items: [
+      { id: 'itm-012a', name: 'Workspace Access', description: 'Door code valid until check-out.', price: 500000 },
+    ],
+    assignedListings: BALI_LISTINGS,
+    availability: 'by_request',
+    lockAccess: {
+      enabled: true,
+      lockNames: ['Office Door'],
+      instructions: 'The office is at the end of the corridor past the kitchen.',
+    },
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-05-02T09:30:00Z',
+    updatedAt: '2026-05-02T09:30:00Z',
   },
 ]

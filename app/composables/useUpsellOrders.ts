@@ -5,6 +5,7 @@ import type {
 import { computed } from 'vue'
 import { calculateRefund, getPolicyForService } from '@/components/upsells/data/cancellation-policies'
 import { getOrderStatus, mockUpsellOrders } from '@/components/upsells/data/upsell-orders'
+import { useUpsellLockAccess } from './useUpsellLockAccess'
 
 export function useUpsellOrders() {
   const orders = useState<UpsellOrder[]>('upsell-orders', () =>
@@ -98,6 +99,12 @@ export function useUpsellOrders() {
   }
 
   function declineOrder(id: string, reason: string, declinedBy: 'guest' | 'staff' = 'staff') {
+    // A refunded order must not leave a working code behind. `cancelOrder` routes through
+    // here, so this covers both the decline and the cancellation path.
+    const existing = orders.value.find(o => o.id === id)
+    if (existing?.issuedAccessCodeIds?.length)
+      useUpsellLockAccess().revokeAccessForOrder(existing)
+
     patchOrder(id, (order) => {
       const now = new Date().toISOString()
       return {
@@ -138,6 +145,29 @@ export function useUpsellOrders() {
     })
   }
 
+  /**
+   * Hand the guest their smart-lock code, if the purchased service grants one.
+   *
+   * Fire-and-forget: `generateAccessCode` is a 700ms mock and `markPaid` is synchronous,
+   * so the drawer renders its spinner off `useUpsellLockAccess().isIssuing`. The issued
+   * ids are written back here rather than inside `useUpsellLockAccess`, so that composable
+   * never has to import this one.
+   */
+  function issueLockAccess(id: string) {
+    const order = orders.value.find(o => o.id === id)
+    if (!order)
+      return
+    void useUpsellLockAccess().issueAccessForOrder(order).then((result) => {
+      if (result.codeIds.length === 0)
+        return
+      patchOrder(id, current => ({
+        ...current,
+        issuedAccessCodeIds: [...(current.issuedAccessCodeIds ?? []), ...result.codeIds],
+        updatedAt: new Date().toISOString(),
+      }))
+    })
+  }
+
   function markPaid(id: string, paymentMethod: 'link' | 'manual' | 'cash' | 'card' = 'manual') {
     patchOrder(id, (order) => {
       const now = new Date().toISOString()
@@ -154,6 +184,7 @@ export function useUpsellOrders() {
         updatedAt: now,
       }
     })
+    issueLockAccess(id)
   }
 
   function startFulfillment(id: string) {
@@ -253,6 +284,7 @@ export function useUpsellOrders() {
     startFulfillment,
     completeFulfillment,
     updateStatus,
+    issueLockAccess,
     addOrder,
     cancelOrder,
     clearFilters,

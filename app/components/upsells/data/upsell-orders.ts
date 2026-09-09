@@ -47,6 +47,12 @@ export interface UpsellOrder {
   paymentMethod?: 'link' | 'manual' | 'cash' | 'card'
   source: 'inbox' | 'manual' | 'web'
   conversationId?: string
+  /**
+   * Smart-lock codes issued when this order was paid. Doubles as the idempotency guard:
+   * `markPaid` fires from both the order drawer and the table dropdown, and a populated
+   * array means access was already granted.
+   */
+  issuedAccessCodeIds?: string[]
   createdByStaffId: string
   approvalRequestedAt?: string
   approvedAt?: string
@@ -509,5 +515,70 @@ export const mockUpsellOrders: UpsellOrder[] = [
     guestNotifiedAt: '2026-05-20T14:36:00Z',
     createdAt: '2026-05-20T14:16:00Z',
     updatedAt: '2026-05-20T15:30:00Z',
+  },
+  {
+    id: 'ord-012',
+    reservationId: 'res-11',
+    guestName: 'Marcus Johnson',
+    guestEmail: 'marcus.johnson@email.com',
+    serviceId: 'svc-011',
+    serviceName: 'Pool & Wellness Area Access',
+    serviceCategory: 'Activity',
+    items: [
+      { id: 'itm-011a', name: 'Pool & Wellness Access', price: 350000, quantity: 1 },
+    ],
+    subtotal: 350000,
+    taxAmount: 38500,
+    serviceAmount: 0,
+    grandTotal: 388500,
+    currency: 'IDR',
+    approvalStatus: 'approved',
+    paymentStatus: 'awaiting_payment',
+    fulfillmentStatus: 'not_started',
+    orderDate: '2026-09-08',
+    serviceDate: '2026-09-10',
+    checkInDate: '2026-09-07',
+    checkOutDate: '2026-09-14',
+    listing: 'The R Villa Merapi',
+    channel: 'Airbnb',
+    notes: 'Smart lock demo. Mark as paid to auto-issue the Pool Gate code.',
+    staffAssigned: 'Komang Juliantara',
+    source: 'inbox',
+    conversationId: 'conv-11',
+    createdByStaffId: 'staff-2',
+    approvalRequestedAt: '2026-09-08T09:10:00Z',
+    approvedAt: '2026-09-08T09:12:00Z',
+    paymentLinkSentAt: '2026-09-08T09:12:00Z',
+  },
+  {
+    id: 'ord-013',
+    reservationId: 'res-4',
+    guestName: 'Alex Rivera',
+    guestEmail: 'alex.rivera@email.com',
+    serviceId: 'svc-012',
+    serviceName: 'Private Workspace Access',
+    serviceCategory: 'Office Equipment',
+    items: [
+      { id: 'itm-012a', name: 'Workspace Access', price: 500000, quantity: 1 },
+    ],
+    subtotal: 500000,
+    taxAmount: 55000,
+    serviceAmount: 25000,
+    grandTotal: 580000,
+    currency: 'IDR',
+    approvalStatus: 'requested',
+    paymentStatus: 'unpaid',
+    fulfillmentStatus: 'not_started',
+    orderDate: '2026-09-09',
+    serviceDate: '2026-09-11',
+    checkInDate: '2026-09-09',
+    checkOutDate: '2026-09-16',
+    listing: 'The R Villa Merapi',
+    channel: 'Airbnb',
+    notes: 'Smart lock demo, by-request path. Approve first, then mark as paid.',
+    source: 'inbox',
+    conversationId: 'conv-4',
+    createdByStaffId: 'staff-2',
+    approvalRequestedAt: '2026-09-09T08:05:00Z',
   },
 ]
