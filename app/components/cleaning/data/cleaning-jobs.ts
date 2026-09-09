@@ -96,6 +96,13 @@ export interface CleaningJob {
   reservationId?: string | null
   recurrence?: CleaningJobRecurrence | null
   feedback?: CleaningFeedback | null
+  /**
+   * Planned-ahead jobs are created as `draft` and stay out of housekeeping's
+   * workload until this moment passes, at which point `releaseDueDrafts()`
+   * flips them to `scheduled`. Null/undefined means the job was dispatched
+   * the moment it was created.
+   */
+  releaseAt?: string | null
 }
 
 export type CleaningJobInput = Omit<CleaningJob, 'id' | 'feedback'>

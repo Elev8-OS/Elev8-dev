@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
 import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
-import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
+import { cleanerOptions, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
@@ -22,7 +23,11 @@ const emit = defineEmits<{
 
 const { reservations, updateReservationStatus } = useReservationsModule()
 const { orders: upsellOrders } = useUpsellOrders()
-const { jobs: cleaningJobs, createJob, deleteJob } = useCleaningJobs()
+const { jobs: cleaningJobs, createJob, deleteJob, isPlanned, releaseDueDrafts } = useCleaningJobs()
+
+// Planned-ahead cleanings become real housekeeping work once their release
+// moment passes. There is no scheduler in this app, so catch up on mount.
+onMounted(() => releaseDueDrafts())
 
 // Resolve the reservation from live state so status edits reflect immediately
 const reservation = computed<ReservationEntry | null>(() => {
@@ -265,12 +270,46 @@ const nextCleaning = computed(() => {
 const addCleaningOpen = ref(false)
 const newCleaningDate = ref('')
 const newCleaningTime = ref('11:00')
-const newCleaningAssignee = ref<string>('')
+/**
+ * reka-ui throws if a <SelectItem> carries an empty string, since "" is
+ * reserved for clearing the Select. So "no assignee" needs its own sentinel.
+ */
+const UNASSIGNED = 'unassigned'
+const newCleaningAssignee = ref<string>(UNASSIGNED)
+const newCleaningPlanOnly = ref(false)
+
+/** Same offset every other cleaning-job creation path writes. */
+const CLEANING_TZ_OFFSET = '+08:00'
+
+function buildCleaningScheduledAt(date: string, time: string) {
+  return `${date}T${time || '11:00'}:00${CLEANING_TZ_OFFSET}`
+}
+
+function isFutureCleaningDate(date: string) {
+  if (!date)
+    return false
+  const today = new Date()
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  return date > todayIso
+}
+
+/** Plan-only is only meaningful while the cleaning is still ahead of us. */
+const canPlanAhead = computed(() => isFutureCleaningDate(newCleaningDate.value))
+
+const planOnlyActive = computed(() => newCleaningPlanOnly.value && canPlanAhead.value)
+
+const plannedReleaseLabel = computed(() => {
+  if (!planOnlyActive.value)
+    return ''
+  return new Date(`${newCleaningDate.value}T00:00:00${CLEANING_TZ_OFFSET}`)
+    .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+})
 
 function openAddCleaning() {
   newCleaningDate.value = reservation.value?.checkOut?.slice(0, 10) ?? ''
   newCleaningTime.value = '11:00'
-  newCleaningAssignee.value = ''
+  newCleaningAssignee.value = UNASSIGNED
+  newCleaningPlanOnly.value = false
   addCleaningOpen.value = true
 }
 
@@ -279,22 +318,24 @@ function addCleaning() {
   if (!r || !newCleaningDate.value)
     return
   const assignee = cleanerOptions.find(c => c.id === newCleaningAssignee.value)
+  const planned = planOnlyActive.value
   createJob({
     listingId: r.listingId,
     listingName: r.listingName,
-    scheduledAt: `${newCleaningDate.value}T${newCleaningTime.value || '11:00'}:00`,
+    scheduledAt: buildCleaningScheduledAt(newCleaningDate.value, newCleaningTime.value),
     cleanerIds: assignee ? [assignee.id] : [],
     cleanerNames: assignee ? [assignee.name] : [],
     teamName: 'Housekeeping',
-    status: 'scheduled',
+    status: planned ? 'draft' : 'scheduled',
     priority: 'normal',
     durationMinutes: 180,
     notes: `Cleaning for reservation ${r.id}`,
     source: 'custom',
     reservationId: r.id,
     recurrence: null,
+    releaseAt: planned ? `${newCleaningDate.value}T00:00:00${CLEANING_TZ_OFFSET}` : null,
   })
-  toast.success('Cleaning scheduled')
+  toast.success(planned ? `Cleaning planned — releases ${plannedReleaseLabel.value}` : 'Cleaning scheduled')
   addCleaningOpen.value = false
 }
 
@@ -305,6 +346,16 @@ function removeCleaning(jobId: string) {
 
 function fmtCleaningDate(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtReleaseDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function cleaningStatusLabel(job: CleaningJob): string {
+  if (isPlanned(job))
+    return 'Planned'
+  return cleaningJobStatusLabels[job.status] ?? job.status
 }
 </script>
 
@@ -983,10 +1034,17 @@ function fmtCleaningDate(iso: string): string {
                           {{ fmtCleaningDate(nextCleaning.scheduledAt) }}
                         </p>
                       </div>
-                      <Badge variant="outline" class="shrink-0 text-[10px]">
-                        {{ nextCleaning.status }}
+                      <Badge
+                        :variant="isPlanned(nextCleaning) ? 'secondary' : 'outline'"
+                        class="shrink-0 text-[10px]"
+                      >
+                        {{ cleaningStatusLabel(nextCleaning) }}
                       </Badge>
                     </div>
+                    <p v-if="isPlanned(nextCleaning)" class="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Icon name="lucide:calendar-clock" class="size-3" />
+                      Not assigned yet — releases {{ fmtReleaseDate(nextCleaning.releaseAt!) }}
+                    </p>
                     <p v-if="nextCleaning.cleanerNames.length" class="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Icon name="lucide:user-round" class="size-3" />
                       {{ nextCleaning.cleanerNames.join(', ') }}
@@ -1004,14 +1062,18 @@ function fmtCleaningDate(iso: string): string {
                         <p class="truncate text-xs font-medium">
                           {{ fmtCleaningDate(job.scheduledAt) }}
                         </p>
-                        <p v-if="job.cleanerNames.length" class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <p v-if="isPlanned(job)" class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Icon name="lucide:calendar-clock" class="size-2.5" />
+                          Releases {{ fmtReleaseDate(job.releaseAt!) }}
+                        </p>
+                        <p v-else-if="job.cleanerNames.length" class="flex items-center gap-1 text-[10px] text-muted-foreground">
                           <Icon name="lucide:user-round" class="size-2.5" />
                           {{ job.cleanerNames.join(', ') }}
                         </p>
                       </div>
                       <div class="flex shrink-0 items-center gap-1">
-                        <Badge variant="outline" class="text-[9px]">
-                          {{ job.status }}
+                        <Badge :variant="isPlanned(job) ? 'secondary' : 'outline'" class="text-[9px]">
+                          {{ cleaningStatusLabel(job) }}
                         </Badge>
                         <Button
                           variant="ghost"
@@ -1091,7 +1153,7 @@ function fmtCleaningDate(iso: string): string {
               <SelectValue placeholder="Select assignee" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">
+              <SelectItem :value="UNASSIGNED">
                 Unassigned
               </SelectItem>
               <SelectItem v-for="c in cleanerOptions" :key="c.id" :value="c.id">
@@ -1100,13 +1162,34 @@ function fmtCleaningDate(iso: string): string {
             </SelectContent>
           </Select>
         </div>
+
+        <div
+          v-if="canPlanAhead"
+          class="flex items-start gap-2.5 border bg-muted/30 p-3"
+        >
+          <Checkbox
+            id="cleaning-plan-only"
+            :model-value="newCleaningPlanOnly"
+            class="mt-0.5"
+            @update:model-value="value => { newCleaningPlanOnly = value === true }"
+          />
+          <div class="space-y-1">
+            <Label for="cleaning-plan-only" class="text-sm font-medium leading-none">
+              Plan only — don't assign yet
+            </Label>
+            <p class="text-xs text-muted-foreground">
+              Keeps this out of housekeeping's workload. It becomes an active job on
+              {{ plannedReleaseLabel || fmtReleaseDate(`${newCleaningDate}T00:00:00+08:00`) }}.
+            </p>
+          </div>
+        </div>
       </div>
       <DialogFooter>
         <Button variant="outline" @click="addCleaningOpen = false">
           Cancel
         </Button>
         <Button :disabled="!newCleaningDate" @click="addCleaning">
-          Schedule
+          {{ planOnlyActive ? 'Save plan' : 'Schedule' }}
         </Button>
       </DialogFooter>
     </DialogContent>
