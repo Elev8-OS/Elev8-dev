@@ -2130,27 +2130,35 @@ describe('ReservationFolioSection', () => {
     expect(wrapper.text()).toContain('Nothing posted yet')
   })
 
-  it('offers Remove on the unpaid row and Void on the paid one', async () => {
-    // DropdownMenuContent is unmounted until the menu opens, and it portals out
-    // of the wrapper, so each row's menu is opened and read off document.body.
+  /**
+   * DropdownMenuContent is unmounted until the menu opens and portals out of the
+   * wrapper, so it is read off document.body. One menu per mount: two open
+   * portals in one document make a negative assertion meaningless, since the
+   * other row's items are also on the page.
+   */
+  async function openRowMenu(rowIndex: number) {
     const wrapper = await mountSection()
     const rows = wrapper.findAll('[data-testid="folio-item-row"]')
     expect(rows).toHaveLength(3)
 
-    async function openMenu(index: number) {
-      document.body.innerHTML = document.body.innerHTML // settle prior portals
-      await rows[index]!.find('[aria-label="Item actions"]').trigger('click')
-      await nextTick()
-      await nextTick()
-      return document.body.textContent ?? ''
-    }
+    await rows[rowIndex]!.find('[aria-label="Item actions"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    return document.body.textContent ?? ''
+  }
 
-    const unpaidMenu = await openMenu(0)
-    expect(unpaidMenu).toContain('Remove')
-    expect(unpaidMenu).not.toContain('Void item')
+  it('offers Remove but not Void on the unpaid row', async () => {
+    const menu = await openRowMenu(0)
 
-    const paidMenu = await openMenu(1)
-    expect(paidMenu).toContain('Void item')
+    expect(menu).toContain('Remove')
+    expect(menu).not.toContain('Void item')
+  })
+
+  it('offers Void but not Remove on the paid row', async () => {
+    const menu = await openRowMenu(1)
+
+    expect(menu).toContain('Void item')
+    expect(menu).not.toContain('Remove')
   })
 
   it('offers no actions at all on a voided row', async () => {
@@ -2436,7 +2444,7 @@ Insert the section immediately after the Rooms accordion's closing `</Accordion>
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run tests/components/reservations/ReservationFolio.spec.ts`
-Expected: PASS, 20 tests.
+Expected: PASS, 21 tests.
 
 - [ ] **Step 6: Run the whole suite**
 
@@ -2523,7 +2531,7 @@ paid).
 
 **Tests:** `tests/lib/reservation-folio.spec.ts` (40),
 `tests/composables/useReservationFolio.spec.ts` (14),
-`tests/components/reservations/ReservationFolio.spec.ts` (20).
+`tests/components/reservations/ReservationFolio.spec.ts` (21).
 ```
 
 - [ ] **Step 4: Commit**
