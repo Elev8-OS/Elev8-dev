@@ -1,3 +1,5 @@
+import type { FolioItem } from '~/components/reservations/data/folio'
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { describe, expect, it } from 'vitest'
 import {
   buildFolioSummary,
@@ -17,9 +19,7 @@ import {
   isFolioItemDraftValid,
   validateFolioItemDraft,
 } from '~/components/reservations/data/folio'
-import type { FolioItem } from '~/components/reservations/data/folio'
 import { initialReservations } from '~/components/reservations/data/reservations'
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 
 /** A priceable line. Only the four pricing fields are needed. */
@@ -263,6 +263,26 @@ describe('validateFolioItemDraft', () => {
 
     expect(errors.taxPercent).toBeTruthy()
     expect(errors.servicePercent).toBeTruthy()
+  })
+
+  it('accepts the inclusive boundary values: 0 and 100 percent, and a quantity of 1', () => {
+    const draft = {
+      ...createDefaultFolioItemDraft(),
+      label: 'Spa',
+      unitPrice: 80,
+      quantity: 1,
+      taxPercent: 0,
+      servicePercent: 100,
+    }
+
+    expect(validateFolioItemDraft(draft)).toEqual({})
+    expect(isFolioItemDraftValid({ ...draft, taxPercent: 100, servicePercent: 0 })).toBe(true)
+  })
+
+  it('rejects a negative unit price', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: 'Spa', unitPrice: -10 }
+
+    expect(validateFolioItemDraft(draft).unitPrice).toBeTruthy()
   })
 })
 

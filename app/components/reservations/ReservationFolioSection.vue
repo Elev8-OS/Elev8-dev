@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { FolioItem, FolioItemDraft, FolioPaymentMethod } from '~/components/reservations/data/folio'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
-import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import {
   buildFolioSummary,
   canDeleteFolioItem,
@@ -10,6 +8,8 @@ import {
   FOLIO_PAYMENT_METHOD_LABELS,
   folioLineTotal,
 } from '~/components/reservations/data/folio'
+import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
+import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import { useReservationFolio } from '~/composables/useReservationFolio'
 
 const props = defineProps<{
@@ -73,6 +73,13 @@ function confirmVoid(reason: string) {
     folio.voidItem(props.reservation.id, voidTargetId.value, reason)
   voidTargetId.value = null
 }
+
+// Cancelling (or dismissing) the dialog closes it without confirming, so clear
+// the target here too, otherwise it sits stale until the next void reopens it.
+watch(voidOpen, (open) => {
+  if (!open)
+    voidTargetId.value = null
+})
 </script>
 
 <template>

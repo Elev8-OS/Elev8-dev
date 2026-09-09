@@ -1,10 +1,10 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { initialReservations } from '~/components/reservations/data/reservations'
 import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
 import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
-import { initialReservations } from '~/components/reservations/data/reservations'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '~/components/ui/accordion'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -70,7 +70,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('FolioAddItemDialog', () => {
+describe('folioAddItemDialog', () => {
   it('lists catalog rows for the reservation property', async () => {
     await mountDialog()
 
@@ -166,7 +166,7 @@ describe('FolioAddItemDialog', () => {
   })
 })
 
-describe('FolioVoidDialog', () => {
+describe('folioVoidDialog', () => {
   const item = {
     id: 'fol-1',
     label: 'Breakfast - Continental',
@@ -228,9 +228,19 @@ describe('FolioVoidDialog', () => {
 
     expect(wrapper.emitted('confirm')![0]![0]).toBe('Charged twice')
   })
+
+  it('trims surrounding whitespace off a reason that has real content', async () => {
+    const wrapper = await mountVoid()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('  Charged twice  ')
+    await nextTick()
+    await body().findAll('button').find(b => b.text() === 'Void item')!.trigger('click')
+
+    expect(wrapper.emitted('confirm')![0]![0]).toBe('Charged twice')
+  })
 })
 
-describe('ReservationFolioSection', () => {
+describe('reservationFolioSection', () => {
   const sectionComponents = {
     ...components,
     Accordion,

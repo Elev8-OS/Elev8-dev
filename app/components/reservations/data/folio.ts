@@ -304,7 +304,7 @@ export function folioActivityEvent(
     parts.push(`Reason: ${item.voidReason}`)
 
   return {
-    id: `act-fol-${item.id}-${kind}`,
+    id: `act-fol-${item.id}-${effectiveKind}`,
     type: 'reservation',
     title: folioActivityTitles[effectiveKind],
     description: parts.join(' · '),

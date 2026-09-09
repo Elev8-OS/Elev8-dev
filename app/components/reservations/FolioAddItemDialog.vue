@@ -119,7 +119,7 @@ onMounted(() => {
       <div class="grid gap-4 sm:grid-cols-2">
         <!-- Catalog -->
         <div class="flex min-h-0 flex-col gap-2">
-          <Label :for="'folio-catalog-search'" class="text-xs text-muted-foreground">
+          <Label for="folio-catalog-search" class="text-xs text-muted-foreground">
             Catalog
           </Label>
           <Input

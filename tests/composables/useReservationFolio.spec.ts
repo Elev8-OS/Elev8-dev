@@ -142,6 +142,11 @@ describe('useReservationFolio', () => {
     folio.markPaid(RES, posted.id, 'cash')
     folio.voidItem(RES, posted.id, '')
     expect(folio.itemsFor(RES).find(i => i.id === posted.id)!.status).toBe('paid')
+
+    // A genuinely unpaid item, even with a valid reason, is not voidable: only removed.
+    const secondPosted = folio.addItem(RES, draft({ label: 'Laundry' }))!
+    folio.voidItem(RES, secondPosted.id, 'Charged twice')
+    expect(folio.itemsFor(RES).find(i => i.id === secondPosted.id)!.status).toBe('unpaid')
   })
 
   it('keeps priceDetails.extras and guestPaid in step with the folio', () => {
