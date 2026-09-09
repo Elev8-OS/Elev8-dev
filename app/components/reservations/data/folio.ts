@@ -1,4 +1,5 @@
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { UpsellItem, UpsellService } from '~/components/upsells/data/upsell-services'
 
 export type FolioItemStatus = 'unpaid' | 'paid' | 'voided'
 export type FolioPaymentMethod = 'cash' | 'card' | 'room'
@@ -112,5 +113,107 @@ export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
     itemsPaid,
     itemsBalance,
     refundDue: itemsBalance < 0 ? roundFolioAmount(-itemsBalance) : 0,
+  }
+}
+
+export interface FolioItemDraft {
+  label: string
+  quantity: number
+  unitPrice: number
+  taxPercent: number
+  servicePercent: number
+  note?: string
+  source: FolioItemSource
+  catalogServiceId?: string
+  catalogItemId?: string
+}
+
+export type FolioDraftField = 'label' | 'quantity' | 'unitPrice' | 'taxPercent' | 'servicePercent'
+export type FolioDraftErrors = Partial<Record<FolioDraftField, string>>
+
+export function canDeleteFolioItem(item: FolioItem): boolean {
+  return item.status === 'unpaid'
+}
+
+export function canVoidFolioItem(item: FolioItem): boolean {
+  return item.status === 'paid'
+}
+
+export function validateFolioItemDraft(draft: FolioItemDraft): FolioDraftErrors {
+  const errors: FolioDraftErrors = {}
+
+  if (!draft.label.trim())
+    errors.label = 'Give the item a name.'
+  if (!Number.isFinite(draft.quantity) || draft.quantity < 1)
+    errors.quantity = 'Quantity must be at least 1.'
+  if (!Number.isFinite(draft.unitPrice) || draft.unitPrice <= 0)
+    errors.unitPrice = 'Enter a price above 0.'
+  if (!Number.isFinite(draft.taxPercent) || draft.taxPercent < 0 || draft.taxPercent > 100)
+    errors.taxPercent = 'Tax must be between 0 and 100.'
+  if (!Number.isFinite(draft.servicePercent) || draft.servicePercent < 0 || draft.servicePercent > 100)
+    errors.servicePercent = 'Service must be between 0 and 100.'
+
+  return errors
+}
+
+export function isFolioItemDraftValid(draft: FolioItemDraft): boolean {
+  return Object.keys(validateFolioItemDraft(draft)).length === 0
+}
+
+export function createDefaultFolioItemDraft(): FolioItemDraft {
+  return {
+    label: '',
+    quantity: 1,
+    unitPrice: 0,
+    taxPercent: 0,
+    servicePercent: 0,
+    note: '',
+    source: 'custom',
+  }
+}
+
+/**
+ * A catalog pick is a snapshot. The price transfers only when it can be charged
+ * as-is: same currency, and the service actually prices its items. Otherwise the
+ * amount is left for staff, because no exchange rate belongs on a guest's bill.
+ */
+export function folioDraftFromCatalog(service: UpsellService, item: UpsellItem, reservationCurrency: string): FolioItemDraft {
+  const usablePrice = service.pricingEnabled && service.currency === reservationCurrency
+
+  return {
+    label: `${service.name} · ${item.name}`,
+    quantity: 1,
+    unitPrice: usablePrice ? item.price : 0,
+    taxPercent: service.pricingEnabled ? service.taxPercent : 0,
+    servicePercent: service.pricingEnabled ? service.servicePercent : 0,
+    note: '',
+    source: 'catalog',
+    catalogServiceId: service.id,
+    catalogItemId: item.id,
+  }
+}
+
+let folioIdCounter = 0
+
+export function generateFolioItemId(): string {
+  folioIdCounter += 1
+  return `fol-${Date.now().toString(36)}-${folioIdCounter}`
+}
+
+export function folioItemFromDraft(draft: FolioItemDraft, actor: string, now: string = new Date().toISOString()): FolioItem {
+  return {
+    id: generateFolioItemId(),
+    label: draft.label.trim(),
+    quantity: draft.quantity,
+    unitPrice: draft.unitPrice,
+    taxPercent: draft.taxPercent,
+    servicePercent: draft.servicePercent,
+    note: draft.note?.trim() || undefined,
+    source: draft.source,
+    catalogServiceId: draft.catalogServiceId,
+    catalogItemId: draft.catalogItemId,
+    status: 'unpaid',
+    addedBy: actor,
+    addedAt: now,
   }
 }

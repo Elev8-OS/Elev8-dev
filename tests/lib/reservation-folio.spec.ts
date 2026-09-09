@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildFolioSummary,
+  canDeleteFolioItem,
+  canVoidFolioItem,
+  createDefaultFolioItemDraft,
   folioBookingTotal,
+  folioDraftFromCatalog,
+  folioItemFromDraft,
   folioLineNet,
   folioLineService,
   folioLineTax,
   folioLineTotal,
+  isFolioItemDraftValid,
+  validateFolioItemDraft,
 } from '~/components/reservations/data/folio'
 import type { FolioItem } from '~/components/reservations/data/folio'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 
 /** A priceable line. Only the four pricing fields are needed. */
 function line(over: Partial<{ quantity: number, unitPrice: number, taxPercent: number, servicePercent: number }> = {}) {
@@ -193,5 +201,130 @@ describe('buildFolioSummary', () => {
     expect(summary.itemsPaid).toBe(18)
     expect(summary.itemsBalance).toBe(-18)
     expect(summary.refundDue).toBe(18)
+  })
+})
+
+describe('folio state rules', () => {
+  it('lets an unpaid item be removed but not voided', () => {
+    const item = folioItem()
+
+    expect(canDeleteFolioItem(item)).toBe(true)
+    expect(canVoidFolioItem(item)).toBe(false)
+  })
+
+  it('lets a paid item be voided but not removed', () => {
+    const item = folioItem({ status: 'paid', paidAt: '2026-09-09T11:00:00Z' })
+
+    expect(canDeleteFolioItem(item)).toBe(false)
+    expect(canVoidFolioItem(item)).toBe(true)
+  })
+
+  it('keeps a charge-to-room item removable, since it is still unpaid', () => {
+    expect(canDeleteFolioItem(folioItem({ paymentMethod: 'room' }))).toBe(true)
+  })
+
+  it('allows neither action on a voided item', () => {
+    const item = folioItem({ status: 'voided', voidReason: 'duplicate' })
+
+    expect(canDeleteFolioItem(item)).toBe(false)
+    expect(canVoidFolioItem(item)).toBe(false)
+  })
+})
+
+describe('validateFolioItemDraft', () => {
+  it('accepts a complete draft', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: 'Minibar - Beer', quantity: 2, unitPrice: 6 }
+
+    expect(validateFolioItemDraft(draft)).toEqual({})
+    expect(isFolioItemDraftValid(draft)).toBe(true)
+  })
+
+  it('rejects a blank or whitespace label', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: '   ', unitPrice: 6 }
+
+    expect(validateFolioItemDraft(draft).label).toBeTruthy()
+  })
+
+  it('rejects a quantity below one and a price at or below zero', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: 'Laundry', quantity: 0, unitPrice: 0 }
+    const errors = validateFolioItemDraft(draft)
+
+    expect(errors.quantity).toBeTruthy()
+    expect(errors.unitPrice).toBeTruthy()
+  })
+
+  it('rejects percentages outside 0 to 100', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: 'Spa', unitPrice: 80, taxPercent: 120, servicePercent: -1 }
+    const errors = validateFolioItemDraft(draft)
+
+    expect(errors.taxPercent).toBeTruthy()
+    expect(errors.servicePercent).toBeTruthy()
+  })
+})
+
+describe('folioDraftFromCatalog', () => {
+  const service = mockUpsellServices.find(s => s.id === 'svc-001')!
+  const item = service.items[0]!
+
+  it('copies the price and both percentages when the currency matches', () => {
+    const draft = folioDraftFromCatalog(service, item, 'IDR')
+
+    expect(draft.unitPrice).toBe(item.price)
+    expect(draft.taxPercent).toBe(service.taxPercent)
+    expect(draft.servicePercent).toBe(service.servicePercent)
+    expect(draft.source).toBe('catalog')
+    expect(draft.catalogServiceId).toBe('svc-001')
+    expect(draft.catalogItemId).toBe(item.id)
+    expect(draft.label).toContain(service.name)
+    expect(draft.label).toContain(item.name)
+  })
+
+  it('leaves the price empty across currencies rather than inventing a rate', () => {
+    const draft = folioDraftFromCatalog(service, item, 'USD')
+
+    expect(draft.unitPrice).toBe(0)
+    // The percentages still transfer; only the amount needs a human.
+    expect(draft.taxPercent).toBe(service.taxPercent)
+  })
+
+  it('leaves the price empty when the service does not price its items', () => {
+    const draft = folioDraftFromCatalog({ ...service, pricingEnabled: false }, item, 'IDR')
+
+    expect(draft.unitPrice).toBe(0)
+    expect(draft.taxPercent).toBe(0)
+    expect(draft.servicePercent).toBe(0)
+  })
+})
+
+describe('folioItemFromDraft', () => {
+  it('posts an unpaid item stamped with the actor', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: '  Minibar - Beer  ', quantity: 2, unitPrice: 6 }
+    const item = folioItemFromDraft(draft, 'Komang Juliantara', '2026-09-09T10:00:00Z')
+
+    expect(item.label).toBe('Minibar - Beer')
+    expect(item.status).toBe('unpaid')
+    expect(item.paidAt).toBeUndefined()
+    expect(item.addedBy).toBe('Komang Juliantara')
+    expect(item.addedAt).toBe('2026-09-09T10:00:00Z')
+    expect(item.id).toBeTruthy()
+  })
+
+  it('gives each posting its own id', () => {
+    const draft = { ...createDefaultFolioItemDraft(), label: 'Beer', unitPrice: 6 }
+
+    expect(folioItemFromDraft(draft, 'A').id).not.toBe(folioItemFromDraft(draft, 'A').id)
+  })
+
+  it('snapshots the catalog price so a later price change cannot rewrite it', () => {
+    const service = { ...mockUpsellServices.find(s => s.id === 'svc-001')! }
+    const catalogItem = { ...service.items[0]! }
+    const draft = folioDraftFromCatalog(service, catalogItem, 'IDR')
+    const posted = folioItemFromDraft(draft, 'Komang Juliantara')
+
+    catalogItem.price = 999999
+    service.taxPercent = 50
+
+    expect(posted.unitPrice).toBe(350000)
+    expect(posted.taxPercent).toBe(11)
   })
 })
