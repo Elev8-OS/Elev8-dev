@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FolioCatalogRow, FolioItemDraft } from '~/components/reservations/data/folio'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { nextTick, onMounted } from 'vue'
 import {
   createDefaultFolioItemDraft,
   filterFolioCatalogRows,
@@ -26,6 +27,9 @@ const draft = ref<FolioItemDraft>(createDefaultFolioItemDraft())
 const search = ref('')
 const pickedItemId = ref<string | null>(null)
 
+const unitPriceInputRef = ref<unknown>(null)
+const labelInputRef = ref<unknown>(null)
+
 const rows = computed(() => folioCatalogRows(services.value, props.reservation.listingName, props.reservation.currency))
 const visibleRows = computed(() => filterFolioCatalogRows(rows.value, search.value))
 const pickedRow = computed(() => rows.value.find(row => row.itemId === pickedItemId.value) ?? null)
@@ -38,6 +42,17 @@ function fmt(amount: number, currency: string): string {
   return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
 }
 
+/**
+ * A template ref on a shadcn `Input` yields the component instance, not the
+ * element — reach through `$el` before focusing. Same pattern as
+ * `PromoCodeFieldsBasics.vue` (see `focusElement` there).
+ */
+function focusElement(target: unknown): void {
+  const el = (target as { $el?: unknown } | null)?.$el ?? target
+  if (el instanceof HTMLElement)
+    el.focus()
+}
+
 function pick(row: FolioCatalogRow) {
   const service = services.value.find(entry => entry.id === row.serviceId)
   const item = service?.items.find(entry => entry.id === row.itemId)
@@ -46,12 +61,28 @@ function pick(row: FolioCatalogRow) {
 
   pickedItemId.value = row.itemId
   draft.value = folioDraftFromCatalog(service, item, props.reservation.currency)
+
+  // The price is left blank precisely so staff can type it immediately.
+  if (row.needsPrice) {
+    nextTick(() => {
+      focusElement(unitPriceInputRef.value)
+    })
+  }
 }
 
 function reset() {
   draft.value = createDefaultFolioItemDraft()
   search.value = ''
   pickedItemId.value = null
+}
+
+/** With no catalog rows, the dialog "opens straight on the custom form" — put focus there. */
+function focusForCurrentProperty() {
+  if (rows.value.length)
+    return
+  nextTick(() => {
+    focusElement(labelInputRef.value)
+  })
 }
 
 function submit() {
@@ -63,8 +94,15 @@ function submit() {
 }
 
 watch(() => props.open, (open) => {
-  if (open)
+  if (open) {
     reset()
+    focusForCurrentProperty()
+  }
+})
+
+onMounted(() => {
+  if (props.open)
+    focusForCurrentProperty()
 })
 </script>
 
@@ -129,7 +167,13 @@ watch(() => props.open, (open) => {
         <div class="space-y-3">
           <div class="space-y-1.5">
             <Label for="folio-label">Item</Label>
-            <Input id="folio-label" v-model="draft.label" data-testid="folio-label" placeholder="Minibar - Beer" />
+            <Input
+              id="folio-label"
+              ref="labelInputRef"
+              v-model="draft.label"
+              data-testid="folio-label"
+              placeholder="Minibar - Beer"
+            />
             <p v-if="errors.label" class="text-xs text-destructive">
               {{ errors.label }}
             </p>
@@ -152,6 +196,7 @@ watch(() => props.open, (open) => {
               <Label for="folio-unit-price">Unit price ({{ reservation.currency }})</Label>
               <Input
                 id="folio-unit-price"
+                ref="unitPriceInputRef"
                 :model-value="draft.unitPrice || ''"
                 data-testid="folio-unit-price"
                 type="number"

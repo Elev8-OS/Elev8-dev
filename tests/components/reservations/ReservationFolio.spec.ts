@@ -88,6 +88,17 @@ describe('FolioAddItemDialog', () => {
     expect(body().text()).toContain('Enter the amount in USD')
   })
 
+  it('focuses the unit price input after picking a cross-currency catalog row', async () => {
+    await mountDialog()
+
+    ;(document.activeElement as HTMLElement | null)?.blur()
+
+    await body().findAll('[data-testid="folio-catalog-row"]')[0]!.trigger('click')
+    await nextTick()
+
+    expect(document.activeElement).toBe(body().find('[data-testid="folio-unit-price"]').element)
+  })
+
   it('carries the label and both percentages over from a catalog pick', async () => {
     await mountDialog()
 
@@ -147,6 +158,6 @@ describe('FolioAddItemDialog', () => {
 
     expect(body().findAll('[data-testid="folio-catalog-row"]')).toHaveLength(0)
     expect(body().text()).toContain('No catalog items')
-    expect(body().find('[data-testid="folio-label"]').exists()).toBe(true)
+    expect(document.activeElement).toBe(body().find('[data-testid="folio-label"]').element)
   })
 })
