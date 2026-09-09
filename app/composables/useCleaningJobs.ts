@@ -34,6 +34,33 @@ export function useCleaningJobs() {
     })
   }
 
+  /**
+   * A planned-ahead job: still a draft, and its release moment has not arrived.
+   * These are visible to whoever planned them but are not housekeeping's work yet.
+   */
+  function isPlanned(job: CleaningJob) {
+    return job.status === 'draft' && Boolean(job.releaseAt)
+  }
+
+  /**
+   * Flip planned drafts whose release moment has passed into `scheduled`, which
+   * is what puts them into housekeeping's workload. Idempotent, so it is safe to
+   * call on every mount of a surface that shows cleaning jobs.
+   */
+  function releaseDueDrafts(now: Date = new Date()) {
+    const nowMs = now.getTime()
+    let released = 0
+    jobs.value = jobs.value.map((job) => {
+      if (!isPlanned(job))
+        return job
+      if (new Date(job.releaseAt!).getTime() > nowMs)
+        return job
+      released += 1
+      return { ...job, status: 'scheduled' as const, releaseAt: null }
+    })
+    return released
+  }
+
   function createJob(input: CleaningJobInput) {
     const job: CleaningJob = {
       ...input,
@@ -102,6 +129,8 @@ export function useCleaningJobs() {
     jobsForFilters,
     createJob,
     updateJob,
+    isPlanned,
+    releaseDueDrafts,
     deleteJob,
     createFromCheckout,
     resolveCleanerNames,
