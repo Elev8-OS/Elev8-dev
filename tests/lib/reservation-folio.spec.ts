@@ -4,7 +4,10 @@ import {
   canDeleteFolioItem,
   canVoidFolioItem,
   createDefaultFolioItemDraft,
+  filterFolioCatalogRows,
+  folioActivityEvent,
   folioBookingTotal,
+  folioCatalogRows,
   folioDraftFromCatalog,
   folioItemFromDraft,
   folioLineNet,
@@ -326,5 +329,83 @@ describe('folioItemFromDraft', () => {
 
     expect(posted.unitPrice).toBe(350000)
     expect(posted.taxPercent).toBe(11)
+  })
+})
+
+describe('folioCatalogRows', () => {
+  it('lists items of active services offered at the property, by listing name', () => {
+    const rows = folioCatalogRows(mockUpsellServices, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'IDR')
+
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every(row => row.itemId && row.serviceName)).toBe(true)
+    // svc-002 is assigned to five other villas only.
+    expect(rows.some(row => row.serviceId === 'svc-002')).toBe(false)
+  })
+
+  it('returns nothing for a property no service is assigned to', () => {
+    expect(folioCatalogRows(mockUpsellServices, 'Villa Nowhere', 'IDR')).toEqual([])
+  })
+
+  it('skips inactive services', () => {
+    const services = mockUpsellServices.map(s => ({ ...s, status: 'inactive' as const }))
+
+    expect(folioCatalogRows(services, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'IDR')).toEqual([])
+  })
+
+  it('flags a row whose price cannot be used as-is on this folio', () => {
+    const same = folioCatalogRows(mockUpsellServices, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'IDR')
+    const across = folioCatalogRows(mockUpsellServices, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'USD')
+
+    expect(same.every(row => row.needsPrice === false)).toBe(true)
+    expect(across.every(row => row.needsPrice === true)).toBe(true)
+    // The catalog is still offered across currencies, not hidden.
+    expect(across.length).toBe(same.length)
+  })
+
+  it('matches the query against service name, item name and description', () => {
+    const rows = folioCatalogRows(mockUpsellServices, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'IDR')
+
+    expect(filterFolioCatalogRows(rows, 'sedan').length).toBe(1)
+    expect(filterFolioCatalogRows(rows, 'AIRPORT').length).toBeGreaterThan(0)
+    expect(filterFolioCatalogRows(rows, '')).toEqual(rows)
+  })
+})
+
+describe('folioActivityEvent', () => {
+  it('records a posting with the actor, the label and the amount', () => {
+    const item = folioItem({ quantity: 2, unitPrice: 6 })
+    const event = folioActivityEvent('added', item, 'Komang Juliantara', 'USD', '2026-09-09T10:00:00Z')
+
+    expect(event.type).toBe('reservation')
+    expect(event.actor).toBe('Komang Juliantara')
+    expect(event.timestamp).toBe('2026-09-09T10:00:00Z')
+    expect(event.title).toBe('Folio item added')
+    expect(event.description).toContain('Minibar - Beer')
+    expect(event.description).toContain('12')
+    expect(event.id).toBeTruthy()
+  })
+
+  it('names the payment method when money is collected', () => {
+    const item = folioItem({ status: 'paid', paymentMethod: 'cash', paidAt: '2026-09-09T11:00:00Z' })
+    const event = folioActivityEvent('paid', item, 'Komang Juliantara', 'USD')
+
+    expect(event.title).toBe('Folio item paid')
+    expect(event.description).toContain('Cash')
+    expect(event.colorDot).toBe('green')
+  })
+
+  it('carries the reason when an item is voided', () => {
+    const item = folioItem({ status: 'voided', voidReason: 'charged twice' })
+    const event = folioActivityEvent('voided', item, 'Komang Juliantara', 'USD')
+
+    expect(event.title).toBe('Folio item voided')
+    expect(event.description).toContain('charged twice')
+  })
+
+  it('says the charge was deferred rather than collected', () => {
+    const item = folioItem({ paymentMethod: 'room' })
+    const event = folioActivityEvent('deferred', item, 'Komang Juliantara', 'USD')
+
+    expect(event.title).toBe('Folio item charged to room')
   })
 })

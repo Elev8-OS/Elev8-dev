@@ -1,3 +1,4 @@
+import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import type { UpsellItem, UpsellService } from '~/components/upsells/data/upsell-services'
 
@@ -218,5 +219,90 @@ export function folioItemFromDraft(draft: FolioItemDraft, actor: string, now: st
     status: 'unpaid',
     addedBy: actor,
     addedAt: now,
+  }
+}
+
+export interface FolioCatalogRow {
+  serviceId: string
+  serviceName: string
+  itemId: string
+  itemName: string
+  description?: string
+  price: number
+  /** The service's own currency, which may not be the folio's. */
+  currency: string
+  /** The price cannot be charged as-is: another currency, or an unpriced service. */
+  needsPrice: boolean
+}
+
+/**
+ * Catalog rows offered at this property. assignedListings holds listing NAMES,
+ * not ids, so the caller passes reservation.listingName.
+ */
+export function folioCatalogRows(services: UpsellService[], listingName: string, reservationCurrency: string): FolioCatalogRow[] {
+  return services
+    .filter(service => service.status === 'active' && service.assignedListings.includes(listingName))
+    .flatMap(service => service.items.map(item => ({
+      serviceId: service.id,
+      serviceName: service.name,
+      itemId: item.id,
+      itemName: item.name,
+      description: item.description,
+      price: item.price,
+      currency: service.currency,
+      needsPrice: !service.pricingEnabled || service.currency !== reservationCurrency,
+    })))
+}
+
+export function filterFolioCatalogRows(rows: FolioCatalogRow[], query: string): FolioCatalogRow[] {
+  const q = query.trim().toLowerCase()
+  if (!q)
+    return rows
+
+  return rows.filter(row =>
+    `${row.serviceName} ${row.itemName} ${row.description ?? ''}`.toLowerCase().includes(q))
+}
+
+export type FolioActivityKind = 'added' | 'paid' | 'deferred' | 'removed' | 'voided'
+
+const folioActivityTitles: Record<FolioActivityKind, string> = {
+  added: 'Folio item added',
+  paid: 'Folio item paid',
+  deferred: 'Folio item charged to room',
+  removed: 'Folio item removed',
+  voided: 'Folio item voided',
+}
+
+const folioActivityColors: Record<FolioActivityKind, ActivityEvent['colorDot']> = {
+  added: 'blue',
+  paid: 'green',
+  deferred: 'blue',
+  removed: 'gray',
+  voided: 'gray',
+}
+
+export function folioActivityEvent(
+  kind: FolioActivityKind,
+  item: FolioItem,
+  actor: string,
+  currency: string,
+  now: string = new Date().toISOString(),
+): ActivityEvent {
+  const amount = `${folioLineTotal(item).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+  const parts = [`${item.label} · ${item.quantity} × ${item.unitPrice} = ${amount}`]
+
+  if (kind === 'paid' && item.paymentMethod)
+    parts.push(FOLIO_PAYMENT_METHOD_LABELS[item.paymentMethod])
+  if (kind === 'voided' && item.voidReason)
+    parts.push(`Reason: ${item.voidReason}`)
+
+  return {
+    id: `act-fol-${item.id}-${kind}`,
+    type: 'reservation',
+    title: folioActivityTitles[kind],
+    description: parts.join(' · '),
+    actor,
+    timestamp: now,
+    colorDot: folioActivityColors[kind],
   }
 }
