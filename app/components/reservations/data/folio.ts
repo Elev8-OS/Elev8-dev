@@ -288,21 +288,28 @@ export function folioActivityEvent(
   currency: string,
   now: string = new Date().toISOString(),
 ): ActivityEvent {
-  const amount = `${folioLineTotal(item).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
-  const parts = [`${item.label} · ${item.quantity} × ${item.unitPrice} = ${amount}`]
+  // A charge-to-room item was never collected, no matter what the caller
+  // labels it as. This module is the source of truth for that distinction,
+  // so a 'paid' kind on a 'room' item is normalised to 'deferred' here
+  // rather than trusting every call site to pass the right kind.
+  const effectiveKind: FolioActivityKind = kind === 'paid' && item.paymentMethod === 'room' ? 'deferred' : kind
 
-  if (kind === 'paid' && item.paymentMethod)
+  const unitPrice = item.unitPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  const amount = `${folioLineTotal(item).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+  const parts = [`${item.label} · ${item.quantity} × ${unitPrice} = ${amount}`]
+
+  if (effectiveKind === 'paid' && item.paymentMethod)
     parts.push(FOLIO_PAYMENT_METHOD_LABELS[item.paymentMethod])
-  if (kind === 'voided' && item.voidReason)
+  if (effectiveKind === 'voided' && item.voidReason)
     parts.push(`Reason: ${item.voidReason}`)
 
   return {
     id: `act-fol-${item.id}-${kind}`,
     type: 'reservation',
-    title: folioActivityTitles[kind],
+    title: folioActivityTitles[effectiveKind],
     description: parts.join(' · '),
     actor,
     timestamp: now,
-    colorDot: folioActivityColors[kind],
+    colorDot: folioActivityColors[effectiveKind],
   }
 }

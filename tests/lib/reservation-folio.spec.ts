@@ -362,6 +362,14 @@ describe('folioCatalogRows', () => {
     expect(across.length).toBe(same.length)
   })
 
+  it('flags a row from a service that does not price its items, even in the same currency', () => {
+    const services = mockUpsellServices.map(s =>
+      s.id === 'svc-001' ? { ...s, pricingEnabled: false } : s)
+    const rows = folioCatalogRows(services, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'IDR')
+
+    expect(rows.some(row => row.serviceId === 'svc-001' && row.needsPrice === true)).toBe(true)
+  })
+
   it('matches the query against service name, item name and description', () => {
     const rows = folioCatalogRows(mockUpsellServices, 'The R Pererenan Mezzanine Studio + Plunge Pool', 'IDR')
 
@@ -407,5 +415,13 @@ describe('folioActivityEvent', () => {
     const event = folioActivityEvent('deferred', item, 'Komang Juliantara', 'USD')
 
     expect(event.title).toBe('Folio item charged to room')
+  })
+
+  it('treats a "paid" kind on a charge-to-room item as deferred, never as collected', () => {
+    const item = folioItem({ paymentMethod: 'room' })
+    const event = folioActivityEvent('paid', item, 'Komang Juliantara', 'USD')
+
+    expect(event.title).toBe('Folio item charged to room')
+    expect(event.title).not.toContain('Paid')
   })
 })
