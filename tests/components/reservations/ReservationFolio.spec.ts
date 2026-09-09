@@ -2,6 +2,7 @@ import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
+import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import { initialReservations } from '~/components/reservations/data/reservations'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -159,5 +160,69 @@ describe('FolioAddItemDialog', () => {
     expect(body().findAll('[data-testid="folio-catalog-row"]')).toHaveLength(0)
     expect(body().text()).toContain('No catalog items')
     expect(document.activeElement).toBe(body().find('[data-testid="folio-label"]').element)
+  })
+})
+
+describe('FolioVoidDialog', () => {
+  const item = {
+    id: 'fol-1',
+    label: 'Breakfast - Continental',
+    quantity: 1,
+    unitPrice: 18,
+    taxPercent: 0,
+    servicePercent: 0,
+    source: 'custom' as const,
+    status: 'paid' as const,
+    paymentMethod: 'card' as const,
+    paidAt: '2026-09-09T09:20:00Z',
+    addedBy: 'Komang Juliantara',
+    addedAt: '2026-09-09T07:55:00Z',
+  }
+
+  async function mountVoid() {
+    const wrapper = mount(FolioVoidDialog, {
+      props: { open: true, item, currency: 'USD' },
+      global: { components },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('names the item and the amount being reversed', async () => {
+    await mountVoid()
+
+    expect(body().text()).toContain('Breakfast - Continental')
+  })
+
+  it('keeps Void disabled until a reason is given', async () => {
+    await mountVoid()
+    const voidButton = () => body().findAll('button').find(b => b.text() === 'Void item')!
+
+    expect(voidButton().attributes('disabled')).toBeDefined()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('Charged twice')
+    await nextTick()
+
+    expect(voidButton().attributes('disabled')).toBeUndefined()
+  })
+
+  it('treats a whitespace reason as no reason', async () => {
+    await mountVoid()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('   ')
+    await nextTick()
+
+    expect(body().findAll('button').find(b => b.text() === 'Void item')!.attributes('disabled')).toBeDefined()
+  })
+
+  it('emits the reason it collected', async () => {
+    const wrapper = await mountVoid()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('Charged twice')
+    await nextTick()
+    await body().findAll('button').find(b => b.text() === 'Void item')!.trigger('click')
+
+    expect(wrapper.emitted('confirm')![0]![0]).toBe('Charged twice')
   })
 })
