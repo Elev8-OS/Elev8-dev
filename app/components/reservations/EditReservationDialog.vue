@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BookingMode, GuestOccupant, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { BookingMode, ContactType, GuestOccupant, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
@@ -53,6 +53,10 @@ const blocksAvailability = ref(false)
 const inquiryExpiryHours = ref(24)
 
 // Contact Details
+const contactType = ref<ContactType>('personal')
+const isBusiness = computed(() => contactType.value === 'business')
+const companyName = ref('')
+const companyVatId = ref('')
 const guestFirstName = ref('')
 const guestLastName = ref('')
 const phoneDialCode = ref('+62')
@@ -169,6 +173,9 @@ watch(() => props.open, (open) => {
     guestCity.value = r.guestCity ?? ''
     guestZip.value = r.guestZip ?? ''
     guestCountry.value = r.guestCountry ?? ''
+    contactType.value = r.contactType ?? 'personal'
+    companyName.value = r.companyName ?? ''
+    companyVatId.value = r.companyVatId ?? ''
     guestCount.value = r.guestCount
     guestAdults.value = r.guestAdults ?? r.guestCount
     guestChildren.value = r.guestChildren ?? 0
@@ -196,6 +203,7 @@ const errors = computed(() => ({
   firstName: !guestFirstName.value.trim(),
   lastName: !guestLastName.value.trim(),
   email: !guestEmail.value.trim(),
+  companyName: isBusiness.value && !companyName.value.trim(),
 }))
 const hasErrors = computed(() => Object.values(errors.value).some(Boolean))
 
@@ -299,6 +307,9 @@ function save() {
     guestCity: guestCity.value.trim() || undefined,
     guestZip: guestZip.value.trim() || undefined,
     guestCountry: guestCountry.value || undefined,
+    contactType: contactType.value,
+    companyName: isBusiness.value ? companyName.value.trim() : undefined,
+    companyVatId: isBusiness.value && companyVatId.value.trim() ? companyVatId.value.trim() : undefined,
     guestNotes: guestNotes.value.trim(),
     guests: occupants.value,
     rooms: rooms.value.length ? rooms.value : undefined,
@@ -507,22 +518,61 @@ function categoryLabel(category: string): string {
                 <h3 class="text-sm font-semibold">
                   Contact Details
                 </h3>
-                <Badge v-if="hasPaymentLink" variant="secondary" class="text-green-700 border-green-500/30 bg-green-500/10">
-                  Payment link created
-                </Badge>
+                <span class="flex items-center gap-2">
+                  <Badge v-if="isBusiness" variant="outline" class="gap-1 text-muted-foreground">
+                    <Icon name="lucide:building-2" class="size-3" />
+                    Business
+                  </Badge>
+                  <Badge v-if="hasPaymentLink" variant="secondary" class="text-green-700 border-green-500/30 bg-green-500/10">
+                    Payment link created
+                  </Badge>
+                </span>
               </span>
             </AccordionTrigger>
             <AccordionContent class="px-4 pb-4">
+              <Tabs v-model="contactType" class="mb-4">
+                <TabsList class="grid w-full grid-cols-2">
+                  <TabsTrigger value="personal">
+                    <Icon name="lucide:user" class="size-3.5" />
+                    Personal
+                  </TabsTrigger>
+                  <TabsTrigger value="business">
+                    <Icon name="lucide:building-2" class="size-3.5" />
+                    Business
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="personal">
+                  <p class="text-xs text-muted-foreground">
+                    A private guest books and pays. The invoice is issued to the guest name below.
+                  </p>
+                </TabsContent>
+                <TabsContent value="business" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <p class="text-xs text-muted-foreground sm:col-span-2">
+                    A company books and pays. The invoice is issued to the company; the person below is the booking contact.
+                  </p>
+                  <div class="space-y-2">
+                    <Label>Company Name <span class="text-destructive">*</span></Label>
+                    <Input v-model="companyName" placeholder="Enter company name" :class="attempted && errors.companyName ? 'border-destructive' : ''" />
+                    <p v-if="attempted && errors.companyName" class="text-xs text-destructive">
+                      Company name is required for a business contact.
+                    </p>
+                  </div>
+                  <div class="space-y-2">
+                    <Label>VAT / Tax ID</Label>
+                    <Input v-model="companyVatId" placeholder="e.g. CHE-123.456.789" />
+                  </div>
+                </TabsContent>
+              </Tabs>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="space-y-2">
-                  <Label>First Name <span class="text-destructive">*</span></Label>
+                  <Label>{{ isBusiness ? 'Contact First Name' : 'First Name' }} <span class="text-destructive">*</span></Label>
                   <Input v-model="guestFirstName" placeholder="Enter first name" :class="attempted && errors.firstName ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.firstName" class="text-xs text-destructive">
                     First name is required.
                   </p>
                 </div>
                 <div class="space-y-2">
-                  <Label>Last Name <span class="text-destructive">*</span></Label>
+                  <Label>{{ isBusiness ? 'Contact Last Name' : 'Last Name' }} <span class="text-destructive">*</span></Label>
                   <Input v-model="guestLastName" placeholder="Enter last name" :class="attempted && errors.lastName ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.lastName" class="text-xs text-destructive">
                     Last name is required.
@@ -572,8 +622,8 @@ function categoryLabel(category: string): string {
                   </div>
                 </div>
                 <div class="space-y-2 sm:col-span-2">
-                  <Label>Address</Label>
-                  <Input v-model="guestAddress" placeholder="Enter guest address" />
+                  <Label>{{ isBusiness ? 'Billing Address' : 'Address' }}</Label>
+                  <Input v-model="guestAddress" :placeholder="isBusiness ? 'Enter billing address' : 'Enter guest address'" />
                 </div>
                 <div class="space-y-2">
                   <Label>City</Label>

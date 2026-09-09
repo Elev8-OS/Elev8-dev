@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BookingMode, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { BookingMode, ContactType, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import { DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
@@ -28,6 +28,9 @@ interface GuestSearchOption {
   city?: string
   zip?: string
   country?: string
+  contactType?: ContactType
+  companyName?: string
+  companyVatId?: string
   listingId?: string
   listingName?: string
 }
@@ -56,6 +59,9 @@ const guestOptions = computed<GuestSearchOption[]>(() => {
       city: r.guestCity,
       zip: r.guestZip,
       country: r.guestCountry,
+      contactType: r.contactType,
+      companyName: r.companyName,
+      companyVatId: r.companyVatId,
       listingId: r.listingId,
       listingName: r.listingName,
     })
@@ -101,6 +107,10 @@ const blocksAvailability = ref(false)
 const inquiryExpiryHours = ref(24)
 
 // Contact Details
+const contactType = ref<ContactType>('personal')
+const isBusiness = computed(() => contactType.value === 'business')
+const companyName = ref('')
+const companyVatId = ref('')
 const guestFirstName = ref('')
 const guestLastName = ref('')
 const phoneDialCode = ref('+62')
@@ -144,6 +154,9 @@ function selectGuest(guest: GuestSearchOption) {
   guestCity.value = guest.city ?? ''
   guestZip.value = guest.zip ?? ''
   guestCountry.value = guest.country ?? ''
+  contactType.value = guest.contactType ?? 'personal'
+  companyName.value = guest.companyName ?? ''
+  companyVatId.value = guest.companyVatId ?? ''
   selectedGuest.value = guest
   guestSearch.value = ''
   guestPopoverOpen.value = false
@@ -221,7 +234,12 @@ const statusComplete = computed(() => {
     return inquiryExpiryHours.value > 0
   return true
 })
-const contactComplete = computed(() => Boolean(guestFirstName.value.trim() && guestLastName.value.trim() && guestEmail.value.trim()))
+const contactComplete = computed(() => Boolean(
+  guestFirstName.value.trim()
+  && guestLastName.value.trim()
+  && guestEmail.value.trim()
+  && (!isBusiness.value || companyName.value.trim()),
+))
 
 const attempted = ref(false)
 const errors = computed(() => ({
@@ -231,6 +249,7 @@ const errors = computed(() => ({
   firstName: !guestFirstName.value.trim(),
   lastName: !guestLastName.value.trim(),
   email: !guestEmail.value.trim(),
+  companyName: isBusiness.value && !companyName.value.trim(),
 }))
 const hasErrors = computed(() => Object.values(errors.value).some(Boolean))
 
@@ -246,6 +265,9 @@ function reset() {
   status.value = 'inquiry'
   blocksAvailability.value = false
   inquiryExpiryHours.value = 24
+  contactType.value = 'personal'
+  companyName.value = ''
+  companyVatId.value = ''
   guestFirstName.value = ''
   guestLastName.value = ''
   phoneDialCode.value = '+62'
@@ -308,6 +330,9 @@ function handleSubmit() {
     guestCity: guestCity.value.trim() || undefined,
     guestZip: guestZip.value.trim() || undefined,
     guestCountry: guestCountry.value || undefined,
+    contactType: contactType.value,
+    companyName: isBusiness.value ? companyName.value.trim() : undefined,
+    companyVatId: isBusiness.value && companyVatId.value.trim() ? companyVatId.value.trim() : undefined,
     rooms: rooms.value.length ? rooms.value : undefined,
     bookingMode: rooms.value.length ? bookingMode.value : undefined,
     paymentFeeMode: rooms.value.length ? paymentFeeMode.value : undefined,
@@ -525,12 +550,51 @@ watch(() => props.open, (open) => {
                 <h3 class="text-sm font-semibold">
                   Contact Details
                 </h3>
-                <Badge :variant="contactComplete ? 'secondary' : 'outline'" :class="contactComplete ? 'text-green-700 border-green-500/30 bg-green-500/10' : 'text-muted-foreground'">
-                  {{ contactComplete ? 'Complete' : 'Incomplete' }}
-                </Badge>
+                <span class="flex items-center gap-2">
+                  <Badge v-if="isBusiness" variant="outline" class="gap-1 text-muted-foreground">
+                    <Icon name="lucide:building-2" class="size-3" />
+                    Business
+                  </Badge>
+                  <Badge :variant="contactComplete ? 'secondary' : 'outline'" :class="contactComplete ? 'text-green-700 border-green-500/30 bg-green-500/10' : 'text-muted-foreground'">
+                    {{ contactComplete ? 'Complete' : 'Incomplete' }}
+                  </Badge>
+                </span>
               </span>
             </AccordionTrigger>
             <AccordionContent class="px-4 pb-4">
+              <Tabs v-model="contactType" class="mb-4">
+                <TabsList class="grid w-full grid-cols-2">
+                  <TabsTrigger value="personal">
+                    <Icon name="lucide:user" class="size-3.5" />
+                    Personal
+                  </TabsTrigger>
+                  <TabsTrigger value="business">
+                    <Icon name="lucide:building-2" class="size-3.5" />
+                    Business
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="personal">
+                  <p class="text-xs text-muted-foreground">
+                    A private guest books and pays. The invoice is issued to the guest name below.
+                  </p>
+                </TabsContent>
+                <TabsContent value="business" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <p class="text-xs text-muted-foreground sm:col-span-2">
+                    A company books and pays. The invoice is issued to the company; the person below is the booking contact.
+                  </p>
+                  <div class="space-y-2">
+                    <Label>Company Name <span class="text-destructive">*</span></Label>
+                    <Input v-model="companyName" placeholder="Enter company name" :class="attempted && errors.companyName ? 'border-destructive' : ''" />
+                    <p v-if="attempted && errors.companyName" class="text-xs text-destructive">
+                      Company name is required for a business contact.
+                    </p>
+                  </div>
+                  <div class="space-y-2">
+                    <Label>VAT / Tax ID</Label>
+                    <Input v-model="companyVatId" placeholder="e.g. CHE-123.456.789" />
+                  </div>
+                </TabsContent>
+              </Tabs>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="space-y-2 sm:col-span-2">
                   <Label>Search Guest</Label>
@@ -586,14 +650,14 @@ watch(() => props.open, (open) => {
                   </p>
                 </div>
                 <div class="space-y-2">
-                  <Label>First Name <span class="text-destructive">*</span></Label>
+                  <Label>{{ isBusiness ? 'Contact First Name' : 'First Name' }} <span class="text-destructive">*</span></Label>
                   <Input v-model="guestFirstName" placeholder="Enter first name" :class="attempted && errors.firstName ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.firstName" class="text-xs text-destructive">
                     First name is required.
                   </p>
                 </div>
                 <div class="space-y-2">
-                  <Label>Last Name <span class="text-destructive">*</span></Label>
+                  <Label>{{ isBusiness ? 'Contact Last Name' : 'Last Name' }} <span class="text-destructive">*</span></Label>
                   <Input v-model="guestLastName" placeholder="Enter last name" :class="attempted && errors.lastName ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.lastName" class="text-xs text-destructive">
                     Last name is required.
@@ -643,8 +707,8 @@ watch(() => props.open, (open) => {
                   </div>
                 </div>
                 <div class="space-y-2 sm:col-span-2">
-                  <Label>Address</Label>
-                  <Input v-model="guestAddress" placeholder="Enter guest address" />
+                  <Label>{{ isBusiness ? 'Billing Address' : 'Address' }}</Label>
+                  <Input v-model="guestAddress" :placeholder="isBusiness ? 'Enter billing address' : 'Enter guest address'" />
                 </div>
                 <div class="space-y-2">
                   <Label>City</Label>

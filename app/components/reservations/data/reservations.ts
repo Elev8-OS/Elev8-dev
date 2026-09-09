@@ -70,6 +70,9 @@ export interface ReservationRoomLine {
 
 export type BookingMode = 'entire_property' | 'rooms'
 
+/** Whether the booking contact is a private guest or a company. */
+export type ContactType = 'personal' | 'business'
+
 export type PaymentFeeMode = 'card' | 'manual' | 'no_fee'
 
 export type ReservationChargeKind = 'cleaning' | 'city_tax' | 'service' | 'other'
@@ -125,6 +128,12 @@ export interface ReservationEntry {
   guestCity?: string
   guestZip?: string
   guestCountry?: string
+  /** Booking contact: private guest (default) or company. */
+  contactType?: ContactType
+  /** Business contacts only: company / invoicing name. */
+  companyName?: string
+  /** Business contacts only: VAT / tax identification number. */
+  companyVatId?: string
   /** Multi-room booking: one line per booked unit. */
   rooms?: ReservationRoomLine[]
   bookingMode?: BookingMode
@@ -187,6 +196,12 @@ export interface ReservationDraft {
   guestCity?: string
   guestZip?: string
   guestCountry?: string
+  /** Booking contact: private guest (default) or company. */
+  contactType?: ContactType
+  /** Business contacts only: company / invoicing name. */
+  companyName?: string
+  /** Business contacts only: VAT / tax identification number. */
+  companyVatId?: string
   /** Multi-room booking: one line per booked unit. */
   rooms?: ReservationRoomLine[]
   bookingMode?: BookingMode
@@ -543,6 +558,13 @@ export const initialReservations: ReservationEntry[] = [
     guestPhone: '+49 151 23456789',
     guestLanguage: 'German',
     guestNotes: '',
+    contactType: 'business',
+    companyName: 'Hoffmann Consulting GmbH',
+    companyVatId: 'DE812345678',
+    guestAddress: 'Friedrichstraße 12',
+    guestCity: 'Berlin',
+    guestZip: '10117',
+    guestCountry: 'Germany',
     listingId: 'lst-3',
     listingName: 'Villa Luwa – Hügellage Brandenburg',
     channel: 'Airbnb',

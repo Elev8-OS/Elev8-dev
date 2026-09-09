@@ -578,6 +578,10 @@ function cleaningStatusLabel(job: CleaningJob): string {
                   >
                     <span class="font-semibold">{{ reservation.guestName }}</span>
                   </button>
+                  <p v-if="reservation.contactType === 'business' && reservation.companyName" class="flex items-center gap-1.5 text-xs font-medium truncate">
+                    <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
+                    {{ reservation.companyName }}<span v-if="reservation.companyVatId" class="text-muted-foreground font-normal">· {{ reservation.companyVatId }}</span>
+                  </p>
                   <p class="text-xs text-muted-foreground truncate">
                     {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
                   </p>
