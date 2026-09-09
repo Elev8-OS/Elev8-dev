@@ -236,9 +236,12 @@ reservation migrates.
   from the `UpsellService` / `UpsellItem` at posting time. `catalogServiceId` is
   provenance, never a live join, so a later price change cannot rewrite a
   guest's bill.
-- **Tax and service each apply to the line net, in parallel**, matching
-  `UpsellOrderCreator.vue:79`, so a folio line and an upsell order price the
-  same. Rounding is to the currency's minor unit, not the whole unit.
+- **Tax and service each apply to the line net, in parallel, never compounded**,
+  the same structure as `UpsellOrderCreator.vue:79`. The rounding deliberately
+  differs, though: the folio rounds to the currency's minor unit (a CHF 6.00
+  beer at 10 percent owes 0.60), while the upsell order rounds tax and service
+  to whole units. A folio line is a desk charge, priced to the cent it can
+  actually be paid in; an upsell order is priced in round numbers upfront.
 - **`paidAt` survives a void on purpose.** A voided item drops out of
   `itemsTotal` but stays in `itemsPaid`, which is exactly what turns a voided
   paid line into `refundDue`. Do not filter `itemsPaid` on `status`.
@@ -252,15 +255,30 @@ reservation migrates.
   `reservation.listingName`.
 - ⚠️ **No currency conversion, ever.** A catalog row priced in another currency
   keeps its own price, carries a `Priced in IDR` badge, and transfers its
-  percentages but not its amount. An invented exchange rate on a guest's bill is
+  percentages but not its amount. A row from a service with `pricingEnabled:
+  false` transfers **no** percentages either (`folio.ts:191-192`, settled by
+  commit `c530f2b`): the two cases look similar but are distinct, so do not
+  collapse them into one rule. An invented exchange rate on a guest's bill is
   worse than asking staff to type the number.
+- ⚠️ **The folio owns `priceDetails.extras`.** `commit()` replaces the field
+  outright rather than adding to it, so anything else that also writes
+  `extras` gets silently overwritten. A reservation's `upsellIds` are a
+  separate total and never merged in. `commit()` also moves `guestPaid` and
+  `payout` by the same delta as `extras`, in lockstep, and leaves `commission`
+  untouched, since a desk-posted extra carries no OTA commission.
 - ⚠️ **`useReservationFolio` never writes to `useUpsellOrders`**, and each action
   patches the items array and its `ActivityEvent` in **one**
   `updateReservation` call so a posting and its audit line cannot land apart.
 - `totalPrice` is deliberately never written. It is the booked room-and-fees
   price that much of the app reads; the grand total is derived.
-  `priceDetails.extras` and `guestPaid` are kept in step where a reservation has
-  a `priceDetails` block.
+  `priceDetails.extras`, `guestPaid` and `payout` are kept in step where a
+  reservation has a `priceDetails` block (see the ⚠️ above); `commission` never
+  moves.
+- **A refund due and an unpaid line can coexist.** `FolioSummary.unpaidTotal`
+  is the live unpaid total, distinct from `itemsBalance` (which nets a refund
+  against it). `ReservationFolioSection.vue` renders "Extras still due"
+  alongside "Refund due" whenever both are non-zero, so a voided-but-paid item
+  netting out a refund cannot hide money still owed on another line.
 - ⚠️ **`folioActivityEvent`'s `id` uses the normalised `effectiveKind`, not the
   raw `kind` argument.** A caller passing `kind: 'paid'` on a charge-to-room
   item gets the `deferred` title, description and colour, so its id must say
@@ -278,9 +296,9 @@ no join to `ReservationEntry`); no invoice document or PDF; no per-room folio on
 a multi-room booking; no editing a posted item (remove while unpaid, void once
 paid).
 
-**Tests:** `tests/lib/reservation-folio.spec.ts` (44),
-`tests/composables/useReservationFolio.spec.ts` (14),
-`tests/components/reservations/ReservationFolio.spec.ts` (23).
+**Tests:** `tests/lib/reservation-folio.spec.ts` (50),
+`tests/composables/useReservationFolio.spec.ts` (15),
+`tests/components/reservations/ReservationFolio.spec.ts` (25).
 
 ### SmartLock Integration (`app/components/settings/` + `app/composables/useSmartLock.ts`)
 
@@ -2133,6 +2151,7 @@ const table = useVueTable({
 | `useOnboarding` | `app/composables/useOnboarding.ts` | Tenant onboarding: register to activated dashboard | `state`, `status`, `step`, `pmsModel`, `orderSummary`, `appliedPromo`, `activeBanner`, `progress`, `showChecklist`, `moduleAvailable()`, `startTenant()`, `saveProfile()`, `skipBranding()`, `selectModel()`, `selectPlan()`, `applyPromo()`, `revalidatePromo()`, `submitPayment()`, `connectPms()`, `startImport()`, `completeOnboarding()`, `completeChecklistItem()`. Persisted to LocalStorage. |
 | `useGmDashboard` | `app/composables/useGmDashboard.ts` | General Manager portfolio dashboard (role-gated on `/`) | `isGeneralManager`, `anchorDate`, `region`/`regionOptions`, `revenueRange`, `units`, `unitCount`, `stays`, `kpis`, `dayFlow`, `revenueSeries`, `revenueRangeMetrics`, `todayBookings`, `selectedBookings`, `stripDays`, `stripOccupancy`, `setSelectedDate()`, `shiftStrip()`, `goToToday()`. Stays are generated deterministically from the real listings, anchored to today. |
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
+| `useReservationFolio` | `app/composables/useReservationFolio.ts` | Staff-posted charges on a stay (minibar, laundry). The only writer of `ReservationEntry.folioItems` | `itemsFor(id)`, `summaryFor(id)`, `canPostTo(id)`, `catalogRowsFor(id)`, `addItem()`, `markPaid()`, `deleteItem()`, `voidItem()`. Never writes to `useUpsellOrders`; keeps `priceDetails.extras`/`guestPaid`/`payout` in step in one `updateReservation` call. |
 
 ### State Management Rules
 - **Inbox conversations**: `useState<Conversation[]>()` — reactive, persists per request

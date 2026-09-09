@@ -48,7 +48,7 @@ function statusLabel(item: FolioItem): string {
 }
 
 function fmt(amount: number): string {
-  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${props.reservation.currency}`
+  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${props.reservation.currency}`
 }
 
 function submitDraft(draft: FolioItemDraft) {
@@ -206,10 +206,22 @@ watch(voidOpen, (open) => {
               <span class="text-muted-foreground">Extras paid</span>
               <span>{{ fmt(summary.itemsPaid) }}</span>
             </div>
-            <div v-if="summary.refundDue > 0" class="flex items-center justify-between font-medium text-destructive">
-              <span>Refund due</span>
-              <span>{{ fmt(summary.refundDue) }}</span>
-            </div>
+            <template v-if="summary.refundDue > 0">
+              <!--
+                A refund can be due on one line while another is still unpaid;
+                netting them into `itemsBalance` alone would hide the second.
+                Show both so nobody checks a guest out owing money nobody
+                collected.
+              -->
+              <div v-if="summary.unpaidTotal > 0" class="flex items-center justify-between font-medium">
+                <span>Extras still due</span>
+                <span>{{ fmt(summary.unpaidTotal) }}</span>
+              </div>
+              <div class="flex items-center justify-between font-medium text-destructive">
+                <span>Refund due</span>
+                <span>{{ fmt(summary.refundDue) }}</span>
+              </div>
+            </template>
             <div v-else class="flex items-center justify-between font-medium">
               <span>Extras balance</span>
               <span>{{ fmt(summary.itemsBalance) }}</span>

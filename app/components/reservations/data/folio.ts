@@ -75,6 +75,13 @@ export interface FolioSummary {
   itemsPaid: number
   itemsBalance: number
   refundDue: number
+  /**
+   * Live (non-voided) items still owing nothing collected yet, i.e. status
+   * `'unpaid'` (charge-to-room included). Distinct from `itemsBalance`, which
+   * nets a refund against it: a stay can owe a refund on one line and still
+   * owe unpaid money on another, and `itemsBalance` alone hides the second.
+   */
+  unpaidTotal: number
 }
 
 /** Mirrors ReservationRoomsSection.vue:460 so the folio cannot disagree with it. */
@@ -105,6 +112,7 @@ export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
   // paidAt, not status: a voided item that was paid still owes a refund.
   const itemsPaid = sum(items.filter(item => Boolean(item.paidAt)))
   const itemsBalance = roundFolioAmount(itemsTotal - itemsPaid)
+  const unpaidTotal = sum(items.filter(item => item.status === 'unpaid'))
 
   return {
     bookingTotal,
@@ -114,6 +122,7 @@ export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
     itemsPaid,
     itemsBalance,
     refundDue: itemsBalance < 0 ? roundFolioAmount(-itemsBalance) : 0,
+    unpaidTotal,
   }
 }
 

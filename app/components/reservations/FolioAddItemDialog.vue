@@ -39,7 +39,7 @@ const canSubmit = computed(() => Object.keys(errors.value).length === 0)
 const lineTotal = computed(() => folioLineTotal(draft.value))
 
 function fmt(amount: number, currency: string): string {
-  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
 }
 
 /**
@@ -191,6 +191,9 @@ onMounted(() => {
                 min="1"
                 @update:model-value="(v) => draft.quantity = Number(v)"
               />
+              <p v-if="errors.quantity" class="text-xs text-destructive">
+                {{ errors.quantity }}
+              </p>
             </div>
             <div class="space-y-1.5">
               <Label for="folio-unit-price">Unit price ({{ reservation.currency }})</Label>
@@ -226,6 +229,9 @@ onMounted(() => {
                 max="100"
                 @update:model-value="(v) => draft.taxPercent = Number(v)"
               />
+              <p v-if="errors.taxPercent" class="text-xs text-destructive">
+                {{ errors.taxPercent }}
+              </p>
             </div>
             <div class="space-y-1.5">
               <Label for="folio-service">Service %</Label>
@@ -238,6 +244,9 @@ onMounted(() => {
                 max="100"
                 @update:model-value="(v) => draft.servicePercent = Number(v)"
               />
+              <p v-if="errors.servicePercent" class="text-xs text-destructive">
+                {{ errors.servicePercent }}
+              </p>
             </div>
           </div>
 

@@ -47,7 +47,8 @@ describe('useReservationFolio', () => {
     folio.addItem(RES, draft())
 
     expect(reservation().activity).toHaveLength(before + 1)
-    expect(reservation().activity[0]!.title).toBe('Folio item added')
+    // Appended, not prepended: every seeded activity array is oldest-first.
+    expect(reservation().activity.at(-1)!.title).toBe('Folio item added')
   })
 
   it('refuses an invalid draft without touching the reservation', () => {
@@ -104,7 +105,7 @@ describe('useReservationFolio', () => {
     folio.deleteItem(RES, posted.id)
 
     expect(folio.itemsFor(RES).some(i => i.id === posted.id)).toBe(false)
-    expect(reservation().activity[0]!.title).toBe('Folio item removed')
+    expect(reservation().activity.at(-1)!.title).toBe('Folio item removed')
   })
 
   it('will not remove a paid item', () => {
@@ -149,7 +150,7 @@ describe('useReservationFolio', () => {
     expect(folio.itemsFor(RES).find(i => i.id === secondPosted.id)!.status).toBe('unpaid')
   })
 
-  it('keeps priceDetails.extras and guestPaid in step with the folio', () => {
+  it('keeps priceDetails.extras, guestPaid and payout in step with the folio', () => {
     const folio = useReservationFolio()
     const before = reservation().priceDetails!
 
@@ -159,7 +160,31 @@ describe('useReservationFolio', () => {
     const summary = folio.summaryFor(RES)!
     expect(after.extras).toBe(summary.itemsTotal)
     // guestPaid moves by the change in extras, not by the whole extras total.
-    expect(after.guestPaid).toBe(Math.round((before.guestPaid - before.extras + after.extras) * 100) / 100)
+    const delta = Math.round((after.extras - before.extras) * 100) / 100
+    expect(after.guestPaid).toBe(Math.round((before.guestPaid + delta) * 100) / 100)
+    // Desk extras carry no OTA commission, so payout moves by the same delta
+    // as guestPaid and commission is untouched.
+    expect(after.payout).toBe(Math.round((before.payout + delta) * 100) / 100)
+    expect(after.commission).toBe(before.commission)
+  })
+
+  it('will not re-defer an item already charged to room', () => {
+    const folio = useReservationFolio()
+    const posted = folio.addItem(RES, draft())!
+    const activityBefore = reservation().activity.length
+
+    folio.markPaid(RES, posted.id, 'room')
+    const afterFirst = reservation().activity.length
+    expect(afterFirst).toBe(activityBefore + 1)
+
+    // A second "Charge to room" on the same item is a no-op: no new item
+    // state, no duplicate activity entry.
+    folio.markPaid(RES, posted.id, 'room')
+
+    const item = folio.itemsFor(RES).find(i => i.id === posted.id)!
+    expect(item.status).toBe('unpaid')
+    expect(item.paymentMethod).toBe('room')
+    expect(reservation().activity.length).toBe(afterFirst)
   })
 
   it('offers the catalog rows for the reservation property and currency', () => {

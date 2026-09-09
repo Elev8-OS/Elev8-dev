@@ -64,15 +64,26 @@ export function useReservationFolio() {
   function commit(reservation: ReservationEntry, items: FolioItem[], event: ActivityEvent) {
     const patch: Partial<ReservationEntry> = {
       folioItems: items,
-      activity: [event, ...reservation.activity],
+      // Oldest-first, matching every seeded activity array and the timeline
+      // that renders it: prepending would land a new folio entry above a
+      // months-old reservation-confirmed one.
+      activity: [...reservation.activity, event],
     }
 
     if (reservation.priceDetails) {
+      // The folio owns `priceDetails.extras`: this replaces the field outright
+      // rather than aggregating into it, so nothing else should also be
+      // writing it (a reservation's `upsellIds` total is separate and never
+      // merged in here). Desk-posted extras carry no OTA commission, so the
+      // whole delta moves onto `guestPaid` and `payout` together, in lockstep,
+      // while `commission` is left untouched.
       const extras = buildFolioSummary({ ...reservation, folioItems: items }).itemsTotal
+      const extrasDelta = roundFolioAmount(extras - reservation.priceDetails.extras)
       patch.priceDetails = {
         ...reservation.priceDetails,
         extras,
-        guestPaid: roundFolioAmount(reservation.priceDetails.guestPaid - reservation.priceDetails.extras + extras),
+        guestPaid: roundFolioAmount(reservation.priceDetails.guestPaid + extrasDelta),
+        payout: roundFolioAmount(reservation.priceDetails.payout + extrasDelta),
       }
     }
 
@@ -97,6 +108,12 @@ export function useReservationFolio() {
 
     const current = itemsFor(reservationId).find(item => item.id === itemId)
     if (!current || current.status !== 'unpaid')
+      return
+    // A 'room' item stays 'unpaid' by design, so the guard above does not
+    // catch a repeated "Charge to room": without this, a second call would
+    // produce a second activity event sharing the same id (derived from
+    // itemId + kind, not a timestamp). Already deferred is a no-op.
+    if (method === 'room' && current.paymentMethod === 'room')
       return
 
     // 'room' defers the charge: it stays unpaid and keeps counting in the balance.

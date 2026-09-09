@@ -17,11 +17,17 @@ const reason = ref('')
 
 const canConfirm = computed(() => reason.value.trim().length > 0)
 
+function fmt(amount: number): string {
+  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${props.currency}`
+}
+
 const amount = computed(() => {
   if (!props.item)
     return ''
-  return `${folioLineTotal(props.item).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${props.currency}`
+  return fmt(folioLineTotal(props.item))
 })
+
+const unitPrice = computed(() => (props.item ? fmt(props.item.unitPrice) : ''))
 
 function confirm() {
   if (!canConfirm.value)
@@ -53,7 +59,7 @@ watch(() => props.open, (open) => {
           {{ item.label }}
         </p>
         <p class="text-xs text-muted-foreground">
-          {{ item.quantity }} × {{ item.unitPrice }} = {{ amount }}
+          {{ item.quantity }} × {{ unitPrice }} = {{ amount }}
         </p>
       </div>
 

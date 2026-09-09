@@ -151,6 +151,22 @@ describe('folioAddItemDialog', () => {
     expect((submitted![0]![0] as { label: string }).label).toBe('Laundry')
   })
 
+  it('shows the quantity, tax and service validation messages, and disables Add', async () => {
+    await mountDialog()
+
+    await body().find('[data-testid="folio-label"]').setValue('Minibar - Beer')
+    await body().find('[data-testid="folio-unit-price"]').setValue('6')
+    await body().find('[data-testid="folio-quantity"]').setValue('0')
+    await body().find('[data-testid="folio-tax"]').setValue('150')
+    await body().find('[data-testid="folio-service"]').setValue('-1')
+    await nextTick()
+
+    expect(body().text()).toContain('Quantity must be at least 1.')
+    expect(body().text()).toContain('Tax must be between 0 and 100.')
+    expect(body().text()).toContain('Service must be between 0 and 100.')
+    expect(body().findAll('button').find(b => b.text() === 'Add item')!.attributes('disabled')).toBeDefined()
+  })
+
   it('opens on the custom form when no service is offered at the property', async () => {
     const orphan = { ...initialReservations.find(r => r.id === 'res-3')!, listingName: 'Villa Nowhere' }
     mount(FolioAddItemDialog, {
@@ -315,6 +331,18 @@ describe('reservationFolioSection', () => {
     expect(wrapper.text()).toContain('Refund due')
     expect(wrapper.text()).toContain('6.6')
     expect(wrapper.text()).not.toContain('-6.6')
+  })
+
+  it('shows the outstanding unpaid total alongside the refund due, rather than netting it away', async () => {
+    const wrapper = await mountSection()
+
+    // res-3: the minibar line (13.20) is still unpaid while the voided,
+    // previously-paid breakfast raises a 6.60 refund. Netting them into one
+    // balance would hide the 13.20 still owed.
+    expect(wrapper.text()).toContain('Extras still due')
+    expect(wrapper.text()).toContain('13.20')
+    expect(wrapper.text()).toContain('Refund due')
+    expect(wrapper.text()).toContain('6.60')
   })
 
   it('offers Add item on a live stay', async () => {

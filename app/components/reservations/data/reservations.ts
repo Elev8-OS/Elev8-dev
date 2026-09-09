@@ -910,7 +910,7 @@ export const initialReservations: ReservationEntry[] = [
       extras: 26.4,
       guestPaid: 666.4,
       commission: 64,
-      payout: 576,
+      payout: 602.4,
     },
     status: 'checked_in',
     conversationId: 'conv-3',

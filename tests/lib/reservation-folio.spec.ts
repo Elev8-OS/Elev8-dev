@@ -470,4 +470,60 @@ describe('seeded folio items', () => {
 
     expect(seeded.priceDetails?.extras).toBe(summary.itemsTotal)
   })
+
+  it('satisfies payout = guestPaid - commission, like every other seeded reservation', () => {
+    const { guestPaid, commission, payout } = seeded.priceDetails!
+
+    expect(payout).toBe(Math.round((guestPaid - commission) * 100) / 100)
+  })
+})
+
+describe('buildFolioSummary unpaidTotal', () => {
+  it('is zero when nothing has been posted', () => {
+    expect(buildFolioSummary(reservation()).unpaidTotal).toBe(0)
+  })
+
+  it('counts only the live unpaid item, distinct from itemsBalance', () => {
+    // Minibar unpaid (12), laundry paid (4, collected), breakfast voided-but-paid (18).
+    const summary = buildFolioSummary(reservation({
+      folioItems: [
+        folioItem({ id: 'f1', quantity: 2, unitPrice: 6 }),
+        folioItem({ id: 'f2', label: 'Laundry', unitPrice: 4, status: 'paid', paymentMethod: 'cash', paidAt: '2026-09-09T11:00:00Z' }),
+        folioItem({ id: 'f3', label: 'Breakfast', unitPrice: 18, status: 'voided', paymentMethod: 'cash', paidAt: '2026-09-09T11:05:00Z', voidReason: 'charged twice' }),
+      ],
+    }))
+
+    // itemsBalance nets the refund against the whole live total (12 - 4 = 8),
+    // but unpaidTotal isolates just the minibar line still owed (12).
+    expect(summary.unpaidTotal).toBe(12)
+    expect(summary.itemsBalance).toBe(-6)
+    expect(summary.refundDue).toBe(6)
+  })
+
+  it('counts a charge-to-room item, since nothing was collected for it', () => {
+    const summary = buildFolioSummary(reservation({
+      folioItems: [folioItem({ unitPrice: 18, paymentMethod: 'room' })],
+    }))
+
+    expect(summary.unpaidTotal).toBe(18)
+  })
+
+  it('excludes a paid or voided item', () => {
+    const summary = buildFolioSummary(reservation({
+      folioItems: [
+        folioItem({ id: 'f1', unitPrice: 12, status: 'paid', paymentMethod: 'cash', paidAt: '2026-09-09T11:00:00Z' }),
+        folioItem({ id: 'f2', unitPrice: 18, status: 'voided', voidReason: 'wrong room' }),
+      ],
+    }))
+
+    expect(summary.unpaidTotal).toBe(0)
+  })
+
+  it('pins the mixed seeded case: res-3 owes 13.2 unpaid alongside its 6.6 refund', () => {
+    const seeded = initialReservations.find(r => r.id === 'res-3')!
+    const summary = buildFolioSummary(seeded)
+
+    expect(summary.unpaidTotal).toBe(13.2)
+    expect(summary.refundDue).toBe(6.6)
+  })
 })
