@@ -10,10 +10,12 @@ import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useUpsellOrders } from '~/composables/useUpsellOrders'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +26,7 @@ const {
   updateGuestNotes,
 } = useReservationsModule()
 const { requests } = usePaymentRequests()
+const { orders: upsellOrders } = useUpsellOrders()
 const { conversations } = useInbox()
 const { links } = useGuestGuideLinks()
 
@@ -63,6 +66,9 @@ const guestPaymentRequests = computed(() => {
 
 // Upsells — merged from stays
 const upsells = computed(() => stays.value.flatMap(r => r.upsellIds ?? []))
+// Resolved orders, so the tab badge counts what the tab will actually list
+// rather than every id, including any that no longer resolve to an order.
+const linkedUpsellOrders = computed(() => upsellOrders.value.filter(o => upsells.value.includes(o.id)))
 
 // Related links
 const relatedConversation = computed(() => {
@@ -399,17 +405,71 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         </Card>
       </div>
 
-      <!-- Booking History table (full width) -->
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-base">
+      <!-- Activity, booking history, payment requests and upsells: one card, four tabs -->
+      <Tabs default-value="activity" class="space-y-4">
+        <TabsList>
+          <TabsTrigger value="activity">
+            <Icon name="lucide:activity" class="mr-2 size-4" />
+            Activity
+            <Badge v-if="activity.length" variant="secondary" class="ml-2">
+              {{ activity.length }}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="bookings">
+            <Icon name="lucide:history" class="mr-2 size-4" />
             Booking History
-          </CardTitle>
-        </CardHeader>
-        <CardContent class="px-6 pb-6">
-          <GuestReservationsTable :reservations="stays" />
-        </CardContent>
-      </Card>
+            <Badge v-if="stays.length" variant="secondary" class="ml-2">
+              {{ stays.length }}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="payments">
+            <Icon name="lucide:link" class="mr-2 size-4" />
+            Payment Requests
+            <Badge v-if="guestPaymentRequests.length" variant="secondary" class="ml-2">
+              {{ guestPaymentRequests.length }}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="upsells">
+            <Icon name="lucide:tag" class="mr-2 size-4" />
+            Upsells
+            <Badge v-if="linkedUpsellOrders.length" variant="secondary" class="ml-2">
+              {{ linkedUpsellOrders.length }}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="activity">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestActivityTimeline :events="activity" bare />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="bookings">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestReservationsTable :reservations="stays" />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestPaymentRequests :requests="guestPaymentRequests" />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="upsells">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestUpsells :order-ids="upsells" />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <!-- Related links -->
       <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
@@ -437,15 +497,6 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           Guest guide
         </Button>
       </div>
-
-      <!-- Activity -->
-      <GuestActivityTimeline :events="activity" />
-
-      <!-- Payment requests -->
-      <GuestPaymentRequests :requests="guestPaymentRequests" />
-
-      <!-- Upsells -->
-      <GuestUpsells :order-ids="upsells" />
 
       <!-- Notes -->
       <GuestNotes :notes="guest.notes" @save="saveNotes" />
