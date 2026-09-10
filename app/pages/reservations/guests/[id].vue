@@ -1,15 +1,19 @@
 <script setup lang="ts">
+import type { PaymentRequest } from '~/components/payment-request/data/payment-requests'
 import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { listings } from '~/components/listings/data/listings'
+import PaymentRequestCancelDialog from '~/components/payment-request/PaymentRequestCancelDialog.vue'
 import PaymentRequestCreateDialog from '~/components/payment-request/PaymentRequestCreateDialog.vue'
+import PaymentRequestDetailDialog from '~/components/payment-request/PaymentRequestDetailDialog.vue'
+import PaymentRequestShareDialog from '~/components/payment-request/PaymentRequestShareDialog.vue'
+import PaymentRequestTable from '~/components/payment-request/PaymentRequestTable.vue'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import GuestNotes from '~/components/reservations/GuestNotes.vue'
-import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
@@ -29,7 +33,7 @@ const {
   getReservationsForGuest,
   updateGuestNotes,
 } = useReservationsModule()
-const { requests } = usePaymentRequests()
+const { requests, cancelRequest, duplicateRequest } = usePaymentRequests()
 const { orders: upsellOrders } = useUpsellOrders()
 const { conversations } = useInbox()
 const { links } = useGuestGuideLinks()
@@ -114,11 +118,50 @@ const newReservationOpen = ref(false)
 const editReservationOpen = ref(false)
 const newPaymentRequestOpen = ref(false)
 
-// The created request lands in the shared payment-request store, and
-// guestPaymentRequests matches on this guest's email, so a request raised here
-// shows up in the tab without this page tracking it separately.
-function handlePaymentRequestCreated() {
-  toast.success('Payment request created')
+// A created request lands in the shared payment-request store, and
+// guestPaymentRequests matches on this guest's email, so it shows up in the tab
+// without this page tracking it separately. The row actions mirror
+// pages/payment-requests/index.vue so a row behaves the same on either surface.
+const detailRequest = ref<PaymentRequest | null>(null)
+const shareRequest = ref<PaymentRequest | null>(null)
+const cancelRequestId = ref<string | null>(null)
+
+const cancelDialogOpen = computed({
+  get: () => cancelRequestId.value !== null,
+  set: (val: boolean) => {
+    if (!val)
+      cancelRequestId.value = null
+  },
+})
+
+function handlePaymentRequestCreated(request: PaymentRequest) {
+  // Straight to the share dialog with the link and QR, as on the main page:
+  // a request nobody can send is only half raised.
+  shareRequest.value = request
+}
+
+function openPaymentRequest(request: PaymentRequest) {
+  detailRequest.value = request
+}
+
+function copyPaymentLink(link: string) {
+  navigator.clipboard.writeText(link)
+  toast.success('Link copied to clipboard')
+}
+
+function askCancelPaymentRequest(id: string) {
+  cancelRequestId.value = id
+}
+
+function confirmCancelPaymentRequest(payload: { id: string, reason: string }) {
+  cancelRequest(payload.id, payload.reason)
+  toast.success('Payment link cancelled')
+  detailRequest.value = null
+}
+
+function duplicatePaymentRequest(id: string) {
+  duplicateRequest(id)
+  toast.success('Request duplicated')
 }
 
 // Party summary from occupants, e.g. "2 Adults · 1 Child · 1 Infant"
@@ -479,7 +522,13 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   New payment request
                 </Button>
               </div>
-              <GuestPaymentRequests :requests="guestPaymentRequests" />
+              <PaymentRequestTable
+                :requests="guestPaymentRequests"
+                @view="openPaymentRequest"
+                @copy="copyPaymentLink"
+                @cancel="askCancelPaymentRequest"
+                @duplicate="duplicatePaymentRequest"
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -541,6 +590,24 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       v-model:open="newPaymentRequestOpen"
       :initial-guest="{ name: guest.name, email: guest.email, phone: guest.phone }"
       @created="handlePaymentRequestCreated"
+    />
+
+    <PaymentRequestDetailDialog
+      :request="detailRequest"
+      @update:open="detailRequest = null"
+      @copy="copyPaymentLink"
+      @cancel="askCancelPaymentRequest"
+    />
+
+    <PaymentRequestShareDialog
+      :request="shareRequest"
+      @close="shareRequest = null"
+    />
+
+    <PaymentRequestCancelDialog
+      v-model:open="cancelDialogOpen"
+      :request-id="cancelRequestId"
+      @confirm="confirmCancelPaymentRequest"
     />
 
     <!-- The picked stay's price breakdown and folio -->

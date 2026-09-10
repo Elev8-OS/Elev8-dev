@@ -3,12 +3,14 @@
 // owns the Card and the heading. A panel that brings its own Card back would
 // nest a card inside a card and repeat the tab label, so that is what these
 // tests pin.
+//
+// The Payment Requests tab has no panel component of its own: it renders the
+// shared PaymentRequestTable, the same one the payment-requests page uses.
 
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { initialReservations } from '~/components/reservations/data/reservations'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
-import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import { Badge } from '~/components/ui/badge'
@@ -16,28 +18,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { mockUpsellOrders } from '~/components/upsells/data/upsell-orders'
 
 const components = { Badge, Card, CardContent, CardHeader, CardTitle, Icon: { template: '<i />' } }
-
-function paymentRequest(over: Record<string, unknown> = {}) {
-  return {
-    id: 'pr-test-1',
-    guestName: 'Emily Chen',
-    guestEmail: 'emily.chen@email.com',
-    listingId: 'lst-2',
-    title: 'Balance for August stay',
-    amount: 200,
-    currency: 'USD',
-    feeMode: 'card',
-    feeAmount: 6,
-    totalAmount: 206,
-    status: 'pending',
-    payoutAccountId: 'pa-1',
-    paymentLink: 'https://pay.example.com/pr-test-1',
-    expiresAt: '2026-09-30T00:00:00Z',
-    createdAt: '2026-09-01T10:00:00Z',
-    createdBy: 'Komang Juliantara',
-    ...over,
-  }
-}
 
 const activityEvent = {
   id: 'act-test-1',
@@ -112,37 +92,6 @@ describe('guestActivityTimeline in a tab panel', () => {
 
     expect(wrapper.findComponent(Card).exists()).toBe(false)
     expect(wrapper.text()).toContain('Reservation Confirmed')
-  })
-})
-
-describe('guestPaymentRequests as a tab panel', () => {
-  it('renders its rows without wrapping them in a Card', () => {
-    const wrapper = mount(GuestPaymentRequests, {
-      props: { requests: [paymentRequest()] },
-      global: { components },
-    })
-
-    expect(wrapper.findComponent(Card).exists()).toBe(false)
-    expect(wrapper.text()).toContain('Balance for August stay')
-    expect(wrapper.text()).toContain('206 USD')
-  })
-
-  it('does not repeat the tab label as its own heading', () => {
-    const wrapper = mount(GuestPaymentRequests, {
-      props: { requests: [paymentRequest()] },
-      global: { components },
-    })
-
-    expect(wrapper.findComponent(CardTitle).exists()).toBe(false)
-  })
-
-  it('keeps its empty state', () => {
-    const wrapper = mount(GuestPaymentRequests, {
-      props: { requests: [] },
-      global: { components },
-    })
-
-    expect(wrapper.text()).toContain('No payment requests.')
   })
 })
 
