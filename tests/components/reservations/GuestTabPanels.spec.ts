@@ -6,8 +6,10 @@
 
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { initialReservations } from '~/components/reservations/data/reservations'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
+import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import { Badge } from '~/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
@@ -46,6 +48,48 @@ const activityEvent = {
   timestamp: '2026-09-01T10:00:00Z',
   colorDot: 'green' as const,
 }
+
+describe('booking History rows reach a stay', () => {
+  // A folio belongs to one stay and a repeat guest has several, so the way to
+  // the posting surface has to name which stay it is. The row opens that stay's
+  // detail sheet, where its price breakdown and Charges & extras live.
+  const stays = [initialReservations.find(r => r.id === 'res-1')!, initialReservations.find(r => r.id === 'res-3')!]
+
+  function mountTable() {
+    return mount(GuestReservationsTable, {
+      props: { reservations: stays },
+      global: { components, stubs: { NuxtLink: { template: '<a><slot /></a>' } } },
+    })
+  }
+
+  it('emits the stay that was clicked, not merely that a click happened', async () => {
+    const wrapper = mountTable()
+
+    await wrapper.findAll('tbody tr')[1]!.trigger('click')
+
+    const emitted = wrapper.emitted('openDetail')
+    expect(emitted).toHaveLength(1)
+    expect((emitted![0]![0] as { id: string }).id).toBe('res-3')
+  })
+
+  it('leaves the listing link alone, so it navigates without opening the sheet', async () => {
+    const wrapper = mountTable()
+
+    await wrapper.findAll('tbody tr')[0]!.find('td').trigger('click')
+
+    expect(wrapper.emitted('openDetail')).toBeUndefined()
+  })
+
+  it('says nothing when there are no stays to open', () => {
+    const wrapper = mount(GuestReservationsTable, {
+      props: { reservations: [] },
+      global: { components, stubs: { NuxtLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('No reservations yet.')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+  })
+})
 
 describe('guestActivityTimeline in a tab panel', () => {
   // Doubles as the positive control for the no-Card assertions below: it proves

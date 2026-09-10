@@ -4,6 +4,13 @@ import ReservationStatusBadge from '~/components/reservations/ReservationStatusB
 
 defineProps<{ reservations: ReservationEntry[] }>()
 
+// A row opens that stay's detail sheet, which is where its price breakdown and
+// its folio live. Scoping matters here: a folio belongs to one stay, and a
+// repeat guest has several, so the posting surface has to name which one.
+const emit = defineEmits<{
+  openDetail: [reservation: ReservationEntry]
+}>()
+
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 function fmtDate(iso: string): string {
@@ -41,15 +48,17 @@ function fmtCurrency(amount: number, currency: string): string {
           <th class="text-left font-medium px-4 py-3">
             Status
           </th>
+          <th class="w-8 px-2 py-3" />
         </tr>
       </thead>
       <tbody>
         <tr
           v-for="r in reservations"
           :key="r.id"
-          class="border-t hover:bg-muted/30 transition-colors"
+          class="border-t hover:bg-muted/30 transition-colors cursor-pointer"
+          @click="emit('openDetail', r)"
         >
-          <td class="px-4 py-3">
+          <td class="px-4 py-3" @click.stop>
             <NuxtLink :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
               {{ r.listingName }}
             </NuxtLink>
@@ -72,9 +81,12 @@ function fmtCurrency(amount: number, currency: string): string {
           <td class="px-4 py-3">
             <ReservationStatusBadge :status="r.status" />
           </td>
+          <td class="w-8 px-2 py-3 text-muted-foreground">
+            <Icon name="lucide:chevron-right" class="size-4" />
+          </td>
         </tr>
         <tr v-if="reservations.length === 0">
-          <td colspan="7" class="px-4 py-12 text-center text-sm text-muted-foreground">
+          <td colspan="8" class="px-4 py-12 text-center text-sm text-muted-foreground">
             <div class="flex flex-col items-center gap-2">
               <Icon name="lucide:calendar-x" class="size-8 opacity-50" />
               No reservations yet.

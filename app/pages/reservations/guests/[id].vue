@@ -10,6 +10,7 @@ import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
+import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 import { useInbox } from '~/composables/useInbox'
@@ -63,6 +64,18 @@ const guestPaymentRequests = computed(() => {
   const email = guest.value.email.toLowerCase()
   return requests.value.filter(r => r.guestEmail.toLowerCase() === email || stays.value.some(s => s.paymentRequestId === r.id))
 })
+
+// Picking a stay from Booking History opens its detail sheet, which is where
+// that stay's price breakdown and its folio (Charges & extras) live. The sheet
+// re-resolves the reservation from live state, so a posting made in it shows up
+// here without this page having to refresh anything.
+const detailStay = ref<ReservationEntry | null>(null)
+const detailOpen = ref(false)
+
+function openStayDetail(reservation: ReservationEntry) {
+  detailStay.value = reservation
+  detailOpen.value = true
+}
 
 // Upsells — merged from stays
 const upsells = computed(() => stays.value.flatMap(r => r.upsellIds ?? []))
@@ -449,7 +462,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         <TabsContent value="bookings">
           <Card>
             <CardContent class="px-6 py-4">
-              <GuestReservationsTable :reservations="stays" />
+              <GuestReservationsTable :reservations="stays" @open-detail="openStayDetail" />
             </CardContent>
           </Card>
         </TabsContent>
@@ -512,6 +525,14 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       :reservation="primaryStay"
       :open="editReservationOpen"
       @update:open="editReservationOpen = $event"
+    />
+
+    <!-- The picked stay's price breakdown and folio -->
+    <ReservationDetailSheet
+      :reservation="detailStay"
+      :open="detailOpen"
+      @update:open="detailOpen = $event"
+      @open-guest="detailOpen = false"
     />
 
     <template #fallback>
