@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
+import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { listings } from '~/components/listings/data/listings'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
@@ -215,11 +216,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           </CardHeader>
           <CardContent class="space-y-4">
             <div class="flex items-center gap-3">
-              <Avatar class="size-12">
-                <AvatarFallback class="bg-primary/10 text-primary">
-                  {{ guest.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
-                </AvatarFallback>
-              </Avatar>
+              <BasePersonAvatar :name="guest.name" class="size-12" text-class="text-sm" />
               <div class="min-w-0">
                 <p class="font-semibold truncate">
                   {{ guest.name }}
@@ -328,15 +325,13 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   <!-- Party breakdown -->
                   <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
                     <div class="flex -space-x-2">
-                      <Avatar
+                      <BasePersonAvatar
                         v-for="g in primaryStay.guests.slice(0, 4)"
                         :key="g.id"
+                        :name="g.name"
                         class="size-8 border-2 border-background"
-                      >
-                        <AvatarFallback class="bg-primary/10 text-primary text-[10px]">
-                          {{ g.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
-                        </AvatarFallback>
-                      </Avatar>
+                        text-class="text-[10px]"
+                      />
                       <span
                         v-if="primaryStay.guests.length > 4"
                         class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"

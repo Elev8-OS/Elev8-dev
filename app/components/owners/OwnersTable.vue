@@ -8,8 +8,8 @@ import type { CommissionRule } from '~/components/owners/data/commission-rules'
 import type { Owner, OwnerStatus } from '~/components/owners/data/owners'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
+import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { listings } from '~/components/listings/data/listings'
-import { Avatar, AvatarFallback } from '~/components/ui/avatar'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
@@ -26,27 +26,6 @@ const { statements } = useOwnerStatements()
 const { findPermission } = useOwnerPermissions()
 
 const listingById = computed(() => new Map(listings.value.map(l => [l.id, l])))
-
-// Deterministic per-name avatar color — each owner gets a stable color from
-// their name so avatars stay recognisable without manual assignment.
-const AVATAR_COLORS = [
-  'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-  'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  'bg-violet-500/10 text-violet-700 dark:text-violet-300',
-  'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  'bg-rose-500/10 text-rose-700 dark:text-rose-300',
-  'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
-  'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
-  'bg-lime-500/10 text-lime-700 dark:text-lime-300',
-]
-
-function avatarColorFor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length]!
-}
 
 // Per-owner mapping rows + commission types — used to populate the
 // "Properties" and "Commission" columns.
@@ -168,11 +147,7 @@ function handleReactivate(owner: Owner) {
           >
             <td class="px-4 py-3">
               <div class="flex items-center gap-3">
-                <Avatar class="size-9">
-                  <AvatarFallback :class="avatarColorFor(row.owner.name)" class="text-xs">
-                    {{ row.owner.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase() }}
-                  </AvatarFallback>
-                </Avatar>
+                <BasePersonAvatar :name="row.owner.name" class="size-9" />
                 <div class="min-w-0">
                   <div class="truncate font-medium">
                     {{ row.owner.name }}
