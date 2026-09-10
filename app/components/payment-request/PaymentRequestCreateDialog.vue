@@ -8,6 +8,15 @@ import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import FeeCalculator from './FeeCalculator.vue'
 
+const props = defineProps<{
+  /**
+   * Prefills the guest when the caller already knows who is being billed, as
+   * the guest detail page does. Omit it and the dialog opens on its own guest
+   * search exactly as before.
+   */
+  initialGuest?: Pick<GuestOption, 'name' | 'email' | 'phone'>
+}>()
+
 const emit = defineEmits<{
   created: [request: PaymentRequest]
 }>()
@@ -224,9 +233,31 @@ function handleCreate() {
   reset()
 }
 
+function applyGuestPrefill() {
+  const g = props.initialGuest
+  if (!g?.name)
+    return
+  guestName.value = g.name
+  guestEmail.value = g.email ?? ''
+  guestPhone.value = g.phone ?? ''
+  selectedGuest.value = {
+    id: `guest-prefill-${g.name}`,
+    name: g.name,
+    email: g.email ?? '',
+    phone: g.phone,
+    source: 'manual',
+  }
+}
+
 watch(open, (val) => {
-  if (!val)
+  if (val) {
+    // Reopening must not inherit the last attempt's fields, so reset first and
+    // then re-apply the prefill.
     reset()
+    applyGuestPrefill()
+    return
+  }
+  reset()
 })
 </script>
 
@@ -365,33 +396,33 @@ watch(open, (val) => {
                           </Badge>
                         </Button>
                       </PopoverTrigger>
-                    <PopoverContent class="w-56 p-0" align="end">
-                      <div class="space-y-2 p-2">
-                        <Input v-model="listingTagSearch" placeholder="Search tags..." class="h-8 text-xs" />
-                        <div class="max-h-40 space-y-1 overflow-auto">
-                          <button
-                            v-for="tag in allListingTags.filter(t => t.toLowerCase().includes(listingTagSearch.trim().toLowerCase()))"
-                            :key="tag"
-                            type="button"
-                            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            @click="toggleListingTag(tag)"
-                          >
-                            <Checkbox :model-value="selectedListingTags.includes(tag)" class="size-3.5" />
-                            <span>{{ tag }}</span>
-                          </button>
-                          <p v-if="!allListingTags.filter(t => t.toLowerCase().includes(listingTagSearch.trim().toLowerCase())).length" class="px-2 py-3 text-sm text-muted-foreground">
-                            No tags found.
-                          </p>
+                      <PopoverContent class="w-56 p-0" align="end">
+                        <div class="space-y-2 p-2">
+                          <Input v-model="listingTagSearch" placeholder="Search tags..." class="h-8 text-xs" />
+                          <div class="max-h-40 space-y-1 overflow-auto">
+                            <button
+                              v-for="tag in allListingTags.filter(t => t.toLowerCase().includes(listingTagSearch.trim().toLowerCase()))"
+                              :key="tag"
+                              type="button"
+                              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                              @click="toggleListingTag(tag)"
+                            >
+                              <Checkbox :model-value="selectedListingTags.includes(tag)" class="size-3.5" />
+                              <span>{{ tag }}</span>
+                            </button>
+                            <p v-if="!allListingTags.filter(t => t.toLowerCase().includes(listingTagSearch.trim().toLowerCase())).length" class="px-2 py-3 text-sm text-muted-foreground">
+                              No tags found.
+                            </p>
+                          </div>
+                          <Button v-if="selectedListingTags.length" variant="ghost" size="sm" class="h-7 w-full text-xs text-muted-foreground" @click="selectedListingTags = []">
+                            Clear all
+                          </Button>
                         </div>
-                        <Button v-if="selectedListingTags.length" variant="ghost" size="sm" class="h-7 w-full text-xs text-muted-foreground" @click="selectedListingTags = []">
-                          Clear all
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
-              </div>
-              <CommandList>
+                <CommandList>
                   <CommandEmpty>
                     <div v-if="listingSearch.trim() || selectedListingTags.length" class="py-3 text-center">
                       <p class="text-sm text-muted-foreground">

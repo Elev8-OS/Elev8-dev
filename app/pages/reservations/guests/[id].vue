@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
+import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { listings } from '~/components/listings/data/listings'
+import PaymentRequestCreateDialog from '~/components/payment-request/PaymentRequestCreateDialog.vue'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
@@ -110,6 +112,14 @@ function saveNotes(notes: string) {
 
 const newReservationOpen = ref(false)
 const editReservationOpen = ref(false)
+const newPaymentRequestOpen = ref(false)
+
+// The created request lands in the shared payment-request store, and
+// guestPaymentRequests matches on this guest's email, so a request raised here
+// shows up in the tab without this page tracking it separately.
+function handlePaymentRequestCreated() {
+  toast.success('Payment request created')
+}
 
 // Party summary from occupants, e.g. "2 Adults · 1 Child · 1 Infant"
 const partySummary = computed(() => {
@@ -463,6 +473,12 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         <TabsContent value="payments">
           <Card>
             <CardContent class="px-6 py-4">
+              <div class="mb-1 flex items-center justify-end">
+                <Button variant="outline" size="sm" class="gap-1.5" @click="newPaymentRequestOpen = true">
+                  <Icon name="lucide:plus" class="size-3.5" />
+                  New payment request
+                </Button>
+              </div>
               <GuestPaymentRequests :requests="guestPaymentRequests" />
             </CardContent>
           </Card>
@@ -518,6 +534,13 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       :reservation="primaryStay"
       :open="editReservationOpen"
       @update:open="editReservationOpen = $event"
+    />
+
+    <PaymentRequestCreateDialog
+      v-if="guest"
+      v-model:open="newPaymentRequestOpen"
+      :initial-guest="{ name: guest.name, email: guest.email, phone: guest.phone }"
+      @created="handlePaymentRequestCreated"
     />
 
     <!-- The picked stay's price breakdown and folio -->
