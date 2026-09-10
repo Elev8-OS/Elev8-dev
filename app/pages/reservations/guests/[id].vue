@@ -43,7 +43,7 @@ const totalSpent = computed(() => stays.value
   .reduce((sum, r) => sum + r.totalPrice, 0))
 const spentCurrency = computed(() => stays.value.find(r => r.status !== 'cancelled')?.currency ?? 'USD')
 
-// Primary (most relevant) stay for the Booking Info / Room Info cards
+// Primary (most relevant) stay, shown in the Booking Info card
 const primaryStay = computed<ReservationEntry | null>(() => {
   if (stays.value.length === 0)
     return null
@@ -186,7 +186,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         </Button>
       </div>
 
-      <!-- Top: 3-column cards (Profile | Booking Info | Room Info) -->
+      <!-- Top row: Profile, then Booking Info with the booked room inside it -->
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <!-- Profile card -->
         <Card>
@@ -288,8 +288,8 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           </CardContent>
         </Card>
 
-        <!-- Booking Info card -->
-        <Card>
+        <!-- Booking Info card, with the booked room as a column inside it -->
+        <Card class="md:col-span-2">
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-base">
               Booking Info
@@ -304,115 +304,113 @@ function reservationStatusMeta(status?: ReservationStatus): string {
               </Button>
             </div>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent>
             <template v-if="primaryStay">
-              <div class="space-y-1.5 text-sm">
-                <p class="flex items-center gap-2 text-muted-foreground">
-                  <Icon name="lucide:hash" class="size-3.5" />
-                  Booking ID:
-                  <span class="font-mono font-medium text-foreground">{{ primaryStay.id }}</span>
-                </p>
-                <p class="flex items-center gap-2 text-muted-foreground">
-                  <Icon name="lucide:calendar" class="size-3.5" />
-                  {{ fmtDate(primaryStay.checkIn) }} → {{ fmtDate(primaryStay.checkOut) }}
-                </p>
-                <p class="flex items-center gap-2 text-muted-foreground">
-                  <Icon name="lucide:moon" class="size-3.5" />
-                  {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
-                </p>
-              </div>
+              <div class="grid gap-6 sm:grid-cols-2">
+                <!-- Booking detail -->
+                <div class="space-y-4">
+                  <div class="space-y-1.5 text-sm">
+                    <p class="flex items-center gap-2 text-muted-foreground">
+                      <Icon name="lucide:hash" class="size-3.5" />
+                      Booking ID:
+                      <span class="font-mono font-medium text-foreground">{{ primaryStay.id }}</span>
+                    </p>
+                    <p class="flex items-center gap-2 text-muted-foreground">
+                      <Icon name="lucide:calendar" class="size-3.5" />
+                      {{ fmtDate(primaryStay.checkIn) }} → {{ fmtDate(primaryStay.checkOut) }}
+                    </p>
+                    <p class="flex items-center gap-2 text-muted-foreground">
+                      <Icon name="lucide:moon" class="size-3.5" />
+                      {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
+                    </p>
+                  </div>
 
-              <!-- Party breakdown -->
-              <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
-                <div class="flex -space-x-2">
-                  <Avatar
-                    v-for="g in primaryStay.guests.slice(0, 4)"
-                    :key="g.id"
-                    class="size-8 border-2 border-background"
-                  >
-                    <AvatarFallback class="bg-primary/10 text-primary text-[10px]">
-                      {{ g.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span
-                    v-if="primaryStay.guests.length > 4"
-                    class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
-                  >
-                    +{{ primaryStay.guests.length - 4 }}
-                  </span>
+                  <!-- Party breakdown -->
+                  <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
+                    <div class="flex -space-x-2">
+                      <Avatar
+                        v-for="g in primaryStay.guests.slice(0, 4)"
+                        :key="g.id"
+                        class="size-8 border-2 border-background"
+                      >
+                        <AvatarFallback class="bg-primary/10 text-primary text-[10px]">
+                          {{ g.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span
+                        v-if="primaryStay.guests.length > 4"
+                        class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
+                      >
+                        +{{ primaryStay.guests.length - 4 }}
+                      </span>
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      <p class="font-medium text-foreground">
+                        {{ partySummary }}
+                      </p>
+                      <p>
+                        {{ primaryStay.guests.map(g => g.name).join(', ') }}
+                      </p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p class="text-xs text-muted-foreground">
+                        Channel
+                      </p>
+                      <p class="font-medium">
+                        {{ primaryStay.channel }}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-muted-foreground">
+                        Total
+                      </p>
+                      <p class="font-medium">
+                        {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
+                      </p>
+                    </div>
+                  </div>
+                  <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                    {{ primaryStay.guestNotes }}
+                  </div>
                 </div>
-                <div class="text-xs text-muted-foreground">
-                  <p class="font-medium text-foreground">
-                    {{ partySummary }}
-                  </p>
-                  <p>
-                    {{ primaryStay.guests.map(g => g.name).join(', ') }}
-                  </p>
+
+                <!-- The booked room, formerly its own card -->
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Room
+                    </p>
+                    <Button variant="link" size="sm" class="h-auto p-0 text-xs" as-child>
+                      <NuxtLink :to="`/listings/${primaryStay.listingId}`">
+                        View detail
+                      </NuxtLink>
+                    </Button>
+                  </div>
+                  <div class="flex h-28 w-full items-center justify-center overflow-hidden rounded-md border bg-muted/40">
+                    <img
+                      v-if="listingPhoto(primaryStay.listingId)"
+                      :src="listingPhoto(primaryStay.listingId)"
+                      :alt="primaryStay.listingName"
+                      class="h-full w-full object-cover"
+                    >
+                    <Icon v-else name="lucide:building-2" class="size-8 text-muted-foreground/50" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-semibold leading-tight">
+                      {{ primaryStay.listingName }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ primaryStay.guestCount }} guests
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <Separator />
-              <div class="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p class="text-xs text-muted-foreground">
-                    Channel
-                  </p>
-                  <p class="font-medium">
-                    {{ primaryStay.channel }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs text-muted-foreground">
-                    Total
-                  </p>
-                  <p class="font-medium">
-                    {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
-                  </p>
-                </div>
-              </div>
-              <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
-                {{ primaryStay.guestNotes }}
               </div>
             </template>
             <p v-else class="text-sm text-muted-foreground italic">
               No active booking for this guest.
-            </p>
-          </CardContent>
-        </Card>
-
-        <!-- Room Info card -->
-        <Card>
-          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle class="text-base">
-              Room Info
-            </CardTitle>
-            <Button v-if="primaryStay" variant="link" size="sm" class="h-8 p-0 text-xs" as-child>
-              <NuxtLink :to="`/listings/${primaryStay.listingId}`">
-                View detail
-              </NuxtLink>
-            </Button>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            <template v-if="primaryStay">
-              <div class="flex h-28 w-full items-center justify-center overflow-hidden border bg-muted/40">
-                <img
-                  v-if="listingPhoto(primaryStay.listingId)"
-                  :src="listingPhoto(primaryStay.listingId)"
-                  :alt="primaryStay.listingName"
-                  class="h-full w-full object-cover"
-                >
-                <Icon v-else name="lucide:building-2" class="size-8 text-muted-foreground/50" />
-              </div>
-              <div>
-                <p class="text-sm font-semibold leading-tight">
-                  {{ primaryStay.listingName }}
-                </p>
-                <p class="text-xs text-muted-foreground">
-                  {{ primaryStay.guestCount }} guests
-                </p>
-              </div>
-            </template>
-            <p v-else class="text-sm text-muted-foreground italic">
-              No room booked.
             </p>
           </CardContent>
         </Card>
