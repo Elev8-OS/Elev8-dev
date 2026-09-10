@@ -155,6 +155,11 @@ export interface GuestProfile {
   phone: string
   language: string
   notes: string
+  /**
+   * Seed decoration only. It never moved when a booking was added, so the UI
+   * reads `useReservationsModule().getPreviousStayCount(id)` instead, which
+   * counts the guest's actual completed stays.
+   */
   previousStays: number
   tags: string[]
   createdAt: string
@@ -214,10 +219,25 @@ export interface ReservationDraft {
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number
   charges?: ReservationCharge[]
+  /**
+   * The guest this booking belongs to, when staff picked an existing one.
+   * Left out for a guest nobody has stayed before, and `createReservation` then
+   * creates the profile. It never guesses: matching an unlinked booking to an
+   * existing person is a separate, human-confirmed step, because an automatic
+   * merge would show one guest another guest's history.
+   */
+  guestId?: string
 }
 
 export function generateReservationId(): string {
   return `res-${Date.now()}`
+}
+
+let guestSeq = 0
+
+export function generateGuestId(): string {
+  guestSeq += 1
+  return `guest-${Date.now().toString(36)}-${guestSeq}`
 }
 
 /** Curated country list for the reservation contact-details form. */

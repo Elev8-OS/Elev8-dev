@@ -1,5 +1,5 @@
 import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
-import { generateReservationId, initialGuests, initialReservations } from '~/components/reservations/data/reservations'
+import { generateGuestId, generateReservationId, initialGuests, initialReservations } from '~/components/reservations/data/reservations'
 
 export interface ReservationFilters {
   search: string
@@ -138,20 +138,73 @@ export function useReservationsModule() {
       .sort((a, b) => (a.checkIn < b.checkIn ? 1 : -1))
   }
 
+  /** A profile for someone who has not stayed before. */
+  function createGuestFromDraft(draft: ReservationDraft): GuestProfile {
+    const guest: GuestProfile = {
+      id: generateGuestId(),
+      name: draft.guestName.trim(),
+      email: draft.guestEmail.trim(),
+      phone: draft.guestPhone.trim(),
+      language: draft.guestLanguage.trim() || 'English',
+      notes: draft.guestNotes?.trim() ?? '',
+      previousStays: 0,
+      tags: [],
+      createdAt: today,
+    }
+    guests.value = [guest, ...guests.value]
+    return guest
+  }
+
+  /**
+   * Which person this booking belongs to. An explicit pick wins, because staff
+   * said who it is. Otherwise this is a new guest and gets a profile.
+   *
+   * Deliberately no matching on email or phone: a wrong merge shows one guest
+   * another's stay history and spend, while a missed match only costs a
+   * "welcome back", so linking an unlinked booking stays a human decision.
+   */
+  function resolveGuestId(draft: ReservationDraft & { guestId?: string }): string {
+    const picked = draft.guestId?.trim()
+    if (picked && guests.value.some(g => g.id === picked))
+      return picked
+    return createGuestFromDraft(draft).id
+  }
+
   function createReservation(draft: ReservationDraft & { status?: ReservationStatus }): { success: boolean, id?: string } {
     if (!draft.guestName.trim() || !draft.listingId.trim() || !draft.checkIn.trim() || !draft.checkOut.trim())
       return { success: false }
 
+    const status = draft.status ?? 'verified'
+    // An owner stay or a manual block holds the calendar; it is not a guest
+    // booking, so it must not manufacture a guest profile. `useOwnerStayApprovals`
+    // creates these with a name but no email or phone, and a repeat owner stay
+    // would otherwise add a second empty profile every time.
+    const isCalendarBlock = status === 'blocked' || status === 'owner_request'
+
     const id = generateReservationId()
     const entry: ReservationEntry = {
-      id,
-      guestId: '',
       ...draft,
-      status: draft.status ?? 'verified',
+      id,
+      guestId: isCalendarBlock ? (draft.guestId?.trim() ?? '') : resolveGuestId(draft),
+      status,
       activity: [],
     }
     reservations.value = [entry, ...reservations.value]
     return { success: true, id }
+  }
+
+  /**
+   * Completed stays for this guest. Derived rather than stored, so it moves the
+   * moment a booking is added and cannot go stale the way GuestProfile
+   * .previousStays did.
+   */
+  function getPreviousStayCount(guestId: string): number {
+    return reservations.value.filter(r =>
+      r.guestId === guestId
+      && r.status !== 'cancelled'
+      && r.status !== 'blocked'
+      && r.checkOut < today,
+    ).length
   }
 
   function updateGuestNotes(id: string, notes: string) {
@@ -198,6 +251,7 @@ export function useReservationsModule() {
     getGuestById,
     getReservationsForGuest,
     createReservation,
+    getPreviousStayCount,
     updateGuestNotes,
     updateReservationStatus,
     updateReservation,

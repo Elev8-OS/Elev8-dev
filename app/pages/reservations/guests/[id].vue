@@ -31,6 +31,7 @@ const router = useRouter()
 const {
   getGuestById,
   getReservationsForGuest,
+  getPreviousStayCount,
   updateGuestNotes,
 } = useReservationsModule()
 const { requests, cancelRequest, duplicateRequest } = usePaymentRequests()
@@ -310,7 +311,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   Previous stays
                 </p>
                 <p class="font-medium">
-                  {{ guest.previousStays }}
+                  {{ getPreviousStayCount(guest.id) }}
                 </p>
               </div>
               <div>

@@ -14,11 +14,13 @@ const emit = defineEmits<{
   'created': [reservation: ReservationEntry]
 }>()
 
-const { createReservation, updateReservation, reservations } = useReservationsModule()
+const { createReservation, updateReservation, reservations, guests } = useReservationsModule()
 const { createRequest } = usePaymentRequests()
 
 interface GuestSearchOption {
   id: string
+  /** The guest profile this option resolves to, empty when none exists yet. */
+  guestId: string
   name: string
   email: string
   phone: string
@@ -50,6 +52,7 @@ const guestOptions = computed<GuestSearchOption[]>(() => {
     seen.add(key)
     options.push({
       id: r.id,
+      guestId: r.guestId,
       name: r.guestName,
       email: r.guestEmail,
       phone: r.guestPhone,
@@ -66,6 +69,32 @@ const guestOptions = computed<GuestSearchOption[]>(() => {
       listingName: r.listingName,
     })
   }
+
+  // Some reservations predate guest linking, so recover the id from the profile
+  // of the same name where there is one.
+  for (const option of options) {
+    if (option.guestId)
+      continue
+    const profile = guests.value.find(g => g.name.toLowerCase() === option.name.toLowerCase())
+    if (profile)
+      option.guestId = profile.id
+  }
+
+  // A guest with a profile but no reservation yet is still someone staff can pick.
+  for (const g of guests.value) {
+    const key = g.name.toLowerCase()
+    if (!key || seen.has(key))
+      continue
+    seen.add(key)
+    options.push({
+      id: g.id,
+      guestId: g.id,
+      name: g.name,
+      email: g.email,
+      phone: g.phone,
+    })
+  }
+
   return options
 })
 
@@ -303,6 +332,9 @@ function handleSubmit() {
   const guestName = `${guestFirstName.value.trim()} ${guestLastName.value.trim()}`.trim()
   const guestPhone = phoneNumber.value.trim() ? `${phoneDialCode.value} ${phoneNumber.value.trim()}` : ''
   const result = createReservation({
+    // Carries the picked guest through, so a returning guest's new booking
+    // lands on their existing profile instead of creating a second one.
+    guestId: selectedGuest.value?.guestId || undefined,
     guestName,
     guestEmail: guestEmail.value.trim(),
     guestPhone,
@@ -642,8 +674,11 @@ watch(() => props.open, (open) => {
                       </Command>
                     </PopoverContent>
                   </Popover>
-                  <p v-if="selectedGuest" class="text-xs text-green-700">
-                    Guest details auto-filled.
+                  <p v-if="selectedGuest?.guestId" class="text-xs text-green-700">
+                    Details auto-filled. This booking will be added to {{ selectedGuest.name }}'s profile.
+                  </p>
+                  <p v-else-if="selectedGuest" class="text-xs text-amber-700">
+                    Details auto-filled, but this guest has no profile yet, so a new one will be created.
                   </p>
                   <p v-else class="text-xs text-muted-foreground">
                     Select a previous guest to auto-fill their contact details.
