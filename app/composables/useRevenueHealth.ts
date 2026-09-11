@@ -55,6 +55,8 @@ export function useRevenueHealth() {
   const notAssessable = useState<NotAssessableRoom[]>('revenue-health-not-assessable', () => [])
   const summary = useState<PortfolioSummary | null>('revenue-health-summary', () => null)
   const isLoading = useState<boolean>('revenue-health-loading', () => false)
+  /** False until the first `load()` settles, success or failure. */
+  const hasLoaded = useState<boolean>('revenue-health-has-loaded', () => false)
   const loadError = useState<string | null>('revenue-health-error', () => null)
   const applyStates = useState<Record<string, ApplyState>>('revenue-health-apply', () => ({}))
   const dismissed = useState<string[]>('revenue-health-dismissed', () => [])
@@ -103,6 +105,7 @@ export function useRevenueHealth() {
     }
     finally {
       isLoading.value = false
+      hasLoaded.value = true
     }
   }
 
@@ -310,6 +313,7 @@ export function useRevenueHealth() {
     load,
     recheck,
     isLoading,
+    hasLoaded,
     loadError,
     notAssessable,
     rejectFinding,

@@ -22,6 +22,7 @@ const {
   basis,
   expanded,
   filters,
+  hasLoaded,
   isLoading,
   load,
   notAssessable,
@@ -271,6 +272,7 @@ async function onRecheck() {
       :basis="basis"
       :expanded-id="expanded"
       :apply-state-for="applyStateFor"
+      :is-loading="isLoading || !hasLoaded"
       @toggle="toggleExpanded"
       @apply="applyFinding"
       @reject="payload => rejectFinding(payload.findingId, payload.reason)"

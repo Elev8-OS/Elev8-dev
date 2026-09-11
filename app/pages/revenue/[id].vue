@@ -24,6 +24,8 @@ const {
   applyFinding,
   revertFinding,
   dismissFinding,
+  isLoading,
+  hasLoaded,
   load,
 } = useRevenueHealth()
 
@@ -104,6 +106,13 @@ async function onDismiss() {
         </Card>
       </section>
     </template>
+
+    <Card v-else-if="isLoading || !hasLoaded" class="flex flex-col items-center gap-3 p-12 text-center">
+      <Icon name="lucide:loader-2" class="size-8 animate-spin text-muted-foreground" />
+      <p class="text-sm text-muted-foreground">
+        Loading…
+      </p>
+    </Card>
 
     <Card v-else class="flex flex-col items-center gap-3 p-12 text-center">
       <Icon name="lucide:search-x" class="size-8 text-muted-foreground" />
