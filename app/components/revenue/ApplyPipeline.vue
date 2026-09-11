@@ -8,7 +8,16 @@ import {
 } from '~/components/revenue/data/contract'
 import { Button } from '~/components/ui/button'
 
-const props = defineProps<{ state: ApplyState }>()
+const props = defineProps<{
+  state: ApplyState
+  /**
+   * The plain-language sentence for the current state, from the polled
+   * `ApplyStatus.message`. The backend owns this copy — when present it is
+   * rendered verbatim, falling back to the switch below only when it is
+   * absent (e.g. before the first poll lands).
+   */
+  message?: string | null
+}>()
 const emit = defineEmits<{ revert: [] }>()
 
 const STEP_LABELS: Record<typeof APPLY_PIPELINE[number], string> = {
@@ -36,26 +45,57 @@ function stepStatus(index: number) {
   return 'waiting'
 }
 
-const message = computed(() => {
-  switch (props.state) {
+/** Tone is driven by the state alone — it never depends on whose text is shown. */
+function toneFor(state: ApplyState): 'muted' | 'ok' | 'warning' | 'destructive' | null {
+  switch (state) {
     case 'snapshot':
-      return { tone: 'muted', text: 'Prior state captured for every field this change touches. That snapshot is what a revert restores and what the outcome is measured against.' }
     case 'saved':
-      return { tone: 'muted', text: 'Base price and minimum stay saved as a new policy version. Nothing is live yet.' }
     case 'written':
     case 'verified':
-      return { tone: 'muted', text: 'Your settings are in place and confirmed. The new nightly prices are being computed now.' }
     case 'recomputed':
-      return { tone: 'muted', text: 'New prices received. Pushing to the channels.' }
+      return 'muted'
     case 'live':
-      return { tone: 'ok', text: 'Live on three channels. Outcome measurement is scheduled — you can revert for seven days.' }
+      return 'ok'
     case 'recompute_unavailable':
-      return { tone: 'warning', text: 'Your settings are live; the new prices are not yet. The pricing engine could not recalculate on demand, so prices will update on the normal daily cycle. Any curve shown until then is Elev8\'s own estimate.' }
+      return 'warning'
     case 'push_failed':
-      return { tone: 'destructive', text: 'Guests are still seeing the old price on 14 dates. The channel manager rejected 14 of 60 room-dates. Retrying automatically and escalated to the team.' }
+      return 'destructive'
     default:
       return null
   }
+}
+
+/** Fallback prose, used only when the server has not sent a message yet. */
+function fallbackText(state: ApplyState): string | null {
+  switch (state) {
+    case 'snapshot':
+      return 'Prior state captured for every field this change touches. That snapshot is what a revert restores and what the outcome is measured against.'
+    case 'saved':
+      return 'Base price and minimum stay saved as a new policy version. Nothing is live yet.'
+    case 'written':
+    case 'verified':
+      return 'Your settings are in place and confirmed. The new nightly prices are being computed now.'
+    case 'recomputed':
+      return 'New prices received. Pushing to the channels.'
+    case 'live':
+      return 'Live on three channels. Outcome measurement is scheduled — you can revert for seven days.'
+    case 'recompute_unavailable':
+      return 'Your settings are live; the new prices are not yet. The pricing engine could not recalculate on demand, so prices will update on the normal daily cycle. Any curve shown until then is Elev8\'s own estimate.'
+    case 'push_failed':
+      return 'Guests are still seeing the old price on 14 dates. The channel manager rejected 14 of 60 room-dates. Retrying automatically and escalated to the team.'
+    default:
+      return null
+  }
+}
+
+const message = computed(() => {
+  const tone = toneFor(props.state)
+  if (tone === null)
+    return null
+  const text = props.message ?? fallbackText(props.state)
+  if (!text)
+    return null
+  return { tone, text }
 })
 </script>
 
