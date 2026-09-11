@@ -103,7 +103,13 @@ describe('mock source — apply', () => {
 
   it('throws for an unknown applyId rather than inventing a status', async () => {
     const source = createMockRevenueSource()
-    await expect(settle(source.getApplyStatus('apply-nope'))).rejects.toThrow(/unknown apply/i)
+    // Attach the rejection handler before the fake timers fire. settle() runs
+    // them before it returns the promise, so awaiting it here would leave the
+    // rejection unhandled for a tick and Vitest would report it.
+    const status = source.getApplyStatus('apply-nope')
+    const assertion = expect(status).rejects.toThrow(/unknown apply/i)
+    await vi.runAllTimersAsync()
+    await assertion
   })
 })
 

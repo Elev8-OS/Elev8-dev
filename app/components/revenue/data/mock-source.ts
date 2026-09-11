@@ -180,7 +180,7 @@ export function createMockRevenueSource(options: MockSourceOptions = {}): Revenu
       const record = applies.get(applyId)
       if (!record)
         throw new Error(`Unknown apply: ${applyId}`)
-      return { ...record }
+      return clone(record)
     },
 
     async revertApply(applyId: string): Promise<void> {
