@@ -1,7 +1,19 @@
-import type { RevenueDataSource } from '~/components/revenue/data/contract'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ApplyStatus, RevenueDataSource } from '~/components/revenue/data/contract'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { roomDiagnoses } from '~/components/revenue/data/diagnosis'
 import { useRevenueHealth } from '~/composables/useRevenueHealth'
 import { setRevenueSource } from '~/composables/useRevenueSource'
+
+/**
+ * A real diagnosis (borrowed from the fixtures, so every field is valid)
+ * re-pointed at room-a with its gate failing at `conversion`. Room B is left
+ * without a diagnosis, so the gate filter has something to tell them apart by.
+ */
+const roomADiagnosis = {
+  ...roomDiagnoses[0]!,
+  roomId: 'room-a',
+  gate: { ...roomDiagnoses[0]!.gate, firstFailing: 'conversion' as const },
+}
 
 /**
  * A source with two rooms and three findings, small enough to reason about.
@@ -64,7 +76,7 @@ function stubSource(): RevenueDataSource {
         degradedRoomCount: 0,
       },
     }),
-    getRoomDiagnosis: async () => null,
+    getRoomDiagnosis: async (roomId: string) => (roomId === 'room-a' ? roomADiagnosis : null),
     getFinding: async () => null,
     applyFinding: async () => ({ applyId: 'apply-1', state: 'snapshot' as const }),
     getApplyStatus: async () => ({
@@ -141,6 +153,15 @@ describe('useRevenueHealth — filters', () => {
     health.resetFilters()
     expect(health.visibleFindings.value).toHaveLength(3)
   })
+
+  it('narrows to rooms whose diagnosis names that failing gate', async () => {
+    const health = await loaded()
+    // Only room-a has a diagnosis (see roomADiagnosis), and it fails at
+    // 'conversion'. Room B has no diagnosis at all, so it must drop out.
+    health.filters.value.gate = 'conversion'
+    const ids = health.visibleFindings.value.map(finding => finding.id)
+    expect(ids).toEqual(['f-a1'])
+  })
 })
 
 describe('useRevenueHealth — stats and disclosure', () => {
@@ -196,5 +217,74 @@ describe('useRevenueHealth — recheck', () => {
     await health.recheck()
 
     expect(spy).toHaveBeenCalledOnce()
+  })
+})
+
+describe('useRevenueHealth — apply write path', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function statusAt(state: ApplyStatus['state'], message: string): ApplyStatus {
+    return {
+      applyId: 'apply-1',
+      findingId: 'f-a1',
+      state,
+      policyVersionId: state === 'snapshot' ? null : 'pv-1',
+      message,
+      revertableUntil: state === 'live' ? '2026-09-18T00:00:00.000Z' : null,
+    }
+  }
+
+  it('polls through to live, writing each state and its message as it goes', async () => {
+    const source = stubSource()
+    source.getApplyStatus = vi.fn()
+      .mockResolvedValueOnce(statusAt('saved', 'Saved as a new policy version.'))
+      .mockResolvedValueOnce(statusAt('written', 'Written and confirmed.'))
+      .mockResolvedValueOnce(statusAt('live', 'Live on three channels.'))
+    setRevenueSource(source)
+
+    const health = useRevenueHealth()
+    await health.load()
+
+    const applyPromise = health.applyFinding('f-a1')
+    await vi.runAllTimersAsync()
+    await applyPromise
+
+    expect(health.applyStateFor('f-a1')).toBe('live')
+    expect(health.applyMessageFor('f-a1')).toBe('Live on three channels.')
+    // 'live' is terminal, so the finding drops off the open list.
+    expect(health.visibleFindings.value.map(f => f.id)).not.toContain('f-a1')
+  })
+
+  it('ends on a failure state when the source scripts one', async () => {
+    const source = stubSource()
+    source.getApplyStatus = vi.fn()
+      .mockResolvedValueOnce(statusAt('written', 'Written and confirmed.'))
+      .mockResolvedValueOnce({
+        applyId: 'apply-1',
+        findingId: 'f-a1',
+        state: 'push_failed',
+        policyVersionId: 'pv-1',
+        message: 'The channel manager rejected 14 of 60 room-dates.',
+        revertableUntil: null,
+      })
+    setRevenueSource(source)
+
+    const health = useRevenueHealth()
+    await health.load()
+
+    const applyPromise = health.applyFinding('f-a1', 'push_failed')
+    await vi.runAllTimersAsync()
+    await applyPromise
+
+    expect(health.applyStateFor('f-a1')).toBe('push_failed')
+    expect(health.applyMessageFor('f-a1')).toBe('The channel manager rejected 14 of 60 room-dates.')
+    // A failure is terminal but not live, so the finding stays visible for retry.
+    expect(health.visibleFindings.value.map(f => f.id)).toContain('f-a1')
   })
 })
