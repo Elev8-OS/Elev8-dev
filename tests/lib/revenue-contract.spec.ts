@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   APPLY_PIPELINE,
   applyStepIndex,
+  emptyPortfolioQuery,
   failedStepIndex,
   isTerminalApplyState,
+  REVENUE_ENDPOINTS,
 } from '~/components/revenue/data/contract'
 
 describe('apply pipeline order', () => {
@@ -43,5 +45,30 @@ describe('apply pipeline order', () => {
     expect(isTerminalApplyState('stale')).toBe(true)
     expect(isTerminalApplyState('written')).toBe(false)
     expect(isTerminalApplyState('idle')).toBe(false)
+  })
+})
+
+describe('contract defaults', () => {
+  it('defaults a portfolio query to revenue basis with no filters applied', () => {
+    expect(emptyPortfolioQuery()).toEqual({
+      basis: 'revenue',
+      search: '',
+      domain: 'all',
+      minSeverity: 'all',
+      gate: 'all',
+    })
+  })
+
+  it('names one endpoint per port method, so the doc and the code cannot drift', () => {
+    expect(REVENUE_ENDPOINTS).toEqual({
+      getPortfolio: 'GET /api/revenue/portfolio',
+      getRoomDiagnosis: 'GET /api/revenue/rooms/:roomId/diagnosis',
+      getFinding: 'GET /api/revenue/findings/:findingId',
+      applyFinding: 'POST /api/revenue/findings/:findingId/apply',
+      getApplyStatus: 'GET /api/revenue/applies/:applyId',
+      revertApply: 'POST /api/revenue/applies/:applyId/revert',
+      dismissFinding: 'POST /api/revenue/findings/:findingId/dismiss',
+      recheck: 'POST /api/revenue/recheck',
+    })
   })
 })
