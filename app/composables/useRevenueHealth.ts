@@ -257,11 +257,24 @@ export function useRevenueHealth() {
   }
 
   async function dismissFinding(findingId: string, reason?: RejectionReason) {
+    const previousRejections = rejections.value
+    const previousDismissed = dismissed.value
+
     if (reason)
       rejections.value = { ...rejections.value, [findingId]: reason }
     if (!dismissed.value.includes(findingId))
       dismissed.value = [...dismissed.value, findingId]
-    await source.dismissFinding({ findingId, reason: reason ?? 'not_now' })
+
+    try {
+      await source.dismissFinding({ findingId, reason: reason ?? 'not_now' })
+    }
+    catch (error) {
+      // Put the finding back. Leaving it hidden would show a clean portfolio
+      // built on a write the server rejected.
+      rejections.value = previousRejections
+      dismissed.value = previousDismissed
+      loadError.value = error instanceof Error ? error.message : 'Could not dismiss that finding.'
+    }
   }
 
   /**

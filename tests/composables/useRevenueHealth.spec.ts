@@ -169,6 +169,20 @@ describe('useRevenueHealth — dismissal', () => {
     await health.dismissFinding('f-a1')
     expect(health.portfolioRows.value.map(row => row.room.id)).not.toContain('room-a')
   })
+
+  it('puts the finding back when the source rejects the dismissal', async () => {
+    const source = stubSource()
+    source.dismissFinding = async () => { throw new Error('network down') }
+    setRevenueSource(source)
+
+    const health = useRevenueHealth()
+    await health.load()
+    await health.dismissFinding('f-a1')
+
+    // The write never landed, so the finding must still be on screen.
+    expect(health.visibleFindings.value.map(f => f.id)).toContain('f-a1')
+    expect(health.loadError.value).toBe('network down')
+  })
 })
 
 describe('useRevenueHealth — recheck', () => {
