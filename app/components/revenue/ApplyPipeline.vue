@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import type { ApplyState } from '~/components/revenue/data/health'
 import { computed } from 'vue'
+import {
+  APPLY_PIPELINE,
+  applyStepIndex,
+  failedStepIndex,
+} from '~/components/revenue/data/contract'
 import { Button } from '~/components/ui/button'
 
-const props = defineProps<{
-  state: ApplyState
-}>()
-
+const props = defineProps<{ state: ApplyState }>()
 const emit = defineEmits<{ revert: [] }>()
 
-const STEPS = ['snapshot', 'saved', 'written', 'verified', 'recomputed', 'live'] as const
-const STEP_LABELS: Record<typeof STEPS[number], string> = {
+const STEP_LABELS: Record<typeof APPLY_PIPELINE[number], string> = {
   snapshot: 'Snapshot taken',
   saved: 'Saved in Elev8',
   written: 'Written',
@@ -19,22 +20,11 @@ const STEP_LABELS: Record<typeof STEPS[number], string> = {
   live: 'Live on channels',
 }
 
-const ORDER: Record<string, number> = { idle: -1, snapshot: 0, saved: 1, written: 2, verified: 3, recomputed: 4, live: 5 }
+const failedAt = computed(() => failedStepIndex(props.state))
 
-/** Where the failure landed, so the strip can mark that step rather than the last one. */
-const failedAt = computed(() => {
-  if (props.state === 'recompute_unavailable')
-    return 4
-  if (props.state === 'push_failed')
-    return 5
-  return null
-})
-
-const reached = computed(() => {
-  if (failedAt.value !== null)
-    return failedAt.value - 1
-  return ORDER[props.state] ?? -1
-})
+const reached = computed(() =>
+  failedAt.value !== null ? failedAt.value - 1 : applyStepIndex(props.state),
+)
 
 function stepStatus(index: number) {
   if (failedAt.value === index)
@@ -73,7 +63,7 @@ const message = computed(() => {
   <div v-if="state !== 'idle'" class="flex flex-col gap-4">
     <ol class="flex flex-wrap items-center gap-x-2 gap-y-2">
       <li
-        v-for="(step, index) in STEPS" :key="step"
+        v-for="(step, index) in APPLY_PIPELINE" :key="step"
         class="flex items-center gap-2"
       >
         <span
@@ -99,7 +89,7 @@ const message = computed(() => {
           }"
         >{{ STEP_LABELS[step] }}</span>
 
-        <span v-if="index < STEPS.length - 1" class="hidden h-px w-6 bg-border sm:block" aria-hidden="true" />
+        <span v-if="index < APPLY_PIPELINE.length - 1" class="hidden h-px w-6 bg-border sm:block" aria-hidden="true" />
       </li>
     </ol>
 
