@@ -80,22 +80,22 @@ export function createMockRevenueSource(options: MockSourceOptions = {}): Revenu
 
   const delay = (ms: number) => wait(ms * speed)
 
-  function runScript(record: ApplyRecord) {
+  function runScript(record: ApplyRecord, effectiveScenario: MockApplyScenario) {
     let elapsed = 0
 
     for (const step of SCRIPT) {
       elapsed += step.delayMs * speed
 
       // A stale re-validation fails before anything is written (spec §15.4 step 1).
-      if (scenario === 'stale' && step.state === 'saved') {
+      if (effectiveScenario === 'stale' && step.state === 'saved') {
         setTimeout(() => finish(record, 'stale'), elapsed)
         return
       }
-      if (scenario === 'recompute_unavailable' && step.state === 'recomputed') {
+      if (effectiveScenario === 'recompute_unavailable' && step.state === 'recomputed') {
         setTimeout(() => finish(record, 'recompute_unavailable'), elapsed)
         return
       }
-      if (scenario === 'push_failed' && step.state === 'live') {
+      if (effectiveScenario === 'push_failed' && step.state === 'live') {
         setTimeout(() => finish(record, 'push_failed'), elapsed)
         return
       }
@@ -171,7 +171,9 @@ export function createMockRevenueSource(options: MockSourceOptions = {}): Revenu
         fieldLabels: req.fieldLabels ?? [],
       }
       applies.set(record.applyId, record)
-      runScript(record)
+      // A per-apply scenario (mock-only, see ApplyRequest) overrides the
+      // source's constructor default for this one apply.
+      runScript(record, req.scenario ?? scenario)
       return { applyId: record.applyId, state: record.state }
     },
 
@@ -180,7 +182,16 @@ export function createMockRevenueSource(options: MockSourceOptions = {}): Revenu
       const record = applies.get(applyId)
       if (!record)
         throw new Error(`Unknown apply: ${applyId}`)
-      return clone(record)
+      // Explicit projection: ApplyStatus does not declare `fieldLabels`, and a
+      // real backend would not know to send it.
+      return clone({
+        applyId: record.applyId,
+        findingId: record.findingId,
+        state: record.state,
+        policyVersionId: record.policyVersionId,
+        message: record.message,
+        revertableUntil: record.revertableUntil,
+      })
     },
 
     async revertApply(applyId: string): Promise<void> {

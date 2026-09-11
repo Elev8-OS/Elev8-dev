@@ -21,6 +21,7 @@ const {
   getRoom,
   findingsForRoom,
   applyStateFor,
+  applyMessageFor,
   applyFinding,
   revertFinding,
   dismissFinding,
@@ -35,6 +36,7 @@ const findingId = computed(() => String(route.params.id))
 const finding = computed(() => getFinding(findingId.value))
 const room = computed(() => finding.value ? getRoom(finding.value.roomId) : undefined)
 const applyState = computed(() => applyStateFor(findingId.value))
+const applyMessage = computed(() => applyMessageFor(findingId.value))
 
 /** Other open findings on the same room, so the operator can work a room through. */
 const siblings = computed(() => {
@@ -49,8 +51,8 @@ function onApply(scenario: ApplyScenario) {
     toast.success('Applied — writing to the pricing engine')
 }
 
-function onRevert() {
-  revertFinding(findingId.value)
+async function onRevert() {
+  await revertFinding(findingId.value)
   toast.info('Reverted to the previous settings')
 }
 
@@ -78,6 +80,7 @@ async function onDismiss() {
         :room="room"
         :basis="basis"
         :apply-state="applyState"
+        :apply-message="applyMessage"
         @apply="onApply"
         @revert="onRevert"
         @dismiss="onDismiss"

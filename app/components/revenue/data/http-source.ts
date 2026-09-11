@@ -25,25 +25,27 @@ export function createHttpRevenueSource(): RevenueDataSource {
       $fetch<PortfolioResponse>(`${BASE}/portfolio`, { query }),
 
     getRoomDiagnosis: (roomId: string) =>
-      $fetch<RoomDiagnosis | null>(`${BASE}/rooms/${roomId}/diagnosis`),
+      $fetch<RoomDiagnosis | null>(`${BASE}/rooms/${encodeURIComponent(roomId)}/diagnosis`),
 
     getFinding: (findingId: string) =>
-      $fetch<HealthFinding | null>(`${BASE}/findings/${findingId}`),
+      $fetch<HealthFinding | null>(`${BASE}/findings/${encodeURIComponent(findingId)}`),
 
     applyFinding: (req: ApplyRequest) =>
-      $fetch<ApplyAccepted>(`${BASE}/findings/${req.findingId}/apply`, {
+      $fetch<ApplyAccepted>(`${BASE}/findings/${encodeURIComponent(req.findingId)}/apply`, {
         method: 'POST',
-        body: { fieldLabels: req.fieldLabels ?? [], basis: req.basis },
+        // `scenario` is a mock-only affordance (see ApplyRequest in
+        // contract.ts) — a real backend receives and ignores it.
+        body: { fieldLabels: req.fieldLabels ?? [], basis: req.basis, scenario: req.scenario },
       }),
 
     getApplyStatus: (applyId: string) =>
-      $fetch<ApplyStatus>(`${BASE}/applies/${applyId}`),
+      $fetch<ApplyStatus>(`${BASE}/applies/${encodeURIComponent(applyId)}`),
 
     revertApply: (applyId: string) =>
-      $fetch<void>(`${BASE}/applies/${applyId}/revert`, { method: 'POST' }),
+      $fetch<void>(`${BASE}/applies/${encodeURIComponent(applyId)}/revert`, { method: 'POST' }),
 
     dismissFinding: (req: DismissRequest) =>
-      $fetch<void>(`${BASE}/findings/${req.findingId}/dismiss`, {
+      $fetch<void>(`${BASE}/findings/${encodeURIComponent(req.findingId)}/dismiss`, {
         method: 'POST',
         body: { reason: req.reason, suppressForDays: req.suppressForDays },
       }),

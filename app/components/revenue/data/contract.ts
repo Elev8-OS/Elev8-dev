@@ -125,6 +125,12 @@ export interface ApplyRequest {
    */
   fieldLabels?: string[]
   basis: ObjectiveBasis
+  /**
+   * Mock-only affordance. Picks which scripted ending `mock-source.ts` walks
+   * this one apply to, overriding the source's constructor-level default. A
+   * real backend has no notion of "scenario" and must ignore this field.
+   */
+  scenario?: 'success' | 'recompute_unavailable' | 'push_failed' | 'stale'
 }
 
 /**

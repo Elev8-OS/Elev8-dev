@@ -9,6 +9,7 @@ import type {
   ObjectiveBasis,
 } from '~/components/revenue/data/health'
 import { computed, ref } from 'vue'
+import { emptyPortfolioQuery, isTerminalApplyState } from '~/components/revenue/data/contract'
 import {
   gateStageDomain,
   objectiveForContract,
@@ -37,15 +38,8 @@ const SEVERITY_RANK: Record<HealthSeverity, number> = {
   info: 1,
 }
 
-/** Steps the apply pipeline walks through, and how long each takes in the fixture. */
-const PIPELINE: { state: ApplyState, delayMs: number }[] = [
-  { state: 'snapshot', delayMs: 250 },
-  { state: 'saved', delayMs: 350 },
-  { state: 'written', delayMs: 900 },
-  { state: 'verified', delayMs: 800 },
-  { state: 'recomputed', delayMs: 1400 },
-  { state: 'live', delayMs: 700 },
-]
+/** How often the apply status is polled while it is in flight. */
+const APPLY_POLL_MS = 300
 
 export function useRevenueHealth() {
   const basis = useState<ObjectiveBasis>('revenue-health-basis', () => 'revenue')
@@ -59,6 +53,10 @@ export function useRevenueHealth() {
   const hasLoaded = useState<boolean>('revenue-health-has-loaded', () => false)
   const loadError = useState<string | null>('revenue-health-error', () => null)
   const applyStates = useState<Record<string, ApplyState>>('revenue-health-apply', () => ({}))
+  /** applyId returned by the source for the finding's current (or last) apply. */
+  const applyIds = useState<Record<string, string>>('revenue-health-apply-ids', () => ({}))
+  /** Plain-language sentence from the polled ApplyStatus, for ApplyPipeline to render verbatim. */
+  const applyMessages = useState<Record<string, string | null>>('revenue-health-apply-messages', () => ({}))
   const dismissed = useState<string[]>('revenue-health-dismissed', () => [])
   /** Why a finding was rejected. Adjusts thresholds and ceilings, never a model. */
   const rejections = useState<Record<string, RejectionReason>>('revenue-health-rejections', () => ({}))
@@ -81,13 +79,7 @@ export function useRevenueHealth() {
     isLoading.value = true
     loadError.value = null
     try {
-      const res = await source.getPortfolio({
-        basis: basis.value,
-        search: '',
-        domain: 'all',
-        minSeverity: 'all',
-        gate: 'all',
-      })
+      const res = await source.getPortfolio({ ...emptyPortfolioQuery(), basis: basis.value })
       rooms.value = res.rooms
       findings.value = res.findings
       notAssessable.value = res.notAssessable
@@ -110,7 +102,13 @@ export function useRevenueHealth() {
   }
 
   async function recheck() {
-    await source.recheck({})
+    try {
+      await source.recheck({})
+    }
+    catch (error) {
+      loadError.value = error instanceof Error ? error.message : 'Could not re-check the portfolio.'
+      return
+    }
     await load()
   }
 
@@ -229,34 +227,92 @@ export function useRevenueHealth() {
     applyStates.value = { ...applyStates.value, [findingId]: state }
   }
 
+  function setApplyMessage(findingId: string, message: string | null) {
+    applyMessages.value = { ...applyMessages.value, [findingId]: message }
+  }
+
+  function applyMessageFor(findingId: string): string | null {
+    return applyMessages.value[findingId] ?? null
+  }
+
   /**
-   * Walks the pipeline with fixture timings so the states are reviewable.
-   * The real flow writes a policy version, hands it to the reconciler, verifies
-   * by read-back, then triggers a recompute — see the specification, §15.4.
+   * Polls `getApplyStatus` until it reaches a terminal state, writing each
+   * state (and its message) into local state as it goes so the UI updates the
+   * same way it did with the fixture timings.
+   *
+   * Not SSR-guarded: it only ever runs after `applyFinding`, which itself
+   * only ever runs from a client click handler, so there is no server-side
+   * path into this function to guard against.
+   *
+   * Guards against a superseded apply: if `applyIds` no longer points at this
+   * `applyId` (a newer apply started for the same finding), the loop stops
+   * rather than clobbering the newer poll's state.
    */
-  function applyFinding(findingId: string, scenario: ApplyScenario = 'success') {
-    let elapsed = 0
+  async function pollApplyStatus(findingId: string, applyId: string) {
+    while (true) {
+      if (applyIds.value[findingId] !== applyId)
+        return
 
-    for (const step of PIPELINE) {
-      elapsed += step.delayMs
-
-      if (scenario === 'recompute_unavailable' && step.state === 'recomputed') {
-        setTimeoutSafe(() => setApplyState(findingId, 'recompute_unavailable'), elapsed)
+      let status
+      try {
+        status = await source.getApplyStatus(applyId)
+      }
+      catch (error) {
+        loadError.value = error instanceof Error ? error.message : 'Could not check the apply status.'
         return
       }
-      if (scenario === 'push_failed' && step.state === 'live') {
-        setTimeoutSafe(() => setApplyState(findingId, 'push_failed'), elapsed)
-        return
-      }
 
-      setTimeoutSafe(() => setApplyState(findingId, step.state), elapsed)
+      setApplyState(findingId, status.state)
+      setApplyMessage(findingId, status.message)
+
+      if (isTerminalApplyState(status.state))
+        return
+
+      await new Promise<void>(resolve => setTimeout(resolve, APPLY_POLL_MS))
     }
   }
 
-  function revertFinding(findingId: string) {
-    const next = { ...applyStates.value }
-    delete next[findingId]
-    applyStates.value = next
+  /**
+   * Writes the apply through the port: POST accepts and returns an applyId,
+   * then the client polls `getApplyStatus` until a terminal state (spec
+   * §15.4). `scenario` is a mock-only affordance the real backend ignores —
+   * see `ApplyRequest` in contract.ts.
+   */
+  async function applyFinding(findingId: string, scenario: ApplyScenario = 'success') {
+    try {
+      const accepted = await source.applyFinding({ findingId, basis: basis.value, scenario })
+      applyIds.value = { ...applyIds.value, [findingId]: accepted.applyId }
+      setApplyState(findingId, accepted.state)
+      await pollApplyStatus(findingId, accepted.applyId)
+    }
+    catch (error) {
+      loadError.value = error instanceof Error ? error.message : 'Could not apply that finding.'
+    }
+  }
+
+  async function revertFinding(findingId: string) {
+    const applyId = applyIds.value[findingId]
+
+    try {
+      if (applyId)
+        await source.revertApply(applyId)
+    }
+    catch (error) {
+      loadError.value = error instanceof Error ? error.message : 'Could not revert that finding.'
+      return
+    }
+
+    const nextStates = { ...applyStates.value }
+    delete nextStates[findingId]
+    applyStates.value = nextStates
+
+    const nextIds = { ...applyIds.value }
+    delete nextIds[findingId]
+    applyIds.value = nextIds
+
+    const nextMessages = { ...applyMessages.value }
+    delete nextMessages[findingId]
+    applyMessages.value = nextMessages
   }
 
   async function dismissFinding(findingId: string, reason?: RejectionReason) {
@@ -332,16 +388,11 @@ export function useRevenueHealth() {
     getFinding,
     findingsForRoom,
     applyStateFor,
+    applyMessageFor,
     applyFinding,
     revertFinding,
     dismissFinding,
     restoreFinding,
     resetFilters,
   }
-}
-
-/** Timers only run client-side; SSR must not schedule state changes. */
-function setTimeoutSafe(fn: () => void, delay: number) {
-  if (import.meta.client)
-    window.setTimeout(fn, delay)
 }
