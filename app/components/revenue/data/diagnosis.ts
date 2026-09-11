@@ -21,6 +21,7 @@
  * payloads, and the Bali rooms carry values measured on the live account.
  */
 
+import type { NotAssessableRoom } from './contract'
 import type { HealthDomain, ObjectiveBasis } from './health'
 
 /* ------------------------------------------------------------------ contract */
@@ -583,7 +584,7 @@ export const roomDiagnoses: RoomDiagnosis[] = [
  * feed returns 47 rows against 62 connected listings, so this is not
  * hypothetical.
  */
-export const notAssessableRooms: { roomId: string, name: string, missing: string }[] = [
+export const notAssessableRooms: NotAssessableRoom[] = [
   { roomId: 'room-uluwatu-2', name: 'Uluwatu Cliff House · Room 2', missing: 'no ranking data on either channel' },
   { roomId: 'room-padma-1', name: 'Villa Padma · Room 1', missing: 'comp-set not resolved' },
   { roomId: 'room-sanur-3', name: 'Sanur Beach House · Room 3', missing: 'location not resolved to official codes' },
