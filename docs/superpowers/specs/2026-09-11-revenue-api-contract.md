@@ -17,11 +17,21 @@ check ("recheck").
 own contract file, `app/components/revenue/data/contract.ts`, and the two
 files it re-exports from, `app/components/revenue/data/health.ts` and
 `app/components/revenue/data/diagnosis.ts`. If this document and that file
-ever disagree, the file wins — but they should never disagree, because this
-document is meant to be regenerated from it. The frontend currently talks to
-an in-memory mock that returns exactly these shapes; a compiling (but unused)
-HTTP adapter at `app/components/revenue/data/http-source.ts` exists purely to
-prove this contract is implementable — it is not wired up to any UI yet.
+ever disagree, the file wins. Nothing generates this document from that file:
+it is hand-written and kept next to the source so a rename is at least
+visible in the same diff, not guaranteed to be caught.
+
+The frontend's `useRevenueHealth` composable now calls every write-path
+method on the mock through the port end to end: `applyFinding`, the
+`getApplyStatus` poll, `revertApply`, `dismissFinding`, and `recheck` are all
+exercised by the composable and its tests, including a poll that walks to
+`live` and a scripted failure. `getFinding` is implemented on both adapters
+but is not yet called by the composable, which still looks a finding up
+locally from the portfolio response it already holds. A compiling (but
+unused) HTTP adapter at `app/components/revenue/data/http-source.ts` exists
+to prove this contract is implementable against a real backend.
+`useRevenueSource()` still returns the mock, so no UI talks to the HTTP
+adapter yet.
 
 **What this document does not do.** It does not define authentication, error
 response formats, pagination, or rate limiting, because the source contract
@@ -147,6 +157,26 @@ export interface PortfolioQuery {
 `ObjectiveBasis`, `HealthDomain`, `HealthSeverity`, and `GateStage` are defined
 in the Shared types appendix below.
 
+**What these parameters mean.** The reference client never sends anything but
+the defaults from `emptyPortfolioQuery()`: every one of these fields is
+applied client-side today, in `visibleFindings` (`useRevenueHealth.ts`),
+against a portfolio the client already holds in full. They are reserved for
+when the portfolio outgrows a single response, and a backend does not need to
+implement filtering for this endpoint yet. When it does, the semantics
+already exist in the reference client and should carry over unchanged:
+
+- `search`: a case-insensitive substring match against the finding's
+  `headline` together with its room's `name` and `location`, concatenated
+  into one haystack. Not a per-field search.
+- `domain`: an exact match against `HealthFinding.domain`. `'all'` means no
+  filter.
+- `minSeverity`: a floor, not an exact match. `'high'` means high and above
+  (high and critical), ranked `critical > high > medium > low > info`.
+  `'all'` means no floor.
+- `gate`: an exact match against the room's diagnosis, not the finding. A
+  finding is included only when its room's `RoomDiagnosis.gate.firstFailing`
+  equals the given `GateStage`. `'all'` means no filter.
+
 **Response** — `PortfolioResponse`:
 
 ```ts
@@ -200,7 +230,11 @@ or not that room currently has an open finding.
 
 **Response:** `RoomDiagnosis | null`. `null` means this room has no diagnosis
 available yet (a "claims nothing rather than guessing" state — the audit has
-not produced evidence for this room, as opposed to the room being fine).
+not produced evidence for this room, as opposed to the room being fine). This
+`null` (and `getFinding`'s in endpoint 3 below) is returned over HTTP 200, not
+a 404: the reference adapter reaches both through `$fetch`, which throws on a
+404 response, so a 404 here would surface as an unhandled error rather than
+the `null` the contract promises.
 
 ```ts
 export interface RoomDiagnosis {
@@ -524,7 +558,9 @@ export interface RevenueDataSource {
 ```
 
 The frontend's own record of method-to-path, kept next to the interface so a
-renamed path cannot leave documentation like this one stale:
+rename is at least visible in the same diff. Nothing generates this document
+from it: `tests/lib/revenue-contract.spec.ts` pins the map against a literal
+instead.
 
 ```ts
 export const REVENUE_ENDPOINTS: Record<keyof RevenueDataSource, string> = {
@@ -836,3 +872,17 @@ to decide:
   and `findings[]` arrays with no pagination parameters defined anywhere in
   `PortfolioQuery`. Whether that remains true at production scale, and
   whether any of these endpoints need rate limiting, is not specified here.
+- **The portfolio load fans out.** The reference client calls
+  `getRoomDiagnosis` once per room, in parallel, on every portfolio load and
+  every re-check (`useRevenueHealth.ts`'s `load()`). That is fine against the
+  mock and will not be fine against a real service once the portfolio is
+  large: it is N parallel requests per load, not one. A batch endpoint (one
+  call for many room ids) or an embedded diagnosis on the portfolio response
+  itself is the likely answer; neither exists in the current contract.
+- **`ApplyRequest.scenario` is mock-only.** It exists so the prototype can
+  drive its own scripted outcomes (`stale`, `recompute_unavailable`,
+  `push_failed`) for review, and the reference UI's finding-detail page lets
+  an operator pick one when clicking Apply. A real backend has no notion of a
+  scenario and must ignore this field entirely: what state an apply lands in
+  is decided by what actually happens when the write and the channel push
+  run, never by a client-supplied hint.

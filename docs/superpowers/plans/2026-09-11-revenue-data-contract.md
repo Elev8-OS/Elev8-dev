@@ -10,7 +10,7 @@
 
 ---
 
-## Scope check: this is plan 1 of 5
+## Scope check: this is plan 1 of 6
 
 The request was "implement everything missing", which spans five independent subsystems. Each needs its own plan, because each produces working, testable software on its own and they have a real dependency order. Do not attempt them as one plan.
 
@@ -22,6 +22,8 @@ The request was "implement everything missing", which spans five independent sub
 | 4 | Resolver and pipeline surfaces | PP-456: resolution-trace viewer, NextPax push state, portfolio degraded banner | 1 |
 | 5 | Cockpit | PP-458 §15.6: resolved price, source badge, trace tooltip, inline and bulk override, date locks, capability-driven channel markup | 2, 4 |
 | 6 | Health engine completion | PP-459 remainder: partial acceptance, impact panel §15.9, arbitration card, suppression, cannibalisation, attribution, shadow mode, autonomy config | 1, 2 |
+
+Handoff note from the final review: `app/composables/usePriceLabs.ts` still imports `healthRooms` directly from the fixtures to build a room picker, so the seam has one hole left that a later plan should close.
 
 Excluded throughout, with reasons: **PP-460** tenant-visible benchmark surfaces, because spec §24 requires legal clearance before any figure reaches a tenant surface — only the consent field is built, in plan 2. **PP-461**, because a second provider adapter needs a commercial account and the port it proves is backend, with no §15 surface.
 
@@ -780,7 +782,7 @@ export function createMockRevenueSource(options: MockSourceOptions = {}): Revenu
 
 Run: `npx vitest run tests/lib/revenue-mock-source.spec.ts`
 
-Expected: PASS, 10 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1403,7 +1405,7 @@ Expected: `http-source clean`.
 
 Run: `npx vitest run tests/lib/revenue-contract.spec.ts tests/lib/revenue-mock-source.spec.ts tests/composables/useRevenueHealth.spec.ts`
 
-Expected: PASS, 27 tests across 3 files.
+Expected: PASS, 30 tests across 3 files.
 
 - [ ] **Step 5: Commit**
 

@@ -194,8 +194,10 @@ export interface RevenueDataSource {
 }
 
 /**
- * One entry per port method. The endpoint doc is generated from this, so a
- * renamed path cannot leave the doc stale.
+ * One entry per port method, kept next to the interface so a renamed path is
+ * at least visible in the same diff. Nothing generates the doc from this map;
+ * a test (`tests/lib/revenue-contract.spec.ts`) pins it against a literal
+ * instead.
  */
 export const REVENUE_ENDPOINTS: Record<keyof RevenueDataSource, string> = {
   getPortfolio: 'GET /api/revenue/portfolio',
