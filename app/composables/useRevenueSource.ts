@@ -9,7 +9,13 @@ import { createMockRevenueSource } from '~/components/revenue/data/mock-source'
 
 let override: RevenueDataSource | null = null
 
-/** Tests inject a source here. Production never calls this. */
+/**
+ * Tests inject a source here. Production never calls this.
+ *
+ * The override is module-level, so it outlives the test that set it. A test
+ * that injects must reset with `setRevenueSource(null)` in `afterEach`, or
+ * set it unconditionally in `beforeEach` so nothing can inherit a stale one.
+ */
 export function setRevenueSource(source: RevenueDataSource | null) {
   override = source
 }
