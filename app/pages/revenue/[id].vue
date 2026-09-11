@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ApplyScenario } from '~/composables/useRevenueHealth'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import { domainLabels } from '~/components/revenue/data/health'
 import HealthMoney from '~/components/revenue/HealthMoney.vue'
@@ -24,7 +24,10 @@ const {
   applyFinding,
   revertFinding,
   dismissFinding,
+  load,
 } = useRevenueHealth()
+
+onMounted(() => { load() })
 
 const findingId = computed(() => String(route.params.id))
 const finding = computed(() => getFinding(findingId.value))
@@ -49,8 +52,8 @@ function onRevert() {
   toast.info('Reverted to the previous settings')
 }
 
-function onDismiss() {
-  dismissFinding(findingId.value)
+async function onDismiss() {
+  await dismissFinding(findingId.value)
   toast.info('Finding dismissed')
   router.push('/revenue')
 }

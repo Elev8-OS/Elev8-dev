@@ -1,4 +1,5 @@
-import type { GateStage, RejectionReason } from '~/components/revenue/data/diagnosis'
+import type { NotAssessableRoom, PortfolioSummary } from '~/components/revenue/data/contract'
+import type { GateStage, RejectionReason, RoomDiagnosis } from '~/components/revenue/data/diagnosis'
 import type {
   ApplyState,
   HealthDomain,
@@ -9,16 +10,10 @@ import type {
 } from '~/components/revenue/data/health'
 import { computed, ref } from 'vue'
 import {
-  diagnosisFor,
   gateStageDomain,
-  notAssessableRooms,
   objectiveForContract,
 } from '~/components/revenue/data/diagnosis'
-import {
-  healthFindings,
-  healthRooms,
-  healthSummary,
-} from '~/components/revenue/data/health'
+import { useRevenueSource } from '~/composables/useRevenueSource'
 
 export type ApplyScenario = 'success' | 'recompute_unavailable' | 'push_failed'
 
@@ -54,8 +49,13 @@ const PIPELINE: { state: ApplyState, delayMs: number }[] = [
 
 export function useRevenueHealth() {
   const basis = useState<ObjectiveBasis>('revenue-health-basis', () => 'revenue')
-  const findings = useState<HealthFinding[]>('revenue-health-findings', () => [...healthFindings])
-  const rooms = useState<HealthRoom[]>('revenue-health-rooms', () => [...healthRooms])
+  const findings = useState<HealthFinding[]>('revenue-health-findings', () => [])
+  const rooms = useState<HealthRoom[]>('revenue-health-rooms', () => [])
+  const diagnoses = useState<Record<string, RoomDiagnosis | null>>('revenue-health-diagnoses', () => ({}))
+  const notAssessable = useState<NotAssessableRoom[]>('revenue-health-not-assessable', () => [])
+  const summary = useState<PortfolioSummary | null>('revenue-health-summary', () => null)
+  const isLoading = useState<boolean>('revenue-health-loading', () => false)
+  const loadError = useState<string | null>('revenue-health-error', () => null)
   const applyStates = useState<Record<string, ApplyState>>('revenue-health-apply', () => ({}))
   const dismissed = useState<string[]>('revenue-health-dismissed', () => [])
   /** Why a finding was rejected. Adjusts thresholds and ceilings, never a model. */
@@ -69,7 +69,47 @@ export function useRevenueHealth() {
     gate: 'all',
   })
 
-  const summary = healthSummary
+  const source = useRevenueSource()
+
+  /**
+   * Fills the store from the source. Safe to call repeatedly; the page calls it
+   * on mount and the Re-check button calls it again.
+   */
+  async function load() {
+    isLoading.value = true
+    loadError.value = null
+    try {
+      const res = await source.getPortfolio({
+        basis: basis.value,
+        search: '',
+        domain: 'all',
+        minSeverity: 'all',
+        gate: 'all',
+      })
+      rooms.value = res.rooms
+      findings.value = res.findings
+      notAssessable.value = res.notAssessable
+      summary.value = res.summary
+
+      // Diagnoses are per room and the portfolio shows at most one open at a
+      // time, so fetch them together rather than on every expand.
+      const entries = await Promise.all(
+        res.rooms.map(async room => [room.id, await source.getRoomDiagnosis(room.id)] as const),
+      )
+      diagnoses.value = Object.fromEntries(entries)
+    }
+    catch (error) {
+      loadError.value = error instanceof Error ? error.message : 'Could not load listing health.'
+    }
+    finally {
+      isLoading.value = false
+    }
+  }
+
+  async function recheck() {
+    await source.recheck({})
+    await load()
+  }
 
   function getRoom(roomId: string) {
     return rooms.value.find(room => room.id === roomId)
@@ -98,7 +138,7 @@ export function useRevenueHealth() {
           return false
         if (SEVERITY_RANK[finding.severity] < floor)
           return false
-        if (filters.value.gate !== 'all' && diagnosisFor(finding.roomId)?.gate.firstFailing !== filters.value.gate)
+        if (filters.value.gate !== 'all' && diagnoses.value[finding.roomId]?.gate.firstFailing !== filters.value.gate)
           return false
         if (!query)
           return true
@@ -133,7 +173,7 @@ export function useRevenueHealth() {
           return acc
         }, {})
 
-        const diagnosis = diagnosisFor(room.id)
+        const diagnosis = diagnoses.value[room.id] ?? undefined
 
         /**
          * Worst domain is DERIVED from the gate, not chosen. The first funnel
@@ -216,9 +256,12 @@ export function useRevenueHealth() {
     applyStates.value = next
   }
 
-  function dismissFinding(findingId: string) {
+  async function dismissFinding(findingId: string, reason?: RejectionReason) {
+    if (reason)
+      rejections.value = { ...rejections.value, [findingId]: reason }
     if (!dismissed.value.includes(findingId))
       dismissed.value = [...dismissed.value, findingId]
+    await source.dismissFinding({ findingId, reason: reason ?? 'not_now' })
   }
 
   /**
@@ -227,9 +270,8 @@ export function useRevenueHealth() {
    * prompt rule. It never trains a model — fitting one operator's taste would
    * cost the reproducibility the measurement depends on.
    */
-  function rejectFinding(findingId: string, reason: RejectionReason) {
-    rejections.value = { ...rejections.value, [findingId]: reason }
-    dismissFinding(findingId)
+  async function rejectFinding(findingId: string, reason: RejectionReason) {
+    await dismissFinding(findingId, reason)
   }
 
   function rejectionFor(findingId: string) {
@@ -239,12 +281,6 @@ export function useRevenueHealth() {
   function toggleExpanded(roomId: string) {
     expanded.value = expanded.value === roomId ? null : roomId
   }
-
-  /**
-   * Rooms a check could not reach. Without this line a portfolio with eight
-   * findings reads as healthy while a dozen rooms were never assessed.
-   */
-  const notAssessable = computed(() => notAssessableRooms)
 
   function restoreFinding(findingId: string) {
     dismissed.value = dismissed.value.filter(id => id !== findingId)
@@ -258,6 +294,10 @@ export function useRevenueHealth() {
     basis,
     expanded,
     filters,
+    load,
+    recheck,
+    isLoading,
+    loadError,
     notAssessable,
     rejectFinding,
     rejectionFor,

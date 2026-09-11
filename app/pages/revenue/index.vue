@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { GateStage } from '~/components/revenue/data/diagnosis'
 import type { HealthDomain, HealthSeverity, ObjectiveBasis } from '~/components/revenue/data/health'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
+import { toast } from 'vue-sonner'
 import { gateStageLabels } from '~/components/revenue/data/diagnosis'
 import { basisLabels, domainLabels } from '~/components/revenue/data/health'
 import HealthPortfolioTable from '~/components/revenue/HealthPortfolioTable.vue'
@@ -21,14 +22,19 @@ const {
   basis,
   expanded,
   filters,
+  isLoading,
+  load,
   notAssessable,
   portfolioRows,
+  recheck,
   rejectFinding,
   resetFilters,
   stats,
   summary,
   toggleExpanded,
 } = useRevenueHealth()
+
+onMounted(() => { load() })
 
 const domainOptions = Object.keys(domainLabels) as HealthDomain[]
 const severityOptions: HealthSeverity[] = ['critical', 'high', 'medium', 'low']
@@ -44,6 +50,19 @@ const hasFilters = computed(() =>
 function money(amount: number) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount)
 }
+
+function formatLastCheck(iso: string) {
+  const date = new Date(iso)
+  const today = new Date()
+  const sameDay = date.toDateString() === today.toDateString()
+  const time = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return sameDay ? `Today ${time}` : `${date.toLocaleDateString('en-GB')} ${time}`
+}
+
+async function onRecheck() {
+  await recheck()
+  toast.success('Re-checked every listing')
+}
 </script>
 
 <template>
@@ -58,9 +77,14 @@ function money(amount: number) {
         </h1>
       </div>
       <p class="text-xs text-muted-foreground">
-        Last check {{ summary.lastCheckLabel }} ·
-        <button type="button" class="font-medium text-foreground underline-offset-2 hover:underline">
-          Re-check now
+        Last check {{ summary ? formatLastCheck(summary.lastCheckedAt) : '—' }} ·
+        <button
+          type="button"
+          class="font-medium text-foreground underline-offset-2 hover:underline disabled:opacity-50"
+          :disabled="isLoading"
+          @click="onRecheck"
+        >
+          {{ isLoading ? 'Re-checking…' : 'Re-check now' }}
         </button>
       </p>
     </div>
@@ -188,11 +212,16 @@ function money(amount: number) {
             Applied this week
           </p>
           <p class="mt-2 text-2xl font-semibold tabular-nums">
-            {{ summary.appliedThisWeek }}
+            {{ summary ? summary.appliedThisWeek : '—' }}
           </p>
           <p class="mt-1.5 text-xs text-muted-foreground">
-            {{ summary.appliedAutomatically }} automatic ·
-            {{ summary.appliedThisWeek - summary.appliedAutomatically }} approved by you
+            <template v-if="summary">
+              {{ summary.appliedAutomatically }} automatic ·
+              {{ summary.appliedThisWeek - summary.appliedAutomatically }} approved by you
+            </template>
+            <template v-else>
+              —
+            </template>
           </p>
         </CardContent>
       </Card>
@@ -203,10 +232,15 @@ function money(amount: number) {
             Measured uplift
           </p>
           <p class="mt-2 text-2xl font-semibold tabular-nums">
-            +{{ summary.upliftPercent }}%
+            {{ summary ? `+${summary.upliftPercent}%` : '—' }}
           </p>
           <p class="mt-1.5 text-xs text-muted-foreground">
-            ADR vs holdout · {{ summary.upliftRoomsMeasured }} of {{ summary.roomsTotal }} rooms
+            <template v-if="summary">
+              ADR vs holdout · {{ summary.upliftRoomsMeasured }} of {{ summary.roomsTotal }} rooms
+            </template>
+            <template v-else>
+              —
+            </template>
           </p>
         </CardContent>
       </Card>
