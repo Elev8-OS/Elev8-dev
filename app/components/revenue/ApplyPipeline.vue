@@ -128,7 +128,7 @@ const message = computed(() => {
     <div v-if="state === 'live'" class="flex items-center gap-3">
       <Button variant="outline" size="sm" @click="emit('revert')">
         <Icon name="lucide:undo-2" class="size-4" />
-        Rückgängig machen
+        Revert
       </Button>
       <span class="text-xs text-muted-foreground">Available for 7 days</span>
     </div>

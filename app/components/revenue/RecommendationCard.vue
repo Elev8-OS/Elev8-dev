@@ -151,19 +151,19 @@ const actionable = computed(() => props.finding.changes.some(change => !change.u
 
         <div v-else class="flex flex-col gap-2.5">
           <Button class="w-full" :disabled="!actionable" @click="emit('apply', 'success')">
-            Übernehmen
+            Apply
             <Icon name="lucide:arrow-right" class="size-4" />
           </Button>
           <div class="flex gap-2.5">
             <Button variant="outline" class="flex-1" disabled>
-              Werte anpassen
+              Adjust values
             </Button>
             <Button variant="outline" class="flex-1" disabled>
-              Nur Base Price
+              Base price only
             </Button>
           </div>
           <Button variant="ghost" size="sm" class="w-full text-muted-foreground" @click="emit('dismiss')">
-            Verwerfen …
+            Dismiss
           </Button>
 
           <!-- Fixture affordance: the failure paths are part of the design and need reviewing -->
