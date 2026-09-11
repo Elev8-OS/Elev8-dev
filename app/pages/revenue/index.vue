@@ -6,6 +6,7 @@ import { toast } from 'vue-sonner'
 import { gateStageLabels } from '~/components/revenue/data/diagnosis'
 import { basisLabels, domainLabels } from '~/components/revenue/data/health'
 import HealthPortfolioTable from '~/components/revenue/HealthPortfolioTable.vue'
+import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
@@ -25,6 +26,7 @@ const {
   hasLoaded,
   isLoading,
   load,
+  loadError,
   notAssessable,
   portfolioRows,
   recheck,
@@ -163,6 +165,12 @@ async function onRecheck() {
         Clear
       </Button>
     </div>
+
+    <Alert v-if="loadError" variant="destructive">
+      <Icon name="lucide:triangle-alert" class="size-4" />
+      <AlertTitle>Could not load listing health</AlertTitle>
+      <AlertDescription>{{ loadError }}</AlertDescription>
+    </Alert>
 
     <!-- Stats -->
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
