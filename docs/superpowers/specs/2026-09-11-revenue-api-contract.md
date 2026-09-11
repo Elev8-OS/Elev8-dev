@@ -52,19 +52,30 @@ finding is fully `live` will time out behind any reverse proxy or load
 balancer with a normal request timeout, and it turns a six-step pipeline that
 the UI wants to show progress for into an opaque multi-second hang.
 
-### 2. `lastCheckedAt` is ISO 8601
+### 2. `lastCheckedAt` is ISO 8601 — but the freshness fields are not
 
-`PortfolioSummary.lastCheckedAt` (and every other timestamp field in this
-contract — `revertableUntil`, `startedAt`, `observedAt` fields in the room
-diagnosis, etc.) must be a real ISO 8601 timestamp string, e.g.
-`"2026-09-11T04:12:00.000Z"`.
+`PortfolioSummary.lastCheckedAt`, `ApplyStatus.revertableUntil`, and
+`RecheckAccepted.startedAt` must each be a real ISO 8601 timestamp string,
+e.g. `"2026-09-11T04:12:00.000Z"`.
 
 **Why this rule exists:** the API must never send a pre-formatted,
-already-relative string such as `"Today 04:12"` or `"14h ago"`. Formatting a
-timestamp into the viewer's own locale and relative-time phrasing is the
-frontend's job, and it can only do that from a real, parseable timestamp. A
-pre-formatted string also cannot be correctly re-rendered when the viewer's
-clock, locale, or timezone differs from the server's.
+already-relative string such as `"Today 04:12"` for these three fields.
+Formatting a timestamp into the viewer's own locale and relative-time
+phrasing is the frontend's job, and it can only do that from a real,
+parseable timestamp. A pre-formatted string also cannot be correctly
+re-rendered when the viewer's clock, locale, or timezone differs from the
+server's.
+
+**The deliberate exception:** every `observedAt` field — in `EvidenceItem`,
+`ChannelFunnel`, `MdvCompset`, `MarketPosition`, `Posture`, `MarginBlock`, and
+`FreshnessItem` — and `MarginBlock.accountingAsOf` are the opposite: **the
+backend sends a pre-formatted, human-readable string** (`"14h ago"`,
+`"1d ago"`, `"live"`, `"curated"`, `"last closed month"`) and the frontend
+renders it verbatim. These fields express freshness as *credibility to an
+operator* — how much to trust a claim — rather than a point in time the
+client computes with, so the backend chooses the wording, including
+non-time values like `"curated"` or `"live"` that a timestamp could not
+represent at all.
 
 ### 3. `notAssessable` must be populated
 
@@ -101,14 +112,14 @@ wrong or stays silent while rooms genuinely are stale.
 
 | # | Method & path | Purpose | Spec section |
 |---|---|---|---|
-| 1 | `GET /api/revenue/portfolio` | List rooms + findings + summary for the portfolio table | §15.2 |
-| 2 | `GET /api/revenue/rooms/:roomId/diagnosis` | Full evidence behind a room's gate/funnel/comp-set/margin state | depth two beneath §15.2 |
-| 3 | `GET /api/revenue/findings/:findingId` | One finding's full recommendation card content | §15.3 |
-| 4 | `POST /api/revenue/findings/:findingId/apply` | Start applying a finding (async — see Rule 1) | §15.3 item 8, §15.4 |
-| 5 | `GET /api/revenue/applies/:applyId` | Poll the state of an in-flight or finished apply | §15.4 |
-| 6 | `POST /api/revenue/applies/:applyId/revert` | Undo a `live` apply | §15.4 step 6 |
-| 7 | `POST /api/revenue/findings/:findingId/dismiss` | Reject a finding with a structured reason, optionally suppress it | §11, §11.5 |
-| 8 | `POST /api/revenue/recheck` | Re-run the audit, for one room or the whole portfolio | §15.2 ("Re-check now") |
+| 1 | [`GET /api/revenue/portfolio`](#1-get-apirevenueportfolio) | List rooms + findings + summary for the portfolio table | §15.2 |
+| 2 | [`GET /api/revenue/rooms/:roomId/diagnosis`](#2-get-apirevenueroomsroomiddiagnosis) | Full evidence behind a room's gate/funnel/comp-set/margin state | depth two beneath §15.2 |
+| 3 | [`GET /api/revenue/findings/:findingId`](#3-get-apirevenuefindingsfindingid) | One finding's full recommendation card content | §15.3 |
+| 4 | [`POST /api/revenue/findings/:findingId/apply`](#4-post-apirevenuefindingsfindingidapply) | Start applying a finding (async — see Rule 1) | §15.3 item 8, §15.4 |
+| 5 | [`GET /api/revenue/applies/:applyId`](#5-get-apirevenueappliesapplyid) | Poll the state of an in-flight or finished apply | §15.4 |
+| 6 | [`POST /api/revenue/applies/:applyId/revert`](#6-post-apirevenueappliesapplyidrevert) | Undo a `live` apply | §15.4 step 6 |
+| 7 | [`POST /api/revenue/findings/:findingId/dismiss`](#7-post-apirevenuefindingsfindingiddismiss) | Reject a finding with a structured reason, optionally suppress it | §11, §11.5 |
+| 8 | [`POST /api/revenue/recheck`](#8-post-apirevenuerecheck) | Re-run the audit, for one room or the whole portfolio | §15.2 ("Re-check now") |
 
 ---
 
@@ -284,10 +295,11 @@ export interface ApplyRequest {
 }
 ```
 
-Note that `findingId` appears both in the path and in the body in the
-reference adapter (the path segment is authoritative; the frontend always
-sets the body field to the same value). `fieldLabels` omitted or empty means
-"apply every field this finding changes."
+`ApplyRequest` above is the logical request shape; on the wire, `findingId`
+travels only in the path segment. The reference adapter's request body
+carries just `fieldLabels` and `basis` — it does not repeat `findingId`.
+`fieldLabels` omitted or empty means "apply every field this finding
+changes."
 
 **Response** — `ApplyAccepted`:
 
@@ -421,6 +433,10 @@ export interface DismissRequest {
   suppressForDays?: number
 }
 ```
+
+`DismissRequest` above is the logical request shape; on the wire, `findingId`
+travels only in the path segment. The reference adapter's request body
+carries just `reason` and `suppressForDays` — it does not repeat `findingId`.
 
 `RejectionReason` (defined in `diagnosis.ts`) is a fixed set of six
 structured reasons — not free text — because what a dismissal means depends
