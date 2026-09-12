@@ -18,6 +18,12 @@ const props = defineProps<{
   /** Room whose diagnosis is open. One at a time keeps the table scannable. */
   expandedId: string | null
   applyStateFor: (findingId: string) => ApplyState
+  /**
+   * True until the first portfolio load has settled. An empty `rows` while
+   * this is true is not "no findings match" — it is "not loaded yet" — so the
+   * two must render different rows.
+   */
+  isLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -207,7 +213,15 @@ function isOpen(row: PortfolioRow) {
           </TableRow>
         </template>
 
-        <TableRow v-if="!rows.length" class="hover:bg-transparent">
+        <TableRow v-if="isLoading && !rows.length" class="hover:bg-transparent">
+          <TableCell colspan="6" class="py-10 text-center text-sm text-muted-foreground">
+            <span class="inline-flex items-center gap-2">
+              <Icon name="lucide:loader-2" class="size-4 animate-spin" />
+              Loading listing health…
+            </span>
+          </TableCell>
+        </TableRow>
+        <TableRow v-else-if="!rows.length" class="hover:bg-transparent">
           <TableCell colspan="6" class="py-10 text-center text-sm text-muted-foreground">
             No findings match these filters.
           </TableCell>

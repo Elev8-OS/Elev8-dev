@@ -17,6 +17,8 @@ const props = defineProps<{
   room?: HealthRoom
   basis: ObjectiveBasis
   applyState: ApplyState
+  /** Plain-language sentence for the current apply state, from the polled ApplyStatus. */
+  applyMessage?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -147,7 +149,7 @@ const actionable = computed(() => props.finding.changes.some(change => !change.u
           </template>
         </div>
 
-        <ApplyPipeline v-if="isSettled" :state="applyState" @revert="emit('revert')" />
+        <ApplyPipeline v-if="isSettled" :state="applyState" :message="applyMessage" @revert="emit('revert')" />
 
         <div v-else class="flex flex-col gap-2.5">
           <Button class="w-full" :disabled="!actionable" @click="emit('apply', 'success')">

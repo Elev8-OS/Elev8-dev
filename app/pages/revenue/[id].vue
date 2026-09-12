@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ApplyScenario } from '~/composables/useRevenueHealth'
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import { domainLabels } from '~/components/revenue/data/health'
 import HealthMoney from '~/components/revenue/HealthMoney.vue'
@@ -21,15 +21,22 @@ const {
   getRoom,
   findingsForRoom,
   applyStateFor,
+  applyMessageFor,
   applyFinding,
   revertFinding,
   dismissFinding,
+  isLoading,
+  hasLoaded,
+  load,
 } = useRevenueHealth()
+
+onMounted(() => { load() })
 
 const findingId = computed(() => String(route.params.id))
 const finding = computed(() => getFinding(findingId.value))
 const room = computed(() => finding.value ? getRoom(finding.value.roomId) : undefined)
 const applyState = computed(() => applyStateFor(findingId.value))
+const applyMessage = computed(() => applyMessageFor(findingId.value))
 
 /** Other open findings on the same room, so the operator can work a room through. */
 const siblings = computed(() => {
@@ -44,13 +51,13 @@ function onApply(scenario: ApplyScenario) {
     toast.success('Applied — writing to the pricing engine')
 }
 
-function onRevert() {
-  revertFinding(findingId.value)
+async function onRevert() {
+  await revertFinding(findingId.value)
   toast.info('Reverted to the previous settings')
 }
 
-function onDismiss() {
-  dismissFinding(findingId.value)
+async function onDismiss() {
+  await dismissFinding(findingId.value)
   toast.info('Finding dismissed')
   router.push('/revenue')
 }
@@ -73,6 +80,7 @@ function onDismiss() {
         :room="room"
         :basis="basis"
         :apply-state="applyState"
+        :apply-message="applyMessage"
         @apply="onApply"
         @revert="onRevert"
         @dismiss="onDismiss"
@@ -101,6 +109,13 @@ function onDismiss() {
         </Card>
       </section>
     </template>
+
+    <Card v-else-if="isLoading || !hasLoaded" class="flex flex-col items-center gap-3 p-12 text-center">
+      <Icon name="lucide:loader-2" class="size-8 animate-spin text-muted-foreground" />
+      <p class="text-sm text-muted-foreground">
+        Loading…
+      </p>
+    </Card>
 
     <Card v-else class="flex flex-col items-center gap-3 p-12 text-center">
       <Icon name="lucide:search-x" class="size-8 text-muted-foreground" />

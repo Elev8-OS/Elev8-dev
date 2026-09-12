@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import type { ApplyState } from '~/components/revenue/data/health'
 import { computed } from 'vue'
+import {
+  APPLY_PIPELINE,
+  applyStepIndex,
+  failedStepIndex,
+} from '~/components/revenue/data/contract'
 import { Button } from '~/components/ui/button'
 
 const props = defineProps<{
   state: ApplyState
+  /**
+   * The plain-language sentence for the current state, from the polled
+   * `ApplyStatus.message`. The backend owns this copy — when present it is
+   * rendered verbatim, falling back to the switch below only when it is
+   * absent (e.g. before the first poll lands).
+   */
+  message?: string | null
 }>()
-
 const emit = defineEmits<{ revert: [] }>()
 
-const STEPS = ['snapshot', 'saved', 'written', 'verified', 'recomputed', 'live'] as const
-const STEP_LABELS: Record<typeof STEPS[number], string> = {
+const STEP_LABELS: Record<typeof APPLY_PIPELINE[number], string> = {
   snapshot: 'Snapshot taken',
   saved: 'Saved in Elev8',
   written: 'Written',
@@ -19,22 +29,11 @@ const STEP_LABELS: Record<typeof STEPS[number], string> = {
   live: 'Live on channels',
 }
 
-const ORDER: Record<string, number> = { idle: -1, snapshot: 0, saved: 1, written: 2, verified: 3, recomputed: 4, live: 5 }
+const failedAt = computed(() => failedStepIndex(props.state))
 
-/** Where the failure landed, so the strip can mark that step rather than the last one. */
-const failedAt = computed(() => {
-  if (props.state === 'recompute_unavailable')
-    return 4
-  if (props.state === 'push_failed')
-    return 5
-  return null
-})
-
-const reached = computed(() => {
-  if (failedAt.value !== null)
-    return failedAt.value - 1
-  return ORDER[props.state] ?? -1
-})
+const reached = computed(() =>
+  failedAt.value !== null ? failedAt.value - 1 : applyStepIndex(props.state),
+)
 
 function stepStatus(index: number) {
   if (failedAt.value === index)
@@ -46,26 +45,57 @@ function stepStatus(index: number) {
   return 'waiting'
 }
 
-const message = computed(() => {
-  switch (props.state) {
+/** Tone is driven by the state alone — it never depends on whose text is shown. */
+function toneFor(state: ApplyState): 'muted' | 'ok' | 'warning' | 'destructive' | null {
+  switch (state) {
     case 'snapshot':
-      return { tone: 'muted', text: 'Prior state captured for every field this change touches. That snapshot is what a revert restores and what the outcome is measured against.' }
     case 'saved':
-      return { tone: 'muted', text: 'Base price and minimum stay saved as a new policy version. Nothing is live yet.' }
     case 'written':
     case 'verified':
-      return { tone: 'muted', text: 'Your settings are in place and confirmed. The new nightly prices are being computed now.' }
     case 'recomputed':
-      return { tone: 'muted', text: 'New prices received. Pushing to the channels.' }
+      return 'muted'
     case 'live':
-      return { tone: 'ok', text: 'Live on three channels. Outcome measurement is scheduled — you can revert for seven days.' }
+      return 'ok'
     case 'recompute_unavailable':
-      return { tone: 'warning', text: 'Your settings are live; the new prices are not yet. The pricing engine could not recalculate on demand, so prices will update on the normal daily cycle. Any curve shown until then is Elev8\'s own estimate.' }
+      return 'warning'
     case 'push_failed':
-      return { tone: 'destructive', text: 'Guests are still seeing the old price on 14 dates. The channel manager rejected 14 of 60 room-dates. Retrying automatically and escalated to the team.' }
+      return 'destructive'
     default:
       return null
   }
+}
+
+/** Fallback prose, used only when the server has not sent a message yet. */
+function fallbackText(state: ApplyState): string | null {
+  switch (state) {
+    case 'snapshot':
+      return 'Prior state captured for every field this change touches. That snapshot is what a revert restores and what the outcome is measured against.'
+    case 'saved':
+      return 'Base price and minimum stay saved as a new policy version. Nothing is live yet.'
+    case 'written':
+    case 'verified':
+      return 'Your settings are in place and confirmed. The new nightly prices are being computed now.'
+    case 'recomputed':
+      return 'New prices received. Pushing to the channels.'
+    case 'live':
+      return 'Live on three channels. Outcome measurement is scheduled — you can revert for seven days.'
+    case 'recompute_unavailable':
+      return 'Your settings are live; the new prices are not yet. The pricing engine could not recalculate on demand, so prices will update on the normal daily cycle. Any curve shown until then is Elev8\'s own estimate.'
+    case 'push_failed':
+      return 'Guests are still seeing the old price on 14 dates. The channel manager rejected 14 of 60 room-dates. Retrying automatically and escalated to the team.'
+    default:
+      return null
+  }
+}
+
+const message = computed(() => {
+  const tone = toneFor(props.state)
+  if (tone === null)
+    return null
+  const text = props.message ?? fallbackText(props.state)
+  if (!text)
+    return null
+  return { tone, text }
 })
 </script>
 
@@ -73,7 +103,7 @@ const message = computed(() => {
   <div v-if="state !== 'idle'" class="flex flex-col gap-4">
     <ol class="flex flex-wrap items-center gap-x-2 gap-y-2">
       <li
-        v-for="(step, index) in STEPS" :key="step"
+        v-for="(step, index) in APPLY_PIPELINE" :key="step"
         class="flex items-center gap-2"
       >
         <span
@@ -99,7 +129,7 @@ const message = computed(() => {
           }"
         >{{ STEP_LABELS[step] }}</span>
 
-        <span v-if="index < STEPS.length - 1" class="hidden h-px w-6 bg-border sm:block" aria-hidden="true" />
+        <span v-if="index < APPLY_PIPELINE.length - 1" class="hidden h-px w-6 bg-border sm:block" aria-hidden="true" />
       </li>
     </ol>
 
