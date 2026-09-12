@@ -1993,7 +1993,7 @@ function isCityTax(): boolean {
   return feeTaxDraft.value.type === 'city_tax'
 }
 
-function collectorFordraftChannel(channel: BookingChannel): CityTaxCollector {
+function draftCollectorFor(channel: BookingChannel): CityTaxCollector {
   return feeTaxDraft.value.cityTax?.channelPolicy?.[channel] ?? 'host'
 }
 
@@ -2060,7 +2060,7 @@ In the fee/tax Sheet, insert directly **after** the "Include in room price" swit
             <div v-for="channel in BOOKING_CHANNELS" :key="channel" class="flex items-center justify-between gap-3">
               <span class="text-sm">{{ channel }}</span>
               <Select
-                :model-value="collectorFordraftChannel(channel)"
+                :model-value="draftCollectorFor(channel)"
                 @update:model-value="(v) => setChannelCollector(channel, v as CityTaxCollector)"
               >
                 <SelectTrigger class="h-8 w-44"><SelectValue /></SelectTrigger>
@@ -2841,10 +2841,19 @@ const emit = defineEmits<{
   'update:selected': [ids: string[]]
 }>()
 
-// reka-ui CheckboxRoot ignores external :checked changes after first render.
-// Bumping this key on a clear forces a re-mount, the same pattern the finance
-// tables use.
+// reka-ui CheckboxRoot ignores external :checked changes after first render, so
+// a cleared selection leaves every box still looking ticked. Bumping this key
+// forces a re-mount, the same pattern the finance tables use.
+//
+// It watches the PROP rather than only bumping inside toggleAll, because the
+// page clears the selection too (switching tab), and that path would otherwise
+// leave stale ticks behind.
 const clearKey = ref(0)
+
+watch(() => props.selected.length, (length) => {
+  if (length === 0)
+    clearKey.value++
+})
 
 const allSelected = computed(() =>
   props.rows.length > 0 && props.rows.every(row => props.selected.includes(row.reservation.id)))
@@ -2858,7 +2867,6 @@ function toggleRow(id: string) {
 function toggleAll() {
   if (allSelected.value) {
     emit('update:selected', [])
-    clearKey.value++
     return
   }
   emit('update:selected', props.rows.map(row => row.reservation.id))
