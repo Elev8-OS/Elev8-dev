@@ -1,0 +1,490 @@
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
+import { initialReservations } from '~/components/reservations/data/reservations'
+import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
+import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
+import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '~/components/ui/accordion'
+import { Badge } from '~/components/ui/badge'
+import { Button } from '~/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
+import { Input } from '~/components/ui/input'
+import { Label } from '~/components/ui/label'
+import { ScrollArea } from '~/components/ui/scroll-area'
+import { Separator } from '~/components/ui/separator'
+import { Textarea } from '~/components/ui/textarea'
+
+/**
+ * The shadcn primitives must be registered or an unresolved `Input` renders as a
+ * bare element whose model-value never becomes the DOM value, and every value
+ * assertion passes vacuously. The Dialog parts matter just as much: the dialog
+ * components have `<Dialog>` as their root, so without it they render nothing.
+ */
+const components = {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  ScrollArea,
+  Separator,
+  Textarea,
+  Icon: { template: '<i />' },
+}
+
+/**
+ * `DialogContent` renders through reka-ui's `DialogPortal`, which is a real
+ * Vue `Teleport` — not something `stubs: { Teleport: true }` can keep in
+ * place, since that stub replaces the teleported subtree with an empty
+ * `<teleport-stub>` rather than rendering the slot content inline. So the
+ * whole dialog body (header, catalog, form, footer) actually lands as a
+ * sibling of the test root in `document.body`, the same way the portalled
+ * `Select` does in `AddCleaningAssignee.spec.ts`. Every assertion below reads
+ * off `document.body` through a `DOMWrapper` rather than off `wrapper`
+ * directly, and each mount awaits `flushPromises()` once so the portal has
+ * actually landed before the first assertion runs.
+ */
+function body() {
+  return new DOMWrapper(document.body)
+}
+
+async function mountDialog(reservationId = 'res-3') {
+  const reservation = initialReservations.find(r => r.id === reservationId)!
+  const wrapper = mount(FolioAddItemDialog, {
+    props: { open: true, reservation },
+    global: { components },
+    attachTo: document.body,
+  })
+  await flushPromises()
+  return wrapper
+}
+
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
+describe('folioAddItemDialog', () => {
+  it('lists catalog rows for the reservation property', async () => {
+    await mountDialog()
+
+    expect(body().text()).toContain('Airport Transfer')
+    expect(body().text()).toContain('Standard Sedan')
+  })
+
+  it('marks a cross-currency row and does not copy its price', async () => {
+    await mountDialog()
+
+    // res-3 is USD; the seeded services are IDR.
+    expect(body().text()).toContain('Priced in IDR')
+
+    await body().findAll('[data-testid="folio-catalog-row"]')[0]!.trigger('click')
+    await nextTick()
+
+    const price = body().find('[data-testid="folio-unit-price"]')
+    expect((price.element as HTMLInputElement).value).toBe('')
+    expect(body().text()).toContain('Enter the amount in USD')
+  })
+
+  it('focuses the unit price input after picking a cross-currency catalog row', async () => {
+    await mountDialog()
+
+    ;(document.activeElement as HTMLElement | null)?.blur()
+
+    await body().findAll('[data-testid="folio-catalog-row"]')[0]!.trigger('click')
+    await nextTick()
+
+    expect(document.activeElement).toBe(body().find('[data-testid="folio-unit-price"]').element)
+  })
+
+  it('carries the label and both percentages over from a catalog pick', async () => {
+    await mountDialog()
+
+    await body().findAll('[data-testid="folio-catalog-row"]')[0]!.trigger('click')
+    await nextTick()
+
+    expect((body().find('[data-testid="folio-label"]').element as HTMLInputElement).value).toContain('Standard Sedan')
+    expect((body().find('[data-testid="folio-tax"]').element as HTMLInputElement).value).toBe('11')
+    expect((body().find('[data-testid="folio-service"]').element as HTMLInputElement).value).toBe('5')
+  })
+
+  it('filters the catalog by the search query', async () => {
+    await mountDialog()
+
+    await body().find('[data-testid="folio-catalog-search"]').setValue('sedan')
+    await nextTick()
+
+    expect(body().findAll('[data-testid="folio-catalog-row"]')).toHaveLength(1)
+  })
+
+  it('keeps Add disabled until the line is valid, and shows the running total', async () => {
+    await mountDialog()
+    const addButton = () => body().findAll('button').find(b => b.text() === 'Add item')!
+
+    expect(addButton().attributes('disabled')).toBeDefined()
+
+    await body().find('[data-testid="folio-label"]').setValue('Minibar - Beer')
+    await body().find('[data-testid="folio-quantity"]').setValue('2')
+    await body().find('[data-testid="folio-unit-price"]').setValue('6')
+    await nextTick()
+
+    expect(addButton().attributes('disabled')).toBeUndefined()
+    expect(body().find('[data-testid="folio-line-total"]').text()).toContain('12')
+  })
+
+  it('emits the draft it built rather than writing to the store itself', async () => {
+    const wrapper = await mountDialog()
+
+    await body().find('[data-testid="folio-label"]').setValue('Laundry')
+    await body().find('[data-testid="folio-unit-price"]').setValue('4')
+    await nextTick()
+    await body().findAll('button').find(b => b.text() === 'Add item')!.trigger('click')
+
+    const submitted = wrapper.emitted('submit')
+    expect(submitted).toHaveLength(1)
+    expect((submitted![0]![0] as { label: string }).label).toBe('Laundry')
+  })
+
+  it('shows the quantity, tax and service validation messages, and disables Add', async () => {
+    await mountDialog()
+
+    await body().find('[data-testid="folio-label"]').setValue('Minibar - Beer')
+    await body().find('[data-testid="folio-unit-price"]').setValue('6')
+    await body().find('[data-testid="folio-quantity"]').setValue('0')
+    await body().find('[data-testid="folio-tax"]').setValue('150')
+    await body().find('[data-testid="folio-service"]').setValue('-1')
+    await nextTick()
+
+    expect(body().text()).toContain('Quantity must be at least 1.')
+    expect(body().text()).toContain('Tax must be between 0 and 100.')
+    expect(body().text()).toContain('Service must be between 0 and 100.')
+    expect(body().findAll('button').find(b => b.text() === 'Add item')!.attributes('disabled')).toBeDefined()
+  })
+
+  it('opens on the custom form when no service is offered at the property', async () => {
+    const orphan = { ...initialReservations.find(r => r.id === 'res-3')!, listingName: 'Villa Nowhere' }
+    mount(FolioAddItemDialog, {
+      props: { open: true, reservation: orphan },
+      global: { components },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    expect(body().findAll('[data-testid="folio-catalog-row"]')).toHaveLength(0)
+    expect(body().text()).toContain('No catalog items')
+    expect(document.activeElement).toBe(body().find('[data-testid="folio-label"]').element)
+  })
+})
+
+describe('folioVoidDialog', () => {
+  const item = {
+    id: 'fol-1',
+    label: 'Breakfast - Continental',
+    quantity: 1,
+    unitPrice: 18,
+    taxPercent: 0,
+    servicePercent: 0,
+    source: 'custom' as const,
+    status: 'paid' as const,
+    paymentMethod: 'card' as const,
+    paidAt: '2026-09-09T09:20:00Z',
+    addedBy: 'Komang Juliantara',
+    addedAt: '2026-09-09T07:55:00Z',
+  }
+
+  async function mountVoid() {
+    const wrapper = mount(FolioVoidDialog, {
+      props: { open: true, item, currency: 'USD' },
+      global: { components },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('names the item and the amount being reversed', async () => {
+    await mountVoid()
+
+    expect(body().text()).toContain('Breakfast - Continental')
+  })
+
+  it('keeps Void disabled until a reason is given', async () => {
+    await mountVoid()
+    const voidButton = () => body().findAll('button').find(b => b.text() === 'Void item')!
+
+    expect(voidButton().attributes('disabled')).toBeDefined()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('Charged twice')
+    await nextTick()
+
+    expect(voidButton().attributes('disabled')).toBeUndefined()
+  })
+
+  it('treats a whitespace reason as no reason', async () => {
+    await mountVoid()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('   ')
+    await nextTick()
+
+    expect(body().findAll('button').find(b => b.text() === 'Void item')!.attributes('disabled')).toBeDefined()
+  })
+
+  it('emits the reason it collected', async () => {
+    const wrapper = await mountVoid()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('Charged twice')
+    await nextTick()
+    await body().findAll('button').find(b => b.text() === 'Void item')!.trigger('click')
+
+    expect(wrapper.emitted('confirm')![0]![0]).toBe('Charged twice')
+  })
+
+  it('trims surrounding whitespace off a reason that has real content', async () => {
+    const wrapper = await mountVoid()
+
+    await body().find('[data-testid="folio-void-reason"]').setValue('  Charged twice  ')
+    await nextTick()
+    await body().findAll('button').find(b => b.text() === 'Void item')!.trigger('click')
+
+    expect(wrapper.emitted('confirm')![0]![0]).toBe('Charged twice')
+  })
+})
+
+describe('reservationFolioSection', () => {
+  const sectionComponents = {
+    ...components,
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+  }
+
+  /**
+   * The section is a collapsed Accordion, and reka-ui does not mount
+   * AccordionContent until it opens. Every assertion below is about the content,
+   * so the helper opens it first.
+   *
+   * The trigger is queried by `[data-slot="accordion-trigger"]` (the stable
+   * marker `AccordionTrigger.vue` renders), not "the first button in the
+   * wrapper" — the section root also contains the (closed) add/void dialogs,
+   * and a plain `find('button')` would silently start matching the wrong
+   * element the day either dialog renders a button while closed.
+   *
+   * No `Teleport` stub here: `DropdownMenuContent` and the dialog content
+   * both render through a real reka-ui portal, and `stubs: { Teleport: true }`
+   * would replace that subtree with an empty `<teleport-stub>` — exactly the
+   * failure mode called out in the comment on `body()` above. Leaving Teleport
+   * unstubbed and reading `document.body` (as that same pattern already does)
+   * is what lets the portalled content actually land.
+   */
+  async function mountSection(reservationId = 'res-3') {
+    const reservation = initialReservations.find(r => r.id === reservationId)!
+    const wrapper = mount(ReservationFolioSection, {
+      props: { reservation },
+      global: { components: sectionComponents },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-slot="accordion-trigger"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    return wrapper
+  }
+
+  it('renders every seeded item with its state', async () => {
+    const text = (await mountSection()).text()
+
+    expect(text).toContain('Minibar - Bintang Beer')
+    expect(text).toContain('Laundry - Express same day')
+    expect(text).toContain('Breakfast - Continental')
+    expect(text).toContain('Unpaid')
+    expect(text).toContain('Paid')
+    expect(text).toContain('Voided')
+  })
+
+  it('shows the void reason on a voided line', async () => {
+    expect((await mountSection()).text()).toContain('Charged twice at the desk.')
+  })
+
+  it('states the booking total, the extras and the combined total', async () => {
+    const text = (await mountSection()).text()
+
+    expect(text).toContain('Booking total')
+    expect(text).toContain('Extras')
+    expect(text).toContain('Total')
+  })
+
+  it('reports the gross refund row rather than a negative net balance', async () => {
+    const wrapper = await mountSection()
+
+    // The voided, previously-paid breakfast (19.80) is refundable in full.
+    // That is a gross figure, computed from the voided-and-paid line itself,
+    // never from the sign of the net balance, so it never nets down to 6.60
+    // and never prints negative.
+    expect(wrapper.text()).toContain('Refund due')
+    expect(wrapper.text()).toContain('19.80')
+    expect(wrapper.text()).not.toContain('-19.80')
+  })
+
+  it('shows the outstanding unpaid total alongside the refund due, rather than netting them into one balance', async () => {
+    const wrapper = await mountSection()
+
+    // res-3: the minibar line (13.20) is still unpaid while the voided,
+    // previously-paid breakfast (19.80) is fully refundable. Both are gross
+    // figures shown independently, each driven off its own lines rather than
+    // off whichever number is bigger.
+    expect(wrapper.text()).toContain('Extras still due')
+    expect(wrapper.text()).toContain('13.20')
+    expect(wrapper.text()).toContain('Refund due')
+    expect(wrapper.text()).toContain('19.80')
+  })
+
+  it('still reconciles the two gross rows with a net line', async () => {
+    const wrapper = await mountSection()
+
+    // 13.20 still due against 19.80 refundable nets to a 6.60 refund, the
+    // same figure the old single-line summary showed, now stated as the
+    // net of the two rows above rather than in place of them.
+    expect(wrapper.text()).toContain('Refund 6.60')
+  })
+
+  it('shows both rows for the mirror case: a large unpaid item and a smaller voided-paid one', async () => {
+    const mirrored = {
+      ...initialReservations.find(r => r.id === 'res-3')!,
+      folioItems: [
+        {
+          id: 'fol-mirror-1',
+          label: 'Minibar - Beer',
+          quantity: 1,
+          unitPrice: 50,
+          taxPercent: 0,
+          servicePercent: 0,
+          source: 'custom' as const,
+          status: 'unpaid' as const,
+          addedBy: 'Komang Juliantara',
+          addedAt: '2026-09-09T10:00:00Z',
+        },
+        {
+          id: 'fol-mirror-2',
+          label: 'Breakfast - Continental',
+          quantity: 1,
+          unitPrice: 20,
+          taxPercent: 0,
+          servicePercent: 0,
+          source: 'custom' as const,
+          status: 'voided' as const,
+          paymentMethod: 'cash' as const,
+          paidAt: '2026-09-09T09:00:00Z',
+          voidReason: 'Guest cancelled the breakfast.',
+          voidedAt: '2026-09-09T09:30:00Z',
+          voidedBy: 'Komang Juliantara',
+          addedBy: 'Komang Juliantara',
+          addedAt: '2026-09-09T08:00:00Z',
+        },
+      ],
+    }
+
+    const wrapper = mount(ReservationFolioSection, {
+      props: { reservation: mirrored },
+      global: { components: sectionComponents },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-slot="accordion-trigger"]').trigger('click')
+    await nextTick()
+    await nextTick()
+
+    // itemsTotal 50 (unpaid), itemsPaid 20 (voided-but-paid), itemsBalance
+    // 30, refundDue 0: the sign-based field disappears here because the
+    // unpaid line outweighs the refundable one. unpaidTotal (50) and
+    // refundableTotal (20) must both still show regardless, since the desk
+    // collects 50 and refunds 20, not "balance 30". This is the case the
+    // whole fix exists for.
+    expect(wrapper.text()).toContain('Extras still due')
+    expect(wrapper.text()).toContain('50.00')
+    expect(wrapper.text()).toContain('Refund due')
+    expect(wrapper.text()).toContain('20.00')
+  })
+
+  it('reads as settled when nothing is owed and nothing is refundable', async () => {
+    const wrapper = await mountSection('res-1')
+
+    expect(wrapper.text()).toContain('Extras settled')
+    expect(wrapper.text()).not.toContain('Extras still due')
+    expect(wrapper.text()).not.toContain('Refund due')
+  })
+
+  it('offers Add item on a live stay', async () => {
+    const add = (await mountSection()).find('[data-testid="folio-add"]')
+
+    expect(add.exists()).toBe(true)
+    expect(add.attributes('disabled')).toBeUndefined()
+  })
+
+  it('disables Add item on a cancelled stay and says why', async () => {
+    const cancelled = initialReservations.find(r => r.status === 'cancelled')!
+    const wrapper = mount(ReservationFolioSection, {
+      props: { reservation: cancelled },
+      global: { components: sectionComponents },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-slot="accordion-trigger"]').trigger('click')
+    await nextTick()
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="folio-add"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('cancelled')
+  })
+
+  it('shows an empty state on a stay with nothing posted', async () => {
+    const wrapper = await mountSection('res-1')
+
+    expect(wrapper.text()).toContain('Nothing posted yet')
+  })
+
+  /**
+   * DropdownMenuContent is unmounted until the menu opens and portals out of the
+   * wrapper, so it is read off document.body. One menu per mount: two open
+   * portals in one document make a negative assertion meaningless, since the
+   * other row's items are also on the page.
+   */
+  async function openRowMenu(rowIndex: number) {
+    const wrapper = await mountSection()
+    const rows = wrapper.findAll('[data-testid="folio-item-row"]')
+    expect(rows).toHaveLength(3)
+
+    await rows[rowIndex]!.find('[aria-label="Item actions"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    return document.body.textContent ?? ''
+  }
+
+  it('offers Remove but not Void on the unpaid row', async () => {
+    const menu = await openRowMenu(0)
+
+    expect(menu).toContain('Remove')
+    expect(menu).not.toContain('Void item')
+  })
+
+  it('offers Void but not Remove on the paid row', async () => {
+    const menu = await openRowMenu(1)
+
+    expect(menu).toContain('Void item')
+    expect(menu).not.toContain('Remove')
+  })
+
+  it('offers no actions at all on a voided row', async () => {
+    const wrapper = await mountSection()
+    const rows = wrapper.findAll('[data-testid="folio-item-row"]')
+
+    expect(rows[2]!.find('[aria-label="Item actions"]').exists()).toBe(false)
+  })
+})

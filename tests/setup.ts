@@ -1,6 +1,8 @@
 import { beforeEach, vi } from 'vitest'
 import { computed, onMounted, reactive, ref, resolveComponent, shallowRef, watch } from 'vue'
+import { useCurrentDashboardUser } from '../app/composables/useCurrentDashboardUser'
 import { useOnboarding } from '../app/composables/useOnboarding'
+import { useUpsellServices } from '../app/composables/useUpsellServices'
 import { useAssistant } from './utils/useAssistant-global'
 
 globalThis.toast = {
@@ -23,6 +25,9 @@ globalThis.resolveComponent = resolveComponent
 globalThis.useAssistant = useAssistant
 // Components that render onboarding state resolve this as a Nuxt auto-import.
 globalThis.useOnboarding = useOnboarding
+// The folio reads the upsell catalog and the acting staff member as auto-imports.
+globalThis.useUpsellServices = useUpsellServices
+globalThis.useCurrentDashboardUser = useCurrentDashboardUser
 
 // Lightweight useState shim — keyed on a global Map so multiple composables
 // can share state across calls. Mirrors Nuxt's useState API just enough

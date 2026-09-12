@@ -2,10 +2,12 @@
 import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
 import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
+import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
+import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
@@ -167,10 +169,6 @@ function channelIcon(channel: string): string {
   if (channel === 'Booking.com')
     return 'simple-icons:bookingdotcom'
   return 'lucide:globe'
-}
-
-function initials(name: string): string {
-  return name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
 }
 
 // --- Smart lock ---
@@ -562,14 +560,13 @@ function cleaningStatusLabel(job: CleaningJob): string {
               </AccordionItem>
             </Accordion>
 
+            <!-- Charges & extras (staff-posted folio) -->
+            <ReservationFolioSection :reservation="reservation" />
+
             <!-- Guest -->
             <div class="border-b px-5 py-4">
               <div class="flex items-center gap-3">
-                <Avatar class="size-11">
-                  <AvatarFallback class="bg-primary/10 text-primary text-sm">
-                    {{ initials(reservation.guestName) }}
-                  </AvatarFallback>
-                </Avatar>
+                <BasePersonAvatar :name="reservation.guestName" class="size-11" text-class="text-sm" />
                 <div class="min-w-0 flex-1">
                   <button
                     type="button"
@@ -633,11 +630,7 @@ function cleaningStatusLabel(job: CleaningJob): string {
                           class="border p-3"
                         >
                           <div class="flex items-center gap-2.5">
-                            <Avatar class="size-9">
-                              <AvatarFallback class="bg-primary/10 text-primary text-xs">
-                                {{ initials(g.name) }}
-                              </AvatarFallback>
-                            </Avatar>
+                            <BasePersonAvatar :name="g.name" class="size-9" />
                             <div class="min-w-0 flex-1">
                               <div class="flex items-center gap-1.5">
                                 <p class="text-sm font-medium truncate">

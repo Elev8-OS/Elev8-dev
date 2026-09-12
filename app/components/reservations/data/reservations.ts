@@ -1,4 +1,5 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
+import type { FolioItem } from '~/components/reservations/data/folio'
 
 export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
@@ -140,6 +141,11 @@ export interface ReservationEntry {
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number
   charges?: ReservationCharge[]
+  /**
+   * Items posted on the stay by staff (minibar, laundry, a spa slot booked at
+   * the desk). Optional, so every existing reservation keeps working untouched.
+   */
+  folioItems?: FolioItem[]
 }
 
 export interface GuestProfile {
@@ -149,6 +155,11 @@ export interface GuestProfile {
   phone: string
   language: string
   notes: string
+  /**
+   * Seed decoration only. It never moved when a booking was added, so the UI
+   * reads `useReservationsModule().getPreviousStayCount(id)` instead, which
+   * counts the guest's actual completed stays.
+   */
   previousStays: number
   tags: string[]
   createdAt: string
@@ -208,10 +219,25 @@ export interface ReservationDraft {
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number
   charges?: ReservationCharge[]
+  /**
+   * The guest this booking belongs to, when staff picked an existing one.
+   * Left out for a guest nobody has stayed before, and `createReservation` then
+   * creates the profile. It never guesses: matching an unlinked booking to an
+   * existing person is a separate, human-confirmed step, because an automatic
+   * merge would show one guest another guest's history.
+   */
+  guestId?: string
 }
 
 export function generateReservationId(): string {
   return `res-${Date.now()}`
+}
+
+let guestSeq = 0
+
+export function generateGuestId(): string {
+  guestSeq += 1
+  return `guest-${Date.now().toString(36)}-${guestSeq}`
 }
 
 /** Curated country list for the reservation contact-details form. */
@@ -285,8 +311,8 @@ export const initialReservations: ReservationEntry[] = [
     id: 'res-1',
     guestId: 'guest-1',
     guestName: 'Sarah Mitchell',
-    guestEmail: 'sarah.mitchell@email.com',
-    guestPhone: '+1 555-0142',
+    guestEmail: 'k7m2p9x4qz@guest.airbnb.com',
+    guestPhone: '+1 555-0142 ext 48213',
     guestLanguage: 'English',
     guestNotes: 'Returning guest. Prefers early check-in. Allergic to feather pillows.',
     listingId: 'lst-1',
@@ -452,7 +478,7 @@ export const initialReservations: ReservationEntry[] = [
     id: 'res-2',
     guestId: 'guest-2',
     guestName: 'James Carter',
-    guestEmail: 'james.carter@email.com',
+    guestEmail: '4192837465@guest.booking.com',
     guestPhone: '+44 20 7946 0958',
     guestLanguage: 'English',
     guestNotes: 'Anniversary trip. Wants a welcome bottle on arrival.',
@@ -883,7 +909,7 @@ export const initialReservations: ReservationEntry[] = [
     id: 'res-3',
     guestId: 'guest-6',
     guestName: 'Emily Chen',
-    guestEmail: 'emily.chen@email.com',
+    guestEmail: 'h3n8r5t1vw@guest.airbnb.com',
     guestPhone: '+65 8123 4567',
     guestLanguage: 'English',
     guestNotes: 'Prefers a quiet room away from the pool. Interested in spa services.',
@@ -901,16 +927,62 @@ export const initialReservations: ReservationEntry[] = [
       cleaningFee: 25,
       serviceFee: 0,
       tax: 15,
-      extras: 0,
-      guestPaid: 640,
+      extras: 26.4,
+      guestPaid: 666.4,
       commission: 64,
-      payout: 576,
+      payout: 602.4,
     },
     status: 'checked_in',
     conversationId: 'conv-3',
     paymentRequestId: 'pr-006',
     guestGuideId: 'ggl-mock-002',
     upsellIds: ['ord-003'],
+    folioItems: [
+      {
+        id: 'fol-res3-1',
+        label: 'Minibar - Bintang Beer',
+        quantity: 2,
+        unitPrice: 6,
+        taxPercent: 10,
+        servicePercent: 0,
+        source: 'custom',
+        status: 'unpaid',
+        addedBy: 'Komang Juliantara',
+        addedAt: '2026-08-09T14:02:00Z',
+      },
+      {
+        id: 'fol-res3-2',
+        label: 'Laundry - Express same day',
+        quantity: 3,
+        unitPrice: 4,
+        taxPercent: 10,
+        servicePercent: 0,
+        note: 'Two shirts and one pair of trousers.',
+        source: 'custom',
+        status: 'paid',
+        paymentMethod: 'cash',
+        paidAt: '2026-08-10T09:15:00Z',
+        addedBy: 'Komang Juliantara',
+        addedAt: '2026-08-10T08:40:00Z',
+      },
+      {
+        id: 'fol-res3-3',
+        label: 'Breakfast - Continental',
+        quantity: 1,
+        unitPrice: 18,
+        taxPercent: 10,
+        servicePercent: 0,
+        source: 'custom',
+        status: 'voided',
+        paymentMethod: 'card',
+        paidAt: '2026-08-10T09:20:00Z',
+        voidReason: 'Charged twice at the desk.',
+        voidedAt: '2026-08-10T09:31:00Z',
+        voidedBy: 'Komang Juliantara',
+        addedBy: 'Komang Juliantara',
+        addedAt: '2026-08-10T07:55:00Z',
+      },
+    ],
     guests: [
       {
         id: 'occ-1',

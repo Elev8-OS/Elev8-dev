@@ -1,19 +1,29 @@
 <script setup lang="ts">
+import type { PaymentRequest } from '~/components/payment-request/data/payment-requests'
 import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
+import { toast } from 'vue-sonner'
+import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { listings } from '~/components/listings/data/listings'
+import PaymentRequestCancelDialog from '~/components/payment-request/PaymentRequestCancelDialog.vue'
+import PaymentRequestCreateDialog from '~/components/payment-request/PaymentRequestCreateDialog.vue'
+import PaymentRequestDetailDialog from '~/components/payment-request/PaymentRequestDetailDialog.vue'
+import PaymentRequestShareDialog from '~/components/payment-request/PaymentRequestShareDialog.vue'
+import PaymentRequestTable from '~/components/payment-request/PaymentRequestTable.vue'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import GuestNotes from '~/components/reservations/GuestNotes.vue'
-import GuestPaymentRequests from '~/components/reservations/GuestPaymentRequests.vue'
 import GuestReservationsTable from '~/components/reservations/GuestReservationsTable.vue'
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
+import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useUpsellOrders } from '~/composables/useUpsellOrders'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,9 +31,11 @@ const router = useRouter()
 const {
   getGuestById,
   getReservationsForGuest,
+  getPreviousStayCount,
   updateGuestNotes,
 } = useReservationsModule()
-const { requests } = usePaymentRequests()
+const { requests, cancelRequest, duplicateRequest } = usePaymentRequests()
+const { orders: upsellOrders } = useUpsellOrders()
 const { conversations } = useInbox()
 const { links } = useGuestGuideLinks()
 
@@ -39,7 +51,7 @@ const totalSpent = computed(() => stays.value
   .reduce((sum, r) => sum + r.totalPrice, 0))
 const spentCurrency = computed(() => stays.value.find(r => r.status !== 'cancelled')?.currency ?? 'USD')
 
-// Primary (most relevant) stay for the Booking Info / Room Info cards
+// Primary (most relevant) stay, shown in the Booking Info card
 const primaryStay = computed<ReservationEntry | null>(() => {
   if (stays.value.length === 0)
     return null
@@ -61,8 +73,23 @@ const guestPaymentRequests = computed(() => {
   return requests.value.filter(r => r.guestEmail.toLowerCase() === email || stays.value.some(s => s.paymentRequestId === r.id))
 })
 
+// Picking a stay from Booking History opens its detail sheet, which is where
+// that stay's price breakdown and its folio (Charges & extras) live. The sheet
+// re-resolves the reservation from live state, so a posting made in it shows up
+// here without this page having to refresh anything.
+const detailStay = ref<ReservationEntry | null>(null)
+const detailOpen = ref(false)
+
+function openStayDetail(reservation: ReservationEntry) {
+  detailStay.value = reservation
+  detailOpen.value = true
+}
+
 // Upsells — merged from stays
 const upsells = computed(() => stays.value.flatMap(r => r.upsellIds ?? []))
+// Resolved orders, so the tab badge counts what the tab will actually list
+// rather than every id, including any that no longer resolve to an order.
+const linkedUpsellOrders = computed(() => upsellOrders.value.filter(o => upsells.value.includes(o.id)))
 
 // Related links
 const relatedConversation = computed(() => {
@@ -90,6 +117,53 @@ function saveNotes(notes: string) {
 
 const newReservationOpen = ref(false)
 const editReservationOpen = ref(false)
+const newPaymentRequestOpen = ref(false)
+
+// A created request lands in the shared payment-request store, and
+// guestPaymentRequests matches on this guest's email, so it shows up in the tab
+// without this page tracking it separately. The row actions mirror
+// pages/payment-requests/index.vue so a row behaves the same on either surface.
+const detailRequest = ref<PaymentRequest | null>(null)
+const shareRequest = ref<PaymentRequest | null>(null)
+const cancelRequestId = ref<string | null>(null)
+
+const cancelDialogOpen = computed({
+  get: () => cancelRequestId.value !== null,
+  set: (val: boolean) => {
+    if (!val)
+      cancelRequestId.value = null
+  },
+})
+
+function handlePaymentRequestCreated(request: PaymentRequest) {
+  // Straight to the share dialog with the link and QR, as on the main page:
+  // a request nobody can send is only half raised.
+  shareRequest.value = request
+}
+
+function openPaymentRequest(request: PaymentRequest) {
+  detailRequest.value = request
+}
+
+function copyPaymentLink(link: string) {
+  navigator.clipboard.writeText(link)
+  toast.success('Link copied to clipboard')
+}
+
+function askCancelPaymentRequest(id: string) {
+  cancelRequestId.value = id
+}
+
+function confirmCancelPaymentRequest(payload: { id: string, reason: string }) {
+  cancelRequest(payload.id, payload.reason)
+  toast.success('Payment link cancelled')
+  detailRequest.value = null
+}
+
+function duplicatePaymentRequest(id: string) {
+  duplicateRequest(id)
+  toast.success('Request duplicated')
+}
 
 // Party summary from occupants, e.g. "2 Adults · 1 Child · 1 Infant"
 const partySummary = computed(() => {
@@ -167,7 +241,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         </Button>
       </div>
 
-      <!-- Top: 3-column cards (Profile | Booking Info | Room Info) -->
+      <!-- Top row: Profile, then Booking Info with the booked room inside it -->
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <!-- Profile card -->
         <Card>
@@ -196,11 +270,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           </CardHeader>
           <CardContent class="space-y-4">
             <div class="flex items-center gap-3">
-              <Avatar class="size-12">
-                <AvatarFallback class="bg-primary/10 text-primary">
-                  {{ guest.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
-                </AvatarFallback>
-              </Avatar>
+              <BasePersonAvatar :name="guest.name" class="size-12" text-class="text-sm" />
               <div class="min-w-0">
                 <p class="font-semibold truncate">
                   {{ guest.name }}
@@ -241,7 +311,7 @@ function reservationStatusMeta(status?: ReservationStatus): string {
                   Previous stays
                 </p>
                 <p class="font-medium">
-                  {{ guest.previousStays }}
+                  {{ getPreviousStayCount(guest.id) }}
                 </p>
               </div>
               <div>
@@ -269,8 +339,8 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           </CardContent>
         </Card>
 
-        <!-- Booking Info card -->
-        <Card>
+        <!-- Booking Info card, with the booked room as a column inside it -->
+        <Card class="md:col-span-2">
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-base">
               Booking Info
@@ -285,73 +355,107 @@ function reservationStatusMeta(status?: ReservationStatus): string {
               </Button>
             </div>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent>
             <template v-if="primaryStay">
-              <div class="space-y-1.5 text-sm">
-                <p class="flex items-center gap-2 text-muted-foreground">
-                  <Icon name="lucide:hash" class="size-3.5" />
-                  Booking ID:
-                  <span class="font-mono font-medium text-foreground">{{ primaryStay.id }}</span>
-                </p>
-                <p class="flex items-center gap-2 text-muted-foreground">
-                  <Icon name="lucide:calendar" class="size-3.5" />
-                  {{ fmtDate(primaryStay.checkIn) }} → {{ fmtDate(primaryStay.checkOut) }}
-                </p>
-                <p class="flex items-center gap-2 text-muted-foreground">
-                  <Icon name="lucide:moon" class="size-3.5" />
-                  {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
-                </p>
-              </div>
+              <div class="grid gap-6 sm:grid-cols-2">
+                <!-- Booking detail -->
+                <div class="space-y-4">
+                  <div class="space-y-1.5 text-sm">
+                    <p class="flex items-center gap-2 text-muted-foreground">
+                      <Icon name="lucide:hash" class="size-3.5" />
+                      Booking ID:
+                      <span class="font-mono font-medium text-foreground">{{ primaryStay.id }}</span>
+                    </p>
+                    <p class="flex items-center gap-2 text-muted-foreground">
+                      <Icon name="lucide:calendar" class="size-3.5" />
+                      {{ fmtDate(primaryStay.checkIn) }} → {{ fmtDate(primaryStay.checkOut) }}
+                    </p>
+                    <p class="flex items-center gap-2 text-muted-foreground">
+                      <Icon name="lucide:moon" class="size-3.5" />
+                      {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
+                    </p>
+                  </div>
 
-              <!-- Party breakdown -->
-              <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
-                <div class="flex -space-x-2">
-                  <Avatar
-                    v-for="g in primaryStay.guests.slice(0, 4)"
-                    :key="g.id"
-                    class="size-8 border-2 border-background"
-                  >
-                    <AvatarFallback class="bg-primary/10 text-primary text-[10px]">
-                      {{ g.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase() }}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span
-                    v-if="primaryStay.guests.length > 4"
-                    class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
-                  >
-                    +{{ primaryStay.guests.length - 4 }}
-                  </span>
+                  <!-- Party breakdown -->
+                  <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
+                    <div class="flex -space-x-2">
+                      <BasePersonAvatar
+                        v-for="g in primaryStay.guests.slice(0, 4)"
+                        :key="g.id"
+                        :name="g.name"
+                        class="size-8 border-2 border-background"
+                        text-class="text-[10px]"
+                      />
+                      <span
+                        v-if="primaryStay.guests.length > 4"
+                        class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
+                      >
+                        +{{ primaryStay.guests.length - 4 }}
+                      </span>
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      <p class="font-medium text-foreground">
+                        {{ partySummary }}
+                      </p>
+                      <p>
+                        {{ primaryStay.guests.map(g => g.name).join(', ') }}
+                      </p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p class="text-xs text-muted-foreground">
+                        Channel
+                      </p>
+                      <p class="font-medium">
+                        {{ primaryStay.channel }}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-muted-foreground">
+                        Total
+                      </p>
+                      <p class="font-medium">
+                        {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
+                      </p>
+                    </div>
+                  </div>
+                  <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                    {{ primaryStay.guestNotes }}
+                  </div>
                 </div>
-                <div class="text-xs text-muted-foreground">
-                  <p class="font-medium text-foreground">
-                    {{ partySummary }}
-                  </p>
-                  <p>
-                    {{ primaryStay.guests.map(g => g.name).join(', ') }}
-                  </p>
+
+                <!-- The booked room, formerly its own card -->
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Room
+                    </p>
+                    <Button variant="link" size="sm" class="h-auto p-0 text-xs" as-child>
+                      <NuxtLink :to="`/listings/${primaryStay.listingId}`">
+                        View detail
+                      </NuxtLink>
+                    </Button>
+                  </div>
+                  <div class="flex h-28 w-full items-center justify-center overflow-hidden rounded-md border bg-muted/40">
+                    <img
+                      v-if="listingPhoto(primaryStay.listingId)"
+                      :src="listingPhoto(primaryStay.listingId)"
+                      :alt="primaryStay.listingName"
+                      class="h-full w-full object-cover"
+                    >
+                    <Icon v-else name="lucide:building-2" class="size-8 text-muted-foreground/50" />
+                  </div>
+                  <div>
+                    <p class="text-sm font-semibold leading-tight">
+                      {{ primaryStay.listingName }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ primaryStay.guestCount }} guests
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <Separator />
-              <div class="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p class="text-xs text-muted-foreground">
-                    Channel
-                  </p>
-                  <p class="font-medium">
-                    {{ primaryStay.channel }}
-                  </p>
-                </div>
-                <div>
-                  <p class="text-xs text-muted-foreground">
-                    Total
-                  </p>
-                  <p class="font-medium">
-                    {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
-                  </p>
-                </div>
-              </div>
-              <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
-                {{ primaryStay.guestNotes }}
               </div>
             </template>
             <p v-else class="text-sm text-muted-foreground italic">
@@ -359,57 +463,85 @@ function reservationStatusMeta(status?: ReservationStatus): string {
             </p>
           </CardContent>
         </Card>
-
-        <!-- Room Info card -->
-        <Card>
-          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle class="text-base">
-              Room Info
-            </CardTitle>
-            <Button v-if="primaryStay" variant="link" size="sm" class="h-8 p-0 text-xs" as-child>
-              <NuxtLink :to="`/listings/${primaryStay.listingId}`">
-                View detail
-              </NuxtLink>
-            </Button>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            <template v-if="primaryStay">
-              <div class="flex h-28 w-full items-center justify-center overflow-hidden border bg-muted/40">
-                <img
-                  v-if="listingPhoto(primaryStay.listingId)"
-                  :src="listingPhoto(primaryStay.listingId)"
-                  :alt="primaryStay.listingName"
-                  class="h-full w-full object-cover"
-                >
-                <Icon v-else name="lucide:building-2" class="size-8 text-muted-foreground/50" />
-              </div>
-              <div>
-                <p class="text-sm font-semibold leading-tight">
-                  {{ primaryStay.listingName }}
-                </p>
-                <p class="text-xs text-muted-foreground">
-                  {{ primaryStay.guestCount }} guests
-                </p>
-              </div>
-            </template>
-            <p v-else class="text-sm text-muted-foreground italic">
-              No room booked.
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
-      <!-- Booking History table (full width) -->
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-base">
+      <!-- Activity, booking history, payment requests and upsells: one card, four tabs -->
+      <Tabs default-value="activity" class="space-y-4">
+        <TabsList>
+          <TabsTrigger value="activity">
+            <Icon name="lucide:activity" class="mr-2 size-4" />
+            Activity
+            <Badge v-if="activity.length" variant="secondary" class="ml-2">
+              {{ activity.length }}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="bookings">
+            <Icon name="lucide:history" class="mr-2 size-4" />
             Booking History
-          </CardTitle>
-        </CardHeader>
-        <CardContent class="px-6 pb-6">
-          <GuestReservationsTable :reservations="stays" />
-        </CardContent>
-      </Card>
+            <Badge v-if="stays.length" variant="secondary" class="ml-2">
+              {{ stays.length }}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="payments">
+            <Icon name="lucide:link" class="mr-2 size-4" />
+            Payment Requests
+            <Badge v-if="guestPaymentRequests.length" variant="secondary" class="ml-2">
+              {{ guestPaymentRequests.length }}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="upsells">
+            <Icon name="lucide:tag" class="mr-2 size-4" />
+            Upsells
+            <Badge v-if="linkedUpsellOrders.length" variant="secondary" class="ml-2">
+              {{ linkedUpsellOrders.length }}
+            </Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="activity">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestActivityTimeline :events="activity" bare />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="bookings">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestReservationsTable :reservations="stays" @open-detail="openStayDetail" />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <div class="mb-1 flex items-center justify-end">
+                <Button variant="outline" size="sm" class="gap-1.5" @click="newPaymentRequestOpen = true">
+                  <Icon name="lucide:plus" class="size-3.5" />
+                  New payment request
+                </Button>
+              </div>
+              <PaymentRequestTable
+                :requests="guestPaymentRequests"
+                @view="openPaymentRequest"
+                @copy="copyPaymentLink"
+                @cancel="askCancelPaymentRequest"
+                @duplicate="duplicatePaymentRequest"
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="upsells">
+          <Card>
+            <CardContent class="px-6 py-4">
+              <GuestUpsells :order-ids="upsells" />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <!-- Related links -->
       <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
@@ -438,15 +570,6 @@ function reservationStatusMeta(status?: ReservationStatus): string {
         </Button>
       </div>
 
-      <!-- Activity -->
-      <GuestActivityTimeline :events="activity" />
-
-      <!-- Payment requests -->
-      <GuestPaymentRequests :requests="guestPaymentRequests" />
-
-      <!-- Upsells -->
-      <GuestUpsells :order-ids="upsells" />
-
       <!-- Notes -->
       <GuestNotes :notes="guest.notes" @save="saveNotes" />
     </div>
@@ -461,6 +584,39 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       :reservation="primaryStay"
       :open="editReservationOpen"
       @update:open="editReservationOpen = $event"
+    />
+
+    <PaymentRequestCreateDialog
+      v-if="guest"
+      v-model:open="newPaymentRequestOpen"
+      :initial-guest="{ name: guest.name, email: guest.email, phone: guest.phone }"
+      @created="handlePaymentRequestCreated"
+    />
+
+    <PaymentRequestDetailDialog
+      :request="detailRequest"
+      @update:open="detailRequest = null"
+      @copy="copyPaymentLink"
+      @cancel="askCancelPaymentRequest"
+    />
+
+    <PaymentRequestShareDialog
+      :request="shareRequest"
+      @close="shareRequest = null"
+    />
+
+    <PaymentRequestCancelDialog
+      v-model:open="cancelDialogOpen"
+      :request-id="cancelRequestId"
+      @confirm="confirmCancelPaymentRequest"
+    />
+
+    <!-- The picked stay's price breakdown and folio -->
+    <ReservationDetailSheet
+      :reservation="detailStay"
+      :open="detailOpen"
+      @update:open="detailOpen = $event"
+      @open-guest="detailOpen = false"
     />
 
     <template #fallback>
