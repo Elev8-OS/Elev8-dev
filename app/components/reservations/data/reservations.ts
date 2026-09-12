@@ -1,5 +1,6 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { FolioItem } from '~/components/reservations/data/folio'
+import type { BookingChannel } from '~/components/listings/data/listings'
 
 export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
@@ -85,6 +86,31 @@ export interface ReservationCharge {
   amount: number
 }
 
+export type CityTaxPaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'other'
+
+export interface CityTaxTotal {
+  currency: string
+  amount: number
+}
+
+/**
+ * What staff did about the city tax on this stay. Deliberately the ONLY city
+ * tax state stored on a reservation: the status ('due', 'channel_collects',
+ * 'not_required') is derived on every read, so flipping a channel policy
+ * re-evaluates every existing booking instead of leaving a stale flag behind.
+ */
+export interface CityTaxSettlement {
+  state: 'collected' | 'waived'
+  /** Frozen at settlement time so a later rate change cannot rewrite it. */
+  totals: CityTaxTotal[]
+  settledAt: string
+  settledBy: string
+  method?: CityTaxPaymentMethod
+  /** Required when state is 'waived'. */
+  reason?: string
+  note?: string
+}
+
 export interface ReservationEntry {
   id: string
   guestId: string
@@ -95,7 +121,7 @@ export interface ReservationEntry {
   guestNotes: string
   listingId: string
   listingName: string
-  channel: 'Airbnb' | 'Booking.com' | 'Direct'
+  channel: BookingChannel
   checkIn: string // ISO date YYYY-MM-DD
   checkOut: string // ISO date YYYY-MM-DD
   nights: number
@@ -146,6 +172,8 @@ export interface ReservationEntry {
    * the desk). Optional, so every existing reservation keeps working untouched.
    */
   folioItems?: FolioItem[]
+  /** Set only once staff collect or waive. Absent means "nothing recorded yet". */
+  cityTaxSettlement?: CityTaxSettlement
 }
 
 export interface GuestProfile {
@@ -184,7 +212,7 @@ export interface ReservationDraft {
   guestNotes: string
   listingId: string
   listingName: string
-  channel: 'Airbnb' | 'Booking.com' | 'Direct'
+  channel: BookingChannel
   checkIn: string
   checkOut: string
   nights: number

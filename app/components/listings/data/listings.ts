@@ -47,6 +47,41 @@ export interface TaxDateRange {
   before: string
 }
 
+/**
+ * The booking channels a city tax policy can name. Declared here rather than in
+ * `reservations.ts` because `listings.ts` imports nothing, so this direction can
+ * never close an import cycle. `ReservationEntry.channel` imports it back.
+ */
+export type BookingChannel = 'Airbnb' | 'Booking.com' | 'Direct'
+
+export const BOOKING_CHANNELS: BookingChannel[] = ['Airbnb', 'Booking.com', 'Direct']
+
+export type CityTaxCollector = 'host' | 'channel' | 'not_applicable'
+
+export interface CityTaxChargeableGuests {
+  adults: boolean
+  children: boolean
+  infants: boolean
+}
+
+/**
+ * Only meaningful when `ListingFeeTaxItem.type === 'city_tax'`.
+ */
+export interface CityTaxConfig {
+  /**
+   * Who collects this tax, per channel. An unset channel falls back to 'host'.
+   * The fallback is deliberately the one that raises an alert: the feature
+   * exists to stop a collection being missed, so an unconfigured channel must
+   * over-alert rather than go silent. Do not "fix" this to 'not_applicable'.
+   */
+  channelPolicy: Partial<Record<BookingChannel, CityTaxCollector>>
+  /** Which guest categories count toward a per-person logic. */
+  chargeableGuests: CityTaxChargeableGuests
+  /** Who levies it. Shown to staff at the desk. */
+  authorityName?: string
+  note?: string
+}
+
 export interface ListingFeeTaxItem {
   id: string
   title: string
@@ -58,6 +93,8 @@ export interface ListingFeeTaxItem {
   skipNights?: number | null
   maxNights?: number | null
   applicableDateRanges: TaxDateRange[]
+  /** Collection policy. Only read when `type === 'city_tax'`. */
+  cityTax?: CityTaxConfig
 }
 
 export interface TaxSetTaxRef {
