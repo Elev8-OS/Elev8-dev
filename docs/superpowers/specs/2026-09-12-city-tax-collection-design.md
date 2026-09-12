@@ -85,9 +85,8 @@ configured once, not re-entered per property.
 ```ts
 export interface CityTaxSettlement {
   state: 'collected' | 'waived'
-  /** Frozen at settlement time. */
-  amount: number
-  currency: string
+  /** Frozen at settlement time, one entry per currency, same shape as the assessment. */
+  totals: CityTaxTotal[]
   settledAt: string
   settledBy: string
   method?: 'cash' | 'card' | 'bank_transfer' | 'other'
@@ -141,10 +140,12 @@ export interface CityTaxAssessment {
 > written at import time would sit there stale and the feature would quietly
 > under-report, which is the exact failure it exists to prevent.
 
-> **Why the settlement freezes its own amount.** Same principle as a folio catalog
+> **Why the settlement freezes its own totals.** Same principle as a folio catalog
 > pick: a later rate change must never rewrite what a guest actually paid. The
-> assessment's live `amount` and the settlement's frozen `amount` can legitimately
-> differ, and the reservation detail shows the frozen one once settled.
+> assessment's live `totals` and the settlement's frozen `totals` can legitimately
+> differ, and the reservation detail shows the frozen ones once settled. The
+> settlement carries `CityTaxTotal[]` rather than a single amount for the same reason
+> the assessment does: one shape, no blended number.
 
 Multiple city tax items on one listing are supported and summed (a per-person Kurtaxe
 plus a percentage tourism levy is a real combination), which is why `lines` is a list.
