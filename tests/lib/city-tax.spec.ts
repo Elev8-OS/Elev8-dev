@@ -1,9 +1,11 @@
 import type { ListingFeeTaxItem } from '~/components/listings/data/listings'
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { describe, expect, it } from 'vitest'
 import {
   chargeableGuestCount,
   chargeableNights,
   collectorFor,
+  computeCityTaxLine,
   isWithinApplicableRange,
 } from '~/components/reservations/data/city-tax'
 
@@ -121,5 +123,125 @@ describe('isWithinApplicableRange', () => {
     ] })
     expect(isWithinApplicableRange(item, '2026-01-15')).toBe(true)
     expect(isWithinApplicableRange(item, '2026-04-01')).toBe(false)
+  })
+})
+
+function reservation(patch: Partial<ReservationEntry> = {}): ReservationEntry {
+  return {
+    id: 'res-ct-1',
+    guestId: 'guest-1',
+    guestName: 'Anna Schmidt',
+    guestEmail: 'anna@example.com',
+    guestPhone: '+49 170 1234567',
+    guestLanguage: 'de',
+    guestNotes: '',
+    listingId: 'lst-1',
+    listingName: 'Villa Merapi',
+    channel: 'Direct',
+    checkIn: '2026-07-10',
+    checkOut: '2026-07-14',
+    nights: 4,
+    guestCount: 2,
+    guestAdults: 2,
+    guestChildren: 0,
+    guestInfants: 0,
+    totalPrice: 1000,
+    currency: 'EUR',
+    status: 'verified',
+    activity: [],
+    ...patch,
+  } as ReservationEntry
+}
+
+describe('computeCityTaxLine', () => {
+  it('prices per person per night off the chargeable counts', () => {
+    const line = computeCityTaxLine(taxItem({ rate: 3 }), reservation())
+    expect(line?.amount).toBe(24) // 2 guests x 4 nights x 3
+    expect(line?.chargeableGuests).toBe(2)
+    expect(line?.chargeableNights).toBe(4)
+  })
+
+  it('prices per person, ignoring nights', () => {
+    expect(computeCityTaxLine(taxItem({ logic: 'per_person', rate: 5 }), reservation())?.amount).toBe(10)
+  })
+
+  it('prices per night', () => {
+    expect(computeCityTaxLine(taxItem({ logic: 'per_night', rate: 7 }), reservation())?.amount).toBe(28)
+  })
+
+  it('prices per booking as a flat amount', () => {
+    expect(computeCityTaxLine(taxItem({ logic: 'per_booking', rate: 15 }), reservation())?.amount).toBe(15)
+  })
+
+  it('multiplies per_room and per_room_per_night by the booked room lines', () => {
+    const twoRooms = reservation({
+      rooms: [
+        { id: 'rl-1', unitTypeId: 'ut-1', unitId: 'u-1', unitName: 'Room 1', ratePlanId: 'rp-1', rateLabel: 'Standard', pricePerNight: 100, lineTotal: 400 },
+        { id: 'rl-2', unitTypeId: 'ut-1', unitId: 'u-2', unitName: 'Room 2', ratePlanId: 'rp-1', rateLabel: 'Standard', pricePerNight: 100, lineTotal: 400 },
+      ],
+    } as Partial<ReservationEntry>)
+    expect(computeCityTaxLine(taxItem({ logic: 'per_room', rate: 10 }), twoRooms)?.amount).toBe(20)
+    expect(computeCityTaxLine(taxItem({ logic: 'per_room_per_night', rate: 10 }), twoRooms)?.amount).toBe(80)
+  })
+
+  it('counts one room when the booking has no room lines', () => {
+    expect(computeCityTaxLine(taxItem({ logic: 'per_room', rate: 10 }), reservation())?.amount).toBe(10)
+  })
+
+  it('charges a percentage on the accommodation subtotal, never the grand total', () => {
+    const withPrice = reservation({
+      totalPrice: 1300,
+      priceDetails: { subtotal: 1000, cleaningFee: 150, serviceFee: 50, tax: 100, extras: 0, guestPaid: 1300, commission: 0, payout: 1300 },
+    })
+    // 5% of the 1000 subtotal, not of the 1300 the guest paid.
+    expect(computeCityTaxLine(taxItem({ logic: 'percent', rate: 5, currency: undefined }), withPrice)?.amount).toBe(50)
+  })
+
+  it('charges nothing on a percentage when there is no price breakdown to charge it on', () => {
+    expect(computeCityTaxLine(taxItem({ logic: 'percent', rate: 5 }), reservation())?.amount).toBe(0)
+  })
+
+  it('prices a percentage in the reservation currency, ignoring the item currency', () => {
+    const withPrice = reservation({
+      currency: 'EUR',
+      priceDetails: { subtotal: 1000, cleaningFee: 0, serviceFee: 0, tax: 0, extras: 0, guestPaid: 1000, commission: 0, payout: 1000 },
+    })
+    expect(computeCityTaxLine(taxItem({ logic: 'percent', rate: 5, currency: 'USD' }), withPrice)?.currency).toBe('EUR')
+  })
+
+  it('keeps the item currency for a fixed-amount logic', () => {
+    const line = computeCityTaxLine(taxItem({ currency: 'EUR' }), reservation({ currency: 'IDR' }))
+    expect(line?.currency).toBe('EUR')
+  })
+
+  it('falls back to the reservation currency when the item sets none', () => {
+    const line = computeCityTaxLine(taxItem({ currency: undefined }), reservation({ currency: 'IDR' }))
+    expect(line?.currency).toBe('IDR')
+  })
+
+  it('applies skipNights to a per-night logic', () => {
+    expect(computeCityTaxLine(taxItem({ rate: 3, skipNights: 1 }), reservation())?.amount).toBe(18)
+  })
+
+  it('leaves a night-independent logic alone when nights are skipped away', () => {
+    // per_booking is a flat charge. skipNights describes nights, so it has
+    // nothing to act on here, and the stay still owes the flat amount.
+    expect(computeCityTaxLine(taxItem({ logic: 'per_booking', rate: 15, skipNights: 10 }), reservation())?.amount).toBe(15)
+  })
+
+  it('returns null for an item that is not a city tax', () => {
+    expect(computeCityTaxLine(taxItem({ type: 'fee' }), reservation())).toBeNull()
+  })
+
+  it('returns null when the stay falls outside the applicable season', () => {
+    const item = taxItem({ applicableDateRanges: [{ after: '2026-01-01', before: '2026-03-31' }] })
+    expect(computeCityTaxLine(item, reservation())).toBeNull()
+  })
+
+  it('rounds to the currency minor unit', () => {
+    const withPrice = reservation({
+      priceDetails: { subtotal: 333.33, cleaningFee: 0, serviceFee: 0, tax: 0, extras: 0, guestPaid: 333.33, commission: 0, payout: 333.33 },
+    })
+    expect(computeCityTaxLine(taxItem({ logic: 'percent', rate: 7.5 }), withPrice)?.amount).toBe(25)
   })
 })

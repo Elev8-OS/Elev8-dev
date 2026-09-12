@@ -4,7 +4,9 @@ import type {
   CityTaxCollector,
   CityTaxConfig,
   ListingFeeTaxItem,
+  TaxLogic,
 } from '~/components/listings/data/listings'
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
 
 /** Adults pay, nobody else does, until a tenant says otherwise. */
 export const DEFAULT_CHARGEABLE_GUESTS: CityTaxChargeableGuests = {
@@ -71,4 +73,85 @@ export function isWithinApplicableRange(item: CityTaxDateRules, checkIn: string)
   if (ranges.length === 0)
     return true
   return ranges.some(range => checkIn >= range.after && checkIn <= range.before)
+}
+
+export interface CityTaxBasisLine {
+  taxItemId: string
+  taxTitle: string
+  authorityName?: string
+  /** The tenant's own note, carried through so the desk can read it on the stay. */
+  note?: string
+  logic: TaxLogic
+  rate: number
+  chargeableGuests: number
+  chargeableNights: number
+  rooms: number
+  amount: number
+  currency: string
+}
+
+export function roundCityTaxAmount(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * One priced line, or null when the item is not a city tax or the stay falls
+ * outside its season.
+ *
+ * `skipNights` and `maxNights` describe nights, so they only bite on a logic
+ * that multiplies by nights. A flat `per_booking` charge is unaffected by them.
+ */
+export function computeCityTaxLine(item: ListingFeeTaxItem, reservation: ReservationEntry): CityTaxBasisLine | null {
+  if (item.type !== 'city_tax')
+    return null
+  if (!isWithinApplicableRange(item, reservation.checkIn))
+    return null
+
+  const config = item.cityTax
+  const guests = chargeableGuestCount(reservation, config)
+  const nights = chargeableNights(item, reservation.nights)
+  const rooms = reservation.rooms?.length ?? 1
+
+  let amount = 0
+  switch (item.logic) {
+    case 'percent':
+      // The accommodation subtotal only. A tourist levy is not charged on the
+      // cleaning fee, the service fee or a desk-posted extra.
+      amount = (reservation.priceDetails?.subtotal ?? 0) * (item.rate / 100)
+      break
+    case 'per_booking':
+      amount = item.rate
+      break
+    case 'per_night':
+      amount = item.rate * nights
+      break
+    case 'per_room':
+      amount = item.rate * rooms
+      break
+    case 'per_room_per_night':
+      amount = item.rate * rooms * nights
+      break
+    case 'per_person':
+      amount = item.rate * guests
+      break
+    case 'per_person_per_night':
+      amount = item.rate * guests * nights
+      break
+  }
+
+  return {
+    taxItemId: item.id,
+    taxTitle: item.title,
+    authorityName: config?.authorityName,
+    note: config?.note,
+    logic: item.logic,
+    rate: item.rate,
+    chargeableGuests: guests,
+    chargeableNights: nights,
+    rooms,
+    // A percentage is a slice of a price already in the reservation's currency.
+    // A fixed amount is denominated by the tax item itself.
+    currency: item.logic === 'percent' ? reservation.currency : (item.currency ?? reservation.currency),
+    amount: roundCityTaxAmount(Math.max(0, amount)),
+  }
 }
