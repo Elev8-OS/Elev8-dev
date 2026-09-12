@@ -6,7 +6,7 @@ import type {
   ListingFeeTaxItem,
   TaxLogic,
 } from '~/components/listings/data/listings'
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { CityTaxSettlement, CityTaxTotal, ReservationEntry } from '~/components/reservations/data/reservations'
 
 /** Adults pay, nobody else does, until a tenant says otherwise. */
 export const DEFAULT_CHARGEABLE_GUESTS: CityTaxChargeableGuests = {
@@ -154,4 +154,75 @@ export function computeCityTaxLine(item: ListingFeeTaxItem, reservation: Reserva
     currency: item.logic === 'percent' ? reservation.currency : (item.currency ?? reservation.currency),
     amount: roundCityTaxAmount(Math.max(0, amount)),
   }
+}
+
+export type CityTaxStatus
+  = 'not_required'
+    | 'channel_collects'
+    | 'due'
+    | 'collected'
+    | 'waived'
+
+export interface CityTaxAssessment {
+  status: CityTaxStatus
+  collector: CityTaxCollector
+  /**
+   * One entry per currency present in `lines`. Almost always length 1. There is
+   * deliberately no single `amount` field: two currencies must never be blended
+   * into one number, and this app invents no exchange rates.
+   */
+  totals: CityTaxTotal[]
+  lines: CityTaxBasisLine[]
+  settlement: CityTaxSettlement | null
+}
+
+/**
+ * Structural on purpose: a `CityTaxBasisLine` and a frozen `CityTaxTotal` both
+ * satisfy it, so the live assessment and a settled stay sum through one
+ * function instead of two that can drift apart.
+ */
+export function cityTaxTotals(amounts: Array<{ currency: string, amount: number }>): CityTaxTotal[] {
+  const byCurrency = new Map<string, number>()
+  for (const entry of amounts)
+    byCurrency.set(entry.currency, roundCityTaxAmount((byCurrency.get(entry.currency) ?? 0) + entry.amount))
+  return [...byCurrency.entries()].map(([currency, amount]) => ({ currency, amount }))
+}
+
+/**
+ * The whole city tax picture for one stay, computed fresh every time.
+ *
+ * Nothing here reads a stored status, and that is the point: flipping a channel
+ * policy must re-evaluate every existing booking on the spot. Only the
+ * settlement is stored, and only once staff have acted.
+ */
+export function resolveCityTax(reservation: ReservationEntry, items: ListingFeeTaxItem[]): CityTaxAssessment {
+  const settlement = reservation.cityTaxSettlement ?? null
+  const cityTaxes = items.filter(item => item.type === 'city_tax')
+
+  // A cancelled or blocked stay owes nothing, whatever the policy says.
+  const dead = reservation.status === 'cancelled' || reservation.status === 'blocked'
+
+  const lines = dead
+    ? []
+    : cityTaxes
+        .filter(item => collectorFor(item.cityTax, reservation.channel) === 'host')
+        .map(item => computeCityTaxLine(item, reservation))
+        .filter((line): line is CityTaxBasisLine => line !== null && line.amount > 0)
+
+  const totals = cityTaxTotals(lines)
+
+  if (settlement)
+    return { status: settlement.state, collector: 'host', totals, lines, settlement }
+
+  if (lines.length > 0)
+    return { status: 'due', collector: 'host', totals, lines, settlement: null }
+
+  const channelCollects = !dead && cityTaxes.some(item =>
+    collectorFor(item.cityTax, reservation.channel) === 'channel'
+    && isWithinApplicableRange(item, reservation.checkIn))
+
+  if (channelCollects)
+    return { status: 'channel_collects', collector: 'channel', totals: [], lines: [], settlement: null }
+
+  return { status: 'not_required', collector: 'not_applicable', totals: [], lines: [], settlement: null }
 }

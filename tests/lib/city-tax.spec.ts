@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 import {
   chargeableGuestCount,
   chargeableNights,
+  cityTaxTotals,
   collectorFor,
   computeCityTaxLine,
   isWithinApplicableRange,
+  resolveCityTax,
 } from '~/components/reservations/data/city-tax'
 
 function taxItem(patch: Partial<ListingFeeTaxItem> = {}): ListingFeeTaxItem {
@@ -243,5 +245,124 @@ describe('computeCityTaxLine', () => {
       priceDetails: { subtotal: 333.33, cleaningFee: 0, serviceFee: 0, tax: 0, extras: 0, guestPaid: 333.33, commission: 0, payout: 333.33 },
     })
     expect(computeCityTaxLine(taxItem({ logic: 'percent', rate: 7.5 }), withPrice)?.amount).toBe(25)
+  })
+})
+
+const hostConfig = {
+  channelPolicy: { 'Direct': 'host' as const, 'Booking.com': 'host' as const, 'Airbnb': 'channel' as const },
+  chargeableGuests: { adults: true, children: false, infants: false },
+}
+
+describe('cityTaxTotals', () => {
+  it('sums lines that share a currency into one entry', () => {
+    const lines = [
+      { taxItemId: 'a', taxTitle: 'A', logic: 'per_booking' as const, rate: 1, chargeableGuests: 0, chargeableNights: 0, rooms: 1, amount: 10, currency: 'EUR' },
+      { taxItemId: 'b', taxTitle: 'B', logic: 'per_booking' as const, rate: 1, chargeableGuests: 0, chargeableNights: 0, rooms: 1, amount: 5.5, currency: 'EUR' },
+    ]
+    expect(cityTaxTotals(lines)).toEqual([{ currency: 'EUR', amount: 15.5 }])
+  })
+
+  it('never blends two currencies into one number', () => {
+    const lines = [
+      { taxItemId: 'a', taxTitle: 'A', logic: 'per_booking' as const, rate: 1, chargeableGuests: 0, chargeableNights: 0, rooms: 1, amount: 10, currency: 'EUR' },
+      { taxItemId: 'b', taxTitle: 'B', logic: 'per_booking' as const, rate: 1, chargeableGuests: 0, chargeableNights: 0, rooms: 1, amount: 50000, currency: 'IDR' },
+    ]
+    expect(cityTaxTotals(lines)).toEqual([
+      { currency: 'EUR', amount: 10 },
+      { currency: 'IDR', amount: 50000 },
+    ])
+  })
+})
+
+describe('resolveCityTax', () => {
+  it('is due when the host collects on this channel', () => {
+    const assessment = resolveCityTax(reservation(), [taxItem({ cityTax: hostConfig })])
+    expect(assessment.status).toBe('due')
+    expect(assessment.collector).toBe('host')
+    expect(assessment.totals).toEqual([{ currency: 'EUR', amount: 24 }])
+    expect(assessment.lines).toHaveLength(1)
+  })
+
+  it('says the channel collects and shows no amount to take', () => {
+    const assessment = resolveCityTax(reservation({ channel: 'Airbnb' }), [taxItem({ cityTax: hostConfig })])
+    expect(assessment.status).toBe('channel_collects')
+    expect(assessment.collector).toBe('channel')
+    expect(assessment.totals).toEqual([])
+    expect(assessment.lines).toEqual([])
+  })
+
+  it('is not required when the listing levies no city tax', () => {
+    expect(resolveCityTax(reservation(), []).status).toBe('not_required')
+    expect(resolveCityTax(reservation(), [taxItem({ type: 'fee' })]).status).toBe('not_required')
+  })
+
+  it('is not required when every channel is marked not applicable', () => {
+    const config = { ...hostConfig, channelPolicy: { Direct: 'not_applicable' as const } }
+    expect(resolveCityTax(reservation(), [taxItem({ cityTax: config })]).status).toBe('not_required')
+  })
+
+  it('is not required when the stay falls outside the tax season and nothing else applies', () => {
+    const item = taxItem({ cityTax: hostConfig, applicableDateRanges: [{ after: '2026-01-01', before: '2026-02-01' }] })
+    expect(resolveCityTax(reservation(), [item]).status).toBe('not_required')
+  })
+
+  it('is not required when the computed amount is zero', () => {
+    const item = taxItem({ cityTax: hostConfig, rate: 0 })
+    expect(resolveCityTax(reservation(), [item]).status).toBe('not_required')
+  })
+
+  it('sums several city taxes on one listing into separate lines', () => {
+    const assessment = resolveCityTax(reservation(), [
+      taxItem({ id: 'ft-a', title: 'Kurtaxe', rate: 3, cityTax: hostConfig }),
+      taxItem({ id: 'ft-b', title: 'Tourism levy', logic: 'per_booking', rate: 10, cityTax: hostConfig }),
+    ])
+    expect(assessment.lines).toHaveLength(2)
+    expect(assessment.totals).toEqual([{ currency: 'EUR', amount: 34 }])
+  })
+
+  it('reports a settled stay from its stored settlement, not the live amount', () => {
+    const settled = reservation({
+      cityTaxSettlement: {
+        state: 'collected',
+        totals: [{ currency: 'EUR', amount: 18 }],
+        settledAt: '2026-07-10T09:00:00.000Z',
+        settledBy: 'Komang Juliantara',
+        method: 'cash',
+      },
+    })
+    const assessment = resolveCityTax(settled, [taxItem({ cityTax: hostConfig })])
+    expect(assessment.status).toBe('collected')
+    expect(assessment.settlement?.totals).toEqual([{ currency: 'EUR', amount: 18 }])
+    // The live rules still say 24. The settlement is what was actually taken.
+    expect(assessment.totals).toEqual([{ currency: 'EUR', amount: 24 }])
+  })
+
+  it('reports a waived stay', () => {
+    const waived = reservation({
+      cityTaxSettlement: {
+        state: 'waived',
+        totals: [{ currency: 'EUR', amount: 24 }],
+        settledAt: '2026-07-10T09:00:00.000Z',
+        settledBy: 'Komang Juliantara',
+        reason: 'Business traveller, exempt under local rule',
+      },
+    })
+    expect(resolveCityTax(waived, [taxItem({ cityTax: hostConfig })]).status).toBe('waived')
+  })
+
+  it('owes nothing on a cancelled stay', () => {
+    const cancelled = reservation({ status: 'cancelled' })
+    expect(resolveCityTax(cancelled, [taxItem({ cityTax: hostConfig })]).status).toBe('not_required')
+  })
+
+  it('re-evaluates an untouched booking when the policy flips, because status is derived', () => {
+    const stay = reservation({ channel: 'Booking.com' })
+    const collecting = taxItem({ cityTax: hostConfig })
+    expect(resolveCityTax(stay, [collecting]).status).toBe('due')
+
+    const handedToChannel = taxItem({
+      cityTax: { ...hostConfig, channelPolicy: { ...hostConfig.channelPolicy, 'Booking.com': 'channel' as const } },
+    })
+    expect(resolveCityTax(stay, [handedToChannel]).status).toBe('channel_collects')
   })
 })
