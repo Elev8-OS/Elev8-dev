@@ -73,6 +73,7 @@ const mockHostTranslations: Record<string, Record<string, string>> = {
 
 const translation = ref<string | null>(null)
 const isTranslating = ref(false)
+const isRetrying = ref(false)
 
 const targetLang = computed(() => {
   if (!autoTranslate.value)
@@ -128,6 +129,9 @@ watch(() => props.message.sendStatus, (status) => {
 const isFromMe = computed(() => props.message.sender === 'host' && props.message.senderName === 'You')
 
 const isAiWritten = computed(() => props.message.aiWritten === true)
+
+const reasoning = computed(() => props.message.aiReasoning ?? null)
+const reasoningOpen = ref(false)
 
 const displayName = computed(() => {
   if (isAiWritten.value)
@@ -198,7 +202,7 @@ const dateLabel = computed(() => {
         <Icon name="lucide:sparkles" class="size-4 text-[#FBC800]" />
       </div>
 
-      <div class="flex flex-col gap-1 max-w-[75%]">
+      <div class="group/msg flex flex-col gap-1 max-w-[75%]">
         <div class="flex items-center gap-2">
           <span class="text-xs font-medium">{{ displayName }}</span>
           <span v-if="displayLabel" class="text-[10px] text-muted-foreground">{{ displayLabel }}</span>
@@ -238,6 +242,19 @@ const dateLabel = computed(() => {
             {{ message.content }}
           </p>
         </div>
+        <template v-if="reasoning">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover/msg:opacity-100"
+            :class="[reasoningOpen && 'opacity-100', message.sender === 'guest' ? 'self-start' : 'self-end']"
+            @click="reasoningOpen = true"
+          >
+            <Icon name="lucide:sparkles" class="size-2.5 text-[#C8A84B]" />
+            Why this answer?
+          </button>
+          <InboxAiReasoningDialog v-model:open="reasoningOpen" :reasoning="reasoning" />
+        </template>
+
         <InboxUpsellOfferCard
           v-if="message.upsellOffer"
           :offer="message.upsellOffer"

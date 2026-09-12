@@ -1,3 +1,5 @@
+import type { AiKnowledgeSource } from '~/lib/ai-knowledge'
+
 export type ConversationStatus = 'action_needed'
 export type GuestSentiment = 'positive' | 'neutral' | 'negative'
 export type MessageSender = 'guest' | 'host' | 'system' | 'ai'
@@ -126,6 +128,43 @@ export interface UpsellOffer {
   status: 'pending' | 'accepted' | 'declined' | 'withdrawn'
 }
 
+/**
+ * Why ElevAI answered the way it did. Attached to the message it explains, so
+ * the explanation travels with the reply instead of living in a side log.
+ */
+export interface AiReasoning {
+  /**
+   * Prose answer to "where did this response come from?", written the way a
+   * colleague would explain it: what was read, and how it became this reply.
+   * Prose and nothing else, deliberately. Confidence scores, detected intent
+   * and draft timings were tried here and read as noise around the one thing
+   * the host actually wants.
+   */
+  explanation: string
+  /**
+   * The one listing field this reply leaned on, when it leaned on one. Present
+   * only where there is something a host could actually correct: a reply drawn
+   * from the reservation or from a send policy has no source, and the dialog
+   * offers no fix rather than pointing at a field that had nothing to do with
+   * it.
+   */
+  source?: AiKnowledgeSource
+}
+
+/**
+ * Why ElevAI held back a scheduled template. A skip is a decision, so it is
+ * explained the same way a reply is, and the host can still send the template
+ * by hand from the timeline.
+ */
+export interface AiSkipReason {
+  /** One line for the timeline row, e.g. "Sarah already had the details." */
+  summary: string
+  /** Prose answer to "why was this skipped?", shown in the dialog. */
+  explanation: string
+  /** Also the timestamp the timeline sorts and renders the event by. */
+  decidedAt: string
+}
+
 export interface Message {
   id: string
   conversationId: string
@@ -146,6 +185,8 @@ export interface Message {
   translatedContent?: string
   mediaUrl?: string
   mediaDims?: string
+  /** Present only on `aiWritten` messages: why ElevAI answered this way. */
+  aiReasoning?: AiReasoning
 }
 
 export interface SmartAction {
@@ -238,8 +279,15 @@ export interface ScheduledTemplate {
   label: string
   icon: string
   scheduledFor: string
-  status: 'pending' | 'sent' | 'cancelled'
+  /**
+   * `cancelled` is a host cancelling the template; `skipped` is ElevAI deciding
+   * the message was no longer needed. They read very differently in the
+   * timeline, so they are separate states rather than one flag.
+   */
+  status: 'pending' | 'sent' | 'cancelled' | 'skipped'
   content: string
+  /** Required in practice whenever `status` is `skipped`. */
+  skipReason?: AiSkipReason
 }
 
 export interface UpsellItem {
@@ -1335,6 +1383,11 @@ export const messages: Record<string, Message[]> = {
       content: 'The pool is not heated but don\'t worry - Bali weather keeps it perfectly warm year-round at around 28°C! Perfect for a refreshing swim.',
       channel: 'Airbnb',
       timestamp: '2026-04-25T12:45:00Z',
+      aiWritten: true,
+      aiReasoning: {
+        explanation: 'The listing for Villa Luwa records a private pool with no heating installed, so the honest answer is no. Read in context the question is about comfort rather than specification, so the reply pairs the no with the figure from the property basics: the water sits around 28C year-round in Bali. Heating was not offered as a possibility, because the villa has no heater to switch on.',
+        source: { listingId: 'lst-1', field: 'amenities' },
+      },
     },
     {
       id: 'msg-1-17',
@@ -1405,6 +1458,10 @@ export const messages: Record<string, Message[]> = {
       channel: 'Booking.com',
       timestamp: '2026-04-24T14:00:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'The booking record from Booking.com shows a check-in date of 28 April with no arrival time supplied, and nothing in this thread had answered that yet. The pre-arrival routine for Seminyak Suites asks for the arrival time about four days out, so the reply confirms the date first and then asks for it. Early check-in is mentioned because the listing marks it as available on request, not because a specific room was held.',
+        source: { listingId: 'lst-2', field: 'listingDetails' },
+      },
     },
     {
       id: 'msg-2-2',
@@ -1445,6 +1502,10 @@ export const messages: Record<string, Message[]> = {
       channel: 'Airbnb',
       timestamp: '2026-04-25T08:00:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'The amenity list for The R Pererenan records free private parking on the premises, and the property basics note that the spot sits directly beside the Beach House entrance. Emily asked a yes-or-no question, so the answer leads with the yes and then gives the location, which is what she would have asked next.',
+        source: { listingId: 'lst-3', field: 'amenities' },
+      },
     },
   ],
   'conv-4': [
@@ -1467,6 +1528,9 @@ export const messages: Record<string, Message[]> = {
       channel: 'Airbnb',
       timestamp: '2026-04-23T10:45:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'This message arrived after check-out, reads as praise, and contains no request, so there was nothing operational to answer. The post-stay routine for a positive closing message is a short thank-you that names what the guest actually mentioned, which here was the pool.',
+      },
     },
     {
       id: 'msg-4-3',
@@ -1559,6 +1623,10 @@ export const messages: Record<string, Message[]> = {
       channel: 'Booking.com',
       timestamp: '2026-04-25T14:00:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'Oliver asked what the loft is like, so the reply draws on the listing highlights for the exact unit he booked, the Rooftop Loft at Seminyak Suites, where the private sunset-facing terrace is the standout feature. The rest was left out on purpose: the digital guide with the full detail goes out automatically before arrival, and repeating it here would only duplicate it.',
+        source: { listingId: 'lst-2', field: 'description' },
+      },
     },
     {
       id: 'msg-7-3',
@@ -1632,6 +1700,9 @@ export const messages: Record<string, Message[]> = {
       channel: 'Booking.com',
       timestamp: '2026-04-25T10:00:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'The stay closed on 24 April with no open tasks and nothing negative recorded against it, and the review journey for this property sends its request 24 hours after check-out. The property name is written into the message so it does not read as a mass send.',
+      },
     },
     {
       id: 'msg-10-2',
@@ -1766,6 +1837,10 @@ export const messages: Record<string, Message[]> = {
       channel: 'Booking.com',
       timestamp: '2026-04-25T08:30:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'Yuki asked what wellness the lodge offers, which is a question about what is included rather than what can be booked. The amenity list for Rice Terrace Lodge records complimentary morning yoga with a certified instructor, so that is what the reply quotes. The paid spa package was deliberately left out: pitching an add-on against an "is it included" question is against the upsell rule for this property.',
+        source: { listingId: 'lst-5', field: 'amenities' },
+      },
     },
     {
       id: 'msg-15-3',
@@ -1817,6 +1892,9 @@ export const messages: Record<string, Message[]> = {
       channel: 'Booking.com',
       timestamp: '2026-04-25T07:30:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'Emma closed the thread with thanks after a five-night stay. There is no question in it and no open task on the reservation, so this is a sign-off rather than a reply. The conversation-closing setting for this property asks for something short and warm, which is what was sent.',
+      },
     },
   ],
   'conv-18': [
@@ -1977,6 +2055,9 @@ export const messages: Record<string, Message[]> = {
       channel: 'WhatsApp',
       timestamp: '2026-04-26T14:02:30Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'The WhatsApp number matched Max\'s reservation at Villa Sunset, where the amenity record lists two free parking spots on a first-come basis with nothing to reserve. That makes it a plain yes with no booking step attached. The reply went out as a normal message because the last inbound message was minutes old, so the 24-hour WhatsApp window was still open.',
+      },
     },
   ],
   'conv-wa-2': [
@@ -2043,6 +2124,9 @@ export const messages: Record<string, Message[]> = {
       channel: 'WhatsApp',
       timestamp: '2026-04-25T12:31:00Z',
       aiWritten: true,
+      aiReasoning: {
+        explanation: 'There were two things in Marcel\'s message: what time check-in is, and whether he could arrive earlier. The first is a fact, and the Garden Loft listing records check-in from 15:00, so it was answered directly. The second was not: the turnover for 28 April has not been scheduled yet, and the defer rule for this property forbids promising availability that cannot be verified. The request was logged and handed to the team instead of guessed at.',
+      },
     },
   ],
   'conv-um-1': [
@@ -2199,6 +2283,32 @@ export const reservations: Record<string, Reservation> = {
         scheduledFor: '2026-05-01T14:00:00Z',
         status: 'cancelled',
         content: 'We\'d love to hear about your stay! Please leave a review.',
+      },
+      {
+        id: 'tpl-skipped-checkin-1',
+        label: 'Check-in Instructions',
+        icon: 'lucide:key-round',
+        scheduledFor: '2026-04-26T09:00:00Z',
+        status: 'skipped',
+        content: 'Hi Sarah! Check-in is from 3 PM. Our team will meet you at the villa gate with the keys and walk you through the property.',
+        skipReason: {
+          summary: 'Sarah already had the check-in details from chat.',
+          explanation: 'Sarah asked what time check-in was on 25 April and was answered with 3 PM in the thread, and the early check-in follow-up was settled the same day. The scheduled template carries the same two facts and nothing else, so sending it on the morning of arrival would have repeated a conversation she had already had. It was held back rather than cancelled, so it can still be sent by hand if the arrival plan changes.',
+          decidedAt: '2026-04-26T09:00:00Z',
+        },
+      },
+      {
+        id: 'tpl-skipped-upsell-1',
+        label: 'Airport Pickup Offer',
+        icon: 'lucide:car',
+        scheduledFor: '2026-04-25T08:00:00Z',
+        status: 'skipped',
+        content: 'Arriving soon? We can arrange a private airport pickup from Ngurah Rai for your group.',
+        skipReason: {
+          summary: 'Airport pickup was already bought on 24 Apr.',
+          explanation: 'The reservation already carries a confirmed Airport Pickup upsell, purchased on 24 April, with no cancellation or refund recorded against it. Offering the same service again the next morning would have read as a mistake to the guest and put the confirmed booking in doubt, so the offer was held back.',
+          decidedAt: '2026-04-25T08:00:00Z',
+        },
       },
     ],
     upsells: [
@@ -3370,6 +3480,21 @@ export const reservations: Record<string, Reservation> = {
     tasks: [],
     activity: [
       { id: 'act-wa-3-1', type: 'message', title: 'Early Check-in Request', description: 'Guest asked about early check-in', actor: 'Marcel Weber', timestamp: '2026-04-25T12:30:00Z', channel: 'WhatsApp', colorDot: 'blue' },
+    ],
+    scheduledTemplates: [
+      {
+        id: 'tpl-skipped-wa-guide-1',
+        label: 'House Rules Reminder',
+        icon: 'lucide:scroll-text',
+        scheduledFor: '2026-04-25T18:00:00Z',
+        status: 'skipped',
+        content: 'A quick reminder of the house rules before your stay: no parties, quiet hours from 22:00, and please remove shoes indoors.',
+        skipReason: {
+          summary: 'The WhatsApp window had closed and the rules are already in the guide.',
+          explanation: 'Marcel\'s last inbound WhatsApp message was on 25 April at 12:30, so by the scheduled send time the 24-hour session window had expired and this could only have gone out as a paid template. The house rules were already delivered inside the guest guide when he booked, so the message carried nothing new. Paying to repeat information the guest already has was not worth it, and the reminder was held back.',
+          decidedAt: '2026-04-25T18:00:00Z',
+        },
+      },
     ],
   },
   'res-em-1': {

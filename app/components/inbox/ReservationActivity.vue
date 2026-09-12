@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { ActivityEvent, PhoneCall, Reservation } from '~/components/inbox/data/conversations'
+import type { ActivityEvent, AiSkipReason, PhoneCall, Reservation } from '~/components/inbox/data/conversations'
 import { format, isToday } from 'date-fns'
 import { toast } from 'vue-sonner'
 
@@ -44,6 +44,7 @@ const generatedEvents = computed(() => {
     _canSend?: boolean
     _templateLabel?: string
     _templateContent?: string
+    _skipReason?: AiSkipReason
   }[] = []
 
   const hasExistingGuideSent = props.activity.some(e => e.type === 'guide_sent')
@@ -95,6 +96,21 @@ const generatedEvents = computed(() => {
           channel: undefined,
         })
       }
+      else if (tpl.status === 'skipped' && tpl.skipReason) {
+        events.push({
+          id: `tpl-${tpl.id}`,
+          title: `ElevAI skipped — ${tpl.label}`,
+          description: tpl.skipReason.summary,
+          timestamp: tpl.skipReason.decidedAt,
+          type: 'ai_skip',
+          colorDot: 'gold',
+          channel: undefined,
+          _canSend: true,
+          _templateLabel: tpl.label,
+          _templateContent: tpl.content,
+          _skipReason: tpl.skipReason,
+        })
+      }
       else if (tpl.status === 'cancelled') {
         events.push({
           id: `tpl-${tpl.id}`,
@@ -116,6 +132,9 @@ const generatedEvents = computed(() => {
 })
 
 const sentTemplates = ref(new Set<string>())
+
+/** Id of the skipped template whose explanation dialog is open, if any. */
+const openSkipId = ref<string | null>(null)
 
 function sendTemplate(event: any) {
   sentTemplates.value = new Set([...sentTemplates.value, event.id])
@@ -153,13 +172,24 @@ const allActivities = computed(() => {
         class="flex gap-3 pb-4"
       >
         <div class="flex flex-col items-center">
-          <div class="size-2.5 shrink-0 rounded-full mt-1.5" :class="[event.type === 'phone_call' ? 'bg-green-500' : dotColorMap[event.colorDot] ?? 'bg-muted-foreground']" />
+          <div
+            v-if="event.type === 'ai_skip'"
+            class="flex size-2.5 shrink-0 items-center justify-center rounded-full bg-[#C8A84B] mt-1.5"
+          />
+          <div v-else class="size-2.5 shrink-0 rounded-full mt-1.5" :class="[event.type === 'phone_call' ? 'bg-green-500' : dotColorMap[event.colorDot] ?? 'bg-muted-foreground']" />
           <div v-if="i < allActivities.length - 1" class="w-px flex-1 bg-border" />
         </div>
 
         <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium">
-            {{ event.title }}
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm font-medium">{{ event.title }}</span>
+            <span
+              v-if="event.type === 'ai_skip'"
+              class="inline-flex items-center gap-0.5 rounded border border-[#C8A84B]/40 px-1 py-px text-[9px] font-medium text-[#8a7223] dark:text-[#C8A84B]"
+            >
+              <Icon name="lucide:sparkles" class="size-2.5" />
+              ElevAI
+            </span>
           </div>
           <div class="text-xs text-muted-foreground">
             {{ event.description }}
@@ -168,12 +198,32 @@ const allActivities = computed(() => {
             <span class="text-[10px] text-muted-foreground">{{ formatTimestamp(event.timestamp) }}</span>
             <span v-if="event.channel" class="text-[10px] text-muted-foreground">via {{ event.channel }}</span>
           </div>
+          <template v-if="(event as any)._skipReason">
+            <button
+              type="button"
+              class="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              @click="openSkipId = event.id"
+            >
+              Why was this skipped?
+              <Icon name="lucide:arrow-up-right" class="size-2.5" />
+            </button>
+            <InboxAiSkipReasonDialog
+              :open="openSkipId === event.id"
+              :reason="(event as any)._skipReason"
+              :template-label="(event as any)._templateLabel"
+              :template-content="(event as any)._templateContent"
+              :can-send="!sentTemplates.has(event.id)"
+              @update:open="(v: boolean) => openSkipId = v ? event.id : null"
+              @send="sendTemplate(event)"
+            />
+          </template>
+
           <button
             v-if="(event as any)._canSend && !sentTemplates.has(event.id)"
-            class="mt-2 text-xs text-primary hover:text-primary/80 transition-colors"
+            class="mt-2 block text-xs text-primary hover:text-primary/80 transition-colors"
             @click="sendTemplate(event)"
           >
-            Send now
+            {{ (event as any)._skipReason ? 'Send it anyway' : 'Send now' }}
           </button>
           <span
             v-else-if="(event as any)._canSend && sentTemplates.has(event.id)"
