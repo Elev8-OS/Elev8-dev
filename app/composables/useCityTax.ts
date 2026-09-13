@@ -61,22 +61,32 @@ export function useCityTax() {
     })
   }
 
-  function settle(reservationId: string, build: (assessment: CityTaxAssessment) => CityTaxSettlement | null) {
+  /**
+   * Returns the settlement it wrote, or `null` when it declined to write one
+   * (unknown reservation, not currently `'due'`, or already settled). Callers
+   * gate their toasts on this so staff are only told a settlement happened
+   * when one actually did.
+   */
+  function settle(reservationId: string, build: (assessment: CityTaxAssessment) => CityTaxSettlement | null): CityTaxSettlement | null {
     const reservation = reservationById(reservationId)
     if (!reservation)
-      return
+      return null
     const assessment = assess(reservation)
     if (assessment.status !== 'due')
-      return
+      return null
     const settlement = build(assessment)
+    // Both current callers always build a full settlement, so this never
+    // fires today — but `build`'s type promises `| null`, and this is what
+    // keeps that promise meaningful for whatever calls settle() next.
     if (!settlement)
-      return
+      return null
     const kind = settlement.state === 'collected' ? 'collected' : 'waived'
     commit(reservation, settlement, cityTaxActivityEvent(kind, settlement, actor.value))
+    return settlement
   }
 
   function markCollected(reservationId: string, options: { method: CityTaxPaymentMethod, note?: string }) {
-    settle(reservationId, assessment => ({
+    const settlement = settle(reservationId, assessment => ({
       state: 'collected',
       totals: assessment.totals.map(total => ({ ...total })),
       settledAt: new Date().toISOString(),
@@ -85,9 +95,8 @@ export function useCityTax() {
       note: options.note?.trim() || undefined,
     }))
 
-    const assessment = assessmentFor(reservationId)
-    if (assessment.settlement?.state === 'collected')
-      toast.success(`City tax collected: ${formatCityTaxTotals(assessment.settlement.totals)}`)
+    if (settlement)
+      toast.success(`City tax collected: ${formatCityTaxTotals(settlement.totals)}`)
   }
 
   function waive(reservationId: string, reason: string) {
@@ -96,14 +105,15 @@ export function useCityTax() {
       toast.error('A waive needs a reason')
       return
     }
-    settle(reservationId, assessment => ({
+    const settlement = settle(reservationId, assessment => ({
       state: 'waived',
       totals: assessment.totals.map(total => ({ ...total })),
       settledAt: new Date().toISOString(),
       settledBy: actor.value,
       reason: trimmed,
     }))
-    toast.success('City tax waived')
+    if (settlement)
+      toast.success('City tax waived')
   }
 
   function undoSettlement(reservationId: string) {

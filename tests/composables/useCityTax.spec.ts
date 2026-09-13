@@ -1,9 +1,16 @@
 import type { ListingFeeTaxItem } from '~/components/listings/data/listings'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+
+const toastMock = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+}))
+vi.mock('vue-sonner', () => ({ toast: toastMock }))
 
 const CITY_TAX: ListingFeeTaxItem = {
   id: 'ft-kurtaxe',
@@ -67,6 +74,7 @@ beforeEach(() => {
   fees.taxSets.value = []
   fees.assignments.value = { 'lst-1': { feeTaxIds: ['ft-kurtaxe'], taxSetIds: [] } }
   useReservationsModule().reset()
+  vi.clearAllMocks()
 })
 
 describe('assessmentFor', () => {
@@ -169,6 +177,56 @@ describe('waive', () => {
     seedReservation()
     useCityTax().waive('res-ct-1', '   ')
     expect(useReservationsModule().reservations.value.find(r => r.id === 'res-ct-1')!.cityTaxSettlement).toBeUndefined()
+  })
+})
+
+describe('toast feedback', () => {
+  it('markCollected on a stay that is genuinely due toasts success exactly once, naming the amount', () => {
+    seedReservation()
+    useCityTax().markCollected('res-ct-1', { method: 'cash' })
+
+    expect(toastMock.success).toHaveBeenCalledTimes(1)
+    expect(toastMock.success).toHaveBeenCalledWith(expect.stringContaining('24'))
+  })
+
+  it('a second markCollected on the same stay does not toast success again', () => {
+    seedReservation()
+    const cityTax = useCityTax()
+    cityTax.markCollected('res-ct-1', { method: 'cash' })
+    toastMock.success.mockClear()
+
+    cityTax.markCollected('res-ct-1', { method: 'card' })
+
+    expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
+  it('markCollected on a channel-collected stay does not toast success', () => {
+    seedReservation({ channel: 'Airbnb' })
+    useCityTax().markCollected('res-ct-1', { method: 'cash' })
+
+    expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
+  it('waive with a real reason toasts success once', () => {
+    seedReservation()
+    useCityTax().waive('res-ct-1', 'Business traveller, exempt')
+
+    expect(toastMock.success).toHaveBeenCalledTimes(1)
+  })
+
+  it('waive on a stay that is not due does not toast success', () => {
+    seedReservation({ channel: 'Airbnb' })
+    useCityTax().waive('res-ct-1', 'Business traveller, exempt')
+
+    expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
+  it('waive with a blank reason toasts an error and does not toast success', () => {
+    seedReservation()
+    useCityTax().waive('res-ct-1', '   ')
+
+    expect(toastMock.error).toHaveBeenCalledTimes(1)
+    expect(toastMock.success).not.toHaveBeenCalled()
   })
 })
 
