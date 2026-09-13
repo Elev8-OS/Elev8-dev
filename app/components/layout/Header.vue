@@ -12,6 +12,7 @@ const showGroBar = computed(() => isGro.value && route.path === '/inbox')
     <div class="ml-auto flex items-center gap-3">
       <LayoutLanguageSelector />
       <NotificationsNotificationCenter />
+      <LayoutHeaderHelp />
       <ElevAIButton class="ml-1" />
       <LayoutHeaderUserMenu />
     </div>
