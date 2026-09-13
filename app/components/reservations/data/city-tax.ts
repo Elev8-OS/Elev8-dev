@@ -90,6 +90,20 @@ export interface CityTaxBasisLine {
   currency: string
 }
 
+/**
+ * Round to the currency's minor unit.
+ *
+ * Deliberately a local copy of `roundFolioAmount` in `./folio.ts` rather than a
+ * shared helper: rounding in this codebase is a per-module decision, not a
+ * global one. The folio rounds to the minor unit while an upsell order rounds
+ * to whole units, on purpose, so a single shared rounder would couple modules
+ * that are meant to disagree.
+ *
+ * The 2-decimal precision assumes a currency with a 2-decimal minor unit. IDR
+ * is zero-decimal, which is harmless here only because every IDR amount this
+ * feature handles is already whole. Revisit if a rate is ever given in
+ * fractional IDR.
+ */
 export function roundCityTaxAmount(value: number): number {
   return Math.round(value * 100) / 100
 }
