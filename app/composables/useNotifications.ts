@@ -104,7 +104,15 @@ export function useNotifications() {
       severity = 'WARNING'
     createAlert(type, severity, context)
   }
-  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createGuestRegistrationAlert, createLexwareAlert }
+  function createCityTaxAlert(type: 'CITY_TAX_COLLECTION_UPCOMING' | 'CITY_TAX_COLLECTION_DUE' | 'CITY_TAX_COLLECTION_MISSED', context: Record<string, any>) {
+    let severity: AlertSeverity = 'INFO'
+    if (type === 'CITY_TAX_COLLECTION_MISSED')
+      severity = 'CRITICAL'
+    else if (type === 'CITY_TAX_COLLECTION_DUE')
+      severity = 'WARNING'
+    createAlert(type, severity, context)
+  }
+  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createGuestRegistrationAlert, createLexwareAlert, createCityTaxAlert }
 }
 
 export { getNotificationKind as getAlertKind }
