@@ -3,6 +3,7 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
+import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const toastMock = vi.hoisted(() => ({
@@ -247,5 +248,115 @@ describe('undoSettlement', () => {
     seedReservation()
     useCityTax().undoSettlement('res-ct-1')
     expect(useReservationsModule().reservations.value.find(r => r.id === 'res-ct-1')!.activity).toHaveLength(0)
+  })
+})
+
+describe('worklist', () => {
+  it('buckets stays by where they are against today', () => {
+    seedReservation({ id: 'res-up', checkIn: isoDaysFromNow(5), checkOut: isoDaysFromNow(9) })
+    seedReservation({ id: 'res-now', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    seedReservation({ id: 'res-gone', checkIn: isoDaysFromNow(-6), checkOut: isoDaysFromNow(-2) })
+
+    const cityTax = useCityTax()
+    expect(cityTax.upcoming.value.map(row => row.reservation.id)).toContain('res-up')
+    expect(cityTax.dueToday.value.map(row => row.reservation.id)).toContain('res-now')
+    expect(cityTax.overdue.value.map(row => row.reservation.id)).toContain('res-gone')
+  })
+
+  it('moves a stay out of the outstanding buckets once it is settled', () => {
+    seedReservation({ id: 'res-gone', checkIn: isoDaysFromNow(-6), checkOut: isoDaysFromNow(-2) })
+    const cityTax = useCityTax()
+    expect(cityTax.overdue.value.map(row => row.reservation.id)).toContain('res-gone')
+
+    cityTax.markCollected('res-gone', { method: 'cash' })
+    expect(cityTax.overdue.value.map(row => row.reservation.id)).not.toContain('res-gone')
+    expect(cityTax.settled.value.map(row => row.reservation.id)).toContain('res-gone')
+  })
+
+  it('totals what is outstanding per currency and never blends them', () => {
+    const fees = useFeesTaxes()
+    fees.feeTaxItems.value = [
+      structuredClone(CITY_TAX),
+      { ...structuredClone(CITY_TAX), id: 'ft-pajak', title: 'Pajak Hotel', currency: 'IDR', rate: 25000, logic: 'per_night' },
+    ]
+    fees.assignments.value = { 'lst-1': { feeTaxIds: ['ft-kurtaxe'], taxSetIds: [] }, 'lst-2': { feeTaxIds: ['ft-pajak'], taxSetIds: [] } }
+
+    // Isolate from the shared mock reservation set: several seeded stays at
+    // lst-1/lst-2 (e.g. res-multi-1, checkIn 2026-09-12) fall due/overdue
+    // against today's real clock once these listings carry city-tax items,
+    // which would otherwise blend into this exact-total assertion.
+    useReservationsModule().reservations.value = []
+    seedReservation({ id: 'res-eur', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    seedReservation({ id: 'res-idr', listingId: 'lst-2', currency: 'IDR', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2), nights: 4 })
+
+    const totals = useCityTax().outstandingTotal.value
+    expect(totals).toContainEqual({ currency: 'EUR', amount: 24 })
+    expect(totals).toContainEqual({ currency: 'IDR', amount: 100000 })
+  })
+
+  it('leaves out stays where the channel collects', () => {
+    seedReservation({ id: 'res-ota', channel: 'Airbnb', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    const ids = useCityTax().dueToday.value.map(row => row.reservation.id)
+    expect(ids).not.toContain('res-ota')
+  })
+})
+
+describe('emitCityTaxAlerts', () => {
+  it('raises a warning for a stay due now and a critical for one already gone', () => {
+    seedReservation({ id: 'res-now', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    seedReservation({ id: 'res-gone', checkIn: isoDaysFromNow(-6), checkOut: isoDaysFromNow(-2) })
+
+    useCityTax().emitCityTaxAlerts()
+
+    const { alerts } = useNotifications()
+    const due = alerts.value.find(a => a.type === 'CITY_TAX_COLLECTION_DUE' && a.context.reservation_id === 'res-now')
+    const missed = alerts.value.find(a => a.type === 'CITY_TAX_COLLECTION_MISSED' && a.context.reservation_id === 'res-gone')
+    expect(due?.severity).toBe('WARNING')
+    expect(missed?.severity).toBe('CRITICAL')
+    expect(due?.context.amount_label).toBe('24.00 EUR')
+  })
+
+  it('stays quiet about a future booking unless the tenant asked to be told', () => {
+    seedReservation({ id: 'res-up', checkIn: isoDaysFromNow(5), checkOut: isoDaysFromNow(9) })
+    const cityTax = useCityTax()
+
+    cityTax.emitCityTaxAlerts()
+    expect(useNotifications().alerts.value.some(a => a.type === 'CITY_TAX_COLLECTION_UPCOMING')).toBe(false)
+
+    cityTax.notifyOnBooking.value = true
+    cityTax.emitCityTaxAlerts()
+    expect(useNotifications().alerts.value.some(a => a.type === 'CITY_TAX_COLLECTION_UPCOMING')).toBe(true)
+  })
+
+  it('does not raise a second alert for the same stay and stage', () => {
+    seedReservation({ id: 'res-now', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    const cityTax = useCityTax()
+    cityTax.emitCityTaxAlerts()
+    cityTax.emitCityTaxAlerts()
+
+    const count = useNotifications().alerts.value.filter(a => a.type === 'CITY_TAX_COLLECTION_DUE' && a.context.reservation_id === 'res-now').length
+    expect(count).toBe(1)
+  })
+
+  it('clears a live alert the moment the money is in, because an alert is a prompt not a log', () => {
+    seedReservation({ id: 'res-now', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    const cityTax = useCityTax()
+    cityTax.emitCityTaxAlerts()
+    cityTax.markCollected('res-now', { method: 'cash' })
+
+    const stillActive = useNotifications().alerts.value.some(a =>
+      a.type === 'CITY_TAX_COLLECTION_DUE' && a.context.reservation_id === 'res-now' && a.status === 'ACTIVE')
+    expect(stillActive).toBe(false)
+  })
+
+  it('clears a live alert on a waive too', () => {
+    seedReservation({ id: 'res-now', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(2) })
+    const cityTax = useCityTax()
+    cityTax.emitCityTaxAlerts()
+    cityTax.waive('res-now', 'Exempt')
+
+    const stillActive = useNotifications().alerts.value.some(a =>
+      a.type === 'CITY_TAX_COLLECTION_DUE' && a.context.reservation_id === 'res-now' && a.status === 'ACTIVE')
+    expect(stillActive).toBe(false)
   })
 })

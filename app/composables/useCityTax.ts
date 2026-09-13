@@ -1,14 +1,19 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { CityTaxAssessment } from '~/components/reservations/data/city-tax'
-import type { CityTaxPaymentMethod, CityTaxSettlement, ReservationEntry } from '~/components/reservations/data/reservations'
+import type { AlertType } from '~/components/notifications/data/alerts'
+import type { CityTaxAlertStage, CityTaxAssessment } from '~/components/reservations/data/city-tax'
+import type { CityTaxPaymentMethod, CityTaxSettlement, CityTaxTotal, ReservationEntry } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
 import {
   cityTaxActivityEvent,
+  cityTaxAlertStage,
+  cityTaxTotals,
+  formatCityTaxTotal,
   formatCityTaxTotals,
   resolveCityTax,
 } from '~/components/reservations/data/city-tax'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
+import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const EMPTY_ASSESSMENT: CityTaxAssessment = {
@@ -17,6 +22,26 @@ const EMPTY_ASSESSMENT: CityTaxAssessment = {
   totals: [],
   lines: [],
   settlement: null,
+}
+
+export interface CityTaxWorklistRow {
+  reservation: ReservationEntry
+  assessment: CityTaxAssessment
+  stage: CityTaxAlertStage | null
+}
+
+const CITY_TAX_ALERT_TYPE: Record<CityTaxAlertStage, AlertType> = {
+  upcoming: 'CITY_TAX_COLLECTION_UPCOMING',
+  due_today: 'CITY_TAX_COLLECTION_DUE',
+  overdue: 'CITY_TAX_COLLECTION_MISSED',
+}
+
+const CITY_TAX_ALERT_TYPES: AlertType[] = Object.values(CITY_TAX_ALERT_TYPE)
+
+/** Local calendar day, matching how checkIn / checkOut are written. */
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
 /**
@@ -48,6 +73,85 @@ export function useCityTax() {
     return reservation ? assess(reservation) : EMPTY_ASSESSMENT
   }
 
+  const { alerts, createCityTaxAlert } = useNotifications()
+  const notifyOnBooking = useState<boolean>('city-tax-notify-on-booking', () => false)
+
+  const rows = computed<CityTaxWorklistRow[]>(() => {
+    const today = todayIso()
+    return reservations.value.map((reservation) => {
+      const assessment = assess(reservation)
+      return { reservation, assessment, stage: cityTaxAlertStage(assessment, reservation, today) }
+    })
+  })
+
+  const overdue = computed(() => rows.value.filter(row => row.stage === 'overdue'))
+  const dueToday = computed(() => rows.value.filter(row => row.stage === 'due_today'))
+  const upcoming = computed(() => rows.value.filter(row => row.stage === 'upcoming'))
+  const settled = computed(() => rows.value.filter(row => row.assessment.settlement !== null))
+
+  /** Per currency, never blended: this app invents no exchange rates. */
+  function sumRows(source: CityTaxWorklistRow[]): CityTaxTotal[] {
+    return cityTaxTotals(source.flatMap(row => row.assessment.lines))
+  }
+
+  const outstandingTotal = computed(() => sumRows([...overdue.value, ...dueToday.value]))
+  // Reads the FROZEN settlement totals, never the live rules: this is what was
+  // actually taken, which is the whole point of freezing them.
+  const collectedTotal = computed(() => cityTaxTotals(
+    settled.value
+      .filter(row => row.assessment.settlement?.state === 'collected')
+      .flatMap(row => row.assessment.settlement!.totals),
+  ))
+
+  function hasActiveAlert(type: AlertType, reservationId: string): boolean {
+    return alerts.value.some(alert =>
+      alert.type === type
+      && alert.status === 'ACTIVE'
+      && alert.context?.reservation_id === reservationId)
+  }
+
+  /**
+   * Raises what is missing and nothing else. There is no scheduler in this app,
+   * so the worklist page calls this on mount and from its "Check for alerts"
+   * button, the same way Smart Lock and Minut surface their mock events.
+   */
+  function emitCityTaxAlerts() {
+    for (const row of rows.value) {
+      if (!row.stage)
+        continue
+      if (row.stage === 'upcoming' && !notifyOnBooking.value)
+        continue
+
+      const type = CITY_TAX_ALERT_TYPE[row.stage]
+      if (hasActiveAlert(type, row.reservation.id))
+        continue
+
+      createCityTaxAlert(type as 'CITY_TAX_COLLECTION_UPCOMING' | 'CITY_TAX_COLLECTION_DUE' | 'CITY_TAX_COLLECTION_MISSED', {
+        reservation_id: row.reservation.id,
+        guest_name: row.reservation.guestName,
+        listing_name: row.reservation.listingName,
+        listing_id: row.reservation.listingId,
+        amount_label: row.assessment.totals.map(formatCityTaxTotal).join(' + '),
+      })
+    }
+  }
+
+  /**
+   * Resolves the alert directly rather than through `dismiss()`, which only
+   * acts on alerts visible to the current user. Whether this user can see the
+   * alert must not decide whether a settled obligation keeps nagging everyone
+   * else.
+   */
+  function dismissAlertsFor(reservationId: string) {
+    const now = new Date().toISOString()
+    alerts.value = alerts.value.map(alert =>
+      CITY_TAX_ALERT_TYPES.includes(alert.type)
+      && alert.status === 'ACTIVE'
+      && alert.context?.reservation_id === reservationId
+        ? { ...alert, status: 'RESOLVED' as const, resolved_at: now }
+        : alert)
+  }
+
   /**
    * One patch, so the settlement and its audit line can never land apart. The
    * same rule `useReservationFolio.commit()` follows.
@@ -59,6 +163,10 @@ export function useCityTax() {
       // that renders it.
       activity: [...reservation.activity, event],
     })
+
+    // An alert is a prompt, not a log. Once the money is in, it leaves the bell.
+    if (settlement)
+      dismissAlertsFor(reservation.id)
   }
 
   /**
@@ -129,5 +237,14 @@ export function useCityTax() {
     markCollected,
     waive,
     undoSettlement,
+    rows,
+    overdue,
+    dueToday,
+    upcoming,
+    settled,
+    outstandingTotal,
+    collectedTotal,
+    notifyOnBooking,
+    emitCityTaxAlerts,
   }
 }
