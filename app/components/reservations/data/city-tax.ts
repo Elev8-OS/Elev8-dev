@@ -1,3 +1,4 @@
+import type { ActivityEvent, ActivityEventColor } from '~/components/inbox/data/conversations'
 import type {
   BookingChannel,
   CityTaxChargeableGuests,
@@ -6,7 +7,7 @@ import type {
   ListingFeeTaxItem,
   TaxLogic,
 } from '~/components/listings/data/listings'
-import type { CityTaxSettlement, CityTaxTotal, ReservationEntry } from '~/components/reservations/data/reservations'
+import type { CityTaxPaymentMethod, CityTaxSettlement, CityTaxTotal, ReservationEntry } from '~/components/reservations/data/reservations'
 
 /** Adults pay, nobody else does, until a tenant says otherwise. */
 export const DEFAULT_CHARGEABLE_GUESTS: CityTaxChargeableGuests = {
@@ -239,4 +240,89 @@ export function resolveCityTax(reservation: ReservationEntry, items: ListingFeeT
     return { status: 'channel_collects', collector: 'channel', totals: [], lines: [], settlement: null }
 
   return { status: 'not_required', collector: 'not_applicable', totals: [], lines: [], settlement: null }
+}
+
+export type CityTaxAlertStage = 'upcoming' | 'due_today' | 'overdue'
+
+/**
+ * `due_today` covers the whole stay, not just the arrival date: an in-house
+ * guest can still be asked at the desk. It turns `overdue` on the check-out
+ * date itself, the first day the guest can walk out without paying.
+ */
+export function cityTaxAlertStage(
+  assessment: CityTaxAssessment,
+  stay: Pick<ReservationEntry, 'checkIn' | 'checkOut'>,
+  todayIso: string,
+): CityTaxAlertStage | null {
+  if (assessment.status !== 'due')
+    return null
+  if (stay.checkOut <= todayIso)
+    return 'overdue'
+  if (stay.checkIn <= todayIso)
+    return 'due_today'
+  return 'upcoming'
+}
+
+export const CITY_TAX_METHOD_LABELS: Record<CityTaxPaymentMethod, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank_transfer: 'Bank transfer',
+  other: 'Other',
+}
+
+export type CityTaxActivityKind = 'collected' | 'waived' | 'reopened'
+
+const cityTaxActivityTitles: Record<CityTaxActivityKind, string> = {
+  collected: 'City tax collected',
+  waived: 'City tax waived',
+  reopened: 'City tax reopened',
+}
+
+const cityTaxActivityColors: Record<CityTaxActivityKind, ActivityEventColor> = {
+  collected: 'green',
+  waived: 'gray',
+  reopened: 'gold',
+}
+
+export function formatCityTaxTotal(total: CityTaxTotal): string {
+  return `${total.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${total.currency}`
+}
+
+export function formatCityTaxTotals(totals: CityTaxTotal[]): string {
+  return totals.length === 0 ? '0.00' : totals.map(formatCityTaxTotal).join(' + ')
+}
+
+/**
+ * The id carries the timestamp rather than just the kind. Unlike a folio item,
+ * a reservation has exactly one city tax settlement, so collect / undo /
+ * collect again would otherwise produce three events sharing one id and the
+ * timeline would render one.
+ */
+export function cityTaxActivityEvent(
+  kind: CityTaxActivityKind,
+  settlement: CityTaxSettlement | null,
+  actor: string,
+  now: string = new Date().toISOString(),
+): ActivityEvent {
+  const parts: string[] = []
+  if (settlement) {
+    parts.push(formatCityTaxTotals(settlement.totals))
+    if (kind === 'collected' && settlement.method)
+      parts.push(CITY_TAX_METHOD_LABELS[settlement.method])
+    if (kind === 'waived' && settlement.reason)
+      parts.push(`Reason: ${settlement.reason}`)
+  }
+  else {
+    parts.push('Marked outstanding again')
+  }
+
+  return {
+    id: `act-citytax-${kind}-${now}`,
+    type: 'reservation',
+    title: cityTaxActivityTitles[kind],
+    description: parts.join(' · '),
+    actor,
+    timestamp: now,
+    colorDot: cityTaxActivityColors[kind],
+  }
 }

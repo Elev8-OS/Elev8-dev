@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import {
   chargeableGuestCount,
   chargeableNights,
+  cityTaxActivityEvent,
+  cityTaxAlertStage,
   cityTaxTotals,
   collectorFor,
   computeCityTaxLine,
@@ -364,5 +366,98 @@ describe('resolveCityTax', () => {
       cityTax: { ...hostConfig, channelPolicy: { ...hostConfig.channelPolicy, 'Booking.com': 'channel' as const } },
     })
     expect(resolveCityTax(stay, [handedToChannel]).status).toBe('channel_collects')
+  })
+})
+
+describe('cityTaxAlertStage', () => {
+  const today = '2026-07-12'
+
+  function dueAssessment() {
+    return resolveCityTax(reservation(), [taxItem({ cityTax: hostConfig })])
+  }
+
+  it('is upcoming before arrival', () => {
+    expect(cityTaxAlertStage(dueAssessment(), { checkIn: '2026-07-20', checkOut: '2026-07-24' }, today)).toBe('upcoming')
+  })
+
+  it('is due on the arrival day itself', () => {
+    expect(cityTaxAlertStage(dueAssessment(), { checkIn: today, checkOut: '2026-07-16' }, today)).toBe('due_today')
+  })
+
+  it('stays due while the guest is still in house, because it is still collectable', () => {
+    expect(cityTaxAlertStage(dueAssessment(), { checkIn: '2026-07-10', checkOut: '2026-07-16' }, today)).toBe('due_today')
+  })
+
+  it('is overdue on the departure day, once the guest can walk out', () => {
+    expect(cityTaxAlertStage(dueAssessment(), { checkIn: '2026-07-08', checkOut: today }, today)).toBe('overdue')
+  })
+
+  it('is overdue after departure', () => {
+    expect(cityTaxAlertStage(dueAssessment(), { checkIn: '2026-07-01', checkOut: '2026-07-05' }, today)).toBe('overdue')
+  })
+
+  it('is silent for anything that is not due', () => {
+    const settled = resolveCityTax(
+      reservation({
+        cityTaxSettlement: {
+          state: 'collected',
+          totals: [{ currency: 'EUR', amount: 24 }],
+          settledAt: '2026-07-10T09:00:00.000Z',
+          settledBy: 'Komang Juliantara',
+          method: 'cash',
+        },
+      }),
+      [taxItem({ cityTax: hostConfig })],
+    )
+    expect(cityTaxAlertStage(settled, { checkIn: '2026-07-01', checkOut: '2026-07-05' }, today)).toBeNull()
+
+    const channel = resolveCityTax(reservation({ channel: 'Airbnb' }), [taxItem({ cityTax: hostConfig })])
+    expect(cityTaxAlertStage(channel, { checkIn: '2026-07-01', checkOut: '2026-07-05' }, today)).toBeNull()
+  })
+})
+
+describe('cityTaxActivityEvent', () => {
+  const settlement = {
+    state: 'collected' as const,
+    totals: [{ currency: 'EUR', amount: 24 }],
+    settledAt: '2026-07-12T09:30:00.000Z',
+    settledBy: 'Komang Juliantara',
+    method: 'cash' as const,
+  }
+
+  it('states the amount and the method', () => {
+    const event = cityTaxActivityEvent('collected', settlement, 'Komang Juliantara', '2026-07-12T09:30:00.000Z')
+    expect(event.title).toBe('City tax collected')
+    expect(event.description).toContain('24.00 EUR')
+    expect(event.description).toContain('Cash')
+    expect(event.actor).toBe('Komang Juliantara')
+    expect(event.type).toBe('reservation')
+    expect(event.colorDot).toBe('green')
+  })
+
+  it('states the reason on a waive', () => {
+    const waived = { ...settlement, state: 'waived' as const, method: undefined, reason: 'Business traveller' }
+    const event = cityTaxActivityEvent('waived', waived, 'Komang Juliantara', '2026-07-12T09:30:00.000Z')
+    expect(event.title).toBe('City tax waived')
+    expect(event.description).toContain('Reason: Business traveller')
+  })
+
+  it('lists every currency on a multi-currency settlement', () => {
+    const mixed = { ...settlement, totals: [{ currency: 'EUR', amount: 24 }, { currency: 'IDR', amount: 50000 }] }
+    const event = cityTaxActivityEvent('collected', mixed, 'Komang Juliantara', '2026-07-12T09:30:00.000Z')
+    expect(event.description).toContain('24.00 EUR')
+    expect(event.description).toContain('50,000.00 IDR')
+  })
+
+  it('describes a reopen without a settlement to read from', () => {
+    const event = cityTaxActivityEvent('reopened', null, 'Komang Juliantara', '2026-07-12T09:30:00.000Z')
+    expect(event.title).toBe('City tax reopened')
+    expect(event.colorDot).toBe('gold')
+  })
+
+  it('gives two settlements of the same kind different ids, so an undo and a re-collect both show', () => {
+    const first = cityTaxActivityEvent('collected', settlement, 'A', '2026-07-12T09:30:00.000Z')
+    const second = cityTaxActivityEvent('collected', settlement, 'A', '2026-07-12T11:00:00.000Z')
+    expect(first.id).not.toBe(second.id)
   })
 })
