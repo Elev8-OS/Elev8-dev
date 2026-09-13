@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { BookingChannel, CityTaxCollector, ListingFeeTaxItem, TaxDateRange, TaxSet } from '~/components/listings/data/listings'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import { listings, type ListingFeeTaxItem, type TaxDateRange, type TaxSet } from '~/components/listings/data/listings'
+import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
+import { useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 
 const {
@@ -91,11 +93,47 @@ function emptyFeeTaxDraft(): ListingFeeTaxItem {
     skipNights: null,
     maxNights: null,
     applicableDateRanges: [],
+    cityTax: {
+      channelPolicy: {},
+      chargeableGuests: { adults: true, children: false, infants: false },
+    },
   }
 }
 
 function isPercent(): boolean {
   return feeTaxDraft.value.logic === 'percent'
+}
+
+const { notifyOnBooking } = useCityTax()
+
+const collectorOptions: { value: CityTaxCollector, label: string }[] = [
+  { value: 'host', label: 'Host collects' },
+  { value: 'channel', label: 'Channel collects' },
+  { value: 'not_applicable', label: 'Not applicable' },
+]
+
+function isCityTax(): boolean {
+  return feeTaxDraft.value.type === 'city_tax'
+}
+
+function draftCollectorFor(channel: BookingChannel): CityTaxCollector {
+  return feeTaxDraft.value.cityTax?.channelPolicy?.[channel] ?? 'host'
+}
+
+function setChannelCollector(channel: BookingChannel, collector: CityTaxCollector) {
+  const config = feeTaxDraft.value.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } }
+  feeTaxDraft.value = {
+    ...feeTaxDraft.value,
+    cityTax: { ...config, channelPolicy: { ...config.channelPolicy, [channel]: collector } },
+  }
+}
+
+function setChargeableGuest(key: 'adults' | 'children' | 'infants', value: boolean) {
+  const config = feeTaxDraft.value.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } }
+  feeTaxDraft.value = {
+    ...feeTaxDraft.value,
+    cityTax: { ...config, chargeableGuests: { ...config.chargeableGuests, [key]: value } },
+  }
 }
 
 function openAddFeeTax() {
@@ -112,6 +150,7 @@ function openEditFeeTax(id: string) {
   feeTaxDraft.value = {
     ...found,
     applicableDateRanges: found.applicableDateRanges.map(r => ({ ...r })),
+    cityTax: found.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } },
   }
   showFeeTaxSheet.value = true
 }
@@ -123,6 +162,9 @@ function saveFeeTax() {
     ...feeTaxDraft.value,
     id: editingFeeTaxId.value || `ft-${Date.now()}`,
     title: feeTaxDraft.value.title.trim(),
+    // A collection policy on a cleaning fee would be read by nothing and would
+    // confuse the next person to open the record.
+    cityTax: feeTaxDraft.value.type === 'city_tax' ? feeTaxDraft.value.cityTax : undefined,
   }
   upsertFeeTaxItem(item)
   showFeeTaxSheet.value = false
@@ -505,6 +547,16 @@ function removeDateRange(index: number) {
       </div>
     </div>
 
+    <div class="flex items-center justify-between rounded-lg border p-3">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-sm font-medium">Notify when a collection is booked</span>
+        <span class="text-xs text-muted-foreground">
+          Off by default. Alerts for a collection due today and one that was missed are always on.
+        </span>
+      </div>
+      <Switch :model-value="notifyOnBooking" @update:model-value="(v) => notifyOnBooking = Boolean(v)" />
+    </div>
+
     <Tabs default-value="fees-taxes" class="space-y-4">
       <TabsList>
         <TabsTrigger value="fees-taxes">Fees &amp; Taxes</TabsTrigger>
@@ -622,7 +674,7 @@ function removeDateRange(index: number) {
       <SheetContent class="w-full sm:max-w-md p-0">
         <SheetHeader>
           <SheetTitle>{{ editingFeeTaxId ? 'Edit Fee or Tax' : 'Add Fee or Tax' }}</SheetTitle>
-          <SheetDescription>Applied to direct bookings only. OTAs manage their own charges.</SheetDescription>
+          <SheetDescription>Fees and taxes for direct bookings. A city tax can also name which channels collect it.</SheetDescription>
         </SheetHeader>
 
         <div class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
@@ -682,6 +734,71 @@ function removeDateRange(index: number) {
               <span class="text-xs text-muted-foreground">When on, the tax is folded into the nightly rate.</span>
             </div>
             <Switch :model-value="feeTaxDraft.isInclusive" @update:model-value="(v) => feeTaxDraft.isInclusive = Boolean(v)" />
+          </div>
+
+          <div v-if="isCityTax()" class="flex flex-col gap-3 rounded-lg border p-3">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-sm font-medium">City Tax Collection</span>
+              <span class="text-xs text-muted-foreground">
+                Who takes the money on each channel. Channels you leave unset are treated as host collects.
+              </span>
+            </div>
+
+            <div v-for="channel in BOOKING_CHANNELS" :key="channel" class="flex items-center justify-between gap-3">
+              <span class="text-sm">{{ channel }}</span>
+              <Select
+                :model-value="draftCollectorFor(channel)"
+                @update:model-value="(v) => setChannelCollector(channel, v as CityTaxCollector)"
+              >
+                <SelectTrigger class="h-8 w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="opt in collectorOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
+            <div class="flex flex-col gap-2">
+              <span class="text-sm font-medium">Chargeable guests</span>
+              <div
+                v-for="option in [
+                  { key: 'adults' as const, label: 'Adults' },
+                  { key: 'children' as const, label: 'Children' },
+                  { key: 'infants' as const, label: 'Infants' },
+                ]"
+                :key="option.key"
+                class="flex items-center justify-between"
+              >
+                <span class="text-sm text-muted-foreground">{{ option.label }}</span>
+                <Switch
+                  :model-value="feeTaxDraft.cityTax?.chargeableGuests[option.key] ?? false"
+                  @update:model-value="(v) => setChargeableGuest(option.key, Boolean(v))"
+                />
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <Label>Levied by</Label>
+              <Input
+                :model-value="feeTaxDraft.cityTax?.authorityName ?? ''"
+                placeholder="e.g., Stadt Berlin"
+                @update:model-value="(v) => feeTaxDraft = { ...feeTaxDraft, cityTax: { ...feeTaxDraft.cityTax!, authorityName: String(v) } }"
+              />
+              <span class="text-xs text-muted-foreground">Shown to staff at the desk so they can answer "what is this charge".</span>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <Label>Note for staff</Label>
+              <Textarea
+                :model-value="feeTaxDraft.cityTax?.note ?? ''"
+                placeholder="e.g., Cash at the desk, receipt book behind reception."
+                rows="2"
+                @update:model-value="(v) => feeTaxDraft = { ...feeTaxDraft, cityTax: { ...feeTaxDraft.cityTax!, note: String(v) } }"
+              />
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
