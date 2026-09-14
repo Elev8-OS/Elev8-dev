@@ -7,6 +7,7 @@ import { reservationStatusLabels } from '~/components/reservations/data/reservat
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
+import ReservationCityTaxSection from '~/components/reservations/ReservationCityTaxSection.vue'
 import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { Button } from '~/components/ui/button'
@@ -456,6 +457,9 @@ function fmtDob(iso: string): string {
 
               <!-- Charges & extras (staff-posted folio) -->
               <ReservationFolioSection :reservation="reservation" />
+
+              <!-- City tax: what the municipality is owed on this stay -->
+              <ReservationCityTaxSection :reservation="reservation" />
 
               <!-- Guest -->
               <div class="border-b px-5 py-4">
