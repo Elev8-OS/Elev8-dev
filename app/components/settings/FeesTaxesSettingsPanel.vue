@@ -803,11 +803,39 @@ function removeDateRange(index: number) {
 
           <div class="grid grid-cols-2 gap-3">
             <div class="flex flex-col gap-1.5">
-              <Label>Skip Nights</Label>
+              <div class="flex items-center gap-1">
+                <Label>Skip Nights</Label>
+                <TooltipProvider :delay-duration="200">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <button type="button" class="text-muted-foreground/60 hover:text-muted-foreground">
+                        <Icon name="lucide:info" class="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="max-w-[240px] text-xs">
+                      Number of initial nights exempt from this charge. Calculation begins only after these nights have passed.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Input :model-value="feeTaxDraft.skipNights ?? ''" type="number" min="0" placeholder="0" @update:model-value="(v) => feeTaxDraft.skipNights = v === '' ? null : Number(v)" />
             </div>
             <div class="flex flex-col gap-1.5">
-              <Label>Max Nights</Label>
+              <div class="flex items-center gap-1">
+                <Label>Max Nights</Label>
+                <TooltipProvider :delay-duration="200">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <button type="button" class="text-muted-foreground/60 hover:text-muted-foreground">
+                        <Icon name="lucide:info" class="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="max-w-[240px] text-xs">
+                      Maximum number of nights this charge applies to per stay. Any additional nights beyond this limit are exempt.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Input :model-value="feeTaxDraft.maxNights ?? ''" type="number" min="0" placeholder="None" @update:model-value="(v) => feeTaxDraft.maxNights = v === '' ? null : Number(v)" />
             </div>
           </div>
