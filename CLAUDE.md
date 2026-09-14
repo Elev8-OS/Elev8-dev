@@ -618,7 +618,7 @@ Two integrations supported: **Mekari Jurnal** (IDR, Indonesia) and **Bexio** (CH
 
 **1 listing = 1 integration rule**: enforced at UI level — rows mapped to the other integration show a lock badge and disabled select in both `JurnalIntegration.vue` and `BexioIntegration.vue`.
 
-**Currency display**: always `IDR` prefix (not `Rp`) for Indonesian Rupiah. CHF uses `de-CH` locale with 2 decimal places. Header amounts always in CHF (tenant currency).
+**Currency display**: Always format currencies using 3-letter ISO code in front with a space (e.g. `USD 150.00`, `EUR 231.00`, `IDR 500,000`, `CHF 1,200.00`), never symbols like `$`, `€`, `£`, `Rp`, and never suffix after the amount. Format: `${currency} ${amount}`. Input prefixes must use currency codes with sufficient padding (`pl-14`). CHF uses `de-CH` locale with 2 decimal places. Header amounts always in CHF (tenant currency).
 
 **Integration filter**: all three tabs (Reservations, Upsell, Costs) have a `filterIntegration` select — `'all' | 'jurnal' | 'bexio' | 'none'`.
 

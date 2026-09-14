@@ -23,7 +23,7 @@ function fmtDate(iso: string): string {
 }
 
 function fmtCurrency(amount: number, currency: string): string {
-  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+  return `${currency} ${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 }
 
 const cityTax = useCityTax()

@@ -313,7 +313,7 @@ describe('emitCityTaxAlerts', () => {
     const missed = alerts.value.find(a => a.type === 'CITY_TAX_COLLECTION_MISSED' && a.context.reservation_id === 'res-gone')
     expect(due?.severity).toBe('WARNING')
     expect(missed?.severity).toBe('CRITICAL')
-    expect(due?.context.amount_label).toBe('24.00 EUR')
+    expect(due?.context.amount_label).toBe('EUR 24.00')
   })
 
   it('stays quiet about a future booking unless the tenant asked to be told', () => {

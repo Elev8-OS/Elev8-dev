@@ -26,12 +26,12 @@ const {
 } = useFeesTaxes()
 
 const currencies = [
-  { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'IDR', symbol: 'IDR', label: 'IDR' },
-  { code: 'EUR', symbol: '€', label: 'EUR' },
-  { code: 'GBP', symbol: '£', label: 'GBP' },
-  { code: 'AUD', symbol: 'A$', label: 'AUD' },
-  { code: 'SGD', symbol: 'S$', label: 'SGD' },
+  { code: 'USD', label: 'USD' },
+  { code: 'IDR', label: 'IDR' },
+  { code: 'EUR', label: 'EUR' },
+  { code: 'GBP', label: 'GBP' },
+  { code: 'AUD', label: 'AUD' },
+  { code: 'SGD', label: 'SGD' },
 ]
 
 const logicOptions = [
@@ -54,14 +54,14 @@ const logicLabels: Record<string, string> = {
   per_booking: 'Per Booking',
 }
 
-function symbolFor(code: string): string {
-  return currencies.find(c => c.code === code)?.symbol ?? '$'
+function currencyCode(code?: string): string {
+  return code || 'USD'
 }
 
 function feeTaxSummary(tax: ListingFeeTaxItem): string {
   const amount = tax.logic === 'percent'
     ? `${tax.rate}%`
-    : `${symbolFor(tax.currency ?? 'USD')}${tax.rate}`
+    : `${currencyCode(tax.currency)} ${tax.rate}`
   const parts = [amount, logicLabels[tax.logic] ?? tax.logic]
   if (tax.isInclusive)
     parts.push('included')
@@ -332,8 +332,7 @@ interface CalcLine {
 }
 
 const taxSetCalc = computed(() => {
-  const currency = taxSetDraft.value.currency ?? 'USD'
-  const sym = symbolFor(currency)
+  const currency = currencyCode(taxSetDraft.value.currency)
   const nights = Math.max(1, sampleNights.value || 1)
   const base = Math.max(0, sampleBasePrice.value || 0)
   const baseTotal = base * nights
@@ -351,42 +350,42 @@ const taxSetCalc = computed(() => {
 
     if (logic === 'percent') {
       const amount = running * rate / 100
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${rate}% of ${sym}${running.toFixed(2)}` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${rate}% of ${currency} ${running.toFixed(2)}` })
       running += amount
     }
     else if (logic === 'per_room') {
       const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per room` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per room` })
       running += amount
     }
     else if (logic === 'per_room_per_night') {
       const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per room per night × ${nights} nights` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per room per night × ${nights} nights` })
       running += amount
     }
     else if (logic === 'per_person') {
       const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per person` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per person` })
       running += amount
     }
     else if (logic === 'per_person_per_night') {
       const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per person per night × ${nights} nights` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per person per night × ${nights} nights` })
       running += amount
     }
     else if (logic === 'per_night') {
       const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per night × ${nights} nights` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per night × ${nights} nights` })
       running += amount
     }
     else if (logic === 'per_booking') {
       const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per booking` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per booking` })
       running += amount
     }
   }
 
-  return { currency, sym, nights, base, baseTotal, running, lines }
+  return { currency, nights, base, baseTotal, running, lines }
 })
 
 function saveTaxSet() {
@@ -711,8 +710,8 @@ function removeDateRange(index: number) {
             <div class="flex flex-col gap-1.5">
               <Label>Rate</Label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ isPercent() ? '%' : symbolFor(feeTaxDraft.currency ?? 'USD') }}</span>
-                <Input v-model.number="feeTaxDraft.rate" type="number" class="pl-7" min="0" />
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">{{ isPercent() ? '%' : currencyCode(feeTaxDraft.currency) }}</span>
+                <Input v-model.number="feeTaxDraft.rate" type="number" :class="isPercent() ? 'pl-7' : 'pl-14'" min="0" />
               </div>
             </div>
             <div v-if="!isPercent()" class="flex flex-col gap-1.5">
@@ -721,7 +720,7 @@ function removeDateRange(index: number) {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                    {{ c.symbol }} {{ c.label }}
+                    {{ c.code }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -894,7 +893,7 @@ function removeDateRange(index: number) {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                  {{ c.symbol }} {{ c.label }}
+                  {{ c.code }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -1006,7 +1005,7 @@ function removeDateRange(index: number) {
             <div class="flex flex-col gap-1.5 mt-2 text-sm">
               <div class="flex items-center justify-between">
                 <span class="text-muted-foreground">Base total</span>
-                <span>{{ taxSetCalc.sym }}{{ taxSetCalc.baseTotal.toFixed(2) }}</span>
+                <span>{{ taxSetCalc.currency }} {{ taxSetCalc.baseTotal.toFixed(2) }}</span>
               </div>
               <div
                 v-for="line in taxSetCalc.lines"
@@ -1017,11 +1016,11 @@ function removeDateRange(index: number) {
                   <span class="font-medium truncate">{{ line.title }}</span>
                   <span class="text-xs text-muted-foreground">{{ line.detail }}</span>
                 </div>
-                <span class="shrink-0">+{{ taxSetCalc.sym }}{{ line.amount.toFixed(2) }}</span>
+                <span class="shrink-0">+{{ taxSetCalc.currency }} {{ line.amount.toFixed(2) }}</span>
               </div>
               <div class="border-t pt-2 flex items-center justify-between font-semibold">
                 <span>Total</span>
-                <span>{{ taxSetCalc.sym }}{{ taxSetCalc.running.toFixed(2) }}</span>
+                <span>{{ taxSetCalc.currency }} {{ taxSetCalc.running.toFixed(2) }}</span>
               </div>
             </div>
           </div>

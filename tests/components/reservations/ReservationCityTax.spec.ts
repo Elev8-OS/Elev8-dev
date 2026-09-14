@@ -100,7 +100,7 @@ describe('ReservationCityTaxSection', () => {
   it('shows the amount and the arithmetic when the host must collect', () => {
     const wrapper = mountSection(reservation())
     const text = wrapper.text()
-    expect(text).toContain('24.00 EUR')
+    expect(text).toContain('EUR 24.00')
     expect(text).toContain('Kurtaxe')
     expect(text).toContain('2 guests')
     expect(text).toContain('4 nights')
@@ -131,7 +131,7 @@ describe('ReservationCityTaxSection', () => {
       },
     }))
     const text = wrapper.text()
-    expect(text).toContain('18.00 EUR')
+    expect(text).toContain('EUR 18.00')
     expect(text).toContain('Komang Juliantara')
     expect(text).toContain('Cash')
     expect(wrapper.find('[data-testid="city-tax-undo"]').exists()).toBe(true)

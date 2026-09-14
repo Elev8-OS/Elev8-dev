@@ -392,8 +392,7 @@ watch(() => popoverDateRange.value, (val) => {
 }, { deep: true })
 
 function getCurrencySymbol(code: string) {
-  const symbols: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', IDR: 'Rp', AUD: 'A$', JPY: '¥' }
-  return symbols[code] ?? code
+  return code
 }
 
 function addDomain() {

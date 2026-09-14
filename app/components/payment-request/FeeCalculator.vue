@@ -14,7 +14,7 @@ const { amount, feeMode, customFeePercentage, currency } = defineProps<Props>()
 const feeAmount = computed(() => calculateFee(amount, feeMode, customFeePercentage))
 const totalAmount = computed(() => calculateTotal(amount, feeAmount.value))
 
-const symbol = computed(() => currency === 'IDR' ? 'Rp' : '$')
+const code = computed(() => currency || 'USD')
 
 const feeLabel = computed(() => {
   if (feeMode === 'card') return 'Card fee (3%)'
@@ -24,7 +24,7 @@ const feeLabel = computed(() => {
 
 const feeDisplay = computed(() => {
   if (feeMode === 'no_fee') return '-'
-  return `${symbol.value}${fmt(feeAmount.value)}`
+  return `${code.value} ${fmt(feeAmount.value)}`
 })
 
 function fmt(n: number) {
@@ -43,7 +43,7 @@ function fmt(n: number) {
     <div class="space-y-2">
       <div class="flex items-center justify-between text-sm">
         <span class="text-muted-foreground">Amount</span>
-        <span>{{ symbol }}{{ fmt(amount) }}</span>
+        <span>{{ code }} {{ fmt(amount) }}</span>
       </div>
       <div class="flex items-center justify-between text-sm">
         <span class="text-muted-foreground">
@@ -54,7 +54,7 @@ function fmt(n: number) {
       <Separator />
       <div class="flex items-center justify-between text-sm font-medium">
         <span>Total</span>
-        <span>{{ symbol }}{{ fmt(totalAmount) }}</span>
+        <span>{{ code }} {{ fmt(totalAmount) }}</span>
       </div>
     </div>
 

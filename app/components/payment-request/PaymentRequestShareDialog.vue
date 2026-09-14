@@ -32,7 +32,7 @@ function shareEmail() {
   if (!request)
     return
   const subject = encodeURIComponent(`Payment Request: ${request.title}`)
-  const body = encodeURIComponent(`Hi ${request.guestName},\n\nPlease complete your payment using this link:\n${request.paymentLink}\n\nAmount: ${request.currency === 'IDR' ? 'Rp' : '$'}${request.totalAmount}\n\nThank you!`)
+  const body = encodeURIComponent(`Hi ${request.guestName},\n\nPlease complete your payment using this link:\n${request.paymentLink}\n\nAmount: ${request.currency} ${request.totalAmount}\n\nThank you!`)
   window.open(`mailto:${request.guestEmail}?subject=${subject}&body=${body}`)
 }
 </script>

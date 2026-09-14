@@ -38,8 +38,8 @@ const statusMeta = computed(() => {
 
 /** "2 guests × 4 nights × 3.00 EUR = 24.00 EUR", the working staff get asked for. */
 function basisLabel(line: CityTaxBasisLine): string {
-  const rate = `${line.rate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${line.currency}`
-  const total = `${line.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${line.currency}`
+  const rate = `${line.currency} ${line.rate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const total = `${line.currency} ${line.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const factors: string[] = []
   if (line.logic === 'per_person' || line.logic === 'per_person_per_night')
     factors.push(`${line.chargeableGuests} guests`)

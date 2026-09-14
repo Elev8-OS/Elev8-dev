@@ -131,13 +131,13 @@ const calculatedRate = computed(() => {
     <div class="rounded-lg border bg-muted/40 p-3">
       <div class="text-xs font-medium mb-2">Calculation Preview</div>
       <div class="text-sm space-y-1 text-muted-foreground">
-        <div>Parent rate: {{ currencySymbol }}{{ baseRate.toFixed(2) }}</div>
+        <div>Parent rate: {{ currencySymbol }} {{ baseRate.toFixed(2) }}</div>
         <div v-for="(rule, idx) in rules" :key="idx" class="text-xs pl-3">
           → {{ rule.type.startsWith('increase') ? '+' : '−' }}
           {{ rule.value }}{{ rule.type.includes('percent') ? '%' : '' }}
         </div>
         <div class="border-t pt-1 font-medium text-foreground">
-          Final rate: {{ currencySymbol }}{{ calculatedRate.toFixed(2) }}
+          Final rate: {{ currencySymbol }} {{ calculatedRate.toFixed(2) }}
         </div>
       </div>
     </div>

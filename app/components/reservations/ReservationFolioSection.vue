@@ -48,7 +48,7 @@ function statusLabel(item: FolioItem): string {
 }
 
 function fmt(amount: number): string {
-  return `${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${props.reservation.currency}`
+  return `${props.reservation.currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function submitDraft(draft: FolioItemDraft) {

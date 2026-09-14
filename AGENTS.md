@@ -337,3 +337,4 @@ The logged-in user is **Komang Juliantara** (Guest Relations role), not "You" (A
 - **Icons**: Use `lucide:` prefix (e.g. `lucide:user-check`); OTA icons use `logos:airbnb` and `simple-icons:bookingdotcom`
 - **CSS framework**: Tailwind CSS v4
 - **State mutations**: Always use spread syntax (`{ ...conv, field: value }`) when modifying conversation properties to ensure Vue reactivity triggers
+- **Currency display**: Always format currencies using 3-letter ISO code in front with a space (e.g. `USD 150.00`, `EUR 231.00`, `IDR 500,000`, `CHF 1,200.00`), never symbols like `$`, `€`, `£`, `Rp`, and never suffix after the amount. Format: `${currency} ${amount}`. Input prefixes must use currency codes with sufficient padding (`pl-14`). CHF uses `de-CH` locale with 2 decimal places. Header amounts always in CHF (tenant currency).

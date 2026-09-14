@@ -62,12 +62,12 @@ function effectiveCancellationSummary(rp: RatePlan): string {
 }
 
 const currencies = [
-  { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'IDR', symbol: 'Rp', label: 'IDR' },
-  { code: 'EUR', symbol: '€', label: 'EUR' },
-  { code: 'GBP', symbol: '£', label: 'GBP' },
-  { code: 'AUD', symbol: 'A$', label: 'AUD' },
-  { code: 'SGD', symbol: 'S$', label: 'SGD' },
+  { code: 'USD', label: 'USD' },
+  { code: 'IDR', label: 'IDR' },
+  { code: 'EUR', label: 'EUR' },
+  { code: 'GBP', label: 'GBP' },
+  { code: 'AUD', label: 'AUD' },
+  { code: 'SGD', label: 'SGD' },
 ]
 
 const unitTypes = computed(() => props.listing.unitTypes ?? [])
@@ -94,8 +94,8 @@ function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
-function symbolFor(code: string): string {
-  return currencies.find(c => c.code === code)?.symbol ?? '$'
+function symbolFor(code?: string): string {
+  return code || 'USD'
 }
 
 function guestCapacityLabel(ut: UnitType): string {
@@ -167,9 +167,9 @@ function guestPricingPreview(draft: RatePlan, utId: string): string {
   const base = primaryOption(draft).rate
   const sym = symbolFor(draft.currency)
   if (extra <= 0 || incl >= max)
-    return `${sym}${base} / night · up to ${max} guest${max !== 1 ? 's' : ''} (room type limit)`
+    return `${sym} ${base} / night · up to ${max} guest${max !== 1 ? 's' : ''} (room type limit)`
   const maxTotal = base + (max - incl) * extra
-  return `${sym}${base} / night includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym}${extra} per extra guest · ${max} guests = ${sym}${maxTotal}`
+  return `${sym} ${base} / night includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym} ${extra} per extra guest · ${max} guests = ${sym} ${maxTotal}`
 }
 
 function patchUnitType(utId: string, patch: Partial<UnitType>) {
@@ -954,7 +954,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                    {{ c.symbol }} {{ c.label }}
+                    {{ c.label }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -1108,7 +1108,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                  {{ c.symbol }} {{ c.label }}
+                  {{ c.label }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -1266,7 +1266,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   <Input
                     type="number"
                     :model-value="draftExtraGuestRate(addRatePlanDraft)"
-                    class="pl-7 h-8"
+                    class="pl-14 h-8"
                     min="0"
                     @update:model-value="(v) => setDraftExtraGuestRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
                   />
@@ -1280,7 +1280,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <Input
                   type="number"
                   :model-value="displayBaseRate(addRatePlanDraft)"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="(v) => setDraftBaseRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
                 />
@@ -1306,7 +1306,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               <Input
                 type="number"
                 :model-value="displayBaseRate(addRatePlanDraft)"
-                class="pl-7 h-8"
+                class="pl-14 h-8"
                 min="0"
                 @update:model-value="(v) => setDraftBaseRate(addRatePlanDraft, addRatePlanUnitTypeId, v)"
               />
@@ -1330,7 +1330,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <Input
                   type="number"
                   :model-value="addRatePlanDraft.childrenFee"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="(v) => addRatePlanDraft.childrenFee = Number(v) || 0"
                 />
@@ -1343,7 +1343,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <Input
                   type="number"
                   :model-value="addRatePlanDraft.infantFee"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="(v) => addRatePlanDraft.infantFee = Number(v) || 0"
                 />
@@ -1475,7 +1475,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                  {{ c.symbol }} {{ c.label }}
+                  {{ c.label }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -1635,7 +1635,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   <Input
                     type="number"
                     :model-value="draftExtraGuestRate(editRatePlanDraft)"
-                    class="pl-7 h-8"
+                    class="pl-14 h-8"
                     min="0"
                     @update:model-value="(v) => setDraftExtraGuestRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
                   />
@@ -1649,7 +1649,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <Input
                   type="number"
                   :model-value="displayBaseRate(editRatePlanDraft)"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="(v) => setDraftBaseRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
                 />
@@ -1675,7 +1675,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               <Input
                 type="number"
                 :model-value="displayBaseRate(editRatePlanDraft)"
-                class="pl-7 h-8"
+                class="pl-14 h-8"
                 min="0"
                 @update:model-value="(v) => setDraftBaseRate(editRatePlanDraft, editRatePlanUnitTypeId, v)"
               />
@@ -1700,7 +1700,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <Input
                   type="number"
                   :model-value="editRatePlanDraft.childrenFee"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="(v) => editRatePlanDraft.childrenFee = Number(v) || 0"
                 />
@@ -1713,7 +1713,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <Input
                   type="number"
                   :model-value="editRatePlanDraft.infantFee"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="(v) => editRatePlanDraft.infantFee = Number(v) || 0"
                 />
@@ -1825,7 +1825,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-xs text-muted-foreground">
-              {{ symbolFor(ut.pricing.currency) }}{{ ratePlanNightlyRate(ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0] ?? createRatePlan({})) }}/night
+              {{ symbolFor(ut.pricing.currency) }} {{ ratePlanNightlyRate(ut.pricing.ratePlans.find(rp => rp.isBase) ?? ut.pricing.ratePlans[0] ?? createRatePlan({})) }} / night
             </span>
             <Icon
               name="lucide:chevron-down"
@@ -1846,7 +1846,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                  {{ c.symbol }} {{ c.label }}
+                  {{ c.label }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -1930,7 +1930,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <div class="flex items-end justify-between gap-2">
                   <div>
                     <p class="text-xl font-bold leading-none">
-                      {{ symbolFor(ut.pricing.currency) }}{{ primaryOption(rp).rate }}
+                      {{ symbolFor(ut.pricing.currency) }} {{ primaryOption(rp).rate }}
                     </p>
                     <p class="text-[10px] text-muted-foreground mt-1">
                       {{ rp.sellMode === 'per_person' ? 'per guest / night' : 'per night' }}
@@ -1945,7 +1945,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                     :key="opt.occupancy"
                     class="rounded-md border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
                   >
-                    {{ opt.occupancy }} guest{{ opt.occupancy !== 1 ? 's' : '' }} · {{ symbolFor(ut.pricing.currency) }}{{ opt.rate }}
+                    {{ opt.occupancy }} guest{{ opt.occupancy !== 1 ? 's' : '' }} · {{ symbolFor(ut.pricing.currency) }} {{ opt.rate }}
                   </span>
                 </div>
 
@@ -1953,8 +1953,8 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                 <div class="flex flex-wrap gap-x-3 gap-y-1 border-t pt-2.5 text-[10px] text-muted-foreground">
                   <span>Min stay {{ Math.max(...rp.minStayArrival) }}</span>
                   <span>Max stay {{ Math.max(...rp.maxStay) || '∞' }}</span>
-                  <span v-if="rp.childrenFee > 0">Child +{{ symbolFor(ut.pricing.currency) }}{{ rp.childrenFee }}</span>
-                  <span v-if="rp.infantFee > 0">Infant +{{ symbolFor(ut.pricing.currency) }}{{ rp.infantFee }}</span>
+                  <span v-if="rp.childrenFee > 0">Child +{{ symbolFor(ut.pricing.currency) }} {{ rp.childrenFee }}</span>
+                  <span v-if="rp.infantFee > 0">Infant +{{ symbolFor(ut.pricing.currency) }} {{ rp.infantFee }}</span>
                   <span v-if="rp.stopSell[0]" class="text-destructive">Stop sell</span>
                   <span v-if="rp.mealType !== 'none'" class="capitalize">{{ rp.mealType.replace(/_/g, ' ') }}</span>
                   <span>{{ effectiveCancellationSummary(rp) }}</span>
@@ -2016,7 +2016,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                     <Input
                       type="number"
                       :model-value="offering.adjustmentValue"
-                      class="pl-7"
+                      class="pl-14"
                       @update:model-value="(v) => updateOffering(ut.id, idx, 'adjustmentValue', Number(v) || 0)"
                     />
                   </div>
@@ -2071,7 +2071,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   <Input
                     type="number"
                     :model-value="discount.value"
-                    class="pl-7 h-8"
+                    class="pl-14 h-8"
                     @update:model-value="(v) => updateLosDiscount(ut.id, idx, 'value', Number(v) || 0)"
                   />
                 </div>
@@ -2093,15 +2093,15 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
         </h3>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div class="flex flex-col gap-1.5">
-            <Label>Nightly Rate ($)</Label>
+            <Label>Nightly Rate (USD)</Label>
             <Input :model-value="editForm.nightlyRate" type="number" @update:model-value="(v) => patchLegacyPricing({ nightlyRate: Number(v) || 0 })" />
           </div>
           <div class="flex flex-col gap-1.5">
-            <Label>Cleaning Fee ($)</Label>
+            <Label>Cleaning Fee (USD)</Label>
             <Input :model-value="editForm.cleaningFee" type="number" @update:model-value="(v) => patchLegacyPricing({ cleaningFee: Number(v) || 0 })" />
           </div>
           <div class="flex flex-col gap-1.5">
-            <Label>Service Fee ($)</Label>
+            <Label>Service Fee (USD)</Label>
             <Input :model-value="editForm.serviceFee" type="number" @update:model-value="(v) => patchLegacyPricing({ serviceFee: Number(v) || 0 })" />
           </div>
         </div>
@@ -2143,7 +2143,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
               <TableCell class="text-muted-foreground">
                 {{ season.startDate }} → {{ season.endDate }}
               </TableCell>
-              <TableCell>${{ season.rate }}/night</TableCell>
+              <TableCell>USD {{ season.rate }} / night</TableCell>
             </TableRow>
           </TableBody>
         </Table>

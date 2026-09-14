@@ -24,11 +24,11 @@ describe('city tax alert metadata', () => {
     const description = getDescription('CITY_TAX_COLLECTION_DUE', {
       guest_name: 'Anna Schmidt',
       listing_name: 'Villa Merapi',
-      amount_label: '24.00 EUR',
+      amount_label: 'EUR 24.00',
     })
     expect(description).toContain('Anna Schmidt')
     expect(description).toContain('Villa Merapi')
-    expect(description).toContain('24.00 EUR')
+    expect(description).toContain('EUR 24.00')
   })
 
   it.each(CITY_TAX_TYPES)('%s sits in a notification category, or it is invisible in the bell', (type) => {

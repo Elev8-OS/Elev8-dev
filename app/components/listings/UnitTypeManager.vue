@@ -18,12 +18,12 @@ const unitTypes = computed(() => props.listing.unitTypes ?? [])
 
 const bedTypes = ['Single Bed', 'Double Bed', 'Queen Bed', 'King Bed', 'Bunk Bed', 'Sofa Bed', 'Futon']
 const currencies = [
-  { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'IDR', symbol: 'Rp', label: 'IDR' },
-  { code: 'EUR', symbol: '€', label: 'EUR' },
-  { code: 'GBP', symbol: '£', label: 'GBP' },
-  { code: 'AUD', symbol: 'A$', label: 'AUD' },
-  { code: 'SGD', symbol: 'S$', label: 'SGD' },
+  { code: 'USD', label: 'USD' },
+  { code: 'IDR', label: 'IDR' },
+  { code: 'EUR', label: 'EUR' },
+  { code: 'GBP', label: 'GBP' },
+  { code: 'AUD', label: 'AUD' },
+  { code: 'SGD', label: 'SGD' },
 ]
 
 // Form state for editing
@@ -52,8 +52,7 @@ const form = ref<Partial<UnitType>>({
 const showAdvancedPricing = ref(false)
 
 const currencySymbol = computed(() => {
-  const code = form.value.pricing?.currency ?? 'USD'
-  return currencies.find(c => c.code === code)?.symbol ?? '$'
+  return form.value.pricing?.currency ?? 'USD'
 })
 
 // Max guests the room type can host (adults + children + infants)
@@ -104,8 +103,8 @@ function guestPricingHint(rp: RatePlan): string {
   const sym = currencySymbol.value
   const max = maxOccupancy.value
   if (extra <= 0 || incl >= max)
-    return `${sym}${base} / night · up to ${max} guest${max !== 1 ? 's' : ''}`
-  return `${sym}${base} includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym}${extra} per extra guest · ${max} guests = ${sym}${base + (max - incl) * extra}`
+    return `${sym} ${base} / night · up to ${max} guest${max !== 1 ? 's' : ''}`
+  return `${sym} ${base} includes ${incl} guest${incl !== 1 ? 's' : ''} · +${sym} ${extra} per extra guest · ${max} guests = ${sym} ${base + (max - incl) * extra}`
 }
 
 // A derived plan that still inherits its rate takes the value from its parent,
@@ -837,7 +836,7 @@ const feeIcons: Record<string, string> = {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                      {{ c.symbol }} {{ c.label }}
+                      {{ c.label }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -1109,7 +1108,7 @@ const feeIcons: Record<string, string> = {
                         <Input
                           type="number"
                           :model-value="offering.adjustmentValue"
-                          class="pl-7"
+                          class="pl-14"
                           @update:model-value="(v) => updateOffering(idx, 'adjustmentValue', Number(v) || 0)"
                         />
                       </div>
@@ -1164,7 +1163,7 @@ const feeIcons: Record<string, string> = {
                       <Input
                         type="number"
                         :model-value="discount.value"
-                        class="pl-7 h-8"
+                        class="pl-14 h-8"
                         @update:model-value="(v) => updateLosDiscount(idx, 'value', Number(v) || 0)"
                       />
                     </div>
@@ -1214,7 +1213,7 @@ const feeIcons: Record<string, string> = {
                           <div class="flex flex-col">
                             <span class="text-sm font-medium">{{ fee.name }}</span>
                             <span v-if="fee.enabled" class="text-xs text-muted-foreground">
-                              {{ currencySymbol }}{{ fee.amount }} per booking
+                              {{ currencySymbol }} {{ fee.amount }} per booking
                             </span>
                           </div>
                         </div>
@@ -1225,7 +1224,7 @@ const feeIcons: Record<string, string> = {
                             <Input
                               type="number"
                               :model-value="fee.amount"
-                              class="h-8 w-24 pl-6 text-sm"
+                              class="h-8 w-28 pl-12 text-sm"
                               min="0"
                               @update:model-value="(v) => updateFeeAmount(idx, Number(v) || 0)"
                             />
@@ -1448,7 +1447,7 @@ const feeIcons: Record<string, string> = {
                   <Input
                     type="number"
                     :model-value="addRatePlanDraft.extraGuestRate ?? 0"
-                    class="pl-7 h-8"
+                    class="pl-14 h-8"
                     min="0"
                     @update:model-value="setAddDraftExtraGuestRate"
                   />
@@ -1462,7 +1461,7 @@ const feeIcons: Record<string, string> = {
                 <Input
                   type="number"
                   :model-value="displayBaseRate(addRatePlanDraft)"
-                  class="pl-7 h-8"
+                  class="pl-14 h-8"
                   min="0"
                   @update:model-value="setAddDraftBaseRate"
                 />
@@ -1488,7 +1487,7 @@ const feeIcons: Record<string, string> = {
               <Input
                 type="number"
                 :model-value="displayBaseRate(addRatePlanDraft)"
-                class="pl-7 h-8"
+                class="pl-14 h-8"
                 min="0"
                 @update:model-value="setAddDraftBaseRate"
               />

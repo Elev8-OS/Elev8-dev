@@ -428,7 +428,7 @@ describe('cityTaxActivityEvent', () => {
   it('states the amount and the method', () => {
     const event = cityTaxActivityEvent('collected', settlement, 'Komang Juliantara', '2026-07-12T09:30:00.000Z')
     expect(event.title).toBe('City tax collected')
-    expect(event.description).toContain('24.00 EUR')
+    expect(event.description).toContain('EUR 24.00')
     expect(event.description).toContain('Cash')
     expect(event.actor).toBe('Komang Juliantara')
     expect(event.type).toBe('reservation')
@@ -445,8 +445,8 @@ describe('cityTaxActivityEvent', () => {
   it('lists every currency on a multi-currency settlement', () => {
     const mixed = { ...settlement, totals: [{ currency: 'EUR', amount: 24 }, { currency: 'IDR', amount: 50000 }] }
     const event = cityTaxActivityEvent('collected', mixed, 'Komang Juliantara', '2026-07-12T09:30:00.000Z')
-    expect(event.description).toContain('24.00 EUR')
-    expect(event.description).toContain('50,000.00 IDR')
+    expect(event.description).toContain('EUR 24.00')
+    expect(event.description).toContain('IDR 50,000.00')
   })
 
   it('describes a reopen without a settlement to read from', () => {

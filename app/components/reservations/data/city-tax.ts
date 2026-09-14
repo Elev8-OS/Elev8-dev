@@ -285,7 +285,7 @@ const cityTaxActivityColors: Record<CityTaxActivityKind, ActivityEventColor> = {
 }
 
 export function formatCityTaxTotal(total: CityTaxTotal): string {
-  return `${total.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${total.currency}`
+  return `${total.currency} ${total.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export function formatCityTaxTotals(totals: CityTaxTotal[]): string {
