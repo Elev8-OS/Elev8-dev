@@ -14,7 +14,9 @@ import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useGuestRegistration } from '~/composables/useGuestRegistration'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSmartLock } from '~/composables/useSmartLock'
@@ -46,6 +48,63 @@ const reservationUpsells = computed(() => {
   if (!r?.upsellIds?.length)
     return []
   return upsellOrders.value.filter(o => r.upsellIds!.includes(o.id))
+})
+
+const { jobs: cleaningJobs } = useCleaningJobs()
+const housekeepingJobs = computed(() => {
+  const r = reservation.value
+  if (!r)
+    return []
+  return cleaningJobs.value
+    .filter(j => j.listingId === r.listingId)
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))
+})
+const housekeepingCount = computed(() => housekeepingJobs.value.length)
+
+const activeSidebarTab = ref<'activity' | 'upsells' | 'housekeeping' | null>(null)
+
+function toggleSidebarTab(tab: 'activity' | 'upsells' | 'housekeeping') {
+  if (activeSidebarTab.value === tab) {
+    activeSidebarTab.value = null
+  }
+  else {
+    activeSidebarTab.value = tab
+  }
+}
+
+watch(() => props.open, (isOpen) => {
+  if (!isOpen) {
+    activeSidebarTab.value = null
+  }
+})
+
+const activeTabMeta = computed(() => {
+  switch (activeSidebarTab.value) {
+    case 'activity':
+      return {
+        title: 'Activity Timeline',
+        icon: 'lucide:activity',
+        badge: reservation.value?.activity?.length ?? 0,
+      }
+    case 'upsells':
+      return {
+        title: 'Upsells',
+        icon: 'lucide:tag',
+        badge: reservationUpsells.value.length,
+      }
+    case 'housekeeping':
+      return {
+        title: 'Housekeeping',
+        icon: 'lucide:sparkles',
+        badge: housekeepingCount.value,
+      }
+    default:
+      return {
+        title: '',
+        icon: '',
+        badge: undefined,
+      }
+  }
 })
 
 const editOpen = ref(false)
@@ -254,11 +313,20 @@ function fmtDob(iso: string): string {
 <template>
   <div>
     <Sheet :open="open" @update:open="emit('update:open', $event)">
-      <SheetContent class="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md" side="right">
+      <SheetContent
+        class="flex w-full flex-row gap-0 overflow-hidden p-0 transition-[max-width] duration-300 ease-in-out"
+        :class="activeSidebarTab ? 'sm:max-w-4xl' : 'sm:max-w-lg'"
+        side="right"
+      >
         <template v-if="reservation">
-          <ScrollArea class="h-full min-h-0 flex-1">
-            <div class="flex flex-col">
-              <!-- Header: status dropdown + channel + listing name -->
+          <!-- Main pane -->
+          <div
+            class="min-w-0 flex-1 flex-col h-full overflow-hidden"
+            :class="activeSidebarTab ? 'hidden sm:flex' : 'flex'"
+          >
+            <ScrollArea class="h-full min-h-0 flex-1">
+              <div class="flex flex-col">
+                <!-- Header: status dropdown + channel + listing name -->
               <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
                 <div class="min-w-0">
                   <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-base font-semibold leading-tight">
@@ -744,69 +812,6 @@ function fmtDob(iso: string): string {
                 </AccordionItem>
               </Accordion>
 
-              <!-- Activity timeline -->
-              <Accordion type="single" collapsible class="w-full border-b px-2">
-                <AccordionItem value="activity" class="border-b-0">
-                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                    <span class="flex items-center gap-2">
-                      <Icon name="lucide:activity" class="size-4" />
-                      Activity
-                      <Badge v-if="reservation.activity.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                        {{ reservation.activity.length }}
-                      </Badge>
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent class="px-3 pb-3">
-                    <GuestActivityTimeline :events="reservation.activity" bare />
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-
-              <!-- Upsells purchased by the guest (accordion) -->
-              <Accordion type="single" collapsible class="w-full border-b px-2">
-                <AccordionItem value="upsells" class="border-b-0">
-                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                    <span class="flex items-center gap-2">
-                      <Icon name="lucide:tag" class="size-4" />
-                      Upsells
-                      <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                        {{ reservationUpsells.length }}
-                      </Badge>
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent class="px-3 pb-3">
-                    <div v-if="reservationUpsells.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                      No upsells purchased for this reservation.
-                    </div>
-
-                    <div v-else class="space-y-2">
-                      <div
-                        v-for="order in reservationUpsells"
-                        :key="order.id"
-                        class="flex items-center justify-between gap-3 border p-3"
-                      >
-                        <div class="min-w-0">
-                          <p class="text-sm font-medium truncate">
-                            {{ order.serviceName }}
-                          </p>
-                          <p class="text-[10px] text-muted-foreground">
-                            {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
-                          </p>
-                        </div>
-                        <div class="flex shrink-0 items-center gap-2">
-                          <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
-                            {{ getOrderStatusMeta(order).label }}
-                          </Badge>
-                          <span class="text-sm font-semibold tabular-nums">
-                            {{ fmtCurrency(order.grandTotal, order.currency) }}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-
               <!-- Smart lock (collapsible accordion) -->
               <Accordion type="single" collapsible class="w-full border-b px-2">
                 <AccordionItem value="smartlock" class="border-b-0">
@@ -903,12 +908,6 @@ function fmtDob(iso: string): string {
                 </AccordionItem>
               </Accordion>
 
-              <!-- Housekeeping section -->
-              <ReservationHousekeepingSection
-                :reservation="reservation"
-                :cleaner-options="cleanerOptions"
-              />
-
               <!-- Actions -->
               <div class="flex gap-2 px-5 py-4">
                 <Button variant="outline" size="sm" class="flex-1 gap-1.5" @click="emit('openGuest', reservation.guestId)">
@@ -924,7 +923,177 @@ function fmtDob(iso: string): string {
               </div>
             </div>
           </ScrollArea>
-        </template>
+        </div>
+
+        <!-- Dual-pane Side Panel (Active Tab Detail) -->
+        <div
+          v-if="activeSidebarTab"
+          class="flex flex-1 sm:flex-initial sm:w-[380px] shrink-0 flex-col border-l bg-background h-full overflow-hidden"
+        >
+          <!-- Panel Header -->
+          <div class="flex h-14 items-center justify-between border-b px-4 shrink-0 bg-muted/20">
+            <div class="flex items-center gap-2">
+              <Icon :name="activeTabMeta.icon" class="size-4 text-primary" />
+              <span class="font-semibold text-sm">{{ activeTabMeta.title }}</span>
+              <Badge v-if="activeTabMeta.badge !== undefined" variant="secondary" class="h-4 min-w-4 px-1.5 text-[10px]">
+                {{ activeTabMeta.badge }}
+              </Badge>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 w-7 p-0"
+              title="Close panel"
+              @click="activeSidebarTab = null"
+            >
+              <Icon name="lucide:x" class="size-3.5" />
+              <span class="sr-only">Close</span>
+            </Button>
+          </div>
+
+          <!-- Panel Content -->
+          <ScrollArea class="h-full min-h-0 flex-1">
+            <div class="p-4">
+              <!-- Activity Timeline -->
+              <div v-if="activeSidebarTab === 'activity'">
+                <div
+                  v-if="!reservation.activity?.length"
+                  class="border border-dashed p-6 text-center text-xs text-muted-foreground"
+                >
+                  No activity recorded for this reservation.
+                </div>
+                <GuestActivityTimeline v-else :events="reservation.activity" bare />
+              </div>
+
+              <!-- Upsells -->
+              <div v-else-if="activeSidebarTab === 'upsells'">
+                <div
+                  v-if="reservationUpsells.length === 0"
+                  class="border border-dashed p-6 text-center text-xs text-muted-foreground"
+                >
+                  No upsells purchased for this reservation.
+                </div>
+                <div v-else class="space-y-2.5">
+                  <div
+                    v-for="order in reservationUpsells"
+                    :key="order.id"
+                    class="flex items-center justify-between gap-3 border p-3"
+                  >
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium truncate">
+                        {{ order.serviceName }}
+                      </p>
+                      <p class="text-[10px] text-muted-foreground">
+                        {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
+                      </p>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
+                        {{ getOrderStatusMeta(order).label }}
+                      </Badge>
+                      <span class="text-sm font-semibold tabular-nums">
+                        {{ fmtCurrency(order.grandTotal, order.currency) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Housekeeping -->
+              <div v-else-if="activeSidebarTab === 'housekeeping'">
+                <ReservationHousekeepingSection
+                  :reservation="reservation"
+                  :cleaner-options="cleanerOptions"
+                  bare
+                />
+              </div>
+            </div>
+          </ScrollArea>
+        </div>
+
+        <!-- Icon Rail (Rightmost column) -->
+        <div class="flex w-12 shrink-0 flex-col items-center border-l bg-muted/20 pt-12 pb-3 gap-3">
+          <div class="w-6 border-b" />
+
+          <!-- Activity -->
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="relative flex size-9 items-center justify-center rounded-md transition-colors"
+                  :class="activeSidebarTab === 'activity' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="toggleSidebarTab('activity')"
+                >
+                  <Icon name="lucide:activity" class="size-4" />
+                  <span
+                    v-if="reservation.activity?.length"
+                    class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
+                    :class="activeSidebarTab === 'activity' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                  >
+                    {{ reservation.activity.length }}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Activity ({{ reservation.activity?.length ?? 0 }})</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <!-- Upsells -->
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="relative flex size-9 items-center justify-center rounded-md transition-colors"
+                  :class="activeSidebarTab === 'upsells' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="toggleSidebarTab('upsells')"
+                >
+                  <Icon name="lucide:tag" class="size-4" />
+                  <span
+                    v-if="reservationUpsells.length"
+                    class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
+                    :class="activeSidebarTab === 'upsells' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                  >
+                    {{ reservationUpsells.length }}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Upsells ({{ reservationUpsells.length }})</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <!-- Housekeeping -->
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="relative flex size-9 items-center justify-center rounded-md transition-colors"
+                  :class="activeSidebarTab === 'housekeeping' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="toggleSidebarTab('housekeeping')"
+                >
+                  <Icon name="lucide:sparkles" class="size-4" />
+                  <span
+                    v-if="housekeepingCount"
+                    class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
+                    :class="activeSidebarTab === 'housekeeping' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                  >
+                    {{ housekeepingCount }}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Housekeeping ({{ housekeepingCount }})</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </template>
 
         <template v-else>
           <SheetHeader class="border-b px-6 py-4">

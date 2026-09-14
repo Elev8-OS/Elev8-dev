@@ -23,10 +23,13 @@ import { Button } from '~/components/ui/button'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   reservation: ReservationEntry
   cleanerOptions: { id: string, name: string }[]
-}>()
+  bare?: boolean
+}>(), {
+  bare: false,
+})
 
 const {
   applyReservationSchedule,
@@ -198,9 +201,15 @@ function openAddCleaning() {
 
 <template>
   <div class="w-full">
-    <Accordion type="single" collapsible class="w-full border-b px-2">
+    <Accordion
+      type="single"
+      collapsible
+      :default-value="bare ? 'housekeeping' : undefined"
+      class="w-full"
+      :class="bare ? 'border-none p-0' : 'border-b px-2'"
+    >
       <AccordionItem value="housekeeping" class="border-b-0">
-        <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+        <AccordionTrigger v-if="!bare" class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
           <span class="flex items-center gap-2">
             <Icon name="lucide:sparkles" class="size-4" />
             Housekeeping
@@ -209,7 +218,7 @@ function openAddCleaning() {
             </Badge>
           </span>
         </AccordionTrigger>
-        <AccordionContent class="px-3 pb-3 space-y-3">
+        <AccordionContent :class="bare ? 'p-0 pt-1 space-y-3' : 'px-3 pb-3 space-y-3'">
           <!-- Cleaning schedule configuration card -->
           <div v-if="effectiveCleaningSchedule" class="rounded-lg border bg-muted/20 p-3">
             <div class="flex items-start justify-between gap-2">
