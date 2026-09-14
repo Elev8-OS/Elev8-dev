@@ -1,17 +1,44 @@
 // Guest Folio & Invoice PDF generation
-// Builds a clean, professional A4 invoice PDF for a reservation stay and its folio charges.
+// Builds a clean, professional A4 tax invoice & receipt PDF matching the modern receipt layout:
+// - Clean white background throughout
+// - Top-left company contacts & tax info
+// - Top-right logo, Tax Invoice / Receipt title, and Invoice number
+// - Full date and "Invoiced To:" guest details
+// - Solid gray header items table (Item, GST, Cost)
+// - Subtotals, taxes, and bold TOTAL PAID
+// - Bank transfer details & Payment method block with PAID IN FULL badge
+// - Clean footer with website and terms & conditions
 
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { jsPDF as JsPdf } from 'jspdf'
 import {
   buildFolioSummary,
   FOLIO_PAYMENT_METHOD_LABELS,
+  folioLineService,
+  folioLineTax,
   folioLineTotal,
+  roundFolioAmount,
 } from '~/components/reservations/data/folio'
 
 const PAGE_WIDTH = 210 // A4 mm
 const MARGIN = 16
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
+
+export interface FolioInvoicePdfOptions {
+  download?: boolean
+  companyName?: string
+  addressLine?: string
+  city?: string
+  zipCode?: string
+  country?: string
+  phone?: string
+  website?: string
+  taxId?: string
+  logoDataUrl?: string
+  bankAccountName?: string
+  bankNameOrBsb?: string
+  bankAccountNumber?: string
+}
 
 function fmtCurrency(amount: number, currency: string): string {
   const formatted = Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -19,301 +46,448 @@ function fmtCurrency(amount: number, currency: string): string {
   return `${sign}${currency} ${formatted}`
 }
 
-function formatDate(iso: string): string {
+function formatFullDate(iso: string | Date): string {
   try {
-    const d = new Date(iso)
+    const d = typeof iso === 'string' ? new Date(iso) : iso
     if (Number.isNaN(d.getTime()))
-      return iso
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      return String(iso)
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
   }
   catch {
-    return iso
+    return String(iso)
+  }
+}
+
+function formatShortDate(iso: string | Date): string {
+  try {
+    const d = typeof iso === 'string' ? new Date(iso) : iso
+    if (Number.isNaN(d.getTime()))
+      return String(iso)
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+  }
+  catch {
+    return String(iso)
   }
 }
 
 /**
- * Generate an A4 folio invoice PDF for a reservation.
+ * Generate an A4 folio invoice PDF for a reservation matching the modern receipt design.
  * Returns a Blob; triggers browser download when `download` is true.
  */
 export function buildFolioInvoicePdf(
   reservation: ReservationEntry,
-  opts: { download?: boolean } = {},
+  opts: FolioInvoicePdfOptions = {},
 ): Blob {
   const doc = new JsPdf({ unit: 'mm', format: 'a4' })
   const currency = reservation.currency || 'USD'
   const summary = buildFolioSummary(reservation)
-  let y = 15
 
-  // --- Top dark banner ----------------------------------------------------
-  doc.setFillColor(15, 23, 42) // slate-900
-  doc.rect(0, 0, PAGE_WIDTH, 32, 'F')
+  // Resolve branding / company defaults
+  let logoDataUrl = opts.logoDataUrl
+  if (!logoDataUrl && typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage?.getItem('elev8-tenant-branding-v1')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        logoDataUrl = parsed.invoiceLogo?.dataUrl || parsed.primaryLogo?.dataUrl
+      }
+    }
+    catch {
+      // Ignore storage errors
+    }
+  }
 
-  doc.setTextColor(255)
+  const companyName = (opts.companyName || 'ELEV8 PROPERTY GROUP').toUpperCase()
+  const addressLine = opts.addressLine || '22a Pantai Berawa'
+  const cityLine = opts.city ? `${opts.city} ${opts.zipCode || ''}` : 'Canggu, Bali 80361'
+  const phone = opts.phone ? (opts.phone.startsWith('Phone:') ? opts.phone : `Phone: ${opts.phone}`) : 'Phone: +62 361 908 1234'
+  const website = opts.website || 'https://elev8bali.com'
+  const taxId = opts.taxId || 'NPWP: 01.234.567.8-901.000'
+
+  // Invoice number (e.g. 3189 or INV-102)
+  const invoiceNum = reservation.id.replace(/^res-/, '').toUpperCase()
+
+  // --- Top Left: Company Information --------------------------------------
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(15)
-  doc.text('ELEV8 PROPERTY GROUP', MARGIN, 13)
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(203, 213, 225) // slate-300
-  doc.text('GUEST FOLIO & INVOICE', MARGIN, 20)
-
-  // Invoice Number and Date on the right
-  const invoiceNum = `INV-${reservation.id.replace(/^res-/, '').toUpperCase()}`
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(255)
-  doc.text(invoiceNum, PAGE_WIDTH - MARGIN, 13, { align: 'right' })
+  doc.setFontSize(10.5)
+  doc.setTextColor(17, 24, 39)
+  doc.text(companyName, MARGIN, 15)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  doc.setTextColor(203, 213, 225)
-  doc.text(`Issue Date: ${new Date().toLocaleDateString('en-GB')}`, PAGE_WIDTH - MARGIN, 20, { align: 'right' })
-  doc.text(`Booking Ref: #${reservation.id}`, PAGE_WIDTH - MARGIN, 25, { align: 'right' })
+  doc.setTextColor(17, 24, 39)
+  doc.text(addressLine, MARGIN, 20)
+  doc.text(cityLine, MARGIN, 24.5)
+  doc.text(phone, MARGIN, 30.5)
+  doc.text(website, MARGIN, 35.5)
+  doc.text(taxId, MARGIN, 40.5)
 
-  // --- Stay & Guest Details Box --------------------------------------------
-  y = 40
-
-  // Payment status badge banner
-  const isPaidInFull = summary.unpaidTotal === 0 && (summary.itemsPaid > 0 || summary.itemsTotal === 0)
-  const isPartial = summary.itemsPaid > 0 && summary.unpaidTotal > 0
-
-  if (isPaidInFull) {
-    doc.setFillColor(240, 253, 244) // emerald-50
-    doc.setDrawColor(187, 247, 208) // emerald-200
-    doc.roundedRect(MARGIN, y, CONTENT_WIDTH, 8, 1.5, 1.5, 'FD')
-    doc.setTextColor(22, 101, 52) // emerald-800
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.text('PAYMENT STATUS: PAID IN FULL', MARGIN + 4, y + 5.5)
-  }
-  else if (isPartial) {
-    doc.setFillColor(254, 252, 232) // yellow-50
-    doc.setDrawColor(254, 240, 138) // yellow-200
-    doc.roundedRect(MARGIN, y, CONTENT_WIDTH, 8, 1.5, 1.5, 'FD')
-    doc.setTextColor(133, 77, 14) // yellow-800
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.text(`PAYMENT STATUS: PARTIALLY PAID (DP) · DUE: ${fmtCurrency(summary.unpaidTotal, currency)}`, MARGIN + 4, y + 5.5)
-  }
-  else {
-    doc.setFillColor(248, 250, 252) // slate-50
-    doc.setDrawColor(226, 232, 240) // slate-200
-    doc.roundedRect(MARGIN, y, CONTENT_WIDTH, 8, 1.5, 1.5, 'FD')
-    doc.setTextColor(71, 85, 105) // slate-600
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.text(`PAYMENT STATUS: PAYMENT PENDING · BALANCE DUE: ${fmtCurrency(summary.unpaidTotal, currency)}`, MARGIN + 4, y + 5.5)
+  // --- Top Right: Logo + Tax Invoice / Receipt + Invoice # -----------------
+  let logoRendered = false
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 'PNG', PAGE_WIDTH - MARGIN - 48, 12, 48, 14, undefined, 'FAST')
+      logoRendered = true
+    }
+    catch {
+      // Fallback to text brand below
+    }
   }
 
-  y += 14
+  if (!logoRendered) {
+    const logoW = 30
+    const logoX = PAGE_WIDTH - MARGIN - logoW
+    const logoY = 13
 
-  // Guest Details (Left column)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(30, 41, 59) // slate-800
-  doc.text('BILLED TO', MARGIN, y)
+    doc.setFillColor(15, 23, 42) // slate-900
+    doc.roundedRect(logoX, logoY, 8.5, 8.5, 1.5, 1.5, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.text('E8', logoX + 4.25, logoY + 6, { align: 'center' })
+
+    doc.setTextColor(17, 24, 39)
+    doc.setFontSize(13)
+    doc.text('Elev8', logoX + 11, logoY + 6.5)
+  }
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(15, 23, 42)
-  doc.text(reservation.guestName, MARGIN, y + 6)
+  doc.setFontSize(12)
+  doc.setTextColor(17, 24, 39)
+  doc.text('Tax Invoice / Receipt', PAGE_WIDTH - MARGIN, 36, { align: 'right' })
 
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(100, 116, 139)
-  if (reservation.guestEmail)
-    doc.text(reservation.guestEmail, MARGIN, y + 11)
-  if (reservation.guestPhone)
-    doc.text(reservation.guestPhone, MARGIN, y + 16)
-  if (reservation.guestCountry)
-    doc.text(reservation.guestCountry, MARGIN, y + 21)
-
-  // Property & Reservation Details (Right column)
-  const rightColX = MARGIN + CONTENT_WIDTH / 2
-  doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
-  doc.setTextColor(30, 41, 59)
-  doc.text('RESERVATION DETAILS', rightColX, y)
+  doc.setTextColor(17, 24, 39)
+  doc.text(`Invoice # ${invoiceNum}`, PAGE_WIDTH - MARGIN, 42, { align: 'right' })
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(15, 23, 42)
-  doc.text(reservation.listingName, rightColX, y + 6)
-
+  // --- Date on Left -------------------------------------------------------
+  const issueDateStr = formatFullDate(new Date())
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
-  doc.setTextColor(100, 116, 139)
-  doc.text(`Stay: ${formatDate(reservation.checkIn)} – ${formatDate(reservation.checkOut)} (${reservation.nights} nights)`, rightColX, y + 11)
-  doc.text(`Guests: ${reservation.guestCount} (${reservation.guestAdults ?? reservation.guestCount} adults${reservation.guestChildren ? `, ${reservation.guestChildren} children` : ''})`, rightColX, y + 16)
-  doc.text(`Channel: ${reservation.channel} · Status: ${reservation.status.toUpperCase()}`, rightColX, y + 21)
+  doc.setTextColor(17, 24, 39)
+  doc.text(issueDateStr, MARGIN, 52)
 
-  y += 30
+  // --- Invoiced To Section -------------------------------------------------
+  const invoicedToY = 64
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9.5)
+  doc.setTextColor(17, 24, 39)
+  doc.text('Invoiced To:', MARGIN, invoicedToY)
 
-  // --- Line Items Table ----------------------------------------------------
-  doc.setDrawColor(226, 232, 240)
-  doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y)
-  y += 5
+  const guestColX = MARGIN + 28
+  doc.text((reservation.guestName || 'GUEST').toUpperCase(), guestColX, invoicedToY)
 
-  const tableCols = {
-    desc: MARGIN,
-    qty: MARGIN + 85,
-    unitPrice: MARGIN + 105,
-    taxSvc: MARGIN + 130,
-    status: MARGIN + 150,
-    total: PAGE_WIDTH - MARGIN,
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  let guestDetailY = invoicedToY + 4.5
+
+  if (reservation.companyName) {
+    doc.text(reservation.companyName, guestColX, guestDetailY)
+    guestDetailY += 4.5
   }
 
-  // Table header
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7.5)
-  doc.setTextColor(100, 116, 139)
-  doc.text('DESCRIPTION', tableCols.desc, y)
-  doc.text('QTY', tableCols.qty, y)
-  doc.text('UNIT PRICE', tableCols.unitPrice, y)
-  doc.text('TAX / SVC', tableCols.taxSvc, y)
-  doc.text('STATUS', tableCols.status, y)
-  doc.text('AMOUNT', tableCols.total, y, { align: 'right' })
+  // Address or Property details
+  const propLine = reservation.listingName || 'Villa Serenity'
+  doc.text(propLine, guestColX, guestDetailY)
+  guestDetailY += 4.5
 
-  y += 3
-  doc.setDrawColor(226, 232, 240)
-  doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y)
-  y += 5
+  const locationLine = [reservation.guestCity, reservation.guestCountry].filter(Boolean).join(', ')
+    || 'Canggu, Bali'
+  doc.text(locationLine, guestColX, guestDetailY)
+
+  // --- Items Table ---------------------------------------------------------
+  const tableY = Math.max(guestDetailY + 8, 83)
+
+  // Solid gray table header bar
+  doc.setFillColor(175, 178, 183)
+  doc.rect(MARGIN, tableY, CONTENT_WIDTH, 6.5, 'F')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(17, 24, 39)
+  doc.text('Item', MARGIN + 3, tableY + 4.5)
+  doc.text('Tax / Svc', PAGE_WIDTH - MARGIN - 32, tableY + 4.5, { align: 'right' })
+  doc.text('Cost', PAGE_WIDTH - MARGIN - 3, tableY + 4.5, { align: 'right' })
+
+  let rowY = tableY + 11
 
   // Row 1: Accommodation
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(15, 23, 42)
-  doc.text(`Accommodation (${reservation.nights} nights)`, tableCols.desc, y)
-
   doc.setFont('helvetica', 'normal')
-  doc.text('1', tableCols.qty, y)
-  doc.text(fmtCurrency(summary.bookingTotal, currency), tableCols.unitPrice, y)
-  doc.text('Included', tableCols.taxSvc, y)
-  doc.text('Confirmed', tableCols.status, y)
-  doc.setFont('helvetica', 'bold')
-  doc.text(fmtCurrency(summary.bookingTotal, currency), tableCols.total, y, { align: 'right' })
+  doc.setFontSize(8.5)
+  doc.setTextColor(17, 24, 39)
 
-  y += 6
+  const accomTitle = `Accommodation - ${reservation.nights} night${reservation.nights > 1 ? 's' : ''} on ${formatShortDate(reservation.checkIn)} to ${formatShortDate(reservation.checkOut)}`
+  const accomTax = reservation.priceDetails?.tax || 0
+  const accomSvc = reservation.priceDetails?.serviceFee || 0
+  const accomTaxSvc = roundFolioAmount(accomTax + accomSvc)
+  const taxSvcText = accomTaxSvc > 0 ? fmtCurrency(accomTaxSvc, currency) : 'Included'
 
-  // Folio items
+  const isOtaChannel = Boolean(reservation.channel && reservation.channel.toLowerCase() !== 'direct')
+  const channelNote = isOtaChannel ? ` · Paid via ${reservation.channel}` : ''
+
+  const accomFeeBadges: string[] = []
+  if (accomTax > 0)
+    accomFeeBadges.push(`Tax: ${fmtCurrency(accomTax, currency)}`)
+  if (accomSvc > 0)
+    accomFeeBadges.push(`Service: ${fmtCurrency(accomSvc, currency)}`)
+  const accomFeeNote = accomFeeBadges.length > 0 ? ` · ${accomFeeBadges.join(' · ')}` : ''
+  const accomSub = `${reservation.listingName} (${reservation.guestCount} guest${reservation.guestCount > 1 ? 's' : ''})${channelNote}${accomFeeNote}`
+
+  doc.text(accomTitle, MARGIN + 3, rowY)
+  doc.setFontSize(7.5)
+  doc.setTextColor(100, 116, 139)
+  doc.text(accomSub, MARGIN + 3, rowY + 4)
+
+  doc.setFontSize(8.5)
+  doc.setTextColor(17, 24, 39)
+
+  doc.text(taxSvcText, PAGE_WIDTH - MARGIN - 32, rowY, { align: 'right' })
+  doc.text(fmtCurrency(summary.bookingTotal, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+
+  rowY += 11
+
+  // Folio Items / Extras
   const items = reservation.folioItems ?? []
   for (const item of items) {
-    if (y > 250) {
+    if (rowY > 230) {
       doc.addPage()
-      y = 20
+      rowY = 20
     }
 
-    doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
-
     if (item.status === 'voided') {
-      doc.setTextColor(148, 163, 184) // line-through / gray
-      doc.text(`[VOIDED] ${item.label}`, tableCols.desc, y)
+      doc.setTextColor(156, 163, 175)
+      doc.text(`[VOIDED] ${item.quantity > 1 ? `${item.quantity} x ` : ''}${item.label}`, MARGIN + 3, rowY)
+      doc.text('—', PAGE_WIDTH - MARGIN - 32, rowY, { align: 'right' })
+      doc.text(fmtCurrency(0, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+      rowY += 7
     }
     else {
-      doc.setTextColor(15, 23, 42)
-      doc.text(item.label, tableCols.desc, y)
+      doc.setTextColor(17, 24, 39)
+      const label = `${item.quantity > 1 ? `${item.quantity} x ` : ''}${item.label}${item.note ? ` (${item.note})` : ''}`
+      doc.text(label, MARGIN + 3, rowY)
+
+      const lineTax = folioLineTax(item)
+      const lineSvc = folioLineService(item)
+      const lineTaxSvc = roundFolioAmount(lineTax + lineSvc)
+
+      // Sub-line with tax & service rate info if applicable
+      const rateBadges: string[] = []
+      if (item.taxPercent)
+        rateBadges.push(`Tax ${item.taxPercent}%`)
+      if (item.servicePercent)
+        rateBadges.push(`Service ${item.servicePercent}%`)
+
+      if (rateBadges.length > 0) {
+        doc.setFontSize(7.5)
+        doc.setTextColor(100, 116, 139)
+        doc.text(`${item.quantity} × ${fmtCurrency(item.unitPrice, currency)} (${rateBadges.join(' · ')})`, MARGIN + 3, rowY + 4)
+        doc.setFontSize(8.5)
+        doc.setTextColor(17, 24, 39)
+      }
+
+      const taxSvcStr = lineTaxSvc > 0 ? fmtCurrency(lineTaxSvc, currency) : (rateBadges.join(' + ') || '—')
+      doc.text(taxSvcStr, PAGE_WIDTH - MARGIN - 32, rowY, { align: 'right' })
+      doc.text(fmtCurrency(folioLineTotal(item), currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+
+      rowY += rateBadges.length > 0 ? 9.5 : 7
     }
-
-    doc.text(String(item.quantity), tableCols.qty, y)
-    doc.text(fmtCurrency(item.unitPrice, currency), tableCols.unitPrice, y)
-
-    const taxSvc = [
-      item.taxPercent ? `${item.taxPercent}%` : '',
-      item.servicePercent ? `${item.servicePercent}%` : '',
-    ].filter(Boolean).join(' + ') || '0%'
-    doc.text(taxSvc, tableCols.taxSvc, y)
-
-    let statusText = item.status === 'paid' ? 'Paid' : item.status === 'voided' ? 'Voided' : 'Unpaid'
-    if (item.status === 'partially_paid') {
-      statusText = `Partial (${fmtCurrency(item.paidAmount ?? 0, currency)})`
-    }
-    else if (item.status === 'paid' && item.paymentMethod) {
-      statusText = `Paid · ${FOLIO_PAYMENT_METHOD_LABELS[item.paymentMethod]}`
-    }
-    doc.text(statusText, tableCols.status, y)
-
-    doc.setFont('helvetica', item.status === 'voided' ? 'normal' : 'bold')
-    doc.text(fmtCurrency(folioLineTotal(item), currency), tableCols.total, y, { align: 'right' })
-
-    y += 5.5
   }
 
-  y += 4
-  doc.setDrawColor(226, 232, 240)
-  doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y)
-  y += 6
+  // Divider line under table items
+  doc.setDrawColor(209, 213, 219)
+  doc.line(MARGIN, rowY, PAGE_WIDTH - MARGIN, rowY)
+  rowY += 7
 
-  // --- Summary Box (Totals) ------------------------------------------------
-  const totalsX = PAGE_WIDTH - MARGIN - 75
+  // --- Totals Section (Right-aligned under table) --------------------------
+  const labelColX = PAGE_WIDTH - MARGIN - 32
 
-  doc.setFontSize(8.5)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(100, 116, 139)
+  const totalTax = roundFolioAmount(
+    (reservation.priceDetails?.tax || 0)
+    + (reservation.cityTax?.totalAmount || 0)
+    + items.filter(i => i.status !== 'voided').reduce((s, i) => s + folioLineTax(i), 0),
+  )
 
-  doc.text('Booking total:', totalsX, y)
-  doc.setTextColor(15, 23, 42)
-  doc.text(fmtCurrency(summary.bookingTotal, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-  y += 5
+  const totalService = roundFolioAmount(
+    (reservation.priceDetails?.serviceFee || 0)
+    + items.filter(i => i.status !== 'voided').reduce((s, i) => s + folioLineService(i), 0),
+  )
 
-  doc.setTextColor(100, 116, 139)
-  doc.text('Extras / Folio items:', totalsX, y)
-  doc.setTextColor(15, 23, 42)
-  doc.text(fmtCurrency(summary.itemsTotal, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-  y += 5
+  if (totalTax > 0) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(17, 24, 39)
+    doc.text('Includes Tax', labelColX, rowY, { align: 'right' })
+    doc.text(fmtCurrency(totalTax, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+    rowY += 5
+  }
 
-  doc.setDrawColor(226, 232, 240)
-  doc.line(totalsX, y, PAGE_WIDTH - MARGIN, y)
-  y += 5
+  if (totalService > 0) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(17, 24, 39)
+    doc.text('Includes Service Charge', labelColX, rowY, { align: 'right' })
+    doc.text(fmtCurrency(totalService, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+    rowY += 5.5
+  }
 
+  // --- Payment & Channel Resolution --------------------------------------
+  // OTA bookings (Airbnb, Booking.com, Agoda, Expedia) are pre-paid through the channel.
+  // Direct bookings check priceDetails.guestPaid.
+  const isOta = Boolean(reservation.channel && reservation.channel.toLowerCase() !== 'direct')
+  const isAccomPaid = isOta || Boolean(reservation.priceDetails?.guestPaid && reservation.priceDetails.guestPaid >= summary.bookingTotal)
+  const accomPaidAmount = isAccomPaid
+    ? summary.bookingTotal
+    : Math.min(summary.bookingTotal, reservation.priceDetails?.guestPaid ?? 0)
+
+  // Build itemized payment records
+  const paymentRows: { method: string, amount: number }[] = []
+
+  if (accomPaidAmount > 0) {
+    const channelLabel = isOta ? `${reservation.channel} (Prepaid)` : 'Accommodation Payment'
+    paymentRows.push({
+      method: channelLabel,
+      amount: accomPaidAmount,
+    })
+  }
+
+  // Folio items payments grouped by method
+  const folioPaymentsByMethod: Record<string, number> = {}
+  for (const item of items) {
+    if (item.status === 'paid' && item.paymentMethod) {
+      const label = FOLIO_PAYMENT_METHOD_LABELS[item.paymentMethod] || item.paymentMethod
+      const amt = item.paidAmount !== undefined ? item.paidAmount : (item.quantity * item.unitPrice * (1 + (item.taxPercent + item.servicePercent) / 100))
+      folioPaymentsByMethod[label] = (folioPaymentsByMethod[label] || 0) + Math.round(amt * 100) / 100
+    }
+  }
+
+  for (const [method, amount] of Object.entries(folioPaymentsByMethod)) {
+    paymentRows.push({ method, amount })
+  }
+
+  if (paymentRows.length === 0 && summary.itemsPaid > 0) {
+    paymentRows.push({ method: 'Cash', amount: summary.itemsPaid })
+  }
+
+  // Total collected = accommodation payment + extras collected
+  const totalPaid = roundFolioAmount(accomPaidAmount + summary.itemsPaid)
+  const balanceDue = roundFolioAmount(Math.max(0, summary.grandTotal - totalPaid))
+  const isPaidInFull = balanceDue === 0
+
+  // TOTAL PAID / BALANCE DUE
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(15, 23, 42)
-  doc.text('Grand Total:', totalsX, y)
-  doc.text(fmtCurrency(summary.grandTotal, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-  y += 6
+  doc.setFontSize(10.5)
+  doc.setTextColor(17, 24, 39)
 
-  doc.setFontSize(8.5)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(22, 101, 52) // emerald
-  doc.text('Total Paid / Collected:', totalsX, y)
-  doc.setFont('helvetica', 'bold')
-  doc.text(fmtCurrency(summary.itemsPaid, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-  y += 5.5
-
-  if (summary.unpaidTotal > 0) {
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(180, 83, 9) // amber-700
-    doc.text('Balance Due (Outstanding):', totalsX, y)
-    doc.text(fmtCurrency(summary.unpaidTotal, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-    y += 5.5
+  if (isPaidInFull) {
+    doc.text('TOTAL PAID', labelColX, rowY, { align: 'right' })
+    doc.text(fmtCurrency(totalPaid, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+  }
+  else if (totalPaid > 0) {
+    doc.text('TOTAL PAID', labelColX, rowY, { align: 'right' })
+    doc.text(fmtCurrency(totalPaid, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+    rowY += 5.5
+    doc.text('BALANCE DUE', labelColX, rowY, { align: 'right' })
+    doc.text(fmtCurrency(balanceDue, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
   }
   else {
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(22, 101, 52)
-    doc.text('Balance Due:', totalsX, y)
-    doc.text(fmtCurrency(0, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-    y += 5.5
+    doc.text('TOTAL DUE', labelColX, rowY, { align: 'right' })
+    doc.text(fmtCurrency(summary.grandTotal, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
   }
 
-  if (summary.refundDue > 0) {
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(220, 38, 38) // red-600
-    doc.text('Refund Due to Guest:', totalsX, y)
-    doc.text(fmtCurrency(summary.refundDue, currency), PAGE_WIDTH - MARGIN, y, { align: 'right' })
-    y += 5.5
-  }
+  // --- Two-Column Lower Section: Bank Transfer & Payment Method ------------
+  const lowerY = Math.max(rowY + 14, 168)
 
-  // --- Payment Notes / Footer ----------------------------------------------
-  doc.setFontSize(7.5)
-  doc.setTextColor(148, 163, 184)
+  // Left Column: Bank Transfer Details
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(17, 24, 39)
+  doc.text('Bank Transfer Details', MARGIN, lowerY)
+
+  const bankAccountName = opts.bankAccountName || opts.companyName || 'Elev8 Property Group'
+  const bankName = opts.bankNameOrBsb || 'Bank Central Asia (BCA)'
+  const bankAccountNumber = opts.bankAccountNumber || '7890 1234 56'
+
   doc.setFont('helvetica', 'normal')
-  doc.text(
-    'Thank you for staying with Elev8! For inquiries or settlement questions, please contact your villa host.',
-    MARGIN,
-    285,
-  )
+  doc.setFontSize(8)
+  doc.setTextColor(17, 24, 39)
+  doc.text(`Account Name: ${bankAccountName}`, MARGIN, lowerY + 5)
+  doc.text(`Bank: ${bankName}`, MARGIN, lowerY + 9.5)
+  doc.text(`Account No: ${bankAccountNumber}`, MARGIN, lowerY + 14)
+  doc.text(`Reference: ${invoiceNum}`, MARGIN, lowerY + 18.5)
+
+  // Right Column: Payment Method Gray Bar & Status Stamp
+  const rightSectionX = MARGIN + 85
+  const rightSectionWidth = PAGE_WIDTH - MARGIN - rightSectionX
+
+  doc.setFillColor(175, 178, 183)
+  doc.rect(rightSectionX, lowerY - 4.5, rightSectionWidth, 6.5, 'F')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8.5)
+  doc.setTextColor(17, 24, 39)
+  doc.text('Payment Method', rightSectionX + rightSectionWidth - 3, lowerY - 0.2, { align: 'right' })
+
+  // Render all payment method rows
+  let payRowY = lowerY + 5.5
+  for (const pay of paymentRows) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(17, 24, 39)
+    doc.text(pay.method, rightSectionX + 4, payRowY)
+    doc.text(fmtCurrency(pay.amount, currency), PAGE_WIDTH - MARGIN - 3, payRowY, { align: 'right' })
+    payRowY += 4.5
+  }
+
+  // Large Status Text
+  const statusY = Math.max(payRowY + 5, lowerY + 22)
+  const paidItem = items.find(i => i.status === 'paid')
+  const paidDateStr = formatShortDate(paidItem?.paidAt || reservation.checkIn || new Date())
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.setTextColor(17, 24, 39)
+
+  if (isPaidInFull) {
+    doc.text('PAID IN FULL', PAGE_WIDTH - MARGIN - 3, statusY, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.text(`on ${paidDateStr}`, PAGE_WIDTH - MARGIN - 3, statusY + 5, { align: 'right' })
+  }
+  else if (totalPaid > 0) {
+    doc.text('PARTIALLY PAID', PAGE_WIDTH - MARGIN - 3, statusY, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.text(`Balance Due: ${fmtCurrency(balanceDue, currency)}`, PAGE_WIDTH - MARGIN - 3, statusY + 5, { align: 'right' })
+  }
+  else {
+    doc.text('PAYMENT PENDING', PAGE_WIDTH - MARGIN - 3, statusY, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.text(`Due by ${formatShortDate(reservation.checkIn)}`, PAGE_WIDTH - MARGIN - 3, statusY + 5, { align: 'right' })
+  }
+
+  // --- Footer -------------------------------------------------------------
+  const footerY = 260
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(17, 24, 39)
+
+  const cleanDomain = website.replace(/^https?:\/\//, '')
+  doc.text(`Thank you for choosing ${opts.companyName || 'Elev8 Property Group'}.`, MARGIN, footerY)
+  doc.text(`W: ${cleanDomain}`, MARGIN, footerY + 4.5)
+  doc.text(`FB: @${companyName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'elev8bali'}`, MARGIN, footerY + 9)
+  doc.text(`Terms & Conditions: ${website}/terms`, MARGIN, footerY + 17)
 
   const blob = doc.output('blob')
   if (opts.download && typeof window !== 'undefined') {
