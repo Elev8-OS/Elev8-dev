@@ -294,6 +294,43 @@ function fmtDob(iso: string): string {
                 </div>
               </div>
 
+              <!-- Guest -->
+              <div class="border-b px-5 py-4">
+                <div class="flex items-center gap-3">
+                  <BasePersonAvatar :name="reservation.guestName" class="size-11" text-class="text-sm" />
+                  <div class="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      class="block text-left hover:underline"
+                      @click="emit('openGuest', reservation.guestId)"
+                    >
+                      <span class="font-semibold">{{ reservation.guestName }}</span>
+                    </button>
+                    <p v-if="reservation.contactType === 'business' && reservation.companyName" class="flex items-center gap-1.5 text-xs font-medium truncate">
+                      <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
+                      {{ reservation.companyName }}<span v-if="reservation.companyVatId" class="text-muted-foreground font-normal">· {{ reservation.companyVatId }}</span>
+                    </p>
+                    <p class="text-xs text-muted-foreground truncate">
+                      {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
+                    </p>
+                  </div>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span class="flex items-center gap-1.5">
+                    <Icon name="lucide:users" class="size-3.5" />
+                    {{ partyBreakdown }}
+                  </span>
+                  <span class="flex items-center gap-1.5">
+                    <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
+                    {{ reservation.channel }}
+                  </span>
+                </div>
+                <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+                  <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
+                  {{ reservation.guestNotes }}
+                </div>
+              </div>
+
               <!-- Reservation id + price (expandable) -->
               <Accordion type="single" collapsible class="w-full border-b px-2">
                 <AccordionItem value="price" class="border-b-0">
@@ -460,43 +497,6 @@ function fmtDob(iso: string): string {
 
               <!-- City tax: what the municipality is owed on this stay -->
               <ReservationCityTaxSection :reservation="reservation" />
-
-              <!-- Guest -->
-              <div class="border-b px-5 py-4">
-                <div class="flex items-center gap-3">
-                  <BasePersonAvatar :name="reservation.guestName" class="size-11" text-class="text-sm" />
-                  <div class="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      class="block text-left hover:underline"
-                      @click="emit('openGuest', reservation.guestId)"
-                    >
-                      <span class="font-semibold">{{ reservation.guestName }}</span>
-                    </button>
-                    <p v-if="reservation.contactType === 'business' && reservation.companyName" class="flex items-center gap-1.5 text-xs font-medium truncate">
-                      <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
-                      {{ reservation.companyName }}<span v-if="reservation.companyVatId" class="text-muted-foreground font-normal">· {{ reservation.companyVatId }}</span>
-                    </p>
-                    <p class="text-xs text-muted-foreground truncate">
-                      {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
-                    </p>
-                  </div>
-                </div>
-                <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span class="flex items-center gap-1.5">
-                    <Icon name="lucide:users" class="size-3.5" />
-                    {{ partyBreakdown }}
-                  </span>
-                  <span class="flex items-center gap-1.5">
-                    <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
-                    {{ reservation.channel }}
-                  </span>
-                </div>
-                <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
-                  <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
-                  {{ reservation.guestNotes }}
-                </div>
-              </div>
 
               <!-- Guests group (occupants) + identity & documents -->
               <Accordion v-if="reservation.guests?.length" type="single" collapsible class="w-full border-b px-2">
