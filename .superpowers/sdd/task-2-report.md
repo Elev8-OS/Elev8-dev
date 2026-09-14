@@ -1,36 +1,136 @@
-# Task 2 Report — Extend Website stub with review fields
+# Task 2 Report: Rules Module Part 1 (Collector, Guests, Nights, Date Ranges)
 
-## What I implemented
-- Appended a type-level smoke test to `tests/website-builder/property-listings.spec.ts` that imports `Website` and verifies it accepts `reviewIds` and `manualReviews`.
-- Extended `app/components/website-builder/data/websites.ts` with:
-  - new `ManualReview` interface
-  - optional `reviewIds?: string[]`
-  - optional `manualReviews?: ManualReview[]`
-- Kept the existing website mock data unchanged apart from the type support.
+## What Was Implemented
 
-## What I tested and test results
-- Ran: `pnpm vitest run tests/website-builder/property-listings.spec.ts`
-- Result: PASS — 4 tests passed.
+Created a framework-free pure rules module `app/components/reservations/data/city-tax.ts` that provides core business logic for city tax collection management:
+
+1. **`collectorFor(config, channel)`** - Determines who collects city tax for a given booking channel. Returns the configured collector or defaults to `’host’` to ensure unconfigured channels never silently skip collection.
+
+2. **`chargeableGuestCount(guests, config)`** - Counts guests eligible for city tax based on configured rules (adults/children/infants). Handles cases where guest breakdown is missing by treating total as adults.
+
+3. **`chargeableNights(item, nights)`** - Calculates chargeable nights by applying skip rules before caps, then clamping at zero to prevent negative values.
+
+4. **`isWithinApplicableRange(item, checkIn)`** - Evaluates whether a given check-in date falls within configured seasonal date ranges, supporting multiple ranges with inclusive endpoints.
+
+Also exported:
+- `DEFAULT_CHARGEABLE_GUESTS` constant (adults: true, children: false, infants: false)
+- `CityTaxGuestCounts` interface for structural typing
+- `CityTaxNightRules` and `CityTaxDateRules` type aliases for specific concerns
+
+## What Was Tested
+
+16 tests covering all four functions:
+
+### `collectorFor` (3 tests)
+- Reads configured collector for a channel
+- Falls back to ‘host’ for unset channels (critical safety rule)
+- Falls back to ‘host’ when config is undefined
+
+### `chargeableGuestCount` (4 tests)
+- Counts only enabled guest categories
+- Treats total guestCount as adults when breakdown missing
+- Charges nobody when breakdown absent and adults exempt
+- Defaults to adults-only when no config given
+
+### `chargeableNights` (5 tests)
+- Returns all nights when nothing configured
+- Drops skipped nights
+- Caps at maxNights
+- Applies skip before the cap
+- Clamps at zero (prevents negative)
+
+### `isWithinApplicableRange` (4 tests)
+- Applies always when no range configured
+- Applies inside range, inclusive at both ends
+- Does not apply outside the range
+- Applies when any one of several ranges matches
 
 ## TDD Evidence
-### RED
-- Command: `pnpm vitest run tests/website-builder/property-listings.spec.ts`
-- Failing output: the brief’s expected type error was not observed during the recorded run because the project’s current Vitest/TS pipeline allowed the new smoke test to compile once added.
-- Note: I still followed the TDD sequence by adding the failing type-level test before the implementation change.
 
-### GREEN
-- Command: `pnpm vitest run tests/website-builder/property-listings.spec.ts`
-- Passing output: `✓ tests/website-builder/property-listings.spec.ts (4 tests)`
+### RED: Failed Test (Before Implementation)
 
-## Files changed
-- `tests/website-builder/property-listings.spec.ts`
-- `app/components/website-builder/data/websites.ts`
-- `.superpowers/sdd/task-2-report.md`
+```bash
+$ npx vitest run tests/lib/city-tax.spec.ts
 
-## Self-review findings
-- The new `ManualReview` shape matches the brief exactly: `{ id, guestName, rating, text, source: 'manual' }`.
-- `Website` now exposes both review-related fields as optional, so existing website records remain valid.
-- The smoke test uses a minimal concrete object and asserts both fields at runtime.
+FAIL  tests/lib/city-tax.spec.ts [ tests/lib/city-tax.spec.ts ]
+Error: Failed to resolve import "~/components/reservations/data/city-tax" from "tests/lib/city-tax.spec.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /Users/juli/Documents/ELEV8-DASHBOARD/Dashboard/tests/lib/city-tax.spec.ts:8:7
 
-## Any issues or concerns
-- The brief expected an initial TS2322 failure, but the environment did not surface that failure as a separate red run during execution. Final code and tests are green.
+Test Files  1 failed (1)
+     Tests  no tests
+```
+
+Expected failure reason: Module file does not exist yet. Test file imports the four functions but the module is not yet created.
+
+### GREEN: Passing Tests (After Implementation)
+
+```bash
+$ npx vitest run tests/lib/city-tax.spec.ts
+
+ RUN  v4.1.8 /Users/juli/Documents/ELEV8-DASHBOARD/Dashboard
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  23:56:23
+   Duration  581ms (transform 66ms, setup 103ms, import 5ms, tests 3ms, environment 408ms)
+```
+
+All 16 tests pass with no warnings or errors.
+
+## Files Changed
+
+- **Created:** `app/components/reservations/data/city-tax.ts` (71 lines)
+  - Pure TypeScript module with no Vue/framework imports
+  - Imports only types from `~/components/listings/data/listings`
+  - Exports 4 functions, 1 constant, 2 interfaces, 2 type aliases
+  - Well-documented with JSDoc comments explaining the rules
+
+- **Created:** `tests/lib/city-tax.spec.ts` (136 lines)
+  - 16 test cases across 4 describe blocks
+  - Helper function `taxItem()` for consistent test fixtures
+  - Uses Vitest’s `describe`, `it`, `expect`
+
+## Self-Review Findings
+
+1. **Completeness:** All functions and exports from the brief are present with correct signatures.
+
+2. **Documentation:** Each function has a JSDoc comment explaining its purpose and edge cases:
+   - `collectorFor`: Explains the ‘host’ fallback safety rule
+   - `chargeableGuestCount`: Documents the breakdown detection logic
+   - `chargeableNights`: Clarifies the order of operations (skip → cap → clamp)
+   - `isWithinApplicableRange`: Notes inclusive endpoints and check-in evaluation
+
+3. **Framework-free:** Module contains no Vue imports, no composables, no stores. Pure functions only.
+
+4. **Code style:** Follows repo conventions:
+   - No semicolons
+   - Single quotes for strings
+   - 2-space indent
+   - camelCase function names
+   - Type imports marked as `import type`
+
+5. **Discipline:** Module exports exactly what the brief specifies, no extras.
+
+6. **Test accuracy:** All 16 tests from the brief transcribed verbatim. Test count matches expected (16 tests).
+
+7. **Type safety:** Proper use of TypeScript:
+   - `Pick<>` utility types for `CityTaxNightRules` and `CityTaxDateRules`
+   - Optional chaining (`?.`) for safe config access
+   - Nullish coalescing (`??`) for defaults
+   - `Math.min()` and `Math.max()` for bounds checking
+
+## Issues and Concerns
+
+None. The implementation is complete, tested, committed, and ready for the next task.
+
+The fallback-to-’host’ rule in `collectorFor` is the load-bearing constraint that prevents silent collection gaps, and it is correctly implemented and tested.
+
+## Commit Details
+
+```
+a56063d feat(city-tax): collector lookup, guest counting, night and season rules
+```
+
+Branch: `feat/city-tax-collection`
+2 files changed, 199 insertions(+)

@@ -13,6 +13,13 @@ import {
   validatePromoCodeForm,
   validatePromoCodeStep,
 } from '~/components/promo-code/data/promo-code-form'
+import {
+  formatPromoMinStay,
+  formatPromoWindow,
+  formatPromoWindowCompact,
+  isDateInPromoWindow,
+  meetsPromoCodeMinStay,
+} from '~/components/promo-code/data/promo-codes'
 
 function draft(overrides: Partial<ReturnType<typeof createDefaultPromoCodeFormDraft>> = {}) {
   return { ...createDefaultPromoCodeFormDraft(), ...overrides }
@@ -119,6 +126,47 @@ describe('validatePromoCodeStep — rules', () => {
   it('treats a null usage limit as unlimited', () => {
     expect(validatePromoCodeStep(draft({ usageLimit: null }), 'rules')).toEqual({})
   })
+
+  it('rejects a minimum stay below 1', () => {
+    expect(validatePromoCodeStep(draft({ minStay: 0 }), 'rules').minStay)
+      .toBe('Minimum stay must be at least 1 night')
+    expect(validatePromoCodeStep(draft({ minStay: -1 }), 'rules').minStay)
+      .toBe('Minimum stay must be at least 1 night')
+  })
+
+  it('rejects a non-integer minimum stay', () => {
+    expect(validatePromoCodeStep(draft({ minStay: 2.5 }), 'rules').minStay)
+      .toBe('Minimum stay must be at least 1 night')
+  })
+
+  it('accepts a positive integer minimum stay', () => {
+    expect(validatePromoCodeStep(draft({ minStay: 3 }), 'rules')).toEqual({})
+  })
+
+  it('treats a null minimum stay as no constraint', () => {
+    expect(validatePromoCodeStep(draft({ minStay: null }), 'rules')).toEqual({})
+  })
+
+  it('rejects a dynamic window with days below 1 or non-integer', () => {
+    const errorZero = validatePromoCodeStep(
+      draft({ bookingWindows: [{ type: 'dynamic', days: 0, from: null, until: null }] }),
+      'rules',
+    )
+    expect(errorZero['bookingWindows.0']).toBe('Dynamic validity must be at least 1 day')
+
+    const errorFloat = validatePromoCodeStep(
+      draft({ stayWindows: [{ type: 'dynamic', days: 3.5, from: null, until: null }] }),
+      'rules',
+    )
+    expect(errorFloat['stayWindows.0']).toBe('Dynamic validity must be at least 1 day')
+  })
+
+  it('accepts a dynamic window with valid days', () => {
+    expect(validatePromoCodeStep(
+      draft({ bookingWindows: [{ type: 'dynamic', days: 7, from: null, until: null }] }),
+      'rules',
+    )).toEqual({})
+  })
 })
 
 describe('firstInvalidPromoCodeStep', () => {
@@ -126,6 +174,7 @@ describe('firstInvalidPromoCodeStep', () => {
     expect(firstInvalidPromoCodeStep(draft({ code: '', value: 0 }))).toBe('basics')
     expect(firstInvalidPromoCodeStep(draft({ code: 'OK', value: 0 }))).toBe('discount')
     expect(firstInvalidPromoCodeStep(draft({ code: 'OK', usageLimit: 0 }))).toBe('rules')
+    expect(firstInvalidPromoCodeStep(draft({ code: 'OK', minStay: 0 }))).toBe('rules')
   })
 
   it('returns null for a complete draft', () => {
@@ -183,6 +232,11 @@ describe('promoCodeToFormDraft', () => {
     form.listingIds.push('lst-9')
     expect(stored.listingIds).toEqual(['lst-1'])
   })
+
+  it('hydrates minStay from the stored code', () => {
+    expect(promoCodeToFormDraft({ ...stored, minStay: 4 }).minStay).toBe(4)
+    expect(promoCodeToFormDraft({ ...stored, minStay: undefined }).minStay).toBeNull()
+  })
 })
 
 describe('formDraftToPromoCodePayload', () => {
@@ -232,6 +286,11 @@ describe('formDraftToPromoCodePayload', () => {
 
   it('sends an empty description as undefined rather than an empty string', () => {
     expect(formDraftToPromoCodePayload(draft({ code: 'A', description: '   ' })).description).toBeUndefined()
+  })
+
+  it('persists minStay from the draft', () => {
+    expect(formDraftToPromoCodePayload(draft({ code: 'STAY3', minStay: 3 })).minStay).toBe(3)
+    expect(formDraftToPromoCodePayload(draft({ code: 'STAY3', minStay: null })).minStay).toBeNull()
   })
 
   it('round-trips through the form without losing a stored code', () => {
@@ -395,5 +454,60 @@ describe('validatePromoCodeStep — free upsell reach', () => {
       draft({ discountType: 'free_upsell', freeUpsellItemIds: ['a'] }),
       'discount',
     )).toEqual({})
+  })
+})
+
+describe('meetsPromoCodeMinStay', () => {
+  it('returns true when code has no minimum stay', () => {
+    expect(meetsPromoCodeMinStay({ minStay: null } as any, 1)).toBe(true)
+    expect(meetsPromoCodeMinStay({ minStay: undefined } as any, 1)).toBe(true)
+  })
+
+  it('returns true when stay meets or exceeds minimum stay', () => {
+    expect(meetsPromoCodeMinStay({ minStay: 3 } as any, 3)).toBe(true)
+    expect(meetsPromoCodeMinStay({ minStay: 3 } as any, 5)).toBe(true)
+  })
+
+  it('returns false when stay is shorter than minimum stay', () => {
+    expect(meetsPromoCodeMinStay({ minStay: 3 } as any, 2)).toBe(false)
+    expect(meetsPromoCodeMinStay({ minStay: 3 } as any, 1)).toBe(false)
+  })
+})
+
+describe('formatPromoMinStay', () => {
+  it('formats singular and plural nights', () => {
+    expect(formatPromoMinStay({ minStay: 1 } as any)).toBe('1 night')
+    expect(formatPromoMinStay({ minStay: 3 } as any)).toBe('3 nights')
+  })
+
+  it('returns No minimum stay when null or 0', () => {
+    expect(formatPromoMinStay({ minStay: null } as any)).toBe('No minimum stay')
+    expect(formatPromoMinStay({ minStay: 0 } as any)).toBe('No minimum stay')
+  })
+})
+
+describe('formatPromoWindow with dynamic windows', () => {
+  it('formats dynamic windows into human readable rolling days', () => {
+    expect(formatPromoWindow({ type: 'dynamic', days: 7, from: null, until: null })).toBe('Within 7 days')
+    expect(formatPromoWindow({ type: 'dynamic', days: 1, from: null, until: null })).toBe('Within 1 day')
+  })
+
+  it('formats compact dynamic windows', () => {
+    expect(formatPromoWindowCompact({ type: 'dynamic', days: 7, from: null, until: null })).toBe('Within 7d')
+  })
+})
+
+describe('isDateInPromoWindow', () => {
+  it('checks date in dynamic rolling window', () => {
+    const now = new Date('2026-09-14T10:00:00Z')
+    const window = { type: 'dynamic' as const, days: 7, from: null, until: null }
+    // Today
+    expect(isDateInPromoWindow(window, new Date('2026-09-14T12:00:00Z'), now)).toBe(true)
+    // 5 days later
+    expect(isDateInPromoWindow(window, new Date('2026-09-19T12:00:00Z'), now)).toBe(true)
+    // 7 days later
+    expect(isDateInPromoWindow(window, new Date('2026-09-21T12:00:00Z'), now)).toBe(true)
+    // 10 days later (outside 7 days)
+    expect(isDateInPromoWindow(window, new Date('2026-09-24T12:00:00Z'), now)).toBe(false)
   })
 })

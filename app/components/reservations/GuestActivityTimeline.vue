@@ -12,7 +12,7 @@ function fmtTimestamp(iso: string): string {
 const typeMeta: Record<ActivityEvent['type'], { icon: string, tone: string }> = {
   message: { icon: 'lucide:message-square', tone: 'bg-blue-500/10 text-blue-700' },
   reply: { icon: 'lucide:reply', tone: 'bg-green-500/10 text-green-700' },
-  reservation: { icon: 'lucide:calendar-check', tone: 'bg-primary/10 text-primary' },
+  reservation: { icon: 'lucide:calendar-check', tone: 'bg-primary/15 text-foreground' },
   guide_sent: { icon: 'lucide:book-open', tone: 'bg-amber-500/10 text-amber-700' },
   cleaning: { icon: 'lucide:sparkles', tone: 'bg-purple-500/10 text-purple-700' },
   task: { icon: 'lucide:check-square', tone: 'bg-slate-500/10 text-slate-700' },

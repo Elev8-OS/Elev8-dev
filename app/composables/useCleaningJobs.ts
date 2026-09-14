@@ -64,7 +64,7 @@ export function useCleaningJobs() {
   function createJob(input: CleaningJobInput) {
     const job: CleaningJob = {
       ...input,
-      id: `cln-${Date.now()}`,
+      id: `cln-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     }
     jobs.value = [...jobs.value, job]
     return job
@@ -76,6 +76,20 @@ export function useCleaningJobs() {
 
   function deleteJob(id: string) {
     jobs.value = jobs.value.filter(job => job.id !== id)
+  }
+
+  function applyReservationSchedule(reservationId: string, newJobs: CleaningJobInput[]) {
+    const preserved = jobs.value.filter(j => !(j.reservationId === reservationId && j.status !== 'done'))
+    const added: CleaningJob[] = newJobs.map((input, idx) => ({
+      ...input,
+      id: `cln-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+    }))
+    jobs.value = [...preserved, ...added]
+    return added
+  }
+
+  function clearReservationSchedule(reservationId: string) {
+    jobs.value = jobs.value.filter(j => !(j.reservationId === reservationId && j.status !== 'done'))
   }
 
   function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string, guestName?: string }) {
@@ -132,6 +146,8 @@ export function useCleaningJobs() {
     isPlanned,
     releaseDueDrafts,
     deleteJob,
+    applyReservationSchedule,
+    clearReservationSchedule,
     createFromCheckout,
     resolveCleanerNames,
     joinCleanerNames,

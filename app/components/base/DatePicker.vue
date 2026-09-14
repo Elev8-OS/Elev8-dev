@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { CalendarDate } from '@internationalized/date'
+import { DateFormatter, getLocalTimeZone, parseDate, today } from '@internationalized/date'
 import { Calendar as CalendarIcon } from 'lucide-vue-next'
-import { CalendarDate, DateFormatter, getLocalTimeZone, parseDate, today } from '@internationalized/date'
 import { cn } from '@/lib/utils'
 
 const props = withDefaults(defineProps<{
@@ -84,7 +85,7 @@ const displayLabel = computed(() => {
           <span class="truncate">{{ displayLabel }}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent class="w-auto p-0" align="start">
+      <PopoverContent class="w-auto p-0 z-[100]" align="start">
         <Calendar
           :model-value="selected"
           weekday-format="short"

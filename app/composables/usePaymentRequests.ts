@@ -53,7 +53,7 @@ export function usePaymentRequests() {
     const feeAmount = calculateFee(draft.amount, draft.feeMode, draft.customFeePercentage)
     const totalAmount = calculateTotal(draft.amount, feeAmount)
     const account = payoutAccounts.value.find(a => a.id === getAccountForListing(draft.listingId))
-    const currency = account?.currency ?? 'USD'
+    const currency = draft.currency || account?.currency || 'USD'
 
     const request: PaymentRequest = {
       id,

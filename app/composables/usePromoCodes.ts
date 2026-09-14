@@ -3,10 +3,13 @@ import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import {
   formatChannelRestrictionLabel,
   formatPromoDiscount,
+  formatPromoMinStay,
   generatePromoId,
   getChannelRestriction,
   getPromoCodeStatus,
+  isDateInPromoWindow,
   isPromoCodeExpired,
+  meetsPromoCodeMinStay,
   widgetPromoCodeLinks as seedLinks,
   promoCodes as seedPromoCodes,
 } from '~/components/promo-code/data/promo-codes'
@@ -36,6 +39,15 @@ function normalizeChannelRestriction(
   const channel = draft?.channel ?? 'widget'
   const websiteIds = channel === 'website' ? (draft?.websiteIds ?? []) : []
   return { channel, websiteIds }
+}
+
+function normalizeWindows(windows: PromoCode['bookingWindows']) {
+  return (windows ?? []).map(w => ({
+    ...(w.type ? { type: w.type } : {}),
+    from: w.type === 'dynamic' ? null : (w.from ?? null),
+    until: w.type === 'dynamic' ? null : (w.until ?? null),
+    ...(w.type === 'dynamic' ? { days: w.days ?? null } : {}),
+  }))
 }
 
 export function usePromoCodes() {
@@ -96,8 +108,9 @@ export function usePromoCodes() {
       value: draft.discountType === 'free_upsell' ? 0 : draft.value,
       currency: draft.discountType === 'fixed' ? (draft.currency ?? null) : null,
       active: draft.active,
-      bookingWindows: (draft.bookingWindows ?? []).map(w => ({ from: w.from ?? null, until: w.until ?? null })),
-      stayWindows: (draft.stayWindows ?? []).map(w => ({ from: w.from ?? null, until: w.until ?? null })),
+      bookingWindows: normalizeWindows(draft.bookingWindows),
+      stayWindows: normalizeWindows(draft.stayWindows),
+      minStay: draft.minStay ?? null,
       usageLimit: draft.usageLimit ?? null,
       redemptionCount: draft.redemptionCount ?? 0,
       createdAt: now,
@@ -119,10 +132,10 @@ export function usePromoCodes() {
       const nextValue = nextType === 'free_upsell' ? 0 : (patch.value ?? c.value)
       const nextCurrency = nextType === 'fixed' ? (patch.currency ?? c.currency ?? null) : null
       const nextBooking = patch.bookingWindows
-        ? patch.bookingWindows.map(w => ({ from: w.from ?? null, until: w.until ?? null }))
+        ? normalizeWindows(patch.bookingWindows)
         : (c.bookingWindows ?? [])
       const nextStay = patch.stayWindows
-        ? patch.stayWindows.map(w => ({ from: w.from ?? null, until: w.until ?? null }))
+        ? normalizeWindows(patch.stayWindows)
         : (c.stayWindows ?? [])
       const nextChannelRestriction = patch.channelRestriction !== undefined
         ? normalizeChannelRestriction(patch.channelRestriction)
@@ -136,6 +149,7 @@ export function usePromoCodes() {
         currency: nextCurrency,
         bookingWindows: nextBooking,
         stayWindows: nextStay,
+        minStay: patch.minStay !== undefined ? (patch.minStay ?? null) : (c.minStay ?? null),
         usageLimit: patch.usageLimit ?? c.usageLimit ?? null,
         freeUpsellItemIds: nextType === 'free_upsell' ? (patch.freeUpsellItemIds ?? c.freeUpsellItemIds ?? []) : undefined,
         listingIds: patch.listingIds ?? c.listingIds ?? [],
@@ -162,6 +176,7 @@ export function usePromoCodes() {
       code: `${original.code} (Copy)`,
       active: false,
       redemptionCount: 0,
+      minStay: original.minStay ?? null,
       freeUpsellItemIds: original.freeUpsellItemIds ? [...original.freeUpsellItemIds] : [],
       listingIds: original.listingIds ? [...original.listingIds] : [],
       channelRestriction: {
@@ -228,6 +243,9 @@ export function usePromoCodes() {
     getPromoCodeStatus,
     isPromoCodeExpired,
     formatPromoDiscount,
+    formatPromoMinStay,
+    meetsPromoCodeMinStay,
+    isDateInPromoWindow,
     getChannelRestriction,
     formatChannelRestrictionLabel,
     createPromoCode,

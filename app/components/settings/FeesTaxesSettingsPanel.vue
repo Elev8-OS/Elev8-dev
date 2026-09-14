@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { BookingChannel, CityTaxCollector, ListingFeeTaxItem, TaxDateRange, TaxSet } from '~/components/listings/data/listings'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import { listings, type ListingFeeTaxItem, type TaxDateRange, type TaxSet } from '~/components/listings/data/listings'
+import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
+import { useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 
 const {
@@ -24,12 +26,12 @@ const {
 } = useFeesTaxes()
 
 const currencies = [
-  { code: 'USD', symbol: '$', label: 'USD' },
-  { code: 'IDR', symbol: 'IDR', label: 'IDR' },
-  { code: 'EUR', symbol: '€', label: 'EUR' },
-  { code: 'GBP', symbol: '£', label: 'GBP' },
-  { code: 'AUD', symbol: 'A$', label: 'AUD' },
-  { code: 'SGD', symbol: 'S$', label: 'SGD' },
+  { code: 'USD', label: 'USD' },
+  { code: 'IDR', label: 'IDR' },
+  { code: 'EUR', label: 'EUR' },
+  { code: 'GBP', label: 'GBP' },
+  { code: 'AUD', label: 'AUD' },
+  { code: 'SGD', label: 'SGD' },
 ]
 
 const logicOptions = [
@@ -52,14 +54,14 @@ const logicLabels: Record<string, string> = {
   per_booking: 'Per Booking',
 }
 
-function symbolFor(code: string): string {
-  return currencies.find(c => c.code === code)?.symbol ?? '$'
+function currencyCode(code?: string): string {
+  return code || 'USD'
 }
 
 function feeTaxSummary(tax: ListingFeeTaxItem): string {
   const amount = tax.logic === 'percent'
     ? `${tax.rate}%`
-    : `${symbolFor(tax.currency ?? 'USD')}${tax.rate}`
+    : `${currencyCode(tax.currency)} ${tax.rate}`
   const parts = [amount, logicLabels[tax.logic] ?? tax.logic]
   if (tax.isInclusive)
     parts.push('included')
@@ -91,11 +93,47 @@ function emptyFeeTaxDraft(): ListingFeeTaxItem {
     skipNights: null,
     maxNights: null,
     applicableDateRanges: [],
+    cityTax: {
+      channelPolicy: {},
+      chargeableGuests: { adults: true, children: false, infants: false },
+    },
   }
 }
 
 function isPercent(): boolean {
   return feeTaxDraft.value.logic === 'percent'
+}
+
+const { notifyOnBooking } = useCityTax()
+
+const collectorOptions: { value: CityTaxCollector, label: string }[] = [
+  { value: 'host', label: 'Host collects' },
+  { value: 'channel', label: 'Channel collects' },
+  { value: 'not_applicable', label: 'Not applicable' },
+]
+
+function isCityTax(): boolean {
+  return feeTaxDraft.value.type === 'city_tax'
+}
+
+function draftCollectorFor(channel: BookingChannel): CityTaxCollector {
+  return feeTaxDraft.value.cityTax?.channelPolicy?.[channel] ?? 'host'
+}
+
+function setChannelCollector(channel: BookingChannel, collector: CityTaxCollector) {
+  const config = feeTaxDraft.value.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } }
+  feeTaxDraft.value = {
+    ...feeTaxDraft.value,
+    cityTax: { ...config, channelPolicy: { ...config.channelPolicy, [channel]: collector } },
+  }
+}
+
+function setChargeableGuest(key: 'adults' | 'children' | 'infants', value: boolean) {
+  const config = feeTaxDraft.value.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } }
+  feeTaxDraft.value = {
+    ...feeTaxDraft.value,
+    cityTax: { ...config, chargeableGuests: { ...config.chargeableGuests, [key]: value } },
+  }
 }
 
 function openAddFeeTax() {
@@ -112,6 +150,7 @@ function openEditFeeTax(id: string) {
   feeTaxDraft.value = {
     ...found,
     applicableDateRanges: found.applicableDateRanges.map(r => ({ ...r })),
+    cityTax: found.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } },
   }
   showFeeTaxSheet.value = true
 }
@@ -123,6 +162,9 @@ function saveFeeTax() {
     ...feeTaxDraft.value,
     id: editingFeeTaxId.value || `ft-${Date.now()}`,
     title: feeTaxDraft.value.title.trim(),
+    // A collection policy on a cleaning fee would be read by nothing and would
+    // confuse the next person to open the record.
+    cityTax: feeTaxDraft.value.type === 'city_tax' ? feeTaxDraft.value.cityTax : undefined,
   }
   upsertFeeTaxItem(item)
   showFeeTaxSheet.value = false
@@ -290,8 +332,7 @@ interface CalcLine {
 }
 
 const taxSetCalc = computed(() => {
-  const currency = taxSetDraft.value.currency ?? 'USD'
-  const sym = symbolFor(currency)
+  const currency = currencyCode(taxSetDraft.value.currency)
   const nights = Math.max(1, sampleNights.value || 1)
   const base = Math.max(0, sampleBasePrice.value || 0)
   const baseTotal = base * nights
@@ -309,42 +350,42 @@ const taxSetCalc = computed(() => {
 
     if (logic === 'percent') {
       const amount = running * rate / 100
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${rate}% of ${sym}${running.toFixed(2)}` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${rate}% of ${currency} ${running.toFixed(2)}` })
       running += amount
     }
     else if (logic === 'per_room') {
       const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per room` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per room` })
       running += amount
     }
     else if (logic === 'per_room_per_night') {
       const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per room per night × ${nights} nights` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per room per night × ${nights} nights` })
       running += amount
     }
     else if (logic === 'per_person') {
       const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per person` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per person` })
       running += amount
     }
     else if (logic === 'per_person_per_night') {
       const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per person per night × ${nights} nights` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per person per night × ${nights} nights` })
       running += amount
     }
     else if (logic === 'per_night') {
       const amount = rate * nights
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per night × ${nights} nights` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per night × ${nights} nights` })
       running += amount
     }
     else if (logic === 'per_booking') {
       const amount = rate
-      lines.push({ id: tax.id, title: tax.title, amount, detail: `${sym}${rate} per booking` })
+      lines.push({ id: tax.id, title: tax.title, amount, detail: `${currency} ${rate} per booking` })
       running += amount
     }
   }
 
-  return { currency, sym, nights, base, baseTotal, running, lines }
+  return { currency, nights, base, baseTotal, running, lines }
 })
 
 function saveTaxSet() {
@@ -505,6 +546,16 @@ function removeDateRange(index: number) {
       </div>
     </div>
 
+    <div class="flex items-center justify-between rounded-lg border p-3">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-sm font-medium">Notify when a collection is booked</span>
+        <span class="text-xs text-muted-foreground">
+          Off by default. Alerts for a collection due today and one that was missed are always on.
+        </span>
+      </div>
+      <Switch :model-value="notifyOnBooking" @update:model-value="(v) => notifyOnBooking = Boolean(v)" />
+    </div>
+
     <Tabs default-value="fees-taxes" class="space-y-4">
       <TabsList>
         <TabsTrigger value="fees-taxes">Fees &amp; Taxes</TabsTrigger>
@@ -622,7 +673,7 @@ function removeDateRange(index: number) {
       <SheetContent class="w-full sm:max-w-md p-0">
         <SheetHeader>
           <SheetTitle>{{ editingFeeTaxId ? 'Edit Fee or Tax' : 'Add Fee or Tax' }}</SheetTitle>
-          <SheetDescription>Applied to direct bookings only. OTAs manage their own charges.</SheetDescription>
+          <SheetDescription>Fees and taxes for direct bookings. A city tax can also name which channels collect it.</SheetDescription>
         </SheetHeader>
 
         <div class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
@@ -659,8 +710,8 @@ function removeDateRange(index: number) {
             <div class="flex flex-col gap-1.5">
               <Label>Rate</Label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{{ isPercent() ? '%' : symbolFor(feeTaxDraft.currency ?? 'USD') }}</span>
-                <Input v-model.number="feeTaxDraft.rate" type="number" class="pl-7" min="0" />
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">{{ isPercent() ? '%' : currencyCode(feeTaxDraft.currency) }}</span>
+                <Input v-model.number="feeTaxDraft.rate" type="number" :class="isPercent() ? 'pl-7' : 'pl-14'" min="0" />
               </div>
             </div>
             <div v-if="!isPercent()" class="flex flex-col gap-1.5">
@@ -669,7 +720,7 @@ function removeDateRange(index: number) {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                    {{ c.symbol }} {{ c.label }}
+                    {{ c.code }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -684,13 +735,106 @@ function removeDateRange(index: number) {
             <Switch :model-value="feeTaxDraft.isInclusive" @update:model-value="(v) => feeTaxDraft.isInclusive = Boolean(v)" />
           </div>
 
+          <div v-if="isCityTax()" class="flex flex-col gap-3 rounded-lg border p-3">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-sm font-medium">City Tax Collection</span>
+              <span class="text-xs text-muted-foreground">
+                Who takes the money on each channel. Channels you leave unset are treated as host collects.
+              </span>
+            </div>
+
+            <div v-for="channel in BOOKING_CHANNELS" :key="channel" class="flex items-center justify-between gap-3">
+              <span class="text-sm">{{ channel }}</span>
+              <Select
+                :model-value="draftCollectorFor(channel)"
+                @update:model-value="(v) => setChannelCollector(channel, v as CityTaxCollector)"
+              >
+                <SelectTrigger class="h-8 w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="opt in collectorOptions" :key="opt.value" :value="opt.value">
+                    {{ opt.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator />
+
+            <div class="flex flex-col gap-2">
+              <span class="text-sm font-medium">Chargeable guests</span>
+              <div
+                v-for="option in [
+                  { key: 'adults' as const, label: 'Adults' },
+                  { key: 'children' as const, label: 'Children' },
+                  { key: 'infants' as const, label: 'Infants' },
+                ]"
+                :key="option.key"
+                class="flex items-center justify-between"
+              >
+                <span class="text-sm text-muted-foreground">{{ option.label }}</span>
+                <Switch
+                  :model-value="feeTaxDraft.cityTax?.chargeableGuests[option.key] ?? false"
+                  @update:model-value="(v) => setChargeableGuest(option.key, Boolean(v))"
+                />
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <Label>Levied by</Label>
+              <Input
+                :model-value="feeTaxDraft.cityTax?.authorityName ?? ''"
+                placeholder="e.g., Stadt Berlin"
+                @update:model-value="(v) => feeTaxDraft = { ...feeTaxDraft, cityTax: { ...feeTaxDraft.cityTax!, authorityName: String(v) } }"
+              />
+              <span class="text-xs text-muted-foreground">Shown to staff at the desk so they can answer "what is this charge".</span>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <Label>Note for staff</Label>
+              <Textarea
+                :model-value="feeTaxDraft.cityTax?.note ?? ''"
+                placeholder="e.g., Cash at the desk, receipt book behind reception."
+                rows="2"
+                @update:model-value="(v) => feeTaxDraft = { ...feeTaxDraft, cityTax: { ...feeTaxDraft.cityTax!, note: String(v) } }"
+              />
+            </div>
+          </div>
+
           <div class="grid grid-cols-2 gap-3">
             <div class="flex flex-col gap-1.5">
-              <Label>Skip Nights</Label>
+              <div class="flex items-center gap-1">
+                <Label>Skip Nights</Label>
+                <TooltipProvider :delay-duration="200">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <button type="button" class="text-muted-foreground/60 hover:text-muted-foreground">
+                        <Icon name="lucide:info" class="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="max-w-[240px] text-xs">
+                      Number of initial nights exempt from this charge. Calculation begins only after these nights have passed.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Input :model-value="feeTaxDraft.skipNights ?? ''" type="number" min="0" placeholder="0" @update:model-value="(v) => feeTaxDraft.skipNights = v === '' ? null : Number(v)" />
             </div>
             <div class="flex flex-col gap-1.5">
-              <Label>Max Nights</Label>
+              <div class="flex items-center gap-1">
+                <Label>Max Nights</Label>
+                <TooltipProvider :delay-duration="200">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <button type="button" class="text-muted-foreground/60 hover:text-muted-foreground">
+                        <Icon name="lucide:info" class="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="max-w-[240px] text-xs">
+                      Maximum number of nights this charge applies to per stay. Any additional nights beyond this limit are exempt.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Input :model-value="feeTaxDraft.maxNights ?? ''" type="number" min="0" placeholder="None" @update:model-value="(v) => feeTaxDraft.maxNights = v === '' ? null : Number(v)" />
             </div>
           </div>
@@ -749,7 +893,7 @@ function removeDateRange(index: number) {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="c in currencies" :key="c.code" :value="c.code">
-                  {{ c.symbol }} {{ c.label }}
+                  {{ c.code }}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -861,7 +1005,7 @@ function removeDateRange(index: number) {
             <div class="flex flex-col gap-1.5 mt-2 text-sm">
               <div class="flex items-center justify-between">
                 <span class="text-muted-foreground">Base total</span>
-                <span>{{ taxSetCalc.sym }}{{ taxSetCalc.baseTotal.toFixed(2) }}</span>
+                <span>{{ taxSetCalc.currency }} {{ taxSetCalc.baseTotal.toFixed(2) }}</span>
               </div>
               <div
                 v-for="line in taxSetCalc.lines"
@@ -872,11 +1016,11 @@ function removeDateRange(index: number) {
                   <span class="font-medium truncate">{{ line.title }}</span>
                   <span class="text-xs text-muted-foreground">{{ line.detail }}</span>
                 </div>
-                <span class="shrink-0">+{{ taxSetCalc.sym }}{{ line.amount.toFixed(2) }}</span>
+                <span class="shrink-0">+{{ taxSetCalc.currency }} {{ line.amount.toFixed(2) }}</span>
               </div>
               <div class="border-t pt-2 flex items-center justify-between font-semibold">
                 <span>Total</span>
-                <span>{{ taxSetCalc.sym }}{{ taxSetCalc.running.toFixed(2) }}</span>
+                <span>{{ taxSetCalc.currency }} {{ taxSetCalc.running.toFixed(2) }}</span>
               </div>
             </div>
           </div>

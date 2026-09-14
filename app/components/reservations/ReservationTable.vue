@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
+import { useCityTax } from '~/composables/useCityTax'
 
 const props = defineProps<{ reservations: ReservationEntry[] }>()
 
@@ -21,7 +23,13 @@ function fmtDate(iso: string): string {
 }
 
 function fmtCurrency(amount: number, currency: string): string {
-  return `${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency}`
+  return `${currency} ${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+}
+
+const cityTax = useCityTax()
+
+function cityTaxRow(reservationId: string) {
+  return cityTax.rows.value.find(row => row.reservation.id === reservationId) ?? null
 }
 
 // Sorting
@@ -206,7 +214,14 @@ const pageNumbers = computed(() => {
               {{ fmtCurrency(r.totalPrice, r.currency) }}
             </td>
             <td class="px-4 py-3">
-              <ReservationStatusBadge :status="r.status" />
+              <div class="flex flex-wrap items-center gap-1.5">
+                <ReservationStatusBadge :status="r.status" />
+                <CityTaxStatusChip
+                  v-if="cityTaxRow(r.id)"
+                  :status="cityTaxRow(r.id)!.assessment.status"
+                  :stage="cityTaxRow(r.id)!.stage"
+                />
+              </div>
             </td>
             <td class="px-4 py-3" @click.stop>
               <DropdownMenu>

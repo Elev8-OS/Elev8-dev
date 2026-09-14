@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PromoCode } from './data/promo-codes'
+import type { PromoCode, PromoCodeWindow } from './data/promo-codes'
 import { computed } from 'vue'
 import { Switch } from '~/components/ui/switch'
 import { usePromoCodes } from '~/composables/usePromoCodes'
@@ -33,13 +33,13 @@ function statusLabel(code: PromoCode) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function bookingWindowRows(windows: { from: string | null, until: string | null }[]) {
+function bookingWindowRows(windows: PromoCodeWindow[]) {
   return windows
     .map(w => formatPromoWindowCompact(w))
     .filter((label): label is string => label !== null)
 }
 
-function stayWindowRows(windows: { from: string | null, until: string | null }[]) {
+function stayWindowRows(windows: PromoCodeWindow[]) {
   return windows
     .map(w => formatPromoWindowCompact(w))
     .filter((label): label is string => label !== null)
@@ -70,6 +70,7 @@ const decoratedCodes = computed(() => codes.map((code) => {
     channelWebsiteCount: channel.websiteIds.length,
     bookingWindows: code.bookingWindows ?? [],
     stayWindows: code.stayWindows ?? [],
+    minStay: code.minStay ?? null,
   }
 }))
 </script>
@@ -148,7 +149,7 @@ const decoratedCodes = computed(() => codes.map((code) => {
             </div>
           </TableCell>
           <TableCell class="text-muted-foreground text-xs space-y-0.5">
-            <template v-if="code.bookingWindows.length === 0 && code.stayWindows.length === 0">
+            <template v-if="code.bookingWindows.length === 0 && code.stayWindows.length === 0 && !code.minStay">
               <div>Always</div>
             </template>
             <template v-else>
@@ -156,10 +157,10 @@ const decoratedCodes = computed(() => codes.map((code) => {
                 <Icon name="lucide:calendar-clock" class="size-3 shrink-0 mt-0.5" />
                 <span class="min-w-0">
                   <template v-if="code.bookingWindows.length === 1">
-                    Book {{ bookingWindowRows(code.bookingWindows)[0] }}
+                    Book: {{ bookingWindowRows(code.bookingWindows)[0] }}
                   </template>
                   <template v-else>
-                    Book {{ bookingWindowRows(code.bookingWindows)[0] }}
+                    Book: {{ bookingWindowRows(code.bookingWindows)[0] }}
                     <span class="text-muted-foreground/70">· +{{ code.bookingWindows.length - 1 }} more</span>
                   </template>
                 </span>
@@ -168,13 +169,17 @@ const decoratedCodes = computed(() => codes.map((code) => {
                 <Icon name="lucide:bed" class="size-3 shrink-0 mt-0.5" />
                 <span class="min-w-0">
                   <template v-if="code.stayWindows.length === 1">
-                    Stay {{ stayWindowRows(code.stayWindows)[0] }}
+                    Stay: {{ stayWindowRows(code.stayWindows)[0] }}
                   </template>
                   <template v-else>
-                    Stay {{ stayWindowRows(code.stayWindows)[0] }}
+                    Stay: {{ stayWindowRows(code.stayWindows)[0] }}
                     <span class="text-muted-foreground/70">· +{{ code.stayWindows.length - 1 }} more</span>
                   </template>
                 </span>
+              </div>
+              <div v-if="code.minStay" class="flex items-start gap-1">
+                <Icon name="lucide:moon" class="size-3 shrink-0 mt-0.5" />
+                <span>Min stay: {{ code.minStay }} night{{ code.minStay === 1 ? '' : 's' }}</span>
               </div>
             </template>
           </TableCell>

@@ -19,11 +19,11 @@ function getListingName(id: string) {
 }
 
 function formatAmount(req: PaymentRequest) {
-  const symbol = req.currency === 'IDR' ? 'Rp' : '$'
+  const code = req.currency || 'USD'
   if (req.currency === 'IDR') {
-    return `${symbol}${req.amount.toLocaleString('id-ID')}`
+    return `${code} ${req.amount.toLocaleString('id-ID')}`
   }
-  return `${symbol}${req.amount.toFixed(2)}`
+  return `${code} ${req.amount.toFixed(2)}`
 }
 
 function statusBadgeVariant(status: PaymentRequest['status']) {

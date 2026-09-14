@@ -72,6 +72,9 @@ export type AlertType
     | 'GUEST_REGISTRATION_OVERDUE'
     | 'GUEST_REGISTRATION_SUBMITTED'
     | 'GUEST_REGISTRATION_FAILED'
+    | 'CITY_TAX_COLLECTION_UPCOMING'
+    | 'CITY_TAX_COLLECTION_DUE'
+    | 'CITY_TAX_COLLECTION_MISSED'
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
@@ -163,6 +166,9 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   GUEST_REGISTRATION_OVERDUE: 'Guest Registration - Report Overdue',
   GUEST_REGISTRATION_SUBMITTED: 'Guest Registration - Report Submitted',
   GUEST_REGISTRATION_FAILED: 'Guest Registration - Submission Failed',
+  CITY_TAX_COLLECTION_UPCOMING: 'City Tax - Collection Booked',
+  CITY_TAX_COLLECTION_DUE: 'City Tax - Collection Due',
+  CITY_TAX_COLLECTION_MISSED: 'City Tax - Not Collected',
 }
 
 export const alertIcons: Record<AlertType, string> = {
@@ -239,6 +245,9 @@ export const alertIcons: Record<AlertType, string> = {
   GUEST_REGISTRATION_OVERDUE: 'i-lucide-alert-octagon',
   GUEST_REGISTRATION_SUBMITTED: 'i-lucide-file-check',
   GUEST_REGISTRATION_FAILED: 'i-lucide-file-x',
+  CITY_TAX_COLLECTION_UPCOMING: 'i-lucide-landmark',
+  CITY_TAX_COLLECTION_DUE: 'i-lucide-landmark',
+  CITY_TAX_COLLECTION_MISSED: 'i-lucide-alert-octagon',
 }
 
 export const alertRouteMap: Partial<Record<AlertType, string>> = {
@@ -315,6 +324,9 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   GUEST_REGISTRATION_OVERDUE: '/guest-registration',
   GUEST_REGISTRATION_SUBMITTED: '/guest-registration',
   GUEST_REGISTRATION_FAILED: '/guest-registration',
+  CITY_TAX_COLLECTION_UPCOMING: '/city-tax',
+  CITY_TAX_COLLECTION_DUE: '/city-tax',
+  CITY_TAX_COLLECTION_MISSED: '/city-tax',
 }
 
 function registrationProviderName(provider?: string): string {
@@ -463,6 +475,12 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${registrationProviderName(context.provider)} report submitted${context.submission_id ? ` (${context.submission_id})` : ''}.`
     case 'GUEST_REGISTRATION_FAILED':
       return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} — ${registrationProviderName(context.provider)} submission failed. ${context.error || ''}`
+    case 'CITY_TAX_COLLECTION_UPCOMING':
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} owes ${context.amount_label || 'city tax'} on arrival. Collect it at the property.`
+    case 'CITY_TAX_COLLECTION_DUE':
+      return `${context.guest_name || 'Guest'} at ${context.listing_name || 'property'} owes ${context.amount_label || 'city tax'}. Collect it before check-out.`
+    case 'CITY_TAX_COLLECTION_MISSED':
+      return `${context.guest_name || 'Guest'} checked out of ${context.listing_name || 'property'} without paying ${context.amount_label || 'city tax'}.`
     default:
       return ''
   }

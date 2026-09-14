@@ -214,7 +214,7 @@ const dateLabel = computed(() => {
           <span v-if="dateLabel" class="text-[10px] text-muted-foreground">· {{ dateLabel }}</span>
           <span class="text-[10px] text-muted-foreground">{{ timeLabel }}</span>
         </div>
-        <div :class="cn('rounded-2xl px-3 py-2 text-sm', bubbleClass)">
+        <div :class="cn('rounded-2xl px-3 py-2 text-sm whitespace-pre-line', bubbleClass)">
           <div v-if="message.mediaUrl" class="mb-1.5 overflow-hidden rounded-lg">
             <img :src="message.mediaUrl" :alt="message.content" class="max-h-56 w-full object-cover">
             <div v-if="message.mediaDims" class="flex items-center gap-1 pt-1 text-[10px] opacity-70">
@@ -258,6 +258,11 @@ const dateLabel = computed(() => {
         <InboxUpsellOfferCard
           v-if="message.upsellOffer"
           :offer="message.upsellOffer"
+          :conversation-id="message.conversationId"
+        />
+        <InboxPaymentCard
+          v-if="message.paymentRequest"
+          :payment-request="message.paymentRequest"
           :conversation-id="message.conversationId"
         />
         <div v-if="message.sendStatus === 'sending'" class="flex items-center gap-1 text-[10px] text-muted-foreground">

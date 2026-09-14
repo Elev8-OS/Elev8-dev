@@ -26,11 +26,17 @@ export interface PromoCodeChannelRestriction {
   websiteIds: string[]
 }
 
-// A single date range — both ends are nullable so users can specify
-// only a start, only an end, both, or neither (always open).
+export type PromoCodeWindowType = 'fixed' | 'dynamic'
+
+// A single validity window. Can be a fixed calendar date range ('fixed')
+// or a rolling dynamic duration from today/now ('dynamic', e.g. next 7 days).
 export interface PromoCodeWindow {
+  type?: PromoCodeWindowType
+  // For 'fixed' window:
   from: string | null
   until: string | null
+  // For 'dynamic' window: rolling number of days from today (e.g. 7 for next 7 days)
+  days?: number | null
 }
 
 export interface PromoCode {
@@ -49,6 +55,9 @@ export interface PromoCode {
   // Empty array = no stay-date constraint. The code applies to stays
   // whose check-in date falls inside ANY window.
   stayWindows?: PromoCodeWindow[]
+  // Minimum stay length in nights/days required to use this promo code.
+  // null or undefined = no minimum stay constraint.
+  minStay?: number | null
   usageLimit?: number | null
   redemptionCount: number
   createdAt: string
@@ -90,6 +99,7 @@ export const promoCodes = ref<PromoCode[]>([
     active: true,
     bookingWindows: [],
     stayWindows: [],
+    minStay: null,
     usageLimit: null,
     redemptionCount: 3,
     createdAt: '2026-01-01T00:00:00Z',
@@ -112,6 +122,7 @@ export const promoCodes = ref<PromoCode[]>([
     stayWindows: [
       { from: '2026-06-01T00:00:00Z', until: '2026-09-30T00:00:00Z' },
     ],
+    minStay: 3,
     usageLimit: 50,
     redemptionCount: 0,
     createdAt: '2026-02-10T00:00:00Z',
@@ -141,6 +152,9 @@ export function generatePromoId(): string {
 // True when `now` falls inside the window. A window with both ends null
 // is treated as "always open" (matches an unbounded window).
 function isWindowOpenAt(window: PromoCodeWindow, now: Date): boolean {
+  if (window.type === 'dynamic') {
+    return Boolean(window.days && window.days > 0)
+  }
   if (window.from && new Date(window.from).getTime() > now.getTime())
     return false
   if (window.until && new Date(window.until).getTime() < now.getTime())
@@ -157,11 +171,14 @@ function isAnyWindowOpen(windows: PromoCodeWindow[] | undefined, now: Date): boo
 }
 
 // True when EVERY window has already ended (i.e. ALL untils are in the past).
+// Dynamic windows roll from today and therefore never expire.
 // Empty list = not expired.
 function areAllWindowsExpired(windows: PromoCodeWindow[] | undefined, now: Date): boolean {
   if (!windows || windows.length === 0)
     return false
   return windows.every((w) => {
+    if (w.type === 'dynamic')
+      return false
     if (!w.until)
       return false
     return new Date(w.until).getTime() < now.getTime()
@@ -208,14 +225,50 @@ export function getPromoCodeTypeLabel(code: PromoCode): string {
   return 'Free Upsell'
 }
 
+// True when a stay of `nights` satisfies the promo code's minimum stay requirement.
+// Codes with no minimum stay (null / undefined / <= 0) are always satisfied.
+export function meetsPromoCodeMinStay(code: PromoCode, nights: number): boolean {
+  if (code.minStay == null || code.minStay <= 0)
+    return true
+  return nights >= code.minStay
+}
+
+export function formatPromoMinStay(code: PromoCode): string {
+  if (!code.minStay)
+    return 'No minimum stay'
+  return `${code.minStay} night${code.minStay === 1 ? '' : 's'}`
+}
+
 function fmt(iso: string | null | undefined): string {
   if (!iso)
     return '—'
   return new Date(iso).toLocaleDateString()
 }
 
+// Checks if a target date (e.g. check-in date or booking date) falls within this window.
+export function isDateInPromoWindow(window: PromoCodeWindow, targetDate: Date, now: Date = new Date()): boolean {
+  if (window.type === 'dynamic') {
+    if (!window.days || window.days <= 0)
+      return true
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + window.days, 23, 59, 59, 999).getTime()
+    const time = targetDate.getTime()
+    return time >= start && time <= end
+  }
+  if (window.from && new Date(window.from).getTime() > targetDate.getTime())
+    return false
+  if (window.until && new Date(window.until).getTime() < targetDate.getTime())
+    return false
+  return true
+}
+
 // Format a single window for display. Used by Detail + Table cells.
 export function formatPromoWindow(window: PromoCodeWindow): string {
+  if (window.type === 'dynamic') {
+    if (!window.days)
+      return 'Rolling'
+    return `Within ${window.days} day${window.days === 1 ? '' : 's'}`
+  }
   const from = window.from
   const until = window.until
   if (from && until)
@@ -230,6 +283,11 @@ export function formatPromoWindow(window: PromoCodeWindow): string {
 // Compact per-window prefix used inside the Table (e.g. "Book 6/1 → 8/31").
 // Returns null if neither end is set (window is fully unbounded).
 export function formatPromoWindowCompact(window: PromoCodeWindow): string | null {
+  if (window.type === 'dynamic') {
+    if (!window.days)
+      return 'Rolling'
+    return `Within ${window.days}d`
+  }
   const f = window.from ? new Date(window.from).toLocaleDateString() : null
   const u = window.until ? new Date(window.until).toLocaleDateString() : null
   if (f && u)

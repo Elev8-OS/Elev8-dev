@@ -284,6 +284,27 @@ This file provides context for AI agents working on this project.
   - Recording URLs are placeholder `https://example.com/recordings/...` strings
   - Transcription is a canned-text picker, not a real STT call — provider selection gated by PRD Open Question #6
 
+### City Tax Collection Module (`app/components/reservations/data/city-tax.ts` + `app/composables/useCityTax.ts`)
+
+- **Problem & Goal**: Who collects the tourist levy on a given stay, and ensuring host collections are never missed.
+- **Data model**:
+  - `ListingFeeTaxItem.cityTax?: CityTaxConfig` (`channelPolicy: Partial<Record<BookingChannel, CityTaxCollector>>`, `chargeableGuests: { adults, children, infants }`, `authorityName?`, `note?`). Unset channel policy falls back to `'host'`.
+  - `ReservationEntry.cityTaxSettlement?: CityTaxSettlement` (`state: 'collected' | 'waived'`, `totals: CityTaxTotal[]`, `settledAt`, `settledBy`, `method?`, `reason?`, `note?`). Stored only once staff act.
+  - Status (`not_required` | `channel_collects` | `due` | `collected` | `waived`) is **live-derived** via `resolveCityTax()`, never stored.
+  - Totals are grouped per currency (`CityTaxTotal[]`), never blended. No currency conversion.
+  - Does NOT touch `priceDetails`, `guestPaid`, `payout` or folio items.
+- **Alerts**:
+  - `CITY_TAX_COLLECTION_UPCOMING` (INFO, default off behind `notifyOnBooking` switch in Settings)
+  - `CITY_TAX_COLLECTION_DUE` (WARNING, check-in day through stay)
+  - `CITY_TAX_COLLECTION_MISSED` (CRITICAL, checked out without settlement)
+  - Listed in `FINANCE_TYPES` in `notification-settings.ts`. Resolving a settlement dismisses active alerts for that reservation.
+- **Surfaces**:
+  - `FeesTaxesSettingsPanel.vue` — Rule editor when `type === 'city_tax'`
+  - `ReservationCityTaxSection.vue` — Accordion section in `ReservationDetailSheet.vue` directly after folio
+  - `CityTaxCollectDialog.vue` & `CityTaxWaiveDialog.vue` — Modals for recording collection / waiver
+  - `CityTaxStatusChip.vue` — Status chip in `ReservationTable.vue` and worklist
+  - `app/pages/city-tax/index.vue` & `CityTaxTable.vue` — Worklist page (`/city-tax`) with KPIs, tabs (Overdue, Due today, Upcoming, Settled), guest search, filters, and bulk collection.
+
 ### CI/CD
 
 - **GitHub Actions**: Two workflows — `CI` (lint + build check) and `Deploy to GitHub Pages`
@@ -316,3 +337,4 @@ The logged-in user is **Komang Juliantara** (Guest Relations role), not "You" (A
 - **Icons**: Use `lucide:` prefix (e.g. `lucide:user-check`); OTA icons use `logos:airbnb` and `simple-icons:bookingdotcom`
 - **CSS framework**: Tailwind CSS v4
 - **State mutations**: Always use spread syntax (`{ ...conv, field: value }`) when modifying conversation properties to ensure Vue reactivity triggers
+- **Currency display**: Always format currencies using 3-letter ISO code in front with a space (e.g. `USD 150.00`, `EUR 231.00`, `IDR 500,000`, `CHF 1,200.00`), never symbols like `$`, `€`, `£`, `Rp`, and never suffix after the amount. Format: `${currency} ${amount}`. Input prefixes must use currency codes with sufficient padding (`pl-14`). CHF uses `de-CH` locale with 2 decimal places. Header amounts always in CHF (tenant currency).
