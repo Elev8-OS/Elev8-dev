@@ -61,49 +61,16 @@ const housekeepingJobs = computed(() => {
 })
 const housekeepingCount = computed(() => housekeepingJobs.value.length)
 
-const activeSidebarTab = ref<'activity' | 'upsells' | 'housekeeping' | null>(null)
+type ReservationTab = 'details' | 'activity' | 'upsells' | 'housekeeping'
+const activeTab = ref<ReservationTab>('details')
 
-function toggleSidebarTab(tab: 'activity' | 'upsells' | 'housekeeping') {
-  if (activeSidebarTab.value === tab) {
-    activeSidebarTab.value = null
-  }
-  else {
-    activeSidebarTab.value = tab
-  }
+function selectTab(tab: ReservationTab) {
+  activeTab.value = tab
 }
 
 watch(() => props.open, (isOpen) => {
   if (!isOpen) {
-    activeSidebarTab.value = null
-  }
-})
-
-const activeTabMeta = computed(() => {
-  switch (activeSidebarTab.value) {
-    case 'activity':
-      return {
-        title: 'Activity Timeline',
-        icon: 'lucide:activity',
-        badge: reservation.value?.activity?.length ?? 0,
-      }
-    case 'upsells':
-      return {
-        title: 'Upsells',
-        icon: 'lucide:tag',
-        badge: reservationUpsells.value.length,
-      }
-    case 'housekeeping':
-      return {
-        title: 'Housekeeping',
-        icon: 'lucide:sparkles',
-        badge: housekeepingCount.value,
-      }
-    default:
-      return {
-        title: '',
-        icon: '',
-        badge: undefined,
-      }
+    activeTab.value = 'details'
   }
 })
 
@@ -314,17 +281,14 @@ function fmtDob(iso: string): string {
   <div>
     <Sheet :open="open" @update:open="emit('update:open', $event)">
       <SheetContent
-        class="flex w-full flex-row gap-0 overflow-hidden p-0 transition-[max-width] duration-300 ease-in-out"
-        :class="activeSidebarTab ? 'sm:max-w-4xl' : 'sm:max-w-lg'"
+        class="flex w-full flex-row gap-0 overflow-hidden p-0 sm:max-w-lg"
         side="right"
       >
         <template v-if="reservation">
           <!-- Main pane -->
-          <div
-            class="min-w-0 flex-1 flex-col h-full overflow-hidden"
-            :class="activeSidebarTab ? 'hidden sm:flex' : 'flex'"
-          >
-            <ScrollArea class="h-full min-h-0 flex-1">
+          <div class="min-w-0 flex-1 flex-col h-full overflow-hidden flex">
+            <!-- Details view (default) -->
+            <ScrollArea v-if="activeTab === 'details'" class="h-full min-h-0 flex-1">
               <div class="flex flex-col">
                 <!-- Header: status dropdown + channel + listing name -->
               <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
@@ -923,54 +887,42 @@ function fmtDob(iso: string): string {
               </div>
             </div>
           </ScrollArea>
-        </div>
 
-        <!-- Dual-pane Side Panel (Active Tab Detail) -->
-        <div
-          v-if="activeSidebarTab"
-          class="flex flex-1 sm:flex-initial sm:w-[380px] shrink-0 flex-col border-l bg-background h-full overflow-hidden"
-        >
-          <!-- Panel Header -->
-          <div class="flex h-14 items-center justify-between border-b px-4 shrink-0 bg-muted/20">
-            <div class="flex items-center gap-2">
-              <Icon :name="activeTabMeta.icon" class="size-4 text-primary" />
-              <span class="font-semibold text-sm">{{ activeTabMeta.title }}</span>
-              <Badge v-if="activeTabMeta.badge !== undefined" variant="secondary" class="h-4 min-w-4 px-1.5 text-[10px]">
-                {{ activeTabMeta.badge }}
-              </Badge>
+          <!-- 2. Activity Tab View -->
+          <div v-else-if="activeTab === 'activity'" class="flex flex-col h-full">
+            <div class="flex items-center justify-between border-b px-5 py-4 shrink-0 bg-muted/20">
+              <div class="flex items-center gap-2">
+                <Icon name="lucide:activity" class="size-4 text-primary" />
+                <h3 class="text-sm font-semibold">Activity Timeline</h3>
+                <Badge v-if="reservation.activity?.length" variant="secondary" class="h-4 min-w-4 px-1.5 text-[10px]">
+                  {{ reservation.activity.length }}
+                </Badge>
+              </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-7 w-7 p-0"
-              title="Close panel"
-              @click="activeSidebarTab = null"
-            >
-              <Icon name="lucide:x" class="size-3.5" />
-              <span class="sr-only">Close</span>
-            </Button>
-          </div>
-
-          <!-- Panel Content -->
-          <ScrollArea class="h-full min-h-0 flex-1">
-            <div class="p-4">
-              <!-- Activity Timeline -->
-              <div v-if="activeSidebarTab === 'activity'">
-                <div
-                  v-if="!reservation.activity?.length"
-                  class="border border-dashed p-6 text-center text-xs text-muted-foreground"
-                >
+            <ScrollArea class="h-full min-h-0 flex-1">
+              <div class="p-5">
+                <div v-if="!reservation.activity?.length" class="border border-dashed p-6 text-center text-xs text-muted-foreground">
                   No activity recorded for this reservation.
                 </div>
                 <GuestActivityTimeline v-else :events="reservation.activity" bare />
               </div>
+            </ScrollArea>
+          </div>
 
-              <!-- Upsells -->
-              <div v-else-if="activeSidebarTab === 'upsells'">
-                <div
-                  v-if="reservationUpsells.length === 0"
-                  class="border border-dashed p-6 text-center text-xs text-muted-foreground"
-                >
+          <!-- 3. Upsells Tab View -->
+          <div v-else-if="activeTab === 'upsells'" class="flex flex-col h-full">
+            <div class="flex items-center justify-between border-b px-5 py-4 shrink-0 bg-muted/20">
+              <div class="flex items-center gap-2">
+                <Icon name="lucide:tag" class="size-4 text-primary" />
+                <h3 class="text-sm font-semibold">Upsells</h3>
+                <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1.5 text-[10px]">
+                  {{ reservationUpsells.length }}
+                </Badge>
+              </div>
+            </div>
+            <ScrollArea class="h-full min-h-0 flex-1">
+              <div class="p-5">
+                <div v-if="reservationUpsells.length === 0" class="border border-dashed p-6 text-center text-xs text-muted-foreground">
                   No upsells purchased for this reservation.
                 </div>
                 <div v-else class="space-y-2.5">
@@ -998,22 +950,54 @@ function fmtDob(iso: string): string {
                   </div>
                 </div>
               </div>
+            </ScrollArea>
+          </div>
 
-              <!-- Housekeeping -->
-              <div v-else-if="activeSidebarTab === 'housekeeping'">
+          <!-- 4. Housekeeping Tab View -->
+          <div v-else-if="activeTab === 'housekeeping'" class="flex flex-col h-full">
+            <div class="flex items-center justify-between border-b px-5 py-4 shrink-0 bg-muted/20">
+              <div class="flex items-center gap-2">
+                <Icon name="lucide:sparkles" class="size-4 text-primary" />
+                <h3 class="text-sm font-semibold">Housekeeping</h3>
+                <Badge v-if="housekeepingCount" variant="secondary" class="h-4 min-w-4 px-1.5 text-[10px]">
+                  {{ housekeepingCount }}
+                </Badge>
+              </div>
+            </div>
+            <ScrollArea class="h-full min-h-0 flex-1">
+              <div class="p-5">
                 <ReservationHousekeepingSection
                   :reservation="reservation"
                   :cleaner-options="cleanerOptions"
                   bare
                 />
               </div>
-            </div>
-          </ScrollArea>
+            </ScrollArea>
+          </div>
         </div>
 
         <!-- Icon Rail (Rightmost column) -->
         <div class="flex w-12 shrink-0 flex-col items-center border-l bg-muted/20 pt-12 pb-3 gap-3">
           <div class="w-6 border-b" />
+
+          <!-- Details (Default) -->
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="relative flex size-9 items-center justify-center rounded-md transition-colors"
+                  :class="activeTab === 'details' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="selectTab('details')"
+                >
+                  <Icon name="lucide:calendar-check" class="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Reservation details</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <!-- Activity -->
           <TooltipProvider>
@@ -1022,14 +1006,14 @@ function fmtDob(iso: string): string {
                 <button
                   type="button"
                   class="relative flex size-9 items-center justify-center rounded-md transition-colors"
-                  :class="activeSidebarTab === 'activity' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                  @click="toggleSidebarTab('activity')"
+                  :class="activeTab === 'activity' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="selectTab('activity')"
                 >
                   <Icon name="lucide:activity" class="size-4" />
                   <span
                     v-if="reservation.activity?.length"
                     class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
-                    :class="activeSidebarTab === 'activity' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                    :class="activeTab === 'activity' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
                   >
                     {{ reservation.activity.length }}
                   </span>
@@ -1048,14 +1032,14 @@ function fmtDob(iso: string): string {
                 <button
                   type="button"
                   class="relative flex size-9 items-center justify-center rounded-md transition-colors"
-                  :class="activeSidebarTab === 'upsells' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                  @click="toggleSidebarTab('upsells')"
+                  :class="activeTab === 'upsells' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="selectTab('upsells')"
                 >
                   <Icon name="lucide:tag" class="size-4" />
                   <span
                     v-if="reservationUpsells.length"
                     class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
-                    :class="activeSidebarTab === 'upsells' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                    :class="activeTab === 'upsells' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
                   >
                     {{ reservationUpsells.length }}
                   </span>
@@ -1074,14 +1058,14 @@ function fmtDob(iso: string): string {
                 <button
                   type="button"
                   class="relative flex size-9 items-center justify-center rounded-md transition-colors"
-                  :class="activeSidebarTab === 'housekeeping' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                  @click="toggleSidebarTab('housekeeping')"
+                  :class="activeTab === 'housekeeping' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="selectTab('housekeeping')"
                 >
                   <Icon name="lucide:sparkles" class="size-4" />
                   <span
                     v-if="housekeepingCount"
                     class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
-                    :class="activeSidebarTab === 'housekeeping' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                    :class="activeTab === 'housekeeping' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
                   >
                     {{ housekeepingCount }}
                   </span>
