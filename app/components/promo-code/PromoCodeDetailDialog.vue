@@ -254,7 +254,7 @@ function onRequestDelete() {
                 Booking window
               </p>
               <p v-if="bookingWindows.length === 0" class="font-medium">
-                Any time
+                Any booking date
               </p>
               <ul v-else class="mt-1 space-y-0.5">
                 <li v-for="(window, idx) in bookingWindows" :key="`bw-${idx}`" class="font-medium text-sm">
@@ -268,13 +268,22 @@ function onRequestDelete() {
                 Stay window
               </p>
               <p v-if="stayWindows.length === 0" class="font-medium">
-                Any check-in
+                Any check-in date
               </p>
               <ul v-else class="mt-1 space-y-0.5">
                 <li v-for="(window, idx) in stayWindows" :key="`sw-${idx}`" class="font-medium text-sm">
                   {{ formatPromoWindow(window) }}
                 </li>
               </ul>
+            </div>
+            <div>
+              <p class="text-muted-foreground text-xs flex items-center gap-1">
+                <Icon name="lucide:moon" class="size-3" aria-hidden="true" />
+                Minimum stay
+              </p>
+              <p class="font-medium text-sm">
+                {{ promoCode.minStay ? `${promoCode.minStay} night${promoCode.minStay === 1 ? '' : 's'}` : 'No minimum' }}
+              </p>
             </div>
             <div>
               <p class="text-muted-foreground text-xs">
@@ -284,7 +293,7 @@ function onRequestDelete() {
                 {{ promoCode.redemptionCount }}<span v-if="promoCode.usageLimit"> / {{ promoCode.usageLimit }}</span>
               </p>
             </div>
-            <div>
+            <div class="col-span-2">
               <p class="text-muted-foreground text-xs">
                 Created
               </p>

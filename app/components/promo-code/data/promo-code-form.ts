@@ -23,6 +23,7 @@ export interface PromoCodeFormDraft {
   currency: string
   bookingWindows: PromoCodeWindow[]
   stayWindows: PromoCodeWindow[]
+  minStay: number | null
   usageLimit: number | null
   active: boolean
   freeUpsellItemIds: string[]
@@ -90,6 +91,7 @@ export function createDefaultPromoCodeFormDraft(): PromoCodeFormDraft {
     currency: 'USD',
     bookingWindows: [],
     stayWindows: [],
+    minStay: null,
     usageLimit: null,
     active: true,
     freeUpsellItemIds: [],
@@ -113,8 +115,10 @@ function toDateInputValue(value: string | null): string | null {
 
 function toDateInputWindows(windows: PromoCodeWindow[] | undefined): PromoCodeWindow[] {
   return (windows ?? []).map(w => ({
+    ...(w.type ? { type: w.type } : {}),
     from: toDateInputValue(w.from),
     until: toDateInputValue(w.until),
+    ...(w.days !== undefined ? { days: w.days } : {}),
   }))
 }
 
@@ -127,6 +131,7 @@ export function promoCodeToFormDraft(code: PromoCode): PromoCodeFormDraft {
     currency: code.currency ?? 'USD',
     bookingWindows: toDateInputWindows(code.bookingWindows),
     stayWindows: toDateInputWindows(code.stayWindows),
+    minStay: code.minStay ?? null,
     usageLimit: code.usageLimit ?? null,
     active: code.active,
     freeUpsellItemIds: code.freeUpsellItemIds ? [...code.freeUpsellItemIds] : [],
@@ -150,8 +155,19 @@ export function formDraftToPromoCodePayload(draft: PromoCodeFormDraft) {
     value: isFreeUpsell ? 0 : draft.value,
     currency: draft.discountType === 'fixed' ? draft.currency : null,
     active: draft.active,
-    bookingWindows: draft.bookingWindows.map(w => ({ from: w.from || null, until: w.until || null })),
-    stayWindows: draft.stayWindows.map(w => ({ from: w.from || null, until: w.until || null })),
+    bookingWindows: draft.bookingWindows.map(w => ({
+      ...(w.type ? { type: w.type } : {}),
+      from: w.type === 'dynamic' ? null : (w.from || null),
+      until: w.type === 'dynamic' ? null : (w.until || null),
+      ...(w.type === 'dynamic' ? { days: w.days ?? null } : {}),
+    })),
+    stayWindows: draft.stayWindows.map(w => ({
+      ...(w.type ? { type: w.type } : {}),
+      from: w.type === 'dynamic' ? null : (w.from || null),
+      until: w.type === 'dynamic' ? null : (w.until || null),
+      ...(w.type === 'dynamic' ? { days: w.days ?? null } : {}),
+    })),
+    minStay: draft.minStay ?? null,
     usageLimit: draft.usageLimit,
     freeUpsellItemIds: isFreeUpsell ? [...draft.freeUpsellItemIds] : [],
     listingIds: [...draft.listingIds],
@@ -268,8 +284,14 @@ function validateWindows(
   errors: PromoCodeFormErrors,
 ): void {
   windows.forEach((window, index) => {
-    if (window.from && window.until && window.from > window.until)
-      errors[`${key}.${index}`] = 'The end date must come after the start date'
+    if (window.type === 'dynamic') {
+      if (window.days === null || window.days === undefined || window.days < 1 || !Number.isInteger(window.days))
+        errors[`${key}.${index}`] = 'Dynamic validity must be at least 1 day'
+    }
+    else {
+      if (window.from && window.until && window.from > window.until)
+        errors[`${key}.${index}`] = 'The end date must come after the start date'
+    }
   })
 }
 
@@ -319,6 +341,8 @@ export function validatePromoCodeStep(
   if (stepId === 'rules') {
     validateWindows(draft.bookingWindows, 'bookingWindows', errors)
     validateWindows(draft.stayWindows, 'stayWindows', errors)
+    if (draft.minStay !== null && (draft.minStay < 1 || !Number.isInteger(draft.minStay)))
+      errors.minStay = 'Minimum stay must be at least 1 night'
     if (draft.usageLimit !== null && draft.usageLimit < 1)
       errors.usageLimit = 'Usage limit must be at least 1'
   }
