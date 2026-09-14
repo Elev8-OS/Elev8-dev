@@ -142,12 +142,18 @@ watch(() => props.open, (open) => {
               type="button"
               data-testid="folio-pay-mode-full"
               class="flex flex-col items-start gap-1 rounded-md border p-2.5 text-left text-xs transition-colors"
-              :class="!isPartial ? 'border-primary bg-primary/5 text-primary font-medium' : 'hover:bg-muted/50'"
+              :class="!isPartial
+                ? 'border-primary bg-primary/10 text-foreground font-medium shadow-xs'
+                : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
               @click="selectFull"
             >
               <div class="flex items-center gap-1.5">
-                <Icon name="lucide:check" class="size-3.5" />
-                <span>Full Payment</span>
+                <Icon
+                  name="lucide:check"
+                  class="size-3.5"
+                  :class="!isPartial ? 'text-foreground font-bold' : 'text-muted-foreground'"
+                />
+                <span :class="!isPartial ? 'text-foreground font-semibold' : 'text-foreground/80'">Full Payment</span>
               </div>
               <span class="text-[11px] text-muted-foreground font-normal">
                 {{ fmt(totalDue) }}
@@ -158,12 +164,18 @@ watch(() => props.open, (open) => {
               type="button"
               data-testid="folio-pay-mode-partial"
               class="flex flex-col items-start gap-1 rounded-md border p-2.5 text-left text-xs transition-colors"
-              :class="isPartial ? 'border-primary bg-primary/5 text-primary font-medium' : 'hover:bg-muted/50'"
+              :class="isPartial
+                ? 'border-primary bg-primary/10 text-foreground font-medium shadow-xs'
+                : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
               @click="selectPartial"
             >
               <div class="flex items-center gap-1.5">
-                <Icon name="lucide:split" class="size-3.5" />
-                <span>Partial / DP</span>
+                <Icon
+                  name="lucide:split"
+                  class="size-3.5"
+                  :class="isPartial ? 'text-foreground font-bold' : 'text-muted-foreground'"
+                />
+                <span :class="isPartial ? 'text-foreground font-semibold' : 'text-foreground/80'">Partial / DP</span>
               </div>
               <span class="text-[11px] text-muted-foreground font-normal">
                 Pay down payment
@@ -175,7 +187,7 @@ watch(() => props.open, (open) => {
         <!-- Partial Payment Configuration -->
         <div v-if="isPartial" class="space-y-3 rounded-lg border border-dashed p-3 bg-muted/10">
           <div class="flex items-center justify-between">
-            <Label class="text-xs font-medium">Quick DP Presets</Label>
+            <Label class="text-xs font-medium text-foreground">Quick DP Presets</Label>
             <div class="flex items-center gap-1">
               <Button
                 type="button"
@@ -229,7 +241,7 @@ watch(() => props.open, (open) => {
 
           <div class="flex items-center justify-between text-xs pt-1 border-t">
             <span class="text-muted-foreground">Remaining balance after payment:</span>
-            <span class="font-medium text-amber-600 dark:text-amber-400">
+            <span class="font-semibold text-foreground">
               {{ fmt(remainingAfterPay) }}
             </span>
           </div>
@@ -243,31 +255,49 @@ watch(() => props.open, (open) => {
               type="button"
               data-testid="folio-pay-method-cash"
               class="flex items-center justify-center gap-1.5 rounded-md border p-2 text-xs transition-colors"
-              :class="method === 'cash' ? 'border-primary bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'"
+              :class="method === 'cash'
+                ? 'border-primary bg-primary/10 text-foreground font-semibold shadow-xs'
+                : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
               @click="method = 'cash'"
             >
-              <Icon name="lucide:banknote" class="size-3.5" />
-              <span>Cash</span>
+              <Icon
+                name="lucide:banknote"
+                class="size-3.5"
+                :class="method === 'cash' ? 'text-foreground' : 'text-muted-foreground'"
+              />
+              <span class="text-foreground font-medium">Cash</span>
             </button>
             <button
               type="button"
               data-testid="folio-pay-method-card"
               class="flex items-center justify-center gap-1.5 rounded-md border p-2 text-xs transition-colors"
-              :class="method === 'card' ? 'border-primary bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'"
+              :class="method === 'card'
+                ? 'border-primary bg-primary/10 text-foreground font-semibold shadow-xs'
+                : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
               @click="method = 'card'"
             >
-              <Icon name="lucide:credit-card" class="size-3.5" />
-              <span>Card</span>
+              <Icon
+                name="lucide:credit-card"
+                class="size-3.5"
+                :class="method === 'card' ? 'text-foreground' : 'text-muted-foreground'"
+              />
+              <span class="text-foreground font-medium">Card</span>
             </button>
             <button
               type="button"
               data-testid="folio-pay-method-bank"
               class="flex items-center justify-center gap-1.5 rounded-md border p-2 text-xs transition-colors"
-              :class="method === 'bank_transfer' ? 'border-primary bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'"
+              :class="method === 'bank_transfer'
+                ? 'border-primary bg-primary/10 text-foreground font-semibold shadow-xs'
+                : 'border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
               @click="method = 'bank_transfer'"
             >
-              <Icon name="lucide:landmark" class="size-3.5" />
-              <span>Bank</span>
+              <Icon
+                name="lucide:landmark"
+                class="size-3.5"
+                :class="method === 'bank_transfer' ? 'text-foreground' : 'text-muted-foreground'"
+              />
+              <span class="text-foreground font-medium">Bank</span>
             </button>
           </div>
         </div>
