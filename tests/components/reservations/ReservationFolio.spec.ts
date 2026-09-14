@@ -354,7 +354,7 @@ describe('reservationFolioSection', () => {
     // 13.20 still due against 19.80 refundable nets to a 6.60 refund, the
     // same figure the old single-line summary showed, now stated as the
     // net of the two rows above rather than in place of them.
-    expect(wrapper.text()).toContain('Refund 6.60')
+    expect(wrapper.text()).toContain('Refund USD 6.60')
   })
 
   it('shows both rows for the mirror case: a large unpaid item and a smaller voided-paid one', async () => {

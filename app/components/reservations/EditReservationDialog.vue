@@ -20,6 +20,7 @@ const emit = defineEmits<{
 
 const { updateReservation } = useReservationsModule()
 const { createRequest } = usePaymentRequests()
+const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
 
 // Basic
 const checkIn = ref('')
@@ -62,6 +63,7 @@ const guestFirstName = ref('')
 const guestLastName = ref('')
 const phoneDialCode = ref('+62')
 const phoneNumber = ref('')
+const sendPaymentInbox = ref(false)
 const sendPaymentWhatsApp = ref(false)
 const guestEmail = ref('')
 const sendPaymentEmail = ref(false)
@@ -167,6 +169,7 @@ watch(() => props.open, (open) => {
     const matchedDial = dialCodes.find(code => r.guestPhone?.startsWith(code))
     phoneDialCode.value = matchedDial ?? '+62'
     phoneNumber.value = matchedDial ? r.guestPhone.slice(matchedDial.length).trim() : (r.guestPhone ?? '')
+    sendPaymentInbox.value = false
     sendPaymentWhatsApp.value = false
     guestEmail.value = r.guestEmail
     sendPaymentEmail.value = false
@@ -321,20 +324,30 @@ function save() {
   }
 
   const channels: string[] = []
-  if (!hasPaymentLink.value && (sendPaymentWhatsApp.value || sendPaymentEmail.value)) {
-    const request = createRequest({
+  if (sendPaymentInbox.value || (!hasPaymentLink.value && (sendPaymentWhatsApp.value || sendPaymentEmail.value))) {
+    const confirmation = sendBookingConfirmationWithPaymentLink({
+      reservationId: props.reservation.id,
       guestName,
       guestEmail: guestEmail.value.trim(),
       guestPhone: guestPhone || undefined,
       listingId: props.reservation.listingId,
-      title: `Reservation ${props.reservation.id}`,
-      amount: totalPrice.value,
+      listingName: props.reservation.listingName,
+      checkIn: checkIn.value,
+      checkOut: checkOut.value,
+      nights: computedNights.value,
+      guestCount: guestCount.value,
+      totalPrice: totalPrice.value,
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
+      channel: props.reservation.channel || 'Direct',
+      paymentRequestId: props.reservation.paymentRequestId,
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
       expiresInHours: status.value === 'inquiry' ? inquiryExpiryHours.value : 24,
     })
-    patch.paymentRequestId = request.id
+    patch.paymentRequestId = confirmation.paymentRequestId
+
+    if (sendPaymentInbox.value)
+      channels.push('Guest Inbox')
     if (sendPaymentWhatsApp.value)
       channels.push('WhatsApp')
     if (sendPaymentEmail.value)
@@ -344,7 +357,7 @@ function save() {
   updateReservation(props.reservation.id, patch)
   toast.success('Reservation updated')
   if (channels.length)
-    toast.info(`Payment link sent via ${channels.join(' and ')} (mock)`)
+    toast.info(`Booking confirmation & payment link sent to ${channels.join(' and ')}`)
   attempted.value = false
   emit('update:open', false)
   emit('saved')
@@ -620,6 +633,25 @@ function categoryLabel(category: string): string {
                     <span class="text-sm" :class="hasPaymentLink || !guestEmail.trim() ? 'text-muted-foreground' : ''">
                       Send payment link via Email
                     </span>
+                  </div>
+                </div>
+
+                <div class="space-y-2 sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div class="flex items-start gap-2.5">
+                    <Checkbox
+                      :model-value="sendPaymentInbox"
+                      class="mt-0.5"
+                      @update:model-value="sendPaymentInbox = !!$event"
+                    />
+                    <div class="space-y-0.5">
+                      <Label class="text-sm font-semibold cursor-pointer flex items-center gap-1.5" @click="sendPaymentInbox = !sendPaymentInbox">
+                        <Icon name="lucide:message-square" class="size-4 text-primary" />
+                        Send / Resend confirmation & payment link to Guest Inbox
+                      </Label>
+                      <p class="text-xs text-muted-foreground leading-relaxed">
+                        Dispatches the booking confirmation message and payment link directly into the guest's inbox conversation.
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div class="space-y-2 sm:col-span-2">

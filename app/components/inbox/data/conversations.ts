@@ -126,6 +126,18 @@ export interface UpsellOffer {
   status: 'pending' | 'accepted' | 'declined' | 'withdrawn'
 }
 
+export interface MessagePaymentRequest {
+  id: string
+  title: string
+  amount: number
+  currency: string
+  feeAmount?: number
+  totalAmount: number
+  status: 'pending' | 'paid' | 'expired' | 'cancelled'
+  paymentLink: string
+  expiresAt: string
+}
+
 export interface Message {
   id: string
   conversationId: string
@@ -143,6 +155,7 @@ export interface Message {
   toAddress?: string
   messageId?: string
   upsellOffer?: UpsellOffer
+  paymentRequest?: MessagePaymentRequest
   translatedContent?: string
   mediaUrl?: string
   mediaDims?: string

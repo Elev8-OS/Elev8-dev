@@ -32,6 +32,10 @@ const emit = defineEmits<{
 
 const { reservations, updateReservationStatus } = useReservationsModule()
 const { orders: upsellOrders } = useUpsellOrders()
+const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
+const { requests } = usePaymentRequests()
+const { conversations, selectedConversationId } = useInbox()
+const router = useRouter()
 
 // Resolve the reservation from live state so status edits reflect immediately
 const reservation = computed<ReservationEntry | null>(() => {
@@ -39,6 +43,50 @@ const reservation = computed<ReservationEntry | null>(() => {
     return null
   return reservations.value.find(r => r.id === props.reservation!.id) ?? props.reservation
 })
+
+const linkedPaymentRequest = computed(() => {
+  if (!reservation.value?.paymentRequestId)
+    return null
+  return requests.value.find(r => r.id === reservation.value?.paymentRequestId) ?? null
+})
+
+const linkedConversation = computed(() => {
+  if (!reservation.value)
+    return null
+  return conversations.value.find(c => c.reservationId === reservation.value?.id)
+    ?? (reservation.value.guestEmail ? conversations.value.find(c => c.guestEmail?.toLowerCase() === reservation.value?.guestEmail.toLowerCase()) : null)
+})
+
+function handleOpenInInbox() {
+  if (linkedConversation.value) {
+    selectedConversationId.value = linkedConversation.value.id
+  }
+  emit('update:open', false)
+  router.push('/inbox')
+}
+
+function handleSendOrResendPaymentToInbox() {
+  if (!reservation.value)
+    return
+  const res = reservation.value
+  sendBookingConfirmationWithPaymentLink({
+    reservationId: res.id,
+    guestName: res.guestName,
+    guestEmail: res.guestEmail,
+    guestPhone: res.guestPhone,
+    listingId: res.listingId,
+    listingName: res.listingName,
+    checkIn: res.checkIn,
+    checkOut: res.checkOut,
+    nights: res.nights,
+    guestCount: res.guestCount,
+    totalPrice: res.totalPrice,
+    currency: res.currency,
+    channel: res.channel,
+    paymentRequestId: res.paymentRequestId,
+  })
+  toast.success('Confirmation & payment link sent to guest inbox!')
+}
 
 // Upsell orders purchased for this reservation
 const reservationUpsells = computed(() => {
@@ -495,6 +543,42 @@ function fmtDob(iso: string): string {
                 <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
                   <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
                   {{ reservation.guestNotes }}
+                </div>
+
+                <!-- Guest Inbox & Payment Status Card -->
+                <div class="mt-3 rounded-lg border border-border/70 bg-muted/20 p-3 space-y-2">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                      <Icon name="lucide:message-square" class="size-3.5 text-primary" />
+                      Guest Inbox & Payment
+                    </div>
+                    <Badge v-if="linkedPaymentRequest" variant="outline" class="text-[10px] capitalize gap-1" :class="linkedPaymentRequest.status === 'paid' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-amber-500/10 text-amber-700 border-amber-500/30'">
+                      <Icon :name="linkedPaymentRequest.status === 'paid' ? 'lucide:check-circle' : 'lucide:clock'" class="size-2.5" />
+                      {{ linkedPaymentRequest.status === 'paid' ? 'Paid' : 'Payment Link Active' }}
+                    </Badge>
+                  </div>
+
+                  <div class="flex items-center gap-2 pt-1">
+                    <Button
+                      v-if="linkedConversation"
+                      variant="outline"
+                      size="sm"
+                      class="h-7 text-xs flex-1 gap-1"
+                      @click="handleOpenInInbox"
+                    >
+                      <Icon name="lucide:external-link" class="size-3" />
+                      View in Inbox
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="h-7 text-xs flex-1 gap-1"
+                      @click="handleSendOrResendPaymentToInbox"
+                    >
+                      <Icon name="lucide:send" class="size-3" />
+                      {{ linkedPaymentRequest ? 'Resend to Inbox' : 'Send to Inbox' }}
+                    </Button>
+                  </div>
                 </div>
               </div>
 

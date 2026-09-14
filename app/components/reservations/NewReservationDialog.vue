@@ -16,6 +16,7 @@ const emit = defineEmits<{
 
 const { createReservation, updateReservation, reservations, guests } = useReservationsModule()
 const { createRequest } = usePaymentRequests()
+const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
 
 interface GuestSearchOption {
   id: string
@@ -144,6 +145,7 @@ const guestFirstName = ref('')
 const guestLastName = ref('')
 const phoneDialCode = ref('+62')
 const phoneNumber = ref('')
+const sendPaymentInbox = ref(true)
 const sendPaymentWhatsApp = ref(false)
 const guestEmail = ref('')
 const sendPaymentEmail = ref(false)
@@ -301,6 +303,7 @@ function reset() {
   guestLastName.value = ''
   phoneDialCode.value = '+62'
   phoneNumber.value = ''
+  sendPaymentInbox.value = true
   sendPaymentWhatsApp.value = false
   guestEmail.value = ''
   sendPaymentEmail.value = false
@@ -371,26 +374,34 @@ function handleSubmit() {
     paymentCustomFeePct: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
     charges: charges.value.length ? charges.value : undefined,
   })
-  if (!result.success) {
+  if (!result.success || !result.id) {
     toast.error('Please fill in all required fields.')
     return
   }
 
   const channels: string[] = []
-  if ((sendPaymentWhatsApp.value || sendPaymentEmail.value) && result.id) {
-    const request = createRequest({
+  if (sendPaymentInbox.value || sendPaymentWhatsApp.value || sendPaymentEmail.value) {
+    const confirmation = sendBookingConfirmationWithPaymentLink({
+      reservationId: result.id,
       guestName,
       guestEmail: guestEmail.value.trim(),
       guestPhone: guestPhone || undefined,
       listingId: listingId.value,
-      title: `Reservation ${result.id}`,
-      amount: totalPrice.value,
+      listingName: selectedListing.value?.name ?? listingId.value,
+      checkIn: checkIn.value,
+      checkOut: checkOut.value,
+      nights: computedNights.value,
+      guestCount: guestCount.value,
+      totalPrice: totalPrice.value,
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
+      channel: 'Direct',
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
       expiresInHours: status.value === 'inquiry' ? inquiryExpiryHours.value : 24,
     })
-    updateReservation(result.id, { paymentRequestId: request.id })
+
+    if (sendPaymentInbox.value)
+      channels.push('Guest Inbox')
     if (sendPaymentWhatsApp.value)
       channels.push('WhatsApp')
     if (sendPaymentEmail.value)
@@ -399,7 +410,7 @@ function handleSubmit() {
 
   toast.success('Reservation created')
   if (channels.length)
-    toast.info(`Payment link sent via ${channels.join(' and ')} (mock)`)
+    toast.info(`Booking confirmation & payment link sent to ${channels.join(' and ')}`)
   reset()
   emit('update:open', false)
 }
@@ -739,6 +750,25 @@ watch(() => props.open, (open) => {
                     <span class="text-sm" :class="!guestEmail.trim() ? 'text-muted-foreground' : ''">
                       Send payment link via Email
                     </span>
+                  </div>
+                </div>
+
+                <div class="space-y-2 sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div class="flex items-start gap-2.5">
+                    <Checkbox
+                      :model-value="sendPaymentInbox"
+                      class="mt-0.5"
+                      @update:model-value="sendPaymentInbox = !!$event"
+                    />
+                    <div class="space-y-0.5">
+                      <Label class="text-sm font-semibold cursor-pointer flex items-center gap-1.5" @click="sendPaymentInbox = !sendPaymentInbox">
+                        <Icon name="lucide:message-square" class="size-4 text-primary" />
+                        Send confirmation & payment link to Guest Inbox
+                      </Label>
+                      <p class="text-xs text-muted-foreground leading-relaxed">
+                        Immediately dispatches an automated booking confirmation and secure payment link directly into the guest's inbox conversation.
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div class="space-y-2 sm:col-span-2">

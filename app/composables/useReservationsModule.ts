@@ -149,7 +149,7 @@ export function useReservationsModule() {
       name: draft.guestName.trim(),
       email: draft.guestEmail.trim(),
       phone: draft.guestPhone.trim(),
-      language: draft.guestLanguage.trim() || 'English',
+      language: draft.guestLanguage?.trim() || 'English',
       notes: draft.guestNotes?.trim() ?? '',
       previousStays: 0,
       tags: [],
