@@ -275,6 +275,23 @@ function editGuest(index: number) {
 function fmtDob(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
+
+const { guides: guestGuides } = useGuestGuides()
+const { findByReservation: findGuestGuideLink } = useGuestGuideLinks()
+
+const guestGuideRoute = computed(() => {
+  if (!reservation.value)
+    return '/guest-guides'
+  const link = findGuestGuideLink(reservation.value.id)
+  if (link)
+    return `/guest-guides/${link.guideId}`
+  if (reservation.value.guestGuideId)
+    return `/guest-guides/${reservation.value.guestGuideId}`
+  const assignedGuide = guestGuides.value.find(g => g.assignedListingIds?.includes(reservation.value!.listingId))
+  if (assignedGuide)
+    return `/guest-guides/${assignedGuide.id}`
+  return '/guest-guides'
+})
 </script>
 
 <template>
@@ -871,15 +888,11 @@ function fmtDob(iso: string): string {
                 </Accordion>
 
                 <!-- Actions -->
-                <div class="flex gap-2 px-5 py-4">
-                  <Button variant="outline" size="sm" class="flex-1 gap-1.5" @click="emit('openGuest', reservation.guestId)">
-                    <Icon name="lucide:user-round" class="size-3.5" />
-                    Guest profile
-                  </Button>
-                  <Button variant="outline" size="sm" class="flex-1 gap-1.5" as-child>
-                    <NuxtLink :to="`/listings/${reservation.listingId}`">
-                      <Icon name="lucide:building-2" class="size-3.5" />
-                      View listing
+                <div class="px-5 py-4">
+                  <Button variant="outline" size="sm" class="w-full gap-1.5" as-child>
+                    <NuxtLink :to="guestGuideRoute">
+                      <Icon name="lucide:book-open" class="size-3.5" />
+                      View guest guide
                     </NuxtLink>
                   </Button>
                 </div>
