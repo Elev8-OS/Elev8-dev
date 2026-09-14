@@ -327,7 +327,19 @@ function fmtDob(iso: string): string {
                 </div>
                 <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
                   <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
-                  {{ reservation.guestNotes }}
+                  <span class="leading-relaxed">{{ reservation.guestNotes }}</span>
+                </div>
+
+                <div v-if="reservation.bookingNote" class="mt-2.5 border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                  <p v-if="reservation.bookingNote.includes('PRE-PAID')" class="font-semibold tracking-wide">
+                    ** THIS RESERVATION HAS BEEN PRE-PAID **
+                  </p>
+                  <p v-else class="font-semibold tracking-wide">
+                    Booking Note
+                  </p>
+                  <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
+                    {{ bookingNoteBody }}
+                  </p>
                 </div>
               </div>
 
@@ -746,18 +758,6 @@ function fmtDob(iso: string): string {
                       11:00 AM
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <!-- Booking note (below dates) -->
-              <div v-if="reservation.bookingNote" class="border-b px-5 py-4">
-                <div class="border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                  <p class="font-semibold tracking-wide">
-                    ** THIS RESERVATION HAS BEEN PRE-PAID **
-                  </p>
-                  <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
-                    {{ bookingNoteBody }}
-                  </p>
                 </div>
               </div>
 
