@@ -1,3 +1,4 @@
+import type { ListingCleaningConfig } from '~/components/reservations/data/cleaning-schedule'
 import { computed, ref } from 'vue'
 
 export type OverrideAudience = 'future' | 'current' | 'inquiry'
@@ -177,6 +178,7 @@ export interface MaintenanceTask {
 
 export interface ListingMaintenance {
   cleaningSchedule: Array<{ task: string, frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' }>
+  defaultCleaningSchedule?: ListingCleaningConfig
   tasks: MaintenanceTask[]
 }
 
@@ -731,6 +733,12 @@ export const listings = ref<Listing[]>([
         { task: 'Deep clean', frequency: 'biweekly' },
         { task: 'AC filter replacement', frequency: 'monthly' },
       ],
+      defaultCleaningSchedule: {
+        type: 'daily',
+        startOffset: 'check_in',
+        time: '11:00',
+        assigneeId: 'staff-3',
+      },
       tasks: [
         { id: 'mt-1', title: 'Fix leaking faucet - Master bathroom', date: '2026-06-03', assignedTo: 'Wayan Adi', status: 'pending', type: 'repair' },
         { id: 'mt-2', title: 'Pre-arrival deep clean', date: '2026-06-04', assignedTo: 'Made Surya', status: 'in_progress', type: 'cleaning' },
@@ -785,7 +793,16 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: {
+      cleaningSchedule: [],
+      defaultCleaningSchedule: {
+        type: 'checkout',
+        startOffset: 'check_in',
+        time: '11:00',
+        assigneeId: 'staff-3',
+      },
+      tasks: [],
+    },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -813,7 +830,20 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: {
+      cleaningSchedule: [],
+      defaultCleaningSchedule: {
+        type: 'custom',
+        startOffset: 'day_after_check_in',
+        time: '11:00',
+        assigneeId: 'staff-4',
+        custom: {
+          frequency: 'day',
+          dayInterval: 2,
+        },
+      },
+      tasks: [],
+    },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -841,7 +871,20 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: {
+      cleaningSchedule: [],
+      defaultCleaningSchedule: {
+        type: 'custom',
+        startOffset: 'check_in',
+        time: '11:00',
+        assigneeId: 'staff-3',
+        custom: {
+          frequency: 'week',
+          weekDays: ['monday', 'thursday', 'friday'],
+        },
+      },
+      tasks: [],
+    },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {

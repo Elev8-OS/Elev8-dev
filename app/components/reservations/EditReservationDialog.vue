@@ -4,6 +4,7 @@ import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalize
 import { toast } from 'vue-sonner'
 import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
+import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{

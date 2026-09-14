@@ -1,5 +1,9 @@
 import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
+import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
+import { listings } from '~/components/listings/data/listings'
+import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import { generateGuestId, generateReservationId, initialGuests, initialReservations } from '~/components/reservations/data/reservations'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
 
 export interface ReservationFilters {
   search: string
@@ -182,14 +186,39 @@ export function useReservationsModule() {
     const isCalendarBlock = status === 'blocked' || status === 'owner_request'
 
     const id = generateReservationId()
+
+    let cleaningSchedule = (draft as any).cleaningSchedule
+    if (!cleaningSchedule && !isCalendarBlock && draft.listingId) {
+      const listing = listings.value.find(l => l.id === draft.listingId)
+      if (listing?.maintenance?.defaultCleaningSchedule) {
+        cleaningSchedule = resolveDefaultCleaningSchedule(listing.maintenance.defaultCleaningSchedule, draft.checkIn)
+      }
+    }
+
     const entry: ReservationEntry = {
       ...draft,
       id,
       guestId: isCalendarBlock ? (draft.guestId?.trim() ?? '') : resolveGuestId(draft),
       status,
       activity: [],
+      ...(cleaningSchedule ? { cleaningSchedule } : {}),
     }
     reservations.value = [entry, ...reservations.value]
+
+    if (cleaningSchedule && !isCalendarBlock) {
+      try {
+        const jobInputs = generateCleaningJobsForReservation({
+          reservation: entry,
+          schedule: cleaningSchedule,
+          cleaners: cleanerOptions,
+        })
+        useCleaningJobs().applyReservationSchedule(id, jobInputs)
+      }
+      catch {
+        // Safe for headless / test environments
+      }
+    }
+
     return { success: true, id }
   }
 

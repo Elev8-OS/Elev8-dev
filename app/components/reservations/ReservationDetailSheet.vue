@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
 import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
-import { cleanerOptions, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
+import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
+import { Button } from '~/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
+import { useGuestRegistration } from '~/composables/useGuestRegistration'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useSmartLock } from '~/composables/useSmartLock'
+import { useUpsellOrders } from '~/composables/useUpsellOrders'
 
 const props = defineProps<{
   reservation: ReservationEntry | null
@@ -25,11 +31,6 @@ const emit = defineEmits<{
 
 const { reservations, updateReservationStatus } = useReservationsModule()
 const { orders: upsellOrders } = useUpsellOrders()
-const { jobs: cleaningJobs, createJob, deleteJob, isPlanned, releaseDueDrafts } = useCleaningJobs()
-
-// Planned-ahead cleanings become real housekeeping work once their release
-// moment passes. There is no scheduler in this app, so catch up on mount.
-onMounted(() => releaseDueDrafts())
 
 // Resolve the reservation from live state so status edits reflect immediately
 const reservation = computed<ReservationEntry | null>(() => {
@@ -247,996 +248,738 @@ function editGuest(index: number) {
 function fmtDob(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
-
-// --- Housekeeping schedule ---
-const housekeepingJobs = computed(() => {
-  const r = reservation.value
-  if (!r)
-    return []
-  return cleaningJobs.value
-    .filter(job => job.listingId === r.listingId && (job.reservationId === r.id || !job.reservationId))
-    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-})
-
-const nextCleaning = computed(() => {
-  const now = new Date().toISOString()
-  return housekeepingJobs.value.find(job => job.scheduledAt >= now && !['done', 'cancelled', 'missed'].includes(job.status))
-    ?? housekeepingJobs.value.find(job => job.scheduledAt >= now)
-    ?? null
-})
-
-const addCleaningOpen = ref(false)
-const newCleaningDate = ref('')
-const newCleaningTime = ref('11:00')
-/**
- * reka-ui throws if a <SelectItem> carries an empty string, since "" is
- * reserved for clearing the Select. So "no assignee" needs its own sentinel.
- */
-const UNASSIGNED = 'unassigned'
-const newCleaningAssignee = ref<string>(UNASSIGNED)
-const newCleaningPlanOnly = ref(false)
-
-/** Same offset every other cleaning-job creation path writes. */
-const CLEANING_TZ_OFFSET = '+08:00'
-
-function buildCleaningScheduledAt(date: string, time: string) {
-  return `${date}T${time || '11:00'}:00${CLEANING_TZ_OFFSET}`
-}
-
-function isFutureCleaningDate(date: string) {
-  if (!date)
-    return false
-  const today = new Date()
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  return date > todayIso
-}
-
-/** Plan-only is only meaningful while the cleaning is still ahead of us. */
-const canPlanAhead = computed(() => isFutureCleaningDate(newCleaningDate.value))
-
-const planOnlyActive = computed(() => newCleaningPlanOnly.value && canPlanAhead.value)
-
-const plannedReleaseLabel = computed(() => {
-  if (!planOnlyActive.value)
-    return ''
-  return new Date(`${newCleaningDate.value}T00:00:00${CLEANING_TZ_OFFSET}`)
-    .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-})
-
-function openAddCleaning() {
-  newCleaningDate.value = reservation.value?.checkOut?.slice(0, 10) ?? ''
-  newCleaningTime.value = '11:00'
-  newCleaningAssignee.value = UNASSIGNED
-  newCleaningPlanOnly.value = false
-  addCleaningOpen.value = true
-}
-
-function addCleaning() {
-  const r = reservation.value
-  if (!r || !newCleaningDate.value)
-    return
-  const assignee = cleanerOptions.find(c => c.id === newCleaningAssignee.value)
-  const planned = planOnlyActive.value
-  createJob({
-    listingId: r.listingId,
-    listingName: r.listingName,
-    scheduledAt: buildCleaningScheduledAt(newCleaningDate.value, newCleaningTime.value),
-    cleanerIds: assignee ? [assignee.id] : [],
-    cleanerNames: assignee ? [assignee.name] : [],
-    teamName: 'Housekeeping',
-    status: planned ? 'draft' : 'scheduled',
-    priority: 'normal',
-    durationMinutes: 180,
-    notes: `Cleaning for reservation ${r.id}`,
-    source: 'custom',
-    reservationId: r.id,
-    recurrence: null,
-    releaseAt: planned ? `${newCleaningDate.value}T00:00:00${CLEANING_TZ_OFFSET}` : null,
-  })
-  toast.success(planned ? `Cleaning planned — releases ${plannedReleaseLabel.value}` : 'Cleaning scheduled')
-  addCleaningOpen.value = false
-}
-
-function removeCleaning(jobId: string) {
-  deleteJob(jobId)
-  toast.info('Cleaning removed')
-}
-
-function fmtCleaningDate(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-function fmtReleaseDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function cleaningStatusLabel(job: CleaningJob): string {
-  if (isPlanned(job))
-    return 'Planned'
-  return cleaningJobStatusLabels[job.status] ?? job.status
-}
 </script>
 
 <template>
-  <Sheet :open="open" @update:open="emit('update:open', $event)">
-    <SheetContent class="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md" side="right">
-      <template v-if="reservation">
-        <ScrollArea class="h-full min-h-0 flex-1">
-          <div class="flex flex-col">
-            <!-- Header: status dropdown + channel + listing name -->
-            <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
-              <div class="min-w-0">
-                <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-base font-semibold leading-tight">
-                  {{ reservation.listingName }}
-                </NuxtLink>
-                <div class="mt-2">
-                  <Select :model-value="reservation.status" @update:model-value="onStatusChange">
-                    <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
-                      <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-                        <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
-                        {{ reservationStatusLabels[reservation.status] }}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent class="min-w-[200px]">
-                      <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
-                        <span class="flex items-center gap-2 whitespace-nowrap">
-                          <ReservationStatusBadge :status="opt.value as ReservationStatus" />
-                          <span class="ml-1">{{ opt.label }}</span>
+  <div>
+    <Sheet :open="open" @update:open="emit('update:open', $event)">
+      <SheetContent class="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md" side="right">
+        <template v-if="reservation">
+          <ScrollArea class="h-full min-h-0 flex-1">
+            <div class="flex flex-col">
+              <!-- Header: status dropdown + channel + listing name -->
+              <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
+                <div class="min-w-0">
+                  <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-base font-semibold leading-tight">
+                    {{ reservation.listingName }}
+                  </NuxtLink>
+                  <div class="mt-2">
+                    <Select :model-value="reservation.status" @update:model-value="onStatusChange">
+                      <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
+                        <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                          <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
+                          {{ reservationStatusLabels[reservation.status] }}
                         </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div class="flex shrink-0 items-center gap-2">
-                <Button variant="outline" size="sm" class="h-8 w-8 p-0" title="Edit reservation" @click="editOpen = true">
-                  <Icon name="lucide:pencil" class="size-3.5" />
-                  <span class="sr-only">Edit</span>
-                </Button>
-                <div class="flex size-9 items-center justify-center border bg-muted/40">
-                  <Icon :name="channelIcon(reservation.channel)" class="size-4" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Reservation id + price (expandable) -->
-            <Accordion type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="price" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 hover:no-underline">
-                  <span class="flex w-full items-center justify-between gap-3">
-                    <span class="min-w-0 text-left">
-                      <span class="block text-xs text-muted-foreground">
-                        Reservation
-                      </span>
-                      <span class="block font-mono text-sm font-semibold">
-                        {{ reservation.id }}
-                      </span>
-                    </span>
-                    <span class="text-right">
-                      <span class="block text-xs text-muted-foreground">
-                        {{ priceView === 'guest' ? 'Guest paid' : 'Payout' }}
-                      </span>
-                      <span class="block text-xl font-bold">
-                        {{ priceView === 'guest'
-                          ? fmtCurrency(reservation.priceDetails?.guestPaid ?? reservation.totalPrice, reservation.currency)
-                          : fmtCurrency(reservation.priceDetails?.payout ?? reservation.totalPrice, reservation.currency) }}
-                      </span>
-                    </span>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <!-- View toggle -->
-                  <div v-if="reservation.priceDetails" class="mb-3 flex rounded-md border bg-muted/40 p-0.5">
-                    <button
-                      type="button"
-                      class="flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors"
-                      :class="priceView === 'guest' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                      @click="priceView = 'guest'"
-                    >
-                      Guest paid
-                    </button>
-                    <button
-                      type="button"
-                      class="flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors"
-                      :class="priceView === 'payout' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                      @click="priceView = 'payout'"
-                    >
-                      Payout
-                    </button>
-                  </div>
-
-                  <!-- Price breakdown -->
-                  <template v-if="reservation.priceDetails">
-                    <div class="space-y-1.5 text-sm">
-                      <div class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Subtotal ({{ reservation.nights }} nights)</span>
-                        <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.subtotal, reservation.currency) }}</span>
-                      </div>
-                      <div v-if="reservation.priceDetails.cleaningFee" class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Cleaning fee</span>
-                        <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.cleaningFee, reservation.currency) }}</span>
-                      </div>
-                      <div v-if="reservation.priceDetails.serviceFee" class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Service fee</span>
-                        <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.serviceFee, reservation.currency) }}</span>
-                      </div>
-                      <div v-if="reservation.priceDetails.tax" class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Tax</span>
-                        <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.tax, reservation.currency) }}</span>
-                      </div>
-                      <div v-if="reservation.priceDetails.extras" class="flex items-center justify-between">
-                        <span class="text-muted-foreground">Extras</span>
-                        <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.extras, reservation.currency) }}</span>
-                      </div>
-                      <Separator class="my-1.5" />
-                      <!-- Guest paid view -->
-                      <template v-if="priceView === 'guest'">
-                        <div class="flex items-center justify-between font-medium">
-                          <span>Guest paid</span>
-                          <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
-                        </div>
-                      </template>
-                      <!-- Payout view -->
-                      <template v-else>
-                        <div class="flex items-center justify-between text-muted-foreground">
-                          <span>Guest paid</span>
-                          <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
-                        </div>
-                        <div class="flex items-center justify-between text-muted-foreground">
-                          <span class="flex items-center gap-1.5">
-                            <Icon name="lucide:percent" class="size-3" />
-                            Commission ({{ reservation.channel }})
+                      </SelectTrigger>
+                      <SelectContent class="min-w-[200px]">
+                        <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
+                          <span class="flex items-center gap-2 whitespace-nowrap">
+                            <ReservationStatusBadge :status="opt.value as ReservationStatus" />
+                            <span class="ml-1">{{ opt.label }}</span>
                           </span>
-                          <span>− {{ fmtCurrency(reservation.priceDetails.commission, reservation.currency) }}</span>
-                        </div>
-                        <div class="flex items-center justify-between rounded-md bg-green-500/10 px-2 py-1.5 font-semibold text-green-700 dark:text-green-400">
-                          <span>Payout</span>
-                          <span>{{ fmtCurrency(reservation.priceDetails.payout, reservation.currency) }}</span>
-                        </div>
-                      </template>
-                    </div>
-                  </template>
-                  <p v-else class="text-sm text-muted-foreground">
-                    {{ fmtCurrency(reservation.totalPrice, reservation.currency) }}
-                  </p>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <!-- Rooms (multi-room booking) -->
-            <Accordion v-if="reservation.rooms?.length" type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="rooms" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:door-open" class="size-4" />
-                    Rooms
-                    <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ reservation.rooms.length }}
-                    </Badge>
-                    <Badge v-if="reservation.bookingMode === 'entire_property'" variant="outline" class="h-4 px-1 text-[9px]">
-                      Entire property
-                    </Badge>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <div class="space-y-2">
-                    <div
-                      v-for="room in reservation.rooms"
-                      :key="room.id"
-                      class="rounded-md border bg-muted/20 px-3 py-2"
-                    >
-                      <div class="flex items-center justify-between gap-2">
-                        <div class="min-w-0">
-                          <p class="text-sm font-medium">
-                            {{ room.unitName }}
-                          </p>
-                          <p class="text-xs text-muted-foreground">
-                            {{ room.rateLabel }}
-                            <template v-if="room.guestNames">
-                              · {{ room.guestNames }}
-                            </template>
-                          </p>
-                        </div>
-                        <span class="shrink-0 text-sm font-medium">
-                          {{ fmtCurrency(room.lineTotal, reservation.currency) }}
-                        </span>
-                      </div>
-                      <div class="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{{ fmtCurrency(room.pricePerNight, reservation.currency) }} × {{ reservation.nights }} nights</span>
-                      </div>
-                    </div>
-                    <div v-if="reservation.paymentFeeMode && reservation.paymentFeeMode !== 'no_fee'" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
-                      <span class="text-muted-foreground">Payment charge</span>
-                      <span class="font-medium">
-                        {{ reservation.paymentFeeMode === 'card' ? 'Card (+3%)' : `Custom (${reservation.paymentCustomFeePct}%)` }}
-                      </span>
-                    </div>
-                    <div v-for="charge in reservation.charges" :key="charge.id" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
-                      <span class="text-muted-foreground">{{ charge.label }}</span>
-                      <span class="font-medium">{{ fmtCurrency(charge.amount, reservation.currency) }}</span>
-                    </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <!-- Charges & extras (staff-posted folio) -->
-            <ReservationFolioSection :reservation="reservation" />
-
-            <!-- Guest -->
-            <div class="border-b px-5 py-4">
-              <div class="flex items-center gap-3">
-                <BasePersonAvatar :name="reservation.guestName" class="size-11" text-class="text-sm" />
-                <div class="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    class="block text-left hover:underline"
-                    @click="emit('openGuest', reservation.guestId)"
-                  >
-                    <span class="font-semibold">{{ reservation.guestName }}</span>
-                  </button>
-                  <p v-if="reservation.contactType === 'business' && reservation.companyName" class="flex items-center gap-1.5 text-xs font-medium truncate">
-                    <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
-                    {{ reservation.companyName }}<span v-if="reservation.companyVatId" class="text-muted-foreground font-normal">· {{ reservation.companyVatId }}</span>
-                  </p>
-                  <p class="text-xs text-muted-foreground truncate">
-                    {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
-                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <Button variant="outline" size="sm" class="h-8 w-8 p-0" title="Edit reservation" @click="editOpen = true">
+                    <Icon name="lucide:pencil" class="size-3.5" />
+                    <span class="sr-only">Edit</span>
+                  </Button>
+                  <div class="flex size-9 items-center justify-center border bg-muted/40">
+                    <Icon :name="channelIcon(reservation.channel)" class="size-4" />
+                  </div>
                 </div>
               </div>
-              <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span class="flex items-center gap-1.5">
-                  <Icon name="lucide:users" class="size-3.5" />
-                  {{ partyBreakdown }}
-                </span>
-                <span class="flex items-center gap-1.5">
-                  <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
-                  {{ reservation.channel }}
-                </span>
-              </div>
-              <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
-                <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
-                {{ reservation.guestNotes }}
-              </div>
-            </div>
 
-            <!-- Guests group (occupants) + identity & documents -->
-            <Accordion v-if="reservation.guests?.length" type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="guests" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:users" class="size-4" />
-                    Guests
-                    <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ verifiedCount }}/{{ reservation.guests.length }} verified
-                    </Badge>
+              <!-- Reservation id + price (expandable) -->
+              <Accordion type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="price" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 hover:no-underline">
+                    <span class="flex w-full items-center justify-between gap-3">
+                      <span class="min-w-0 text-left">
+                        <span class="block text-xs text-muted-foreground">
+                          Reservation
+                        </span>
+                        <span class="block font-mono text-sm font-semibold">
+                          {{ reservation.id }}
+                        </span>
+                      </span>
+                      <span class="text-right">
+                        <span class="block text-xs text-muted-foreground">
+                          {{ priceView === 'guest' ? 'Guest paid' : 'Payout' }}
+                        </span>
+                        <span class="block text-xl font-bold">
+                          {{ priceView === 'guest'
+                            ? fmtCurrency(reservation.priceDetails?.guestPaid ?? reservation.totalPrice, reservation.currency)
+                            : fmtCurrency(reservation.priceDetails?.payout ?? reservation.totalPrice, reservation.currency) }}
+                        </span>
+                      </span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <!-- View toggle -->
+                    <div v-if="reservation.priceDetails" class="mb-3 flex rounded-md border bg-muted/40 p-0.5">
+                      <button
+                        type="button"
+                        class="flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors"
+                        :class="priceView === 'guest' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                        @click="priceView = 'guest'"
+                      >
+                        Guest paid
+                      </button>
+                      <button
+                        type="button"
+                        class="flex-1 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors"
+                        :class="priceView === 'payout' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                        @click="priceView = 'payout'"
+                      >
+                        Payout
+                      </button>
+                    </div>
+
+                    <!-- Price breakdown -->
+                    <template v-if="reservation.priceDetails">
+                      <div class="space-y-1.5 text-sm">
+                        <div class="flex items-center justify-between">
+                          <span class="text-muted-foreground">Subtotal ({{ reservation.nights }} nights)</span>
+                          <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.subtotal, reservation.currency) }}</span>
+                        </div>
+                        <div v-if="reservation.priceDetails.cleaningFee" class="flex items-center justify-between">
+                          <span class="text-muted-foreground">Cleaning fee</span>
+                          <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.cleaningFee, reservation.currency) }}</span>
+                        </div>
+                        <div v-if="reservation.priceDetails.serviceFee" class="flex items-center justify-between">
+                          <span class="text-muted-foreground">Service fee</span>
+                          <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.serviceFee, reservation.currency) }}</span>
+                        </div>
+                        <div v-if="reservation.priceDetails.tax" class="flex items-center justify-between">
+                          <span class="text-muted-foreground">Tax</span>
+                          <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.tax, reservation.currency) }}</span>
+                        </div>
+                        <div v-if="reservation.priceDetails.extras" class="flex items-center justify-between">
+                          <span class="text-muted-foreground">Extras</span>
+                          <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.extras, reservation.currency) }}</span>
+                        </div>
+                        <Separator class="my-1.5" />
+                        <!-- Guest paid view -->
+                        <template v-if="priceView === 'guest'">
+                          <div class="flex items-center justify-between font-medium">
+                            <span>Guest paid</span>
+                            <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
+                          </div>
+                        </template>
+                        <!-- Payout view -->
+                        <template v-else>
+                          <div class="flex items-center justify-between text-muted-foreground">
+                            <span>Guest paid</span>
+                            <span>{{ fmtCurrency(reservation.priceDetails.guestPaid, reservation.currency) }}</span>
+                          </div>
+                          <div class="flex items-center justify-between text-muted-foreground">
+                            <span class="flex items-center gap-1.5">
+                              <Icon name="lucide:percent" class="size-3" />
+                              Commission ({{ reservation.channel }})
+                            </span>
+                            <span>− {{ fmtCurrency(reservation.priceDetails.commission, reservation.currency) }}</span>
+                          </div>
+                          <div class="flex items-center justify-between rounded-md bg-green-500/10 px-2 py-1.5 font-semibold text-green-700 dark:text-green-400">
+                            <span>Payout</span>
+                            <span>{{ fmtCurrency(reservation.priceDetails.payout, reservation.currency) }}</span>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <p v-else class="text-sm text-muted-foreground">
+                      {{ fmtCurrency(reservation.totalPrice, reservation.currency) }}
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <!-- Rooms (multi-room booking) -->
+              <Accordion v-if="reservation.rooms?.length" type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="rooms" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                    <span class="flex items-center gap-2">
+                      <Icon name="lucide:door-open" class="size-4" />
+                      Rooms
+                      <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                        {{ reservation.rooms.length }}
+                      </Badge>
+                      <Badge v-if="reservation.bookingMode === 'entire_property'" variant="outline" class="h-4 px-1 text-[9px]">
+                        Entire property
+                      </Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <div class="space-y-2">
+                      <div
+                        v-for="room in reservation.rooms"
+                        :key="room.id"
+                        class="rounded-md border bg-muted/20 px-3 py-2"
+                      >
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="min-w-0">
+                            <p class="text-sm font-medium">
+                              {{ room.unitName }}
+                            </p>
+                            <p class="text-xs text-muted-foreground">
+                              {{ room.rateLabel }}
+                              <template v-if="room.guestNames">
+                                · {{ room.guestNames }}
+                              </template>
+                            </p>
+                          </div>
+                          <span class="shrink-0 text-sm font-medium">
+                            {{ fmtCurrency(room.lineTotal, reservation.currency) }}
+                          </span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{{ fmtCurrency(room.pricePerNight, reservation.currency) }} × {{ reservation.nights }} nights</span>
+                        </div>
+                      </div>
+                      <div v-if="reservation.paymentFeeMode && reservation.paymentFeeMode !== 'no_fee'" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                        <span class="text-muted-foreground">Payment charge</span>
+                        <span class="font-medium">
+                          {{ reservation.paymentFeeMode === 'card' ? 'Card (+3%)' : `Custom (${reservation.paymentCustomFeePct}%)` }}
+                        </span>
+                      </div>
+                      <div v-for="charge in reservation.charges" :key="charge.id" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                        <span class="text-muted-foreground">{{ charge.label }}</span>
+                        <span class="font-medium">{{ fmtCurrency(charge.amount, reservation.currency) }}</span>
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <!-- Charges & extras (staff-posted folio) -->
+              <ReservationFolioSection :reservation="reservation" />
+
+              <!-- Guest -->
+              <div class="border-b px-5 py-4">
+                <div class="flex items-center gap-3">
+                  <BasePersonAvatar :name="reservation.guestName" class="size-11" text-class="text-sm" />
+                  <div class="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      class="block text-left hover:underline"
+                      @click="emit('openGuest', reservation.guestId)"
+                    >
+                      <span class="font-semibold">{{ reservation.guestName }}</span>
+                    </button>
+                    <p v-if="reservation.contactType === 'business' && reservation.companyName" class="flex items-center gap-1.5 text-xs font-medium truncate">
+                      <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
+                      {{ reservation.companyName }}<span v-if="reservation.companyVatId" class="text-muted-foreground font-normal">· {{ reservation.companyVatId }}</span>
+                    </p>
+                    <p class="text-xs text-muted-foreground truncate">
+                      {{ reservation.guestEmail }} · {{ reservation.guestPhone }}
+                    </p>
+                  </div>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span class="flex items-center gap-1.5">
+                    <Icon name="lucide:users" class="size-3.5" />
+                    {{ partyBreakdown }}
                   </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <Tabs default-value="guests">
-                    <TabsList class="w-full">
-                      <TabsTrigger value="guests" class="flex-1">
-                        Guests
-                      </TabsTrigger>
-                      <TabsTrigger value="documents" class="flex-1">
-                        Identity & Documents
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="guests" class="mt-3">
-                      <div class="space-y-2">
-                        <div
-                          v-for="(g, index) in reservation.guests"
-                          :key="g.id"
-                          class="border p-3"
-                        >
-                          <div class="flex items-center gap-2.5">
-                            <BasePersonAvatar :name="g.name" class="size-9" />
-                            <div class="min-w-0 flex-1">
-                              <div class="flex items-center gap-1.5">
-                                <p class="text-sm font-medium truncate">
-                                  {{ g.name }}
+                  <span class="flex items-center gap-1.5">
+                    <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
+                    {{ reservation.channel }}
+                  </span>
+                </div>
+                <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+                  <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
+                  {{ reservation.guestNotes }}
+                </div>
+              </div>
+
+              <!-- Guests group (occupants) + identity & documents -->
+              <Accordion v-if="reservation.guests?.length" type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="guests" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                    <span class="flex items-center gap-2">
+                      <Icon name="lucide:users" class="size-4" />
+                      Guests
+                      <Badge variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                        {{ verifiedCount }}/{{ reservation.guests.length }} verified
+                      </Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <Tabs default-value="guests">
+                      <TabsList class="w-full">
+                        <TabsTrigger value="guests" class="flex-1">
+                          Guests
+                        </TabsTrigger>
+                        <TabsTrigger value="documents" class="flex-1">
+                          Identity & Documents
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="guests" class="mt-3">
+                        <div class="space-y-2">
+                          <div
+                            v-for="(g, index) in reservation.guests"
+                            :key="g.id"
+                            class="border p-3"
+                          >
+                            <div class="flex items-center gap-2.5">
+                              <BasePersonAvatar :name="g.name" class="size-9" />
+                              <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-1.5">
+                                  <p class="text-sm font-medium truncate">
+                                    {{ g.name }}
+                                  </p>
+                                  <Badge v-if="g.isPrimary" variant="default" class="text-[9px] px-1 py-0">
+                                    Main
+                                  </Badge>
+                                  <Badge
+                                    v-if="g.identityVerified"
+                                    variant="outline"
+                                    class="border-green-500/40 bg-green-500/10 text-[9px] px-1 py-0 text-green-700 dark:text-green-400"
+                                  >
+                                    <Icon name="lucide:badge-check" class="size-2.5" />
+                                    Verified
+                                  </Badge>
+                                  <Badge
+                                    v-else
+                                    variant="outline"
+                                    class="text-[9px] px-1 py-0 text-muted-foreground"
+                                  >
+                                    Not verified
+                                  </Badge>
+                                </div>
+                                <p class="text-[10px] text-muted-foreground">
+                                  {{ categoryLabel(g.category) }}
+                                  <template v-if="g.dob">
+                                    · {{ fmtDob(g.dob) }}
+                                  </template>
+                                  <template v-if="g.nationality">
+                                    · {{ g.nationality }}
+                                  </template>
                                 </p>
-                                <Badge v-if="g.isPrimary" variant="default" class="text-[9px] px-1 py-0">
-                                  Main
-                                </Badge>
-                                <Badge
-                                  v-if="g.identityVerified"
-                                  variant="outline"
-                                  class="border-green-500/40 bg-green-500/10 text-[9px] px-1 py-0 text-green-700 dark:text-green-400"
-                                >
-                                  <Icon name="lucide:badge-check" class="size-2.5" />
-                                  Verified
-                                </Badge>
-                                <Badge
-                                  v-else
-                                  variant="outline"
-                                  class="text-[9px] px-1 py-0 text-muted-foreground"
-                                >
-                                  Not verified
-                                </Badge>
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-7 w-7 shrink-0 p-0"
+                                title="Edit guest info"
+                                @click="editGuest(index)"
+                              >
+                                <Icon name="lucide:pencil" class="size-3.5" />
+                                <span class="sr-only">Edit {{ g.name }}</span>
+                              </Button>
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                              <p v-if="g.email" class="flex items-center gap-1.5 truncate">
+                                <Icon name="lucide:mail" class="size-3 shrink-0" />
+                                {{ g.email }}
+                              </p>
+                              <p v-if="g.phone" class="flex items-center gap-1.5 truncate">
+                                <Icon name="lucide:phone" class="size-3 shrink-0" />
+                                {{ g.phone }}
+                              </p>
+                              <p v-if="g.idType" class="flex items-center gap-1.5">
+                                <Icon name="lucide:credit-card" class="size-3 shrink-0" />
+                                {{ idTypeLabel(g.idType) }}: {{ g.idNumber }}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </TabsContent>
+                      <TabsContent value="documents" class="mt-3">
+                        <div v-if="identityDocs.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                          No documents uploaded yet.
+                        </div>
+
+                        <div v-else class="space-y-2">
+                          <div
+                            v-for="doc in identityDocs"
+                            :key="doc.id"
+                            class="flex items-center gap-3 border p-2.5"
+                          >
+                            <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted/60">
+                              <Icon :name="docKindMeta(doc.kind).icon" class="size-4 text-muted-foreground" />
+                            </div>
+                            <div class="min-w-0 flex-1">
+                              <p class="truncate text-sm font-medium">
+                                {{ doc.name }}
+                              </p>
                               <p class="text-[10px] text-muted-foreground">
-                                {{ categoryLabel(g.category) }}
-                                <template v-if="g.dob">
-                                  · {{ fmtDob(g.dob) }}
+                                {{ docKindMeta(doc.kind).label }}
+                                <template v-if="doc.fileName">
+                                  · {{ doc.fileName }}
                                 </template>
-                                <template v-if="g.nationality">
-                                  · {{ g.nationality }}
+                                <template v-if="doc.uploadedAt">
+                                  · {{ fmtUploadTime(doc.uploadedAt) }}
                                 </template>
                               </p>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              class="h-7 w-7 shrink-0 p-0"
-                              title="Edit guest info"
-                              @click="editGuest(index)"
-                            >
-                              <Icon name="lucide:pencil" class="size-3.5" />
-                              <span class="sr-only">Edit {{ g.name }}</span>
-                            </Button>
-                          </div>
-                          <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                            <p v-if="g.email" class="flex items-center gap-1.5 truncate">
-                              <Icon name="lucide:mail" class="size-3 shrink-0" />
-                              {{ g.email }}
-                            </p>
-                            <p v-if="g.phone" class="flex items-center gap-1.5 truncate">
-                              <Icon name="lucide:phone" class="size-3 shrink-0" />
-                              {{ g.phone }}
-                            </p>
-                            <p v-if="g.idType" class="flex items-center gap-1.5">
-                              <Icon name="lucide:credit-card" class="size-3 shrink-0" />
-                              {{ idTypeLabel(g.idType) }}: {{ g.idNumber }}
-                            </p>
+                            <div class="flex shrink-0 items-center gap-1">
+                              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" @click="docViewDoc = doc">
+                                <Icon name="lucide:eye" class="size-3.5" />
+                              </Button>
+                              <a v-if="doc.url" :href="doc.url" :download="doc.fileName ?? doc.name" class="shrink-0">
+                                <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Download">
+                                  <Icon name="lucide:download" class="size-3.5" />
+                                </Button>
+                              </a>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="documents" class="mt-3">
-                      <div v-if="identityDocs.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                        No documents uploaded yet.
-                      </div>
+                      </TabsContent>
+                    </Tabs>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
 
-                      <div v-else class="space-y-2">
-                        <div
-                          v-for="doc in identityDocs"
-                          :key="doc.id"
-                          class="flex items-center gap-3 border p-2.5"
-                        >
-                          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted/60">
-                            <Icon :name="docKindMeta(doc.kind).icon" class="size-4 text-muted-foreground" />
-                          </div>
+              <!-- Guest registration (APOA / AVS Meldeschein) -->
+              <Accordion type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="guest-registration" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                    <span class="flex items-center gap-2">
+                      <Icon name="lucide:file-badge" class="size-4" />
+                      Guest registration
+                      <Badge v-if="reservationRegistrations.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                        {{ reservationRegistrations.length }}
+                      </Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <div
+                      v-if="!guestRegistration.isConnected('apoa') && !guestRegistration.isConnected('avs') && !guestRegistration.isConnected('feratel')"
+                      class="border border-dashed p-3 text-center"
+                    >
+                      <p class="text-xs text-muted-foreground">
+                        No government registration provider connected.
+                      </p>
+                      <NuxtLink to="/settings/integrations" class="mt-1 inline-block text-xs text-primary underline">
+                        Connect in Settings
+                      </NuxtLink>
+                    </div>
+
+                    <div v-else-if="reservationRegistrations.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                      No guest registrations for this reservation yet. They're created automatically after check-in.
+                    </div>
+
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="reg in reservationRegistrations"
+                        :key="reg.id"
+                        class="flex items-center justify-between gap-2 border p-3"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <p class="text-sm font-medium truncate">
+                            {{ reg.guestName }}
+                          </p>
+                          <p class="text-[10px] text-muted-foreground">
+                            {{ registrationProviderLabel(reg.provider) }}
+                            <template v-if="reg.submissionId">
+                              · {{ reg.submissionId }}
+                            </template>
+                          </p>
+                        </div>
+                        <Badge :variant="registrationStatusVariant(reg.status)" class="shrink-0 text-[10px]">
+                          {{ reg.status }}
+                        </Badge>
+                      </div>
+                      <NuxtLink to="/guest-registration" class="block text-center text-xs text-primary underline">
+                        View all in Guest Registration
+                      </NuxtLink>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <!-- Activity timeline -->
+              <Accordion type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="activity" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                    <span class="flex items-center gap-2">
+                      <Icon name="lucide:activity" class="size-4" />
+                      Activity
+                      <Badge v-if="reservation.activity.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                        {{ reservation.activity.length }}
+                      </Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <GuestActivityTimeline :events="reservation.activity" bare />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <!-- Dates -->
+              <div class="border-b px-5 py-4">
+                <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                  <div>
+                    <div class="text-xs text-muted-foreground">
+                      Check-in
+                    </div>
+                    <div class="text-base font-semibold">
+                      {{ fmtDate(reservation.checkIn) }}
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      2:00 PM
+                    </div>
+                  </div>
+                  <div class="flex flex-col items-center gap-1">
+                    <div class="flex h-9 w-9 items-center justify-center bg-primary/10 text-primary">
+                      <Icon name="lucide:moon-star" class="size-4" />
+                    </div>
+                    <span class="text-[11px] font-medium text-muted-foreground">
+                      {{ reservation.nights }} nights
+                    </span>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-xs text-muted-foreground">
+                      Check-out
+                    </div>
+                    <div class="text-base font-semibold">
+                      {{ fmtDate(reservation.checkOut) }}
+                    </div>
+                    <div class="text-xs text-muted-foreground">
+                      11:00 AM
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Booking note (below dates) -->
+              <div v-if="reservation.bookingNote" class="border-b px-5 py-4">
+                <div class="border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                  <p class="font-semibold tracking-wide">
+                    ** THIS RESERVATION HAS BEEN PRE-PAID **
+                  </p>
+                  <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
+                    {{ bookingNoteBody }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Upsells purchased by the guest (accordion) -->
+              <Accordion type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="upsells" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                    <span class="flex items-center gap-2">
+                      <Icon name="lucide:tag" class="size-4" />
+                      Upsells
+                      <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                        {{ reservationUpsells.length }}
+                      </Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <div v-if="reservationUpsells.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                      No upsells purchased for this reservation.
+                    </div>
+
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="order in reservationUpsells"
+                        :key="order.id"
+                        class="flex items-center justify-between gap-3 border p-3"
+                      >
+                        <div class="min-w-0">
+                          <p class="text-sm font-medium truncate">
+                            {{ order.serviceName }}
+                          </p>
+                          <p class="text-[10px] text-muted-foreground">
+                            {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
+                          </p>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-2">
+                          <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
+                            {{ getOrderStatusMeta(order).label }}
+                          </Badge>
+                          <span class="text-sm font-semibold tabular-nums">
+                            {{ fmtCurrency(order.grandTotal, order.currency) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+
+              <!-- Smart lock (collapsible accordion) -->
+              <Accordion type="single" collapsible class="w-full border-b px-2">
+                <AccordionItem value="smartlock" class="border-b-0">
+                  <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+                    <span class="flex items-center gap-2">
+                      <Icon name="lucide:key-round" class="size-4" />
+                      Smart lock
+                      <Badge v-if="activeCodesCount" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
+                        {{ activeCodesCount }}
+                      </Badge>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent class="px-3 pb-3">
+                    <div v-if="!smartLock.isConnected.value" class="border border-dashed p-3 text-center">
+                      <p class="text-xs text-muted-foreground">
+                        Smart Lock isn't connected.
+                      </p>
+                      <NuxtLink to="/settings/integrations" class="mt-1 inline-block text-xs text-primary underline">
+                        Connect in Settings
+                      </NuxtLink>
+                    </div>
+
+                    <div v-else-if="locksForListing(reservation.listingId).length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                      No smart locks paired to this listing.
+                    </div>
+
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="lock in locksForListing(reservation.listingId)"
+                        :key="lock.id"
+                        class="border p-3"
+                      >
+                        <div class="flex items-center gap-2">
+                          <Icon
+                            :name="lock.online ? 'lucide:lock' : 'lucide:lock-open'"
+                            class="size-4 shrink-0"
+                            :class="lock.online ? 'text-green-600' : 'text-muted-foreground'"
+                          />
                           <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium">
-                              {{ doc.name }}
+                            <p class="text-sm font-medium truncate">
+                              {{ lock.name }}
+                            </p>
+                            <p class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <Icon name="lucide:battery" class="size-2.5" :class="lock.batteryLevel <= 20 ? 'text-amber-500' : ''" />
+                              {{ lock.batteryLevel }}%
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            class="h-7 gap-1 text-xs"
+                            :disabled="!lock.online || generatingLockId === lock.id"
+                            @click="generateCode(reservation, lock.id)"
+                          >
+                            <Icon
+                              v-if="generatingLockId === lock.id"
+                              name="lucide:loader-2"
+                              class="size-3 animate-spin"
+                            />
+                            <Icon v-else name="lucide:plus" class="size-3" />
+                            {{ generatingLockId === lock.id ? 'Generating…' : 'Generate code' }}
+                          </Button>
+                        </div>
+
+                        <div
+                          v-for="code in codesForReservation(reservation).filter(c => c.lockId === lock.id)"
+                          :key="code.id"
+                          class="mt-2 flex items-center justify-between gap-2 border bg-muted/30 p-2"
+                        >
+                          <div class="min-w-0 flex-1">
+                            <p class="font-mono text-base font-bold tracking-widest">
+                              {{ code.code }}
                             </p>
                             <p class="text-[10px] text-muted-foreground">
-                              {{ docKindMeta(doc.kind).label }}
-                              <template v-if="doc.fileName">
-                                · {{ doc.fileName }}
-                              </template>
-                              <template v-if="doc.uploadedAt">
-                                · {{ fmtUploadTime(doc.uploadedAt) }}
-                              </template>
+                              {{ code.guestName || 'Guest' }} · expires {{ formatExpiry(code.endsAt) }}
                             </p>
                           </div>
                           <div class="flex shrink-0 items-center gap-1">
-                            <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" @click="docViewDoc = doc">
-                              <Icon name="lucide:eye" class="size-3.5" />
+                            <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Copy code" @click="copyCode(code.code)">
+                              <Icon name="lucide:copy" class="size-3.5" />
                             </Button>
-                            <a v-if="doc.url" :href="doc.url" :download="doc.fileName ?? doc.name" class="shrink-0">
-                              <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Download">
-                                <Icon name="lucide:download" class="size-3.5" />
-                              </Button>
-                            </a>
+                            <Button variant="ghost" size="sm" class="h-7 w-7 p-0 hover:text-destructive" title="Revoke" @click="revokeCode(code.id)">
+                              <Icon name="lucide:trash-2" class="size-3.5" />
+                            </Button>
                           </div>
                         </div>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
 
-            <!-- Guest registration (APOA / AVS Meldeschein) -->
-            <Accordion type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="guest-registration" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:file-badge" class="size-4" />
-                    Guest registration
-                    <Badge v-if="reservationRegistrations.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ reservationRegistrations.length }}
-                    </Badge>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <div
-                    v-if="!guestRegistration.isConnected('apoa') && !guestRegistration.isConnected('avs') && !guestRegistration.isConnected('feratel')"
-                    class="border border-dashed p-3 text-center"
-                  >
-                    <p class="text-xs text-muted-foreground">
-                      No government registration provider connected.
-                    </p>
-                    <NuxtLink to="/settings/integrations" class="mt-1 inline-block text-xs text-primary underline">
-                      Connect in Settings
-                    </NuxtLink>
-                  </div>
-
-                  <div v-else-if="reservationRegistrations.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                    No guest registrations for this reservation yet. They're created automatically after check-in.
-                  </div>
-
-                  <div v-else class="space-y-2">
-                    <div
-                      v-for="reg in reservationRegistrations"
-                      :key="reg.id"
-                      class="flex items-center justify-between gap-2 border p-3"
-                    >
-                      <div class="min-w-0 flex-1">
-                        <p class="text-sm font-medium truncate">
-                          {{ reg.guestName }}
-                        </p>
-                        <p class="text-[10px] text-muted-foreground">
-                          {{ registrationProviderLabel(reg.provider) }}
-                          <template v-if="reg.submissionId">
-                            · {{ reg.submissionId }}
-                          </template>
+                        <p v-if="codesForReservation(reservation).filter(c => c.lockId === lock.id).length === 0" class="mt-2 text-[10px] text-muted-foreground italic">
+                          No active codes. Click "Generate code" to create one.
                         </p>
                       </div>
-                      <Badge :variant="registrationStatusVariant(reg.status)" class="shrink-0 text-[10px]">
-                        {{ reg.status }}
-                      </Badge>
                     </div>
-                    <NuxtLink to="/guest-registration" class="block text-center text-xs text-primary underline">
-                      View all in Guest Registration
-                    </NuxtLink>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
 
-            <!-- Activity timeline -->
-            <Accordion type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="activity" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:activity" class="size-4" />
-                    Activity
-                    <Badge v-if="reservation.activity.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ reservation.activity.length }}
-                    </Badge>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <GuestActivityTimeline :events="reservation.activity" bare />
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+              <!-- Housekeeping section -->
+              <ReservationHousekeepingSection
+                :reservation="reservation"
+                :cleaner-options="cleanerOptions"
+              />
 
-            <!-- Dates -->
-            <div class="border-b px-5 py-4">
-              <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <div>
-                  <div class="text-xs text-muted-foreground">
-                    Check-in
-                  </div>
-                  <div class="text-base font-semibold">
-                    {{ fmtDate(reservation.checkIn) }}
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    2:00 PM
-                  </div>
-                </div>
-                <div class="flex flex-col items-center gap-1">
-                  <div class="flex h-9 w-9 items-center justify-center bg-primary/10 text-primary">
-                    <Icon name="lucide:moon-star" class="size-4" />
-                  </div>
-                  <span class="text-[11px] font-medium text-muted-foreground">
-                    {{ reservation.nights }} nights
-                  </span>
-                </div>
-                <div class="text-right">
-                  <div class="text-xs text-muted-foreground">
-                    Check-out
-                  </div>
-                  <div class="text-base font-semibold">
-                    {{ fmtDate(reservation.checkOut) }}
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    11:00 AM
-                  </div>
-                </div>
+              <!-- Actions -->
+              <div class="flex gap-2 px-5 py-4">
+                <Button variant="outline" size="sm" class="flex-1 gap-1.5" @click="emit('openGuest', reservation.guestId)">
+                  <Icon name="lucide:user-round" class="size-3.5" />
+                  Guest profile
+                </Button>
+                <Button variant="outline" size="sm" class="flex-1 gap-1.5" as-child>
+                  <NuxtLink :to="`/listings/${reservation.listingId}`">
+                    <Icon name="lucide:building-2" class="size-3.5" />
+                    View listing
+                  </NuxtLink>
+                </Button>
               </div>
             </div>
+          </ScrollArea>
+        </template>
 
-            <!-- Booking note (below dates) -->
-            <div v-if="reservation.bookingNote" class="border-b px-5 py-4">
-              <div class="border border-amber-400/60 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                <p class="font-semibold tracking-wide">
-                  ** THIS RESERVATION HAS BEEN PRE-PAID **
-                </p>
-                <p class="mt-1.5 whitespace-pre-line leading-relaxed text-amber-800 dark:text-amber-200/90">
-                  {{ bookingNoteBody }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Upsells purchased by the guest (accordion) -->
-            <Accordion type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="upsells" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:tag" class="size-4" />
-                    Upsells
-                    <Badge v-if="reservationUpsells.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ reservationUpsells.length }}
-                    </Badge>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <div v-if="reservationUpsells.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                    No upsells purchased for this reservation.
-                  </div>
-
-                  <div v-else class="space-y-2">
-                    <div
-                      v-for="order in reservationUpsells"
-                      :key="order.id"
-                      class="flex items-center justify-between gap-3 border p-3"
-                    >
-                      <div class="min-w-0">
-                        <p class="text-sm font-medium truncate">
-                          {{ order.serviceName }}
-                        </p>
-                        <p class="text-[10px] text-muted-foreground">
-                          {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
-                        </p>
-                      </div>
-                      <div class="flex shrink-0 items-center gap-2">
-                        <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
-                          {{ getOrderStatusMeta(order).label }}
-                        </Badge>
-                        <span class="text-sm font-semibold tabular-nums">
-                          {{ fmtCurrency(order.grandTotal, order.currency) }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <!-- Smart lock (collapsible accordion) -->
-            <Accordion type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="smartlock" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:key-round" class="size-4" />
-                    Smart lock
-                    <Badge v-if="activeCodesCount" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ activeCodesCount }}
-                    </Badge>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <div v-if="!smartLock.isConnected.value" class="border border-dashed p-3 text-center">
-                    <p class="text-xs text-muted-foreground">
-                      Smart Lock isn't connected.
-                    </p>
-                    <NuxtLink to="/settings/integrations" class="mt-1 inline-block text-xs text-primary underline">
-                      Connect in Settings
-                    </NuxtLink>
-                  </div>
-
-                  <div v-else-if="locksForListing(reservation.listingId).length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                    No smart locks paired to this listing.
-                  </div>
-
-                  <div v-else class="space-y-2">
-                    <div
-                      v-for="lock in locksForListing(reservation.listingId)"
-                      :key="lock.id"
-                      class="border p-3"
-                    >
-                      <div class="flex items-center gap-2">
-                        <Icon
-                          :name="lock.online ? 'lucide:lock' : 'lucide:lock-open'"
-                          class="size-4 shrink-0"
-                          :class="lock.online ? 'text-green-600' : 'text-muted-foreground'"
-                        />
-                        <div class="min-w-0 flex-1">
-                          <p class="text-sm font-medium truncate">
-                            {{ lock.name }}
-                          </p>
-                          <p class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <Icon name="lucide:battery" class="size-2.5" :class="lock.batteryLevel <= 20 ? 'text-amber-500' : ''" />
-                            {{ lock.batteryLevel }}%
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          class="h-7 gap-1 text-xs"
-                          :disabled="!lock.online || generatingLockId === lock.id"
-                          @click="generateCode(reservation, lock.id)"
-                        >
-                          <Icon
-                            v-if="generatingLockId === lock.id"
-                            name="lucide:loader-2"
-                            class="size-3 animate-spin"
-                          />
-                          <Icon v-else name="lucide:plus" class="size-3" />
-                          {{ generatingLockId === lock.id ? 'Generating…' : 'Generate code' }}
-                        </Button>
-                      </div>
-
-                      <div
-                        v-for="code in codesForReservation(reservation).filter(c => c.lockId === lock.id)"
-                        :key="code.id"
-                        class="mt-2 flex items-center justify-between gap-2 border bg-muted/30 p-2"
-                      >
-                        <div class="min-w-0 flex-1">
-                          <p class="font-mono text-base font-bold tracking-widest">
-                            {{ code.code }}
-                          </p>
-                          <p class="text-[10px] text-muted-foreground">
-                            {{ code.guestName || 'Guest' }} · expires {{ formatExpiry(code.endsAt) }}
-                          </p>
-                        </div>
-                        <div class="flex shrink-0 items-center gap-1">
-                          <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Copy code" @click="copyCode(code.code)">
-                            <Icon name="lucide:copy" class="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" class="h-7 w-7 p-0 hover:text-destructive" title="Revoke" @click="revokeCode(code.id)">
-                            <Icon name="lucide:trash-2" class="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <p v-if="codesForReservation(reservation).filter(c => c.lockId === lock.id).length === 0" class="mt-2 text-[10px] text-muted-foreground italic">
-                        No active codes. Click "Generate code" to create one.
-                      </p>
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <!-- Housekeeping schedule (accordion) -->
-            <Accordion type="single" collapsible class="w-full border-b px-2">
-              <AccordionItem value="housekeeping" class="border-b-0">
-                <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
-                  <span class="flex items-center gap-2">
-                    <Icon name="lucide:sparkles" class="size-4" />
-                    Housekeeping
-                    <Badge v-if="housekeepingJobs.length" variant="secondary" class="h-4 min-w-4 px-1 text-[9px]">
-                      {{ housekeepingJobs.length }}
-                    </Badge>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent class="px-3 pb-3">
-                  <div v-if="!nextCleaning" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
-                    No upcoming cleaning scheduled.
-                  </div>
-
-                  <div v-else class="border p-3">
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-[10px] text-muted-foreground">
-                          Next cleaning
-                        </p>
-                        <p class="mt-0.5 text-sm font-semibold">
-                          {{ fmtCleaningDate(nextCleaning.scheduledAt) }}
-                        </p>
-                      </div>
-                      <Badge
-                        :variant="isPlanned(nextCleaning) ? 'secondary' : 'outline'"
-                        class="shrink-0 text-[10px]"
-                      >
-                        {{ cleaningStatusLabel(nextCleaning) }}
-                      </Badge>
-                    </div>
-                    <p v-if="isPlanned(nextCleaning)" class="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Icon name="lucide:calendar-clock" class="size-3" />
-                      Not assigned yet — releases {{ fmtReleaseDate(nextCleaning.releaseAt!) }}
-                    </p>
-                    <p v-if="nextCleaning.cleanerNames.length" class="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Icon name="lucide:user-round" class="size-3" />
-                      {{ nextCleaning.cleanerNames.join(', ') }}
-                    </p>
-                  </div>
-
-                  <!-- All scheduled cleanings -->
-                  <div v-if="housekeepingJobs.length" class="mt-3 space-y-1.5">
-                    <div
-                      v-for="job in housekeepingJobs"
-                      :key="job.id"
-                      class="flex items-center justify-between gap-2 border bg-muted/20 px-2.5 py-1.5"
-                    >
-                      <div class="min-w-0">
-                        <p class="truncate text-xs font-medium">
-                          {{ fmtCleaningDate(job.scheduledAt) }}
-                        </p>
-                        <p v-if="isPlanned(job)" class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Icon name="lucide:calendar-clock" class="size-2.5" />
-                          Releases {{ fmtReleaseDate(job.releaseAt!) }}
-                        </p>
-                        <p v-else-if="job.cleanerNames.length" class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Icon name="lucide:user-round" class="size-2.5" />
-                          {{ job.cleanerNames.join(', ') }}
-                        </p>
-                      </div>
-                      <div class="flex shrink-0 items-center gap-1">
-                        <Badge :variant="isPlanned(job) ? 'secondary' : 'outline'" class="text-[9px]">
-                          {{ cleaningStatusLabel(job) }}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="h-6 w-6 p-0 hover:text-destructive"
-                          title="Delete cleaning"
-                          @click="removeCleaning(job.id)"
-                        >
-                          <Icon name="lucide:trash-2" class="size-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button variant="outline" size="sm" class="mt-3 w-full gap-1.5" @click="openAddCleaning">
-                    <Icon name="lucide:plus" class="size-3.5" />
-                    Add cleaning
-                  </Button>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <!-- Actions -->
-            <div class="flex gap-2 px-5 py-4">
-              <Button variant="outline" size="sm" class="flex-1 gap-1.5" @click="emit('openGuest', reservation.guestId)">
-                <Icon name="lucide:user-round" class="size-3.5" />
-                Guest profile
-              </Button>
-              <Button variant="outline" size="sm" class="flex-1 gap-1.5" as-child>
-                <NuxtLink :to="`/listings/${reservation.listingId}`">
-                  <Icon name="lucide:building-2" class="size-3.5" />
-                  View listing
-                </NuxtLink>
-              </Button>
-            </div>
+        <template v-else>
+          <SheetHeader class="border-b px-6 py-4">
+            <SheetTitle>
+              Reservation
+            </SheetTitle>
+          </SheetHeader>
+          <div class="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+            No reservation selected.
           </div>
-        </ScrollArea>
-      </template>
+        </template>
+      </SheetContent>
+    </Sheet>
 
-      <template v-else>
-        <SheetHeader class="border-b px-6 py-4">
-          <SheetTitle>
-            Reservation
-          </SheetTitle>
-        </SheetHeader>
-        <div class="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
-          No reservation selected.
-        </div>
-      </template>
-    </SheetContent>
-  </Sheet>
+    <!-- Edit reservation dialog -->
+    <EditReservationDialog
+      :reservation="reservation"
+      :open="editOpen"
+      :focus-guest-index="editGuestIndex"
+      @update:open="editOpen = $event; if (!$event) editGuestIndex = null"
+    />
 
-  <!-- Add cleaning dialog -->
-  <Dialog :open="addCleaningOpen" @update:open="addCleaningOpen = $event">
-    <DialogContent class="sm:max-w-sm">
-      <DialogHeader>
-        <DialogTitle>
-          Schedule cleaning
-        </DialogTitle>
-        <DialogDescription>
-          Add a housekeeping job for this reservation.
-        </DialogDescription>
-      </DialogHeader>
-      <div class="grid gap-4 py-2">
-        <div class="space-y-2">
-          <Label>Date</Label>
-          <Input v-model="newCleaningDate" type="date" />
-        </div>
-        <div class="space-y-2">
-          <Label>Time</Label>
-          <Input v-model="newCleaningTime" type="time" />
-        </div>
-        <div class="space-y-2">
-          <Label>Assignee (optional)</Label>
-          <Select v-model="newCleaningAssignee">
-            <SelectTrigger>
-              <SelectValue placeholder="Select assignee" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="UNASSIGNED">
-                Unassigned
-              </SelectItem>
-              <SelectItem v-for="c in cleanerOptions" :key="c.id" :value="c.id">
-                {{ c.name }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div
-          v-if="canPlanAhead"
-          class="flex items-start gap-2.5 border bg-muted/30 p-3"
-        >
-          <Checkbox
-            id="cleaning-plan-only"
-            :model-value="newCleaningPlanOnly"
-            class="mt-0.5"
-            @update:model-value="value => { newCleaningPlanOnly = value === true }"
-          />
-          <div class="space-y-1">
-            <Label for="cleaning-plan-only" class="text-sm font-medium leading-none">
-              Plan only — don't assign yet
-            </Label>
-            <p class="text-xs text-muted-foreground">
-              Keeps this out of housekeeping's workload. It becomes an active job on
-              {{ plannedReleaseLabel || fmtReleaseDate(`${newCleaningDate}T00:00:00+08:00`) }}.
-            </p>
+    <!-- Document preview dialog -->
+    <Dialog :open="!!docViewDoc" @update:open="docViewDoc = null">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {{ docViewDoc?.name }}
+          </DialogTitle>
+          <DialogDescription v-if="docViewDoc">
+            {{ docViewDoc?.kind ? docKindMeta(docViewDoc.kind).label : '' }}
+            <template v-if="docViewDoc?.uploadedAt">
+              · uploaded {{ fmtUploadTime(docViewDoc.uploadedAt) }}
+            </template>
+          </DialogDescription>
+        </DialogHeader>
+        <div class="py-2">
+          <div v-if="docViewDoc?.url" class="flex items-center justify-center rounded-md border bg-muted/30 p-2">
+            <img
+              :src="docViewDoc.url"
+              :alt="docViewDoc.name"
+              class="max-h-80 w-auto rounded-sm object-contain"
+            >
           </div>
+          <p v-else class="py-8 text-center text-sm text-muted-foreground">
+            No preview available for this document.
+          </p>
         </div>
-      </div>
-      <DialogFooter>
-        <Button variant="outline" @click="addCleaningOpen = false">
-          Cancel
-        </Button>
-        <Button :disabled="!newCleaningDate" @click="addCleaning">
-          {{ planOnlyActive ? 'Save plan' : 'Schedule' }}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-
-  <!-- Edit reservation dialog -->
-  <EditReservationDialog
-    :reservation="reservation"
-    :open="editOpen"
-    :focus-guest-index="editGuestIndex"
-    @update:open="editOpen = $event; if (!$event) editGuestIndex = null"
-  />
-
-  <!-- Document preview dialog -->
-  <Dialog :open="!!docViewDoc" @update:open="docViewDoc = null">
-    <DialogContent class="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>
-          {{ docViewDoc?.name }}
-        </DialogTitle>
-        <DialogDescription v-if="docViewDoc">
-          {{ docViewDoc?.kind ? docKindMeta(docViewDoc.kind).label : '' }}
-          <template v-if="docViewDoc?.uploadedAt">
-            · uploaded {{ fmtUploadTime(docViewDoc.uploadedAt) }}
-          </template>
-        </DialogDescription>
-      </DialogHeader>
-      <div class="py-2">
-        <div v-if="docViewDoc?.url" class="flex items-center justify-center rounded-md border bg-muted/30 p-2">
-          <img
-            :src="docViewDoc.url"
-            :alt="docViewDoc.name"
-            class="max-h-80 w-auto rounded-sm object-contain"
-          >
-        </div>
-        <p v-else class="py-8 text-center text-sm text-muted-foreground">
-          No preview available for this document.
-        </p>
-      </div>
-      <DialogFooter>
-        <a v-if="docViewDoc?.url" :href="docViewDoc.url" :download="docViewDoc.fileName ?? docViewDoc.name">
-          <Button class="gap-1.5">
-            <Icon name="lucide:download" class="size-3.5" />
-            Download
+        <DialogFooter>
+          <a v-if="docViewDoc?.url" :href="docViewDoc.url" :download="docViewDoc.fileName ?? docViewDoc.name">
+            <Button class="gap-1.5">
+              <Icon name="lucide:download" class="size-3.5" />
+              Download
+            </Button>
+          </a>
+          <Button variant="outline" @click="docViewDoc = null">
+            Close
           </Button>
-        </a>
-        <Button variant="outline" @click="docViewDoc = null">
-          Close
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>
 </template>

@@ -1,6 +1,14 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { FolioItem } from '~/components/reservations/data/folio'
 import type { BookingChannel } from '~/components/listings/data/listings'
+import type { ReservationCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
+import type { FolioItem } from '~/components/reservations/data/folio'
+
+export type {
+  CustomCleaningFrequency,
+  DayOfWeek,
+  ReservationCleaningSchedule,
+  ReservationCleaningType,
+} from '~/components/reservations/data/cleaning-schedule'
 
 export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
@@ -174,6 +182,8 @@ export interface ReservationEntry {
   folioItems?: FolioItem[]
   /** Set only once staff collect or waive. Absent means "nothing recorded yet". */
   cityTaxSettlement?: CityTaxSettlement
+  /** Recurring cleaning schedule configuration for this reservation */
+  cleaningSchedule?: ReservationCleaningSchedule
 }
 
 export interface GuestProfile {
