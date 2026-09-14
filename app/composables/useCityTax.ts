@@ -233,6 +233,7 @@ export function useCityTax() {
   }
 
   return {
+    assess,
     assessmentFor,
     markCollected,
     waive,

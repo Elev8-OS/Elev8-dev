@@ -83,6 +83,7 @@ function handleSendOrResendPaymentToInbox() {
     totalPrice: res.totalPrice,
     currency: res.currency,
     channel: res.channel,
+    status: res.status,
     paymentRequestId: res.paymentRequestId,
   })
   toast.success('Confirmation & payment link sent to guest inbox!')

@@ -132,7 +132,7 @@ watch(() => dateRange.value, (val) => {
 }, { deep: true })
 
 // Status & Source
-const status = ref<ReservationStatus>('inquiry')
+const status = ref<ReservationStatus>('verified')
 const blocksAvailability = ref(false)
 const inquiryExpiryHours = ref(24)
 
@@ -245,6 +245,17 @@ watch(roomsTotal, (total) => {
     totalPrice.value = total
 })
 
+watch([computedNights, listingId], ([nights, id]) => {
+  if (rooms.value.length === 0 && nights > 0 && id) {
+    const listing = listings.value.find(l => l.id === id)
+    if (listing?.pricing?.nightlyRate) {
+      const baseRate = listing.pricing.nightlyRate
+      const rate = currency.value === 'IDR' && baseRate < 10000 ? baseRate * 15000 : baseRate
+      totalPrice.value = rate * nights
+    }
+  }
+})
+
 watch(listingId, () => {
   rooms.value = []
   bookingMode.value = 'rooms'
@@ -293,7 +304,7 @@ function reset() {
   dateRange.value = { start: undefined, end: undefined }
   listingId.value = ''
   estimatedArrivalTime.value = ''
-  status.value = 'inquiry'
+  status.value = 'verified'
   blocksAvailability.value = false
   inquiryExpiryHours.value = 24
   contactType.value = 'personal'
@@ -373,6 +384,14 @@ function handleSubmit() {
     paymentFeeMode: rooms.value.length ? paymentFeeMode.value : undefined,
     paymentCustomFeePct: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
     charges: charges.value.length ? charges.value : undefined,
+    priceDetails: {
+      subtotal: totalPrice.value,
+      cleaningFee: 0,
+      serviceFee: 0,
+      tax: 0,
+      extras: 0,
+      guestPaid: status.value === 'verified' ? totalPrice.value : 0,
+    },
   })
   if (!result.success || !result.id) {
     toast.error('Please fill in all required fields.')
@@ -395,6 +414,7 @@ function handleSubmit() {
       totalPrice: totalPrice.value,
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
       channel: 'Direct',
+      status: status.value,
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
       expiresInHours: status.value === 'inquiry' ? inquiryExpiryHours.value : 24,

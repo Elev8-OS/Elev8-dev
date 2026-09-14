@@ -28,6 +28,7 @@ export interface BookingConfirmationOptions {
   senderName?: string
   senderRole?: string
   purpose?: 'city_tax' | 'booking' | 'auto'
+  status?: string
   cityTaxAmount?: number
   cityTaxCurrency?: string
   cityTaxAuthority?: string
@@ -45,6 +46,7 @@ export function generateBookingConfirmationText(opts: {
   currency: string
   paymentLink: string
   purpose?: 'city_tax' | 'booking'
+  isConfirmed?: boolean
   cityTaxAmount?: number
   cityTaxCurrency?: string
   cityTaxAuthority?: string
@@ -52,7 +54,7 @@ export function generateBookingConfirmationText(opts: {
   const digits = opts.currency === 'IDR' ? 0 : 2
   const formattedAmount = `${opts.currency} ${opts.totalPrice.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 
-  // Scenario: City Tax collection for confirmed booking
+  // Scenario 1: City Tax collection for confirmed booking
   if (opts.purpose === 'city_tax' && opts.cityTaxAmount) {
     const taxDigits = opts.cityTaxCurrency === 'IDR' ? 0 : 2
     const taxCurrency = opts.cityTaxCurrency ?? opts.currency
@@ -84,7 +86,41 @@ export function generateBookingConfirmationText(opts: {
     ].join('\n')
   }
 
-  // Scenario: Booking / deposit payment pending
+  // Scenario 2: Confirmed booking with remaining balance or deposit payment
+  if (opts.isConfirmed) {
+    const paymentLine = opts.totalPrice > 0
+      ? [
+          `💳 Secure Payment Link (Remaining Balance):`,
+          `Please settle your balance using the secure link below:`,
+          `${opts.paymentLink}`,
+        ]
+      : [
+          `💳 Payment Status:`,
+          `Your reservation is fully confirmed and paid. No further action is required!`,
+        ]
+
+    return [
+      `🎉 Booking Confirmed!`,
+      ``,
+      `Dear ${opts.guestName},`,
+      ``,
+      `Thank you for your reservation! We are delighted to confirm your upcoming stay at ${opts.listingName}.`,
+      ``,
+      `📋 Reservation Summary:`,
+      `• Reservation ID: #${opts.reservationId}`,
+      `• Check-in: ${opts.checkIn}`,
+      `• Check-out: ${opts.checkOut} (${opts.nights} night${opts.nights > 1 ? 's' : ''})`,
+      `• Guests: ${opts.guestCount} guest${opts.guestCount > 1 ? 's' : ''}`,
+      `• Accommodation: Confirmed`,
+      ...(opts.totalPrice > 0 ? [`• Total: ${formattedAmount}`] : []),
+      ``,
+      ...paymentLine,
+      ``,
+      `If you have any questions or special requests before your arrival, feel free to reply directly here. We look forward to welcoming you!`,
+    ].join('\n')
+  }
+
+  // Scenario 3: Booking / deposit payment pending to guarantee reservation (e.g. inquiry)
   return [
     `📋 Reservation Reserved!`,
     ``,
@@ -128,9 +164,15 @@ export function useBookingConfirmationFlow() {
     let cityTaxCurrency = opts.cityTaxCurrency
     let cityTaxAuthority = opts.cityTaxAuthority
 
+    const isConfirmed = opts.status
+      ? opts.status !== 'inquiry'
+      : (reservation ? reservation.status !== 'inquiry' : true)
+
     if (!isCityTax && opts.purpose !== 'booking' && reservation) {
       try {
-        const assessment = cityTax.assess(reservation)
+        const assessment = typeof cityTax.assess === 'function'
+          ? cityTax.assess(reservation)
+          : cityTax.assessmentFor(reservation.id)
         if (assessment.status === 'due' && assessment.collector === 'host' && assessment.totals.length > 0) {
           isCityTax = true
           cityTaxAmount = assessment.totals[0].amount
@@ -138,8 +180,8 @@ export function useBookingConfirmationFlow() {
           cityTaxAuthority = assessment.lines[0]?.authorityName || 'Local City Tax'
         }
       }
-      catch {
-        // Safe fallback in isolated/test environments
+      catch (err) {
+        console.warn('[useBookingConfirmationFlow] assessment error:', err)
       }
     }
 
@@ -249,6 +291,7 @@ export function useBookingConfirmationFlow() {
       currency: opts.currency,
       paymentLink,
       purpose: isCityTax ? 'city_tax' : 'booking',
+      isConfirmed,
       cityTaxAmount,
       cityTaxCurrency,
       cityTaxAuthority,

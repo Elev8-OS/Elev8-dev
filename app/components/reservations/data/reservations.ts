@@ -233,6 +233,7 @@ export interface ReservationDraft {
   guestInfants?: number
   totalPrice: number
   currency: string
+  priceDetails?: PriceDetails
   /** Owner stay requests / blocked reservations carry extra context. */
   blockReason?: string
   bookingNote?: string

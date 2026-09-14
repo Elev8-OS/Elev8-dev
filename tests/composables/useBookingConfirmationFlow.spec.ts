@@ -4,6 +4,7 @@ import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useJourneys } from '~/composables/useJourneys'
+import { useCityTax } from '~/composables/useCityTax'
 
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
@@ -161,8 +162,9 @@ describe('useBookingConfirmationFlow', () => {
       const lastMsg = convMsgs[convMsgs.length - 1]
       expect(lastMsg.sender).toBe('host')
       expect(lastMsg.aiWritten).toBe(true)
-      expect(lastMsg.content).toContain('📋 Reservation Reserved!')
-      expect(lastMsg.content).toContain('Total: USD 1,200.00')
+      expect(lastMsg.content).toContain('🎉 Booking Confirmed!')
+      expect(lastMsg.content).toContain('Accommodation: Confirmed')
+      expect(lastMsg.content).toContain('USD 1,200.00')
       expect(lastMsg.paymentRequest).toBeDefined()
       expect(lastMsg.paymentRequest?.id).toBe(result.paymentRequestId)
       expect(lastMsg.paymentRequest?.amount).toBe(1200)
@@ -237,5 +239,110 @@ describe('useBookingConfirmationFlow', () => {
       expect(lastMsg.paymentRequest?.title).toContain('City Tax')
       expect(lastMsg.paymentRequest?.amount).toBe(200)
     })
+
+    it('automatically assesses and requests City Tax on new reservation for lst-3 without explicit purpose', () => {
+      const { createReservation } = useReservationsModule()
+      const { messages } = useInbox()
+      const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
+
+      const resResult = createReservation({
+        guestName: 'juli km',
+        guestEmail: 'juli@example.com',
+        guestPhone: '+62 812345678',
+        listingId: 'lst-3',
+        listingName: 'The R Pererenan Mezzanine Studio + Plunge Pool',
+        channel: 'Direct',
+        checkIn: '2026-09-20',
+        checkOut: '2026-09-22',
+        nights: 2,
+        guestCount: 2,
+        guestAdults: 2,
+        guestChildren: 0,
+        guestInfants: 0,
+        totalPrice: 0,
+        currency: 'IDR',
+        status: 'verified',
+      })
+
+      const resId = resResult.id!
+      const result = sendBookingConfirmationWithPaymentLink({
+        reservationId: resId,
+        guestName: 'juli km',
+        guestEmail: 'juli@example.com',
+        guestPhone: '+62 812345678',
+        listingId: 'lst-3',
+        listingName: 'The R Pererenan Mezzanine Studio + Plunge Pool',
+        checkIn: '2026-09-20',
+        checkOut: '2026-09-22',
+        nights: 2,
+        guestCount: 2,
+        totalPrice: 0,
+        currency: 'IDR',
+        channel: 'Direct',
+        status: 'verified',
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.isCityTax).toBe(true)
+
+      const convMsgs = messages.value[result.conversationId]
+      const lastMsg = convMsgs[convMsgs.length - 1]
+      expect(lastMsg.content).toContain('🎉 Booking Confirmed!')
+      expect(lastMsg.content).toContain('Accommodation: Confirmed')
+      expect(lastMsg.content).toContain('Mandatory Local City Tax (Kurverwaltung)')
+      expect(lastMsg.content).toContain('EUR 12.00')
+      expect(lastMsg.content).toContain('Secure Payment Link (City Tax)')
+      expect(lastMsg.paymentRequest?.title).toContain('City Tax')
+      expect(lastMsg.paymentRequest?.amount).toBe(12)
+      expect(lastMsg.paymentRequest?.currency).toBe('EUR')
+    })
+
+    it('sends Reservation Reserved text when reservation status is inquiry', () => {
+      const { createReservation } = useReservationsModule()
+      const { messages } = useInbox()
+      const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
+
+      const resResult = createReservation({
+        guestName: 'Mark Spencer',
+        guestEmail: 'mark@example.com',
+        listingId: 'lst-99-no-tax',
+        listingName: 'Villa Sunset Horizon',
+        channel: 'Direct',
+        checkIn: '2026-11-01',
+        checkOut: '2026-11-05',
+        nights: 4,
+        guestCount: 2,
+        totalPrice: 800,
+        currency: 'USD',
+        status: 'inquiry',
+      })
+
+      const resId = resResult.id!
+      const result = sendBookingConfirmationWithPaymentLink({
+        reservationId: resId,
+        guestName: 'Mark Spencer',
+        guestEmail: 'mark@example.com',
+        listingId: 'lst-99-no-tax',
+        listingName: 'Villa Sunset Horizon',
+        checkIn: '2026-11-01',
+        checkOut: '2026-11-05',
+        nights: 4,
+        guestCount: 2,
+        totalPrice: 800,
+        currency: 'USD',
+        channel: 'Direct',
+        status: 'inquiry',
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.isCityTax).toBe(false)
+
+      const convMsgs = messages.value[result.conversationId]
+      const lastMsg = convMsgs[convMsgs.length - 1]
+      expect(lastMsg.content).toContain('📋 Reservation Reserved!')
+      expect(lastMsg.content).toContain('Total: USD 800.00')
+      expect(lastMsg.content).toContain('Please complete your payment using the secure link below to guarantee and confirm your booking')
+    })
   })
 })
+

@@ -339,6 +339,7 @@ function save() {
       totalPrice: totalPrice.value,
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
       channel: props.reservation.channel || 'Direct',
+      status: status.value,
       paymentRequestId: props.reservation.paymentRequestId,
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
