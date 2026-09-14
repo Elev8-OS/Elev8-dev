@@ -2,6 +2,8 @@
 import type { MessagePaymentRequest } from '~/components/inbox/data/conversations'
 import { toast } from 'vue-sonner'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
+import { useInbox } from '~/composables/useInbox'
+import { useCityTax } from '~/composables/useCityTax'
 
 interface Props {
   paymentRequest: MessagePaymentRequest
@@ -20,6 +22,9 @@ const currentRequest = computed(() => {
 const liveStatus = computed(() => {
   return currentRequest.value?.status ?? props.paymentRequest.status
 })
+
+const { conversations } = useInbox()
+const isCityTax = computed(() => props.paymentRequest.title.toLowerCase().includes('city tax'))
 
 const isCopied = ref(false)
 
@@ -47,7 +52,21 @@ function handleMarkAsPaid() {
     currentRequest.value.status = 'paid'
     currentRequest.value.paidAt = new Date().toISOString()
     props.paymentRequest.status = 'paid'
-    toast.success('Payment marked as paid')
+    toast.success(isCityTax.value ? 'City Tax marked as paid' : 'Payment marked as paid')
+
+    // Settle city tax on reservation if linked
+    const conv = conversations.value.find(c => c.id === props.conversationId)
+    if (conv?.reservationId && isCityTax.value) {
+      try {
+        useCityTax().markCollected(conv.reservationId, {
+          method: 'card',
+          note: 'Paid via direct payment link in inbox',
+        })
+      }
+      catch {
+        // safe fallback
+      }
+    }
   }
 }
 
@@ -55,7 +74,7 @@ const statusBadgeConfig = computed(() => {
   switch (liveStatus.value) {
     case 'paid':
       return {
-        label: 'Paid',
+        label: isCityTax.value ? 'City Tax Paid' : 'Paid',
         class: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
         icon: 'lucide:check-circle',
       }
@@ -74,9 +93,9 @@ const statusBadgeConfig = computed(() => {
     case 'pending':
     default:
       return {
-        label: 'Payment Pending',
+        label: isCityTax.value ? 'City Tax Due' : 'Payment Pending',
         class: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30',
-        icon: 'lucide:clock',
+        icon: isCityTax.value ? 'lucide:landmark' : 'lucide:clock',
       }
   }
 })
@@ -120,15 +139,15 @@ const formattedExpiry = computed(() => {
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border/60 bg-muted/40 px-3.5 py-2.5">
       <div class="flex items-center gap-2">
-        <div class="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon name="lucide:credit-card" class="size-4" />
+        <div class="flex size-7 items-center justify-center rounded-lg" :class="isCityTax ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-primary/10 text-primary'">
+          <Icon :name="isCityTax ? 'lucide:landmark' : 'lucide:credit-card'" class="size-4" />
         </div>
         <div>
           <h4 class="text-xs font-semibold leading-tight text-foreground">
             {{ paymentRequest.title }}
           </h4>
           <span class="text-[10px] text-muted-foreground font-mono">
-            {{ paymentRequest.id }}
+            {{ isCityTax ? 'Local Tax · ' + paymentRequest.id : paymentRequest.id }}
           </span>
         </div>
       </div>
@@ -141,7 +160,7 @@ const formattedExpiry = computed(() => {
     <!-- Body / Breakdown -->
     <div class="space-y-1.5 px-3.5 py-2.5 text-xs">
       <div class="flex items-center justify-between text-muted-foreground">
-        <span>Reservation Amount</span>
+        <span>{{ isCityTax ? 'City Tax Obligation' : 'Reservation Amount' }}</span>
         <span class="font-medium text-foreground">{{ formattedBaseAmount }}</span>
       </div>
 

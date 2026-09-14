@@ -32,7 +32,7 @@ describe('useBookingConfirmationFlow', () => {
         paymentLink: 'https://pay.elev8.co/r/pr-test-999',
       })
 
-      expect(text).toContain('🎉 Booking Confirmed!')
+      expect(text).toContain('📋 Reservation Reserved!')
       expect(text).toContain('Dear John Doe,')
       expect(text).toContain('Villa Canggu Breeze')
       expect(text).toContain('#res-test-999')
@@ -58,6 +58,32 @@ describe('useBookingConfirmationFlow', () => {
 
       expect(text).toContain('Total: IDR 2,500,000')
       expect(text).toContain('https://pay.elev8.co/r/pr-idr-1')
+    })
+
+    it('formats city tax collection text with confirmed accommodation and local tax link', () => {
+      const text = generateBookingConfirmationText({
+        guestName: 'Elena Rostova',
+        listingName: 'Villa Seminyak Paradise',
+        reservationId: 'res-ct-99',
+        checkIn: '2026-10-10',
+        checkOut: '2026-10-15',
+        nights: 5,
+        guestCount: 2,
+        totalPrice: 2310,
+        currency: 'EUR',
+        paymentLink: 'https://pay.elev8.co/r/pr-ct-99',
+        purpose: 'city_tax',
+        cityTaxAmount: 231,
+        cityTaxCurrency: 'EUR',
+        cityTaxAuthority: 'Badung Regency',
+      })
+
+      expect(text).toContain('🎉 Booking Confirmed!')
+      expect(text).toContain('Accommodation: Confirmed')
+      expect(text).toContain('Mandatory Local City Tax (Badung Regency)')
+      expect(text).toContain('EUR 231.00')
+      expect(text).toContain('Secure Payment Link (City Tax)')
+      expect(text).toContain('https://pay.elev8.co/r/pr-ct-99')
     })
   })
 
@@ -135,7 +161,7 @@ describe('useBookingConfirmationFlow', () => {
       const lastMsg = convMsgs[convMsgs.length - 1]
       expect(lastMsg.sender).toBe('host')
       expect(lastMsg.aiWritten).toBe(true)
-      expect(lastMsg.content).toContain('🎉 Booking Confirmed!')
+      expect(lastMsg.content).toContain('📋 Reservation Reserved!')
       expect(lastMsg.content).toContain('Total: USD 1,200.00')
       expect(lastMsg.paymentRequest).toBeDefined()
       expect(lastMsg.paymentRequest?.id).toBe(result.paymentRequestId)
@@ -147,6 +173,69 @@ describe('useBookingConfirmationFlow', () => {
         expect.stringContaining('triggered by new booking'),
         expect.anything(),
       )
+    })
+
+    it('sends Booking Confirmed with dedicated City Tax payment link when purpose is city_tax', () => {
+      const { createReservation } = useReservationsModule()
+      const { messages } = useInbox()
+      const { requests } = usePaymentRequests()
+
+      const resResult = createReservation({
+        guestName: 'Sophia Loren',
+        guestEmail: 'sophia@example.com',
+        listingId: 'lst-1',
+        listingName: 'Villa Sunset Bali',
+        channel: 'Booking.com',
+        checkIn: '2026-12-10',
+        checkOut: '2026-12-15',
+        nights: 5,
+        guestCount: 2,
+        totalPrice: 2000,
+        currency: 'EUR',
+        status: 'verified',
+      })
+      const resId = resResult.id!
+
+      const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
+
+      const result = sendBookingConfirmationWithPaymentLink({
+        reservationId: resId,
+        guestName: 'Sophia Loren',
+        guestEmail: 'sophia@example.com',
+        listingId: 'lst-1',
+        listingName: 'Villa Sunset Bali',
+        checkIn: '2026-12-10',
+        checkOut: '2026-12-15',
+        nights: 5,
+        guestCount: 2,
+        totalPrice: 2000,
+        currency: 'EUR',
+        channel: 'Booking.com',
+        purpose: 'city_tax',
+        cityTaxAmount: 200,
+        cityTaxCurrency: 'EUR',
+        cityTaxAuthority: 'Badung Regency',
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.isCityTax).toBe(true)
+
+      // Payment request created for city tax amount, not room total
+      const pr = requests.value.find(r => r.id === result.paymentRequestId)
+      expect(pr).toBeDefined()
+      expect(pr?.amount).toBe(200)
+      expect(pr?.currency).toBe('EUR')
+      expect(pr?.title).toContain('City Tax')
+
+      // Message confirms accommodation is confirmed and requests local tax
+      const convMsgs = messages.value[result.conversationId]
+      const lastMsg = convMsgs[convMsgs.length - 1]
+      expect(lastMsg.content).toContain('🎉 Booking Confirmed!')
+      expect(lastMsg.content).toContain('Accommodation: Confirmed')
+      expect(lastMsg.content).toContain('Mandatory Local City Tax (Badung Regency)')
+      expect(lastMsg.content).toContain('EUR 200.00')
+      expect(lastMsg.paymentRequest?.title).toContain('City Tax')
+      expect(lastMsg.paymentRequest?.amount).toBe(200)
     })
   })
 })

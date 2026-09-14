@@ -147,8 +147,8 @@ export function useReservationsModule() {
     const guest: GuestProfile = {
       id: generateGuestId(),
       name: draft.guestName.trim(),
-      email: draft.guestEmail.trim(),
-      phone: draft.guestPhone.trim(),
+      email: draft.guestEmail?.trim() ?? '',
+      phone: draft.guestPhone?.trim() ?? '',
       language: draft.guestLanguage?.trim() || 'English',
       notes: draft.guestNotes?.trim() ?? '',
       previousStays: 0,

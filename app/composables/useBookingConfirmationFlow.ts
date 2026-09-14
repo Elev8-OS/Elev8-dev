@@ -5,6 +5,7 @@ import { usePaymentRequests } from './usePaymentRequests'
 import { useInbox } from './useInbox'
 import { useReservationsModule } from './useReservationsModule'
 import { useJourneys } from './useJourneys'
+import { useCityTax } from './useCityTax'
 
 export interface BookingConfirmationOptions {
   reservationId: string
@@ -26,6 +27,10 @@ export interface BookingConfirmationOptions {
   expiresInHours?: number
   senderName?: string
   senderRole?: string
+  purpose?: 'city_tax' | 'booking' | 'auto'
+  cityTaxAmount?: number
+  cityTaxCurrency?: string
+  cityTaxAuthority?: string
 }
 
 export function generateBookingConfirmationText(opts: {
@@ -39,16 +44,53 @@ export function generateBookingConfirmationText(opts: {
   totalPrice: number
   currency: string
   paymentLink: string
+  purpose?: 'city_tax' | 'booking'
+  cityTaxAmount?: number
+  cityTaxCurrency?: string
+  cityTaxAuthority?: string
 }): string {
   const digits = opts.currency === 'IDR' ? 0 : 2
   const formattedAmount = `${opts.currency} ${opts.totalPrice.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 
+  // Scenario: City Tax collection for confirmed booking
+  if (opts.purpose === 'city_tax' && opts.cityTaxAmount) {
+    const taxDigits = opts.cityTaxCurrency === 'IDR' ? 0 : 2
+    const taxCurrency = opts.cityTaxCurrency ?? opts.currency
+    const formattedTax = `${taxCurrency} ${opts.cityTaxAmount.toLocaleString(undefined, { minimumFractionDigits: taxDigits, maximumFractionDigits: taxDigits })}`
+    const authorityStr = opts.cityTaxAuthority ? `(${opts.cityTaxAuthority})` : ''
+
+    return [
+      `🎉 Booking Confirmed!`,
+      ``,
+      `Dear ${opts.guestName},`,
+      ``,
+      `Thank you for your reservation! We are delighted to confirm your upcoming stay at ${opts.listingName}.`,
+      ``,
+      `📋 Reservation Summary:`,
+      `• Reservation ID: #${opts.reservationId}`,
+      `• Check-in: ${opts.checkIn}`,
+      `• Check-out: ${opts.checkOut} (${opts.nights} night${opts.nights > 1 ? 's' : ''})`,
+      `• Guests: ${opts.guestCount} guest${opts.guestCount > 1 ? 's' : ''}`,
+      `• Accommodation: Confirmed`,
+      ``,
+      `🏛️ Mandatory Local City Tax ${authorityStr}:`,
+      `As required by local regulations, a mandatory tourist tax of ${formattedTax} is due for your stay and is collected directly by the host.`,
+      ``,
+      `💳 Secure Payment Link (City Tax):`,
+      `Please settle your local city tax using the secure link below:`,
+      `${opts.paymentLink}`,
+      ``,
+      `If you have any questions or special requests before your arrival, feel free to reply directly here. We look forward to welcoming you!`,
+    ].join('\n')
+  }
+
+  // Scenario: Booking / deposit payment pending
   return [
-    `🎉 Booking Confirmed!`,
+    `📋 Reservation Reserved!`,
     ``,
     `Dear ${opts.guestName},`,
     ``,
-    `Thank you for your reservation! We are delighted to confirm your upcoming stay at ${opts.listingName}.`,
+    `Thank you for your reservation! Your dates at ${opts.listingName} have been secured:`,
     ``,
     `📋 Reservation Summary:`,
     `• Reservation ID: #${opts.reservationId}`,
@@ -58,7 +100,7 @@ export function generateBookingConfirmationText(opts: {
     `• Total: ${formattedAmount}`,
     ``,
     `💳 Secure Payment Link:`,
-    `Please complete your payment using the secure link below:`,
+    `Please complete your payment using the secure link below to guarantee and confirm your booking:`,
     `${opts.paymentLink}`,
     ``,
     `If you have any questions or special requests before your arrival, feel free to reply directly here. We look forward to welcoming you!`,
@@ -70,14 +112,47 @@ export function useBookingConfirmationFlow() {
   const { conversations, messages } = useInbox()
   const { updateReservation, reservations } = useReservationsModule()
   const journeys = useJourneys()
+  const cityTax = useCityTax()
 
   function sendBookingConfirmationWithPaymentLink(opts: BookingConfirmationOptions): {
     success: boolean
     conversationId: string
     paymentRequestId: string
     messageId: string
+    isCityTax: boolean
   } {
-    // 1. Resolve or create the Payment Request
+    // 1. Detect if this is specifically a City Tax collection
+    const reservation = reservations.value.find(r => r.id === opts.reservationId)
+    let isCityTax = opts.purpose === 'city_tax'
+    let cityTaxAmount = opts.cityTaxAmount
+    let cityTaxCurrency = opts.cityTaxCurrency
+    let cityTaxAuthority = opts.cityTaxAuthority
+
+    if (!isCityTax && opts.purpose !== 'booking' && reservation) {
+      try {
+        const assessment = cityTax.assess(reservation)
+        if (assessment.status === 'due' && assessment.collector === 'host' && assessment.totals.length > 0) {
+          isCityTax = true
+          cityTaxAmount = assessment.totals[0].amount
+          cityTaxCurrency = assessment.totals[0].currency
+          cityTaxAuthority = assessment.lines[0]?.authorityName || 'Local City Tax'
+        }
+      }
+      catch {
+        // Safe fallback in isolated/test environments
+      }
+    }
+
+    const payableAmount = isCityTax && cityTaxAmount ? cityTaxAmount : opts.totalPrice
+    const payableCurrency = isCityTax && cityTaxCurrency
+      ? (cityTaxCurrency as any)
+      : (opts.currency === 'IDR' ? 'IDR' : opts.currency === 'EUR' ? 'EUR' : 'USD')
+
+    const requestTitle = isCityTax
+      ? `City Tax - ${opts.listingName} (#${opts.reservationId})`
+      : `Reservation ${opts.reservationId}`
+
+    // 2. Resolve or create the Payment Request
     let req = opts.paymentRequestId ? requests.value.find(r => r.id === opts.paymentRequestId) : undefined
     if (!req) {
       req = createRequest({
@@ -85,9 +160,9 @@ export function useBookingConfirmationFlow() {
         guestEmail: opts.guestEmail,
         guestPhone: opts.guestPhone,
         listingId: opts.listingId,
-        title: `Reservation ${opts.reservationId}`,
-        amount: opts.totalPrice,
-        currency: (opts.currency === 'IDR' ? 'IDR' : 'USD'),
+        title: requestTitle,
+        amount: payableAmount,
+        currency: payableCurrency,
         feeMode: opts.feeMode ?? 'card',
         customFeePercentage: opts.customFeePercentage,
         expiresInHours: opts.expiresInHours ?? 24,
@@ -98,13 +173,15 @@ export function useBookingConfirmationFlow() {
 
     const paymentLink = req.paymentLink || generatePaymentLink(req.id)
 
-    // 2. Resolve or create Conversation in Inbox
+    // 3. Resolve or create Conversation in Inbox
     let conv = conversations.value.find(c => c.reservationId === opts.reservationId)
     if (!conv && opts.guestEmail) {
       conv = conversations.value.find(c => c.guestEmail?.toLowerCase() === opts.guestEmail.toLowerCase())
     }
 
     let conversationId: string
+    const statusNote = isCityTax ? '🎉 Booking Confirmed! City tax link sent.' : '📋 Reservation Reserved! Payment link sent.'
+
     if (!conv) {
       conversationId = `conv-res-${opts.reservationId}`
       const guestInitials = opts.guestName
@@ -125,15 +202,15 @@ export function useBookingConfirmationFlow() {
         reservationId: opts.reservationId,
         guestEmail: opts.guestEmail,
         status: null,
-        lastMessage: '🎉 Booking Confirmed! Payment link sent.',
+        lastMessage: statusNote,
         lastMessageAt: new Date().toISOString(),
         unreadCount: 0,
         isAssignedToMe: false,
         assignedTo: 'staff-2',
-        tags: ['Direct Booking', 'Awaiting Payment'],
+        tags: [opts.channel || 'Direct Booking', isCityTax ? 'City Tax Due' : 'Awaiting Payment'],
         labels: ['booking_confirmed'],
         sentiment: 'positive',
-        sentimentNote: 'New confirmed booking with payment link sent',
+        sentimentNote: isCityTax ? 'Booking confirmed, city tax payment link sent' : 'Reservation received, payment link sent',
         stayStatus: 'future',
         checkIn: opts.checkIn,
         checkOut: opts.checkOut,
@@ -153,13 +230,13 @@ export function useBookingConfirmationFlow() {
           stayStatus: 'future',
           checkIn: opts.checkIn,
           checkOut: opts.checkOut,
-          lastMessage: '🎉 Booking Confirmed! Payment link sent.',
+          lastMessage: statusNote,
           lastMessageAt: new Date().toISOString(),
         }
       }
     }
 
-    // 3. Generate message content
+    // 4. Generate message content
     const content = generateBookingConfirmationText({
       guestName: opts.guestName,
       listingName: opts.listingName,
@@ -171,11 +248,15 @@ export function useBookingConfirmationFlow() {
       totalPrice: opts.totalPrice,
       currency: opts.currency,
       paymentLink,
+      purpose: isCityTax ? 'city_tax' : 'booking',
+      cityTaxAmount,
+      cityTaxCurrency,
+      cityTaxAuthority,
     })
 
     const messagePaymentRequest: MessagePaymentRequest = {
       id: req.id,
-      title: req.title,
+      title: isCityTax ? `City Tax · #${opts.reservationId}` : req.title,
       amount: req.amount,
       currency: req.currency,
       feeAmount: req.feeAmount,
@@ -200,16 +281,15 @@ export function useBookingConfirmationFlow() {
       paymentRequest: messagePaymentRequest,
     }
 
-    // 4. Append message to conversation thread
+    // 5. Append message to conversation thread
     const currentMsgs = messages.value[conversationId] ?? []
     messages.value = {
       ...messages.value,
       [conversationId]: [...currentMsgs, message],
     }
 
-    // 5. Notify Journeys pipeline if active journeys match new_booking
+    // 6. Notify Journeys pipeline if active journeys match new_booking
     try {
-      const reservation = reservations.value.find(r => r.id === opts.reservationId)
       if (journeys.onNewBooking) {
         journeys.onNewBooking(reservation ?? (opts as any), req)
       }
@@ -223,6 +303,7 @@ export function useBookingConfirmationFlow() {
       conversationId,
       paymentRequestId: req.id,
       messageId,
+      isCityTax,
     }
   }
 
