@@ -2,8 +2,8 @@ import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import type { UpsellItem, UpsellService } from '~/components/upsells/data/upsell-services'
 
-export type FolioItemStatus = 'unpaid' | 'paid' | 'voided'
-export type FolioPaymentMethod = 'cash' | 'card' | 'room'
+export type FolioItemStatus = 'unpaid' | 'partially_paid' | 'paid' | 'voided'
+export type FolioPaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'room'
 export type FolioItemSource = 'catalog' | 'custom'
 
 export interface FolioItem {
@@ -26,6 +26,11 @@ export interface FolioItem {
    * the summary arithmetic only if the collection is still on record.
    */
   paidAt?: string
+  /**
+   * Amount collected towards this line item. For full payment, equals line total.
+   * For partial / down payment (DP), reflects the collected portion.
+   */
+  paidAmount?: number
   voidReason?: string
   voidedAt?: string
   voidedBy?: string
@@ -39,6 +44,7 @@ export type FolioPriceable = Pick<FolioItem, 'quantity' | 'unitPrice' | 'taxPerc
 export const FOLIO_PAYMENT_METHOD_LABELS: Record<FolioPaymentMethod, string> = {
   cash: 'Cash',
   card: 'Card',
+  bank_transfer: 'Bank transfer',
   room: 'Charge to room',
 }
 
@@ -110,6 +116,24 @@ export function folioBookingTotal(reservation: ReservationEntry): number {
   return roundFolioAmount(rooms + charges + folioPaymentFee(reservation, rooms))
 }
 
+export function folioItemPaidAmount(item: FolioItem): number {
+  if (item.status === 'unpaid' && !item.paidAmount)
+    return 0
+  if (item.status === 'partially_paid')
+    return roundFolioAmount(item.paidAmount ?? 0)
+  if (item.paidAmount !== undefined)
+    return roundFolioAmount(item.paidAmount)
+  return item.paidAt ? folioLineTotal(item) : 0
+}
+
+export function folioItemUnpaidAmount(item: FolioItem): number {
+  if (item.status === 'voided' || item.status === 'paid')
+    return 0
+  const total = folioLineTotal(item)
+  const paid = item.paidAmount ?? 0
+  return roundFolioAmount(Math.max(0, total - paid))
+}
+
 export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
   const items = reservation.folioItems ?? []
   const sum = (list: FolioItem[]) => roundFolioAmount(list.reduce((total, item) => total + folioLineTotal(item), 0))
@@ -117,11 +141,17 @@ export function buildFolioSummary(reservation: ReservationEntry): FolioSummary {
   const bookingTotal = folioBookingTotal(reservation)
   const itemsTotal = sum(items.filter(item => item.status !== 'voided'))
   const voidedTotal = sum(items.filter(item => item.status === 'voided'))
-  // paidAt, not status: a voided item that was paid still owes a refund.
-  const itemsPaid = sum(items.filter(item => Boolean(item.paidAt)))
+  // paidAt or paidAmount: a voided item that was paid still owes a refund.
+  const itemsPaid = roundFolioAmount(items.reduce((total, item) => {
+    if (item.status === 'voided')
+      return total + (item.paidAt ? (item.paidAmount ?? folioLineTotal(item)) : 0)
+    return total + folioItemPaidAmount(item)
+  }, 0))
   const itemsBalance = roundFolioAmount(itemsTotal - itemsPaid)
-  const unpaidTotal = sum(items.filter(item => item.status === 'unpaid'))
-  const refundableTotal = sum(items.filter(item => item.status === 'voided' && Boolean(item.paidAt)))
+  const unpaidTotal = roundFolioAmount(items.reduce((total, item) => total + folioItemUnpaidAmount(item), 0))
+  const refundableTotal = roundFolioAmount(items
+    .filter(item => item.status === 'voided' && Boolean(item.paidAt))
+    .reduce((total, item) => total + (item.paidAmount ?? folioLineTotal(item)), 0))
 
   return {
     bookingTotal,
@@ -152,11 +182,11 @@ export type FolioDraftField = 'label' | 'quantity' | 'unitPrice' | 'taxPercent' 
 export type FolioDraftErrors = Partial<Record<FolioDraftField, string>>
 
 export function canDeleteFolioItem(item: FolioItem): boolean {
-  return item.status === 'unpaid'
+  return item.status === 'unpaid' && (!item.paidAmount || item.paidAmount === 0)
 }
 
 export function canVoidFolioItem(item: FolioItem): boolean {
-  return item.status === 'paid'
+  return item.status === 'paid' || item.status === 'partially_paid'
 }
 
 export function validateFolioItemDraft(draft: FolioItemDraft): FolioDraftErrors {
@@ -282,11 +312,12 @@ export function filterFolioCatalogRows(rows: FolioCatalogRow[], query: string): 
     `${row.serviceName} ${row.itemName} ${row.description ?? ''}`.toLowerCase().includes(q))
 }
 
-export type FolioActivityKind = 'added' | 'paid' | 'deferred' | 'removed' | 'voided'
+export type FolioActivityKind = 'added' | 'paid' | 'partial_paid' | 'deferred' | 'removed' | 'voided'
 
 const folioActivityTitles: Record<FolioActivityKind, string> = {
   added: 'Folio item added',
   paid: 'Folio item paid',
+  partial_paid: 'Folio partial payment received',
   deferred: 'Folio item charged to room',
   removed: 'Folio item removed',
   voided: 'Folio item voided',
@@ -295,6 +326,7 @@ const folioActivityTitles: Record<FolioActivityKind, string> = {
 const folioActivityColors: Record<FolioActivityKind, ActivityEvent['colorDot']> = {
   added: 'blue',
   paid: 'green',
+  partial_paid: 'green',
   deferred: 'blue',
   removed: 'gray',
   voided: 'gray',
@@ -317,7 +349,12 @@ export function folioActivityEvent(
   const amount = `${folioLineTotal(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
   const parts = [`${item.label} · ${item.quantity} × ${unitPrice} = ${amount}`]
 
-  if (effectiveKind === 'paid' && item.paymentMethod)
+  if (effectiveKind === 'partial_paid' && item.paidAmount !== undefined) {
+    const paid = `${item.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+    parts.push(`Paid DP: ${paid}`)
+  }
+
+  if ((effectiveKind === 'paid' || effectiveKind === 'partial_paid') && item.paymentMethod)
     parts.push(FOLIO_PAYMENT_METHOD_LABELS[item.paymentMethod])
   if (effectiveKind === 'voided' && item.voidReason)
     parts.push(`Reason: ${item.voidReason}`)

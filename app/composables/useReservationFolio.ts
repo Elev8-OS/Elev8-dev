@@ -6,9 +6,12 @@ import {
   buildFolioSummary,
   canDeleteFolioItem,
   canVoidFolioItem,
+  FOLIO_PAYMENT_METHOD_LABELS,
   folioActivityEvent,
   folioCatalogRows,
   folioItemFromDraft,
+  folioItemUnpaidAmount,
+  folioLineTotal,
   isFolioItemDraftValid,
   roundFolioAmount,
 } from '~/components/reservations/data/folio'
@@ -101,13 +104,18 @@ export function useReservationFolio() {
     return item
   }
 
-  function markPaid(reservationId: string, itemId: string, method: FolioPaymentMethod) {
+  function markPaid(
+    reservationId: string,
+    itemId: string,
+    method: FolioPaymentMethod,
+    options?: { amount?: number, note?: string },
+  ) {
     const reservation = reservationById(reservationId)
     if (!reservation)
       return
 
     const current = itemsFor(reservationId).find(item => item.id === itemId)
-    if (!current || current.status !== 'unpaid')
+    if (!current || (current.status !== 'unpaid' && current.status !== 'partially_paid'))
       return
     // A 'room' item stays 'unpaid' by design, so the guard above does not
     // catch a repeated "Charge to room": without this, a second call would
@@ -116,14 +124,129 @@ export function useReservationFolio() {
     if (method === 'room' && current.paymentMethod === 'room')
       return
 
+    const now = new Date().toISOString()
+    const total = folioLineTotal(current)
+    const alreadyPaid = current.paidAmount ?? 0
+    const remaining = roundFolioAmount(total - alreadyPaid)
+
     // 'room' defers the charge: it stays unpaid and keeps counting in the balance.
-    const updated: FolioItem = method === 'room'
-      ? { ...current, paymentMethod: 'room' }
-      : { ...current, status: 'paid', paymentMethod: method, paidAt: new Date().toISOString() }
+    if (method === 'room') {
+      const updated: FolioItem = { ...current, paymentMethod: 'room' }
+      const items = itemsFor(reservationId).map(item => (item.id === itemId ? updated : item))
+      commit(reservation, items, folioActivityEvent('deferred', updated, actor.value, reservation.currency))
+      toast.success(`${updated.label} charged to room`)
+      return
+    }
+
+    const payAmount = (options?.amount !== undefined && options.amount > 0)
+      ? roundFolioAmount(Math.min(options.amount, remaining))
+      : remaining
+
+    const newPaidAmount = roundFolioAmount(alreadyPaid + payAmount)
+    const isPartial = newPaidAmount < total
+
+    const updated: FolioItem = {
+      ...current,
+      status: isPartial ? 'partially_paid' : 'paid',
+      paymentMethod: method,
+      paidAt: now,
+      paidAmount: newPaidAmount,
+      note: options?.note ? [current.note, options.note].filter(Boolean).join(' · ') : current.note,
+    }
 
     const items = itemsFor(reservationId).map(item => (item.id === itemId ? updated : item))
-    commit(reservation, items, folioActivityEvent(method === 'room' ? 'deferred' : 'paid', updated, actor.value, reservation.currency))
-    toast.success(method === 'room' ? `${updated.label} charged to room` : `${updated.label} marked paid`)
+    commit(
+      reservation,
+      items,
+      folioActivityEvent(isPartial ? 'partial_paid' : 'paid', updated, actor.value, reservation.currency, now),
+    )
+
+    const formatted = `${payAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${reservation.currency}`
+    toast.success(isPartial ? `Recorded DP / partial payment of ${formatted} for ${updated.label}` : `${updated.label} marked paid`)
+  }
+
+  interface MarkAllAsPaidInput {
+    method: FolioPaymentMethod
+    amount?: number
+    isPartial?: boolean
+    note?: string
+  }
+
+  function markAllAsPaid(reservationId: string, input: MarkAllAsPaidInput) {
+    const reservation = reservationById(reservationId)
+    if (!reservation || !canPostTo(reservationId))
+      return
+
+    const summary = summaryFor(reservationId)
+    if (!summary || summary.unpaidTotal <= 0)
+      return
+
+    const method = input.method
+    const now = new Date().toISOString()
+    const targetAmount = (input.isPartial && input.amount !== undefined && input.amount > 0)
+      ? roundFolioAmount(Math.min(input.amount, summary.unpaidTotal))
+      : summary.unpaidTotal
+
+    let remainingToPay = targetAmount
+    const isPartial = targetAmount < summary.unpaidTotal
+
+    const items = itemsFor(reservationId).map((item) => {
+      if (item.status === 'voided' || item.status === 'paid' || remainingToPay <= 0)
+        return item
+
+      const unpaidOnItem = folioItemUnpaidAmount(item)
+      if (unpaidOnItem <= 0)
+        return item
+
+      const currentPaid = item.paidAmount ?? 0
+      if (remainingToPay >= unpaidOnItem) {
+        // Paid in full
+        remainingToPay = roundFolioAmount(remainingToPay - unpaidOnItem)
+        return {
+          ...item,
+          status: 'paid' as const,
+          paidAmount: folioLineTotal(item),
+          paymentMethod: method,
+          paidAt: now,
+          note: input.note ? [item.note, input.note].filter(Boolean).join(' · ') : item.note,
+        }
+      }
+      else {
+        // Partially paid
+        const allocated = remainingToPay
+        remainingToPay = 0
+        return {
+          ...item,
+          status: 'partially_paid' as const,
+          paidAmount: roundFolioAmount(currentPaid + allocated),
+          paymentMethod: method,
+          paidAt: now,
+          note: input.note ? [item.note, input.note].filter(Boolean).join(' · ') : item.note,
+        }
+      }
+    })
+
+    const formattedAmount = `${targetAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${reservation.currency}`
+    const eventTitle = isPartial ? 'Folio down payment (DP) received' : 'Folio marked paid in full'
+    const eventDescParts = [
+      `${isPartial ? 'Partial payment (DP)' : 'Full payment'} of ${formattedAmount}`,
+      FOLIO_PAYMENT_METHOD_LABELS[method],
+    ]
+    if (input.note)
+      eventDescParts.push(input.note)
+
+    const activityEvent: ActivityEvent = {
+      id: `act-fol-${Date.now()}-${isPartial ? 'partial' : 'all-paid'}`,
+      type: 'reservation',
+      title: eventTitle,
+      description: eventDescParts.join(' · '),
+      actor: actor.value,
+      timestamp: now,
+      colorDot: 'green',
+    }
+
+    commit(reservation, items, activityEvent)
+    toast.success(isPartial ? `Recorded DP / partial payment of ${formattedAmount}` : 'Marked all folio items as paid')
   }
 
   function deleteItem(reservationId: string, itemId: string) {
@@ -174,6 +297,7 @@ export function useReservationFolio() {
     catalogRowsFor,
     addItem,
     markPaid,
+    markAllAsPaid,
     deleteItem,
     voidItem,
   }

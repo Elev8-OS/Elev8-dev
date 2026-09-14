@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import type { FolioItem, FolioItemDraft, FolioPaymentMethod } from '~/components/reservations/data/folio'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { toast } from 'vue-sonner'
 import {
   buildFolioSummary,
   canDeleteFolioItem,
   canVoidFolioItem,
   FOLIO_PAYMENT_METHOD_LABELS,
+  folioItemUnpaidAmount,
   folioLineTotal,
 } from '~/components/reservations/data/folio'
 import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
+import FolioPayDialog from '~/components/reservations/FolioPayDialog.vue'
 import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import { useReservationFolio } from '~/composables/useReservationFolio'
+import { buildFolioInvoicePdf } from '~/lib/folio-invoice-pdf'
 
 const props = withDefaults(defineProps<{
   reservation: ReservationEntry
@@ -24,6 +28,8 @@ const folio = useReservationFolio()
 const addOpen = ref(false)
 const voidOpen = ref(false)
 const voidTargetId = ref<string | null>(null)
+const payOpen = ref(false)
+const payTargetItem = ref<FolioItem | null>(null)
 
 const items = computed<FolioItem[]>(() => props.reservation.folioItems ?? [])
 const summary = computed(() => buildFolioSummary(props.reservation))
@@ -32,12 +38,14 @@ const voidTarget = computed(() => items.value.find(item => item.id === voidTarge
 
 const statusLabels: Record<FolioItem['status'], string> = {
   unpaid: 'Unpaid',
+  partially_paid: 'Partially paid',
   paid: 'Paid',
   voided: 'Voided',
 }
 
 const statusClasses: Record<FolioItem['status'], string> = {
   unpaid: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  partially_paid: 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400',
   paid: 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400',
   voided: 'border-muted-foreground/30 bg-muted text-muted-foreground',
 }
@@ -45,6 +53,8 @@ const statusClasses: Record<FolioItem['status'], string> = {
 function statusLabel(item: FolioItem): string {
   if (item.status === 'unpaid' && item.paymentMethod === 'room')
     return 'Unpaid, on room account'
+  if (item.status === 'partially_paid' && item.paidAmount)
+    return `Partially paid (${fmt(item.paidAmount)})`
   if (item.status === 'paid' && item.paymentMethod)
     return `Paid · ${FOLIO_PAYMENT_METHOD_LABELS[item.paymentMethod]}`
   return statusLabels[item.status]
@@ -60,6 +70,51 @@ function submitDraft(draft: FolioItemDraft) {
 
 function pay(item: FolioItem, method: FolioPaymentMethod) {
   folio.markPaid(props.reservation.id, item.id, method)
+}
+
+function openPayAll() {
+  payTargetItem.value = null
+  payOpen.value = true
+}
+
+function openPayItem(item: FolioItem) {
+  payTargetItem.value = item
+  payOpen.value = true
+}
+
+function confirmPayment(payload: {
+  method: FolioPaymentMethod
+  amount: number
+  isPartial: boolean
+  note?: string
+  itemId?: string
+}) {
+  if (payload.itemId) {
+    folio.markPaid(props.reservation.id, payload.itemId, payload.method, {
+      amount: payload.amount,
+      note: payload.note,
+    })
+  }
+  else {
+    folio.markAllAsPaid(props.reservation.id, {
+      method: payload.method,
+      amount: payload.amount,
+      isPartial: payload.isPartial,
+      note: payload.note,
+    })
+  }
+  payTargetItem.value = null
+}
+
+function handleDownloadInvoice() {
+  try {
+    buildFolioInvoicePdf(props.reservation, { download: true })
+    toast.success('Invoice PDF downloaded')
+  }
+  catch (err) {
+    console.error(err)
+    toast.error('Failed to generate invoice PDF')
+  }
 }
 
 function remove(item: FolioItem) {
@@ -82,6 +137,11 @@ function confirmVoid(reason: string) {
 watch(voidOpen, (open) => {
   if (!open)
     voidTargetId.value = null
+})
+
+watch(payOpen, (open) => {
+  if (!open)
+    payTargetItem.value = null
 })
 </script>
 
@@ -107,6 +167,33 @@ watch(voidOpen, (open) => {
 
       <AccordionContent :class="bare ? 'p-0 pt-1' : 'px-3 pb-3'">
         <div class="space-y-2">
+          <!-- Top Action Bar: Download Invoice & Mark all as paid -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-1">
+            <Button
+              data-testid="folio-download-invoice"
+              variant="outline"
+              size="sm"
+              class="h-8 gap-1.5 text-xs"
+              @click="handleDownloadInvoice"
+            >
+              <Icon name="lucide:download" class="size-3.5 text-muted-foreground" />
+              Download invoice
+            </Button>
+
+            <Button
+              v-if="summary.unpaidTotal > 0"
+              data-testid="folio-mark-all-paid"
+              variant="default"
+              size="sm"
+              class="h-8 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+              :disabled="!canPost"
+              @click="openPayAll"
+            >
+              <Icon name="lucide:check-check" class="size-3.5" />
+              Mark all as paid
+            </Button>
+          </div>
+
           <!-- Staff-posted items -->
           <p v-if="!items.length" class="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
             Nothing posted yet. Add a minibar item, a laundry bag or anything else the guest owes.
@@ -133,6 +220,9 @@ watch(voidOpen, (open) => {
                     · service {{ item.servicePercent }}%
                   </template>
                 </p>
+                <p v-if="item.status === 'partially_paid'" class="mt-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                  Remaining: {{ fmt(folioItemUnpaidAmount(item)) }}
+                </p>
               </div>
               <div class="flex shrink-0 items-center gap-2">
                 <span class="text-sm font-medium" :class="item.status === 'voided' ? 'line-through text-muted-foreground' : ''">
@@ -145,15 +235,18 @@ watch(voidOpen, (open) => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <template v-if="item.status === 'unpaid'">
+                    <template v-if="item.status === 'unpaid' || item.status === 'partially_paid'">
                       <DropdownMenuItem data-testid="folio-pay-cash" @click="pay(item, 'cash')">
                         Mark paid · Cash
                       </DropdownMenuItem>
                       <DropdownMenuItem data-testid="folio-pay-card" @click="pay(item, 'card')">
                         Mark paid · Card
                       </DropdownMenuItem>
+                      <DropdownMenuItem data-testid="folio-pay-custom" @click="openPayItem(item)">
+                        Record DP / partial payment...
+                      </DropdownMenuItem>
                       <DropdownMenuItem
-                        v-if="item.paymentMethod !== 'room'"
+                        v-if="item.paymentMethod !== 'room' && item.status === 'unpaid'"
                         data-testid="folio-pay-room"
                         @click="pay(item, 'room')"
                       >
@@ -276,6 +369,12 @@ watch(voidOpen, (open) => {
       :item="voidTarget"
       :currency="reservation.currency"
       @confirm="confirmVoid"
+    />
+    <FolioPayDialog
+      v-model:open="payOpen"
+      :reservation="reservation"
+      :target-item="payTargetItem"
+      @confirm="confirmPayment"
     />
   </Accordion>
 </template>
