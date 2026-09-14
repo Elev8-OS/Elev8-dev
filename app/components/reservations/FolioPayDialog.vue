@@ -109,7 +109,7 @@ watch(() => props.open, (open) => {
     <DialogContent class="sm:max-w-md" data-testid="folio-pay-dialog">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
-          <Icon name="lucide:check-circle-2" class="size-5 text-primary" />
+          <Icon name="lucide:check-circle-2" class="size-5 text-foreground" />
           {{ targetItem ? `Collect Payment · ${targetItem.label}` : 'Mark Folio as Paid' }}
         </DialogTitle>
         <DialogDescription>

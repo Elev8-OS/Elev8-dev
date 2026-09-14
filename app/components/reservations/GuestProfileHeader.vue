@@ -23,7 +23,7 @@ function callPhone(phone: string) {
 <template>
   <div class="flex items-start gap-4">
     <Avatar class="size-16">
-      <AvatarFallback class="bg-primary/10 text-primary text-xl">
+      <AvatarFallback class="bg-primary/15 text-foreground font-semibold text-xl">
         {{ initials(guest.name) }}
       </AvatarFallback>
     </Avatar>

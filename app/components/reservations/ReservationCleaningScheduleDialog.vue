@@ -280,7 +280,7 @@ function handleClear() {
     <DialogContent class="sm:max-w-lg max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden z-[60]">
       <DialogHeader class="px-6 pt-5 pb-3 border-b flex-shrink-0">
         <div class="flex items-center gap-2">
-          <div class="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div class="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-foreground">
             <Icon name="lucide:sparkles" class="size-4" />
           </div>
           <div>
@@ -529,7 +529,7 @@ function handleClear() {
         <div class="rounded-lg border bg-muted/30 p-3.5 space-y-2">
           <div class="flex items-center justify-between">
             <span class="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Icon name="lucide:calendar-check-2" class="size-3.5 text-primary" />
+              <Icon name="lucide:calendar-check-2" class="size-3.5 text-foreground" />
               Schedule Preview
             </span>
             <Badge variant="secondary" class="text-[10px]">
@@ -543,7 +543,7 @@ function handleClear() {
               :key="d"
               class="inline-flex items-center gap-1 rounded border bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground"
             >
-              <Icon name="lucide:calendar" class="size-2.5 text-primary" />
+              <Icon name="lucide:calendar" class="size-2.5 text-foreground" />
               {{ fmtDateLabel(d) }}
               <span class="text-[10px] text-muted-foreground/70">@ {{ cleaningTime || '11:00' }}</span>
             </span>

@@ -14,8 +14,7 @@ const emit = defineEmits<{
   'created': [reservation: ReservationEntry]
 }>()
 
-const { createReservation, updateReservation, reservations, guests } = useReservationsModule()
-const { createRequest } = usePaymentRequests()
+const { createReservation, reservations, guests } = useReservationsModule()
 const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
 
 interface GuestSearchOption {
@@ -400,7 +399,7 @@ function handleSubmit() {
 
   const channels: string[] = []
   if (sendPaymentInbox.value || sendPaymentWhatsApp.value || sendPaymentEmail.value) {
-    const confirmation = sendBookingConfirmationWithPaymentLink({
+    sendBookingConfirmationWithPaymentLink({
       reservationId: result.id,
       guestName,
       guestEmail: guestEmail.value.trim(),
@@ -782,7 +781,7 @@ watch(() => props.open, (open) => {
                     />
                     <div class="space-y-0.5">
                       <Label class="text-sm font-semibold cursor-pointer flex items-center gap-1.5" @click="sendPaymentInbox = !sendPaymentInbox">
-                        <Icon name="lucide:message-square" class="size-4 text-primary" />
+                        <Icon name="lucide:message-square" class="size-4 text-foreground" />
                         Send confirmation & payment link to Guest Inbox
                       </Label>
                       <p class="text-xs text-muted-foreground leading-relaxed">

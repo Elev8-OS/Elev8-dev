@@ -19,7 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const { updateReservation } = useReservationsModule()
-const { createRequest } = usePaymentRequests()
+const { createRequest: _createRequest } = usePaymentRequests()
 const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
 
 // Basic
@@ -646,7 +646,7 @@ function categoryLabel(category: string): string {
                     />
                     <div class="space-y-0.5">
                       <Label class="text-sm font-semibold cursor-pointer flex items-center gap-1.5" @click="sendPaymentInbox = !sendPaymentInbox">
-                        <Icon name="lucide:message-square" class="size-4 text-primary" />
+                        <Icon name="lucide:message-square" class="size-4 text-foreground" />
                         Send / Resend confirmation & payment link to Guest Inbox
                       </Label>
                       <p class="text-xs text-muted-foreground leading-relaxed">
