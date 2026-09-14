@@ -320,9 +320,6 @@ function fmtDob(iso: string): string {
                       <Icon name="lucide:pencil" class="size-3.5" />
                       <span class="sr-only">Edit</span>
                     </Button>
-                    <div class="flex size-9 items-center justify-center border bg-muted/40">
-                      <Icon :name="channelIcon(reservation.channel)" class="size-4" />
-                    </div>
                   </div>
                 </div>
 
