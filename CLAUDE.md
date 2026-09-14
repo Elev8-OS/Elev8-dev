@@ -311,6 +311,60 @@ paid).
 `tests/composables/useReservationFolio.spec.ts` (17),
 `tests/components/reservations/ReservationFolio.spec.ts` (28).
 
+### City Tax Collection (`app/components/reservations/data/city-tax.ts` + `app/composables/useCityTax.ts`)
+
+Who collects the tourist levy on a given stay, and making sure the host's share is never
+missed. The rate already lived on `ListingFeeTaxItem`; what was missing was the collector.
+
+- **The policy lives on the city tax item**, as `ListingFeeTaxItem.cityTax?: CityTaxConfig`,
+  so one municipal tax is configured once and distributed by the existing listing
+  assignment in `useFeesTaxes`.
+- ⚠️ **An unset channel falls back to `'host'`, never `'not_applicable'`.** The feature
+  exists to stop a collection going missing, so an unconfigured channel must over-alert.
+- ⚠️ **Status is derived, only the settlement is stored.** `ReservationEntry` carries
+  `cityTaxSettlement?: CityTaxSettlement` and nothing else. `resolveCityTax()` recomputes
+  `not_required` / `channel_collects` / `due` on every read, so flipping a channel policy
+  re-evaluates every existing booking instead of leaving a stale flag behind.
+- ⚠️ **The settlement freezes `CityTaxTotal[]`**, so a later rate change cannot rewrite
+  what a guest actually paid. Same snapshot rule as a folio catalog pick.
+- ⚠️ **City tax never goes through the folio and never touches `priceDetails`.**
+  `useReservationFolio.commit()` moves `extras`, `guestPaid` and `payout` in lockstep, so
+  posting a municipal levy there would inflate every owner payout by the tax. It is money
+  held for a city, not owner revenue.
+- ⚠️ **No currency conversion.** `CityTaxAssessment` has `totals: CityTaxTotal[]`, one per
+  currency, and deliberately **no single `amount` field**, so two currencies can never be
+  blended. `cityTaxTotals()` is structural and sums both live basis lines and frozen
+  settlement totals.
+- **`percent` is charged on `priceDetails.subtotal`**, never the grand total: a levy is not
+  charged on the cleaning fee. `skipNights` / `maxNights` only bite on a night-multiplying
+  logic; a flat `per_booking` charge ignores them.
+
+**Alerts:** `CITY_TAX_COLLECTION_UPCOMING` (INFO, **off by default** behind the
+`notifyOnBooking` switch on `/settings/fees-taxes`), `CITY_TAX_COLLECTION_DUE` (WARNING,
+arrival day through the stay) and `CITY_TAX_COLLECTION_MISSED` (CRITICAL, after check-out).
+⚠️ All three must stay listed in `FINANCE_TYPES` in `notification-settings.ts`: roles build
+`enabledAlertTypes` from those categories, and `isAlertVisibleToUser` drops anything
+missing, so an uncategorised type is invisible in the bell. Settling resolves any live
+alert directly rather than through `dismiss()`, because whether the current user can see
+an alert must not decide whether a settled obligation keeps nagging everybody else.
+
+**Surfaces:** the collection block in `FeesTaxesSettingsPanel.vue` (city tax type only),
+`ReservationCityTaxSection.vue` in the detail sheet right after the folio,
+`CityTaxStatusChip.vue` in `ReservationTable.vue`, and the `/city-tax` worklist
+(Overdue / Due today / Upcoming / Settled, per-currency KPIs, bulk collect).
+
+**Tests:** `tests/lib/city-tax.spec.ts` (56), `tests/composables/useCityTax.spec.ts` (28),
+`tests/components/reservations/ReservationCityTax.spec.ts` (11).
+⚠️ `useFeesTaxes` uses **module-level refs**, which the `useState` shim does not reset, so
+every spec resets `feeTaxItems` / `taxSets` / `assignments` by hand. Composable fixtures
+use dates **relative to today**, because the alert stages read the current day.
+
+**NOT implemented (intentionally out of scope):** remittance reporting to the municipality;
+guest-facing payment (no payment request link, no guide line, no invoice line); any
+accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); per-guest
+exemptions beyond the adults / children / infants categories plus a manual waive; reading
+from a real channel API; and any background job (alerts come from `emitCityTaxAlerts()`).
+
 ### SmartLock Integration (`app/components/settings/` + `app/composables/useSmartLock.ts`)
 
 Single-connection (one API key per tenant), multi-lock assignment (many locks per listing or per room). Mock/demo only — no real provider API calls. The integration is provider-agnostic; only the connection sheet references the underlying provider name.
@@ -2163,6 +2217,7 @@ const table = useVueTable({
 | `useGmDashboard` | `app/composables/useGmDashboard.ts` | General Manager portfolio dashboard (role-gated on `/`) | `isGeneralManager`, `anchorDate`, `region`/`regionOptions`, `revenueRange`, `units`, `unitCount`, `stays`, `kpis`, `dayFlow`, `revenueSeries`, `revenueRangeMetrics`, `todayBookings`, `selectedBookings`, `stripDays`, `stripOccupancy`, `setSelectedDate()`, `shiftStrip()`, `goToToday()`. Stays are generated deterministically from the real listings, anchored to today. |
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
 | `useReservationFolio` | `app/composables/useReservationFolio.ts` | Staff-posted charges on a stay (minibar, laundry). The only writer of `ReservationEntry.folioItems` | `itemsFor(id)`, `summaryFor(id)`, `canPostTo(id)`, `catalogRowsFor(id)`, `addItem()`, `markPaid()`, `deleteItem()`, `voidItem()`. Never writes to `useUpsellOrders`; keeps `priceDetails.extras`/`guestPaid`/`payout` in step in one `updateReservation` call. |
+| `useCityTax` | `app/composables/useCityTax.ts` | Who collects the tourist levy on a stay, and chasing the host's share | `assessmentFor(id)`, `markCollected()`, `waive()`, `undoSettlement()`, `rows`, `overdue`, `dueToday`, `upcoming`, `settled`, `outstandingTotal`, `collectedTotal`, `notifyOnBooking`, `emitCityTaxAlerts()`. The only writer of `cityTaxSettlement`; never touches `priceDetails` or the folio. |
 
 ### State Management Rules
 - **Inbox conversations**: `useState<Conversation[]>()` — reactive, persists per request
