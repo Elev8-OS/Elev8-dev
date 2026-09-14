@@ -12,9 +12,12 @@ import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue
 import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import { useReservationFolio } from '~/composables/useReservationFolio'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   reservation: ReservationEntry
-}>()
+  bare?: boolean
+}>(), {
+  bare: false,
+})
 
 const folio = useReservationFolio()
 
@@ -83,9 +86,15 @@ watch(voidOpen, (open) => {
 </script>
 
 <template>
-  <Accordion type="single" collapsible class="w-full border-b px-2">
+  <Accordion
+    type="single"
+    collapsible
+    :default-value="bare ? 'folio' : undefined"
+    class="w-full"
+    :class="bare ? 'border-none p-0' : 'border-b px-2'"
+  >
     <AccordionItem value="folio" class="border-b-0">
-      <AccordionTrigger class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
+      <AccordionTrigger v-if="!bare" class="px-3 py-3 text-xs text-muted-foreground hover:no-underline">
         <span class="flex flex-1 items-center gap-2">
           <Icon name="lucide:receipt-text" class="size-4" />
           Charges & extras
@@ -96,7 +105,7 @@ watch(voidOpen, (open) => {
         </span>
       </AccordionTrigger>
 
-      <AccordionContent class="px-3 pb-3">
+      <AccordionContent :class="bare ? 'p-0 pt-1' : 'px-3 pb-3'">
         <div class="space-y-2">
           <!-- Staff-posted items -->
           <p v-if="!items.length" class="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">

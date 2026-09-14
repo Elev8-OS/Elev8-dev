@@ -61,7 +61,7 @@ const housekeepingJobs = computed(() => {
 })
 const housekeepingCount = computed(() => housekeepingJobs.value.length)
 
-type ReservationTab = 'details' | 'activity' | 'upsells' | 'housekeeping'
+type ReservationTab = 'details' | 'charges' | 'activity' | 'upsells' | 'housekeeping'
 const activeTab = ref<ReservationTab>('details')
 
 function selectTab(tab: ReservationTab) {
@@ -573,9 +573,6 @@ function fmtDob(iso: string): string {
                 </AccordionItem>
               </Accordion>
 
-              <!-- Charges & extras (staff-posted folio) -->
-              <ReservationFolioSection :reservation="reservation" />
-
               <!-- City tax: what the municipality is owed on this stay -->
               <ReservationCityTaxSection :reservation="reservation" />
 
@@ -888,7 +885,28 @@ function fmtDob(iso: string): string {
             </div>
           </ScrollArea>
 
-          <!-- 2. Activity Tab View -->
+          <!-- 2. Charges & Extras Tab View -->
+          <div v-else-if="activeTab === 'charges'" class="flex flex-col h-full">
+            <div class="flex items-center justify-between border-b px-5 py-4 shrink-0 bg-muted/20">
+              <div class="flex items-center gap-2">
+                <Icon name="lucide:receipt-text" class="size-4 text-primary" />
+                <h3 class="text-sm font-semibold">Charges & Extras</h3>
+                <Badge v-if="reservation.folioItems?.length" variant="secondary" class="h-4 min-w-4 px-1.5 text-[10px]">
+                  {{ reservation.folioItems.length }}
+                </Badge>
+              </div>
+            </div>
+            <ScrollArea class="h-full min-h-0 flex-1">
+              <div class="p-5">
+                <ReservationFolioSection
+                  :reservation="reservation"
+                  bare
+                />
+              </div>
+            </ScrollArea>
+          </div>
+
+          <!-- 3. Activity Tab View -->
           <div v-else-if="activeTab === 'activity'" class="flex flex-col h-full">
             <div class="flex items-center justify-between border-b px-5 py-4 shrink-0 bg-muted/20">
               <div class="flex items-center gap-2">
@@ -995,6 +1013,32 @@ function fmtDob(iso: string): string {
               </TooltipTrigger>
               <TooltipContent side="left">
                 <p>Reservation details</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <!-- Charges & Extras -->
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="relative flex size-9 items-center justify-center rounded-md transition-colors"
+                  :class="activeTab === 'charges' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="selectTab('charges')"
+                >
+                  <Icon name="lucide:receipt-text" class="size-4" />
+                  <span
+                    v-if="reservation.folioItems?.length"
+                    class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold"
+                    :class="activeTab === 'charges' ? 'bg-background text-foreground' : 'bg-primary text-primary-foreground'"
+                  >
+                    {{ reservation.folioItems.length }}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p>Charges & extras{{ reservation.folioItems?.length ? ` (${reservation.folioItems.length})` : '' }}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
