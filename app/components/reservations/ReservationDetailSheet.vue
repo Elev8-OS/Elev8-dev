@@ -290,37 +290,29 @@ function fmtDob(iso: string): string {
             <!-- Details view (default) -->
             <ScrollArea v-if="activeTab === 'details'" class="h-full min-h-0 flex-1">
               <div class="flex flex-col">
-                <!-- Header: status dropdown + channel + listing name -->
-                <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
-                  <div class="min-w-0">
-                    <NuxtLink :to="`/listings/${reservation.listingId}`" class="text-foreground hover:underline text-base font-semibold leading-tight">
-                      {{ reservation.listingName }}
-                    </NuxtLink>
-                    <div class="mt-2">
-                      <Select :model-value="reservation.status" @update:model-value="onStatusChange">
-                        <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
-                          <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-                            <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
-                            {{ reservationStatusLabels[reservation.status] }}
-                          </span>
-                        </SelectTrigger>
-                        <SelectContent class="min-w-[200px]">
-                          <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
-                            <span class="flex items-center gap-2 whitespace-nowrap">
-                              <ReservationStatusBadge :status="opt.value as ReservationStatus" />
-                              <span class="ml-1">{{ opt.label }}</span>
-                            </span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div class="flex shrink-0 items-center gap-2">
-                    <Button variant="outline" size="sm" class="h-8 w-8 p-0" title="Edit reservation" @click="editOpen = true">
-                      <Icon name="lucide:pencil" class="size-3.5" />
-                      <span class="sr-only">Edit</span>
-                    </Button>
-                  </div>
+                <!-- Header: status dropdown + edit reservation button -->
+                <div class="flex items-center justify-between gap-3 border-b px-5 py-3.5">
+                  <Select :model-value="reservation.status" @update:model-value="onStatusChange">
+                    <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
+                      <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
+                        {{ reservationStatusLabels[reservation.status] }}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent class="min-w-[200px]">
+                      <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value" class="py-2.5">
+                        <span class="flex items-center gap-2 whitespace-nowrap">
+                          <ReservationStatusBadge :status="opt.value as ReservationStatus" />
+                          <span class="ml-1">{{ opt.label }}</span>
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button variant="outline" size="sm" class="h-8 gap-1.5 text-xs font-medium" @click="editOpen = true">
+                    <Icon name="lucide:pencil" class="size-3.5" />
+                    <span>Edit reservation</span>
+                  </Button>
                 </div>
 
                 <!-- Guest -->
@@ -344,15 +336,27 @@ function fmtDob(iso: string): string {
                       </p>
                     </div>
                   </div>
-                  <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span class="flex items-center gap-1.5">
-                      <Icon name="lucide:users" class="size-3.5" />
-                      {{ partyBreakdown }}
-                    </span>
-                    <span class="flex items-center gap-1.5">
-                      <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
-                      {{ reservation.channel }}
-                    </span>
+
+                  <div class="mt-3 space-y-1.5 text-xs text-muted-foreground">
+                    <div class="flex items-center gap-1.5">
+                      <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
+                      <NuxtLink
+                        :to="`/listings/${reservation.listingId}`"
+                        class="font-medium text-foreground hover:underline truncate"
+                      >
+                        {{ reservation.listingName }}
+                      </NuxtLink>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <span class="flex items-center gap-1.5">
+                        <Icon name="lucide:users" class="size-3.5" />
+                        {{ partyBreakdown }}
+                      </span>
+                      <span class="flex items-center gap-1.5">
+                        <Icon :name="channelIcon(reservation.channel)" class="size-3.5" />
+                        {{ reservation.channel }}
+                      </span>
+                    </div>
                   </div>
 
                   <!-- Dates (Check-in / Check-out) -->
