@@ -325,7 +325,44 @@ function fmtDob(iso: string): string {
                     {{ reservation.channel }}
                   </span>
                 </div>
-                <div v-if="reservation.guestNotes" class="mt-3 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+
+                <!-- Dates (Check-in / Check-out) -->
+                <div class="mt-4 border-t pt-4">
+                  <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                    <div>
+                      <div class="text-xs text-muted-foreground">
+                        Check-in
+                      </div>
+                      <div class="text-base font-semibold">
+                        {{ fmtDate(reservation.checkIn) }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">
+                        2:00 PM
+                      </div>
+                    </div>
+                    <div class="flex flex-col items-center gap-1">
+                      <div class="flex h-9 w-9 items-center justify-center bg-primary/10 text-primary">
+                        <Icon name="lucide:moon-star" class="size-4" />
+                      </div>
+                      <span class="text-[11px] font-medium text-muted-foreground">
+                        {{ reservation.nights }} nights
+                      </span>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-xs text-muted-foreground">
+                        Check-out
+                      </div>
+                      <div class="text-base font-semibold">
+                        {{ fmtDate(reservation.checkOut) }}
+                      </div>
+                      <div class="text-xs text-muted-foreground">
+                        11:00 AM
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="reservation.guestNotes" class="mt-4 flex items-start gap-2 border-l-2 border-primary bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
                   <Icon name="lucide:notebook-pen" class="mt-0.5 size-3.5 shrink-0" />
                   <span class="leading-relaxed">{{ reservation.guestNotes }}</span>
                 </div>
@@ -724,42 +761,6 @@ function fmtDob(iso: string): string {
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
-
-              <!-- Dates -->
-              <div class="border-b px-5 py-4">
-                <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                  <div>
-                    <div class="text-xs text-muted-foreground">
-                      Check-in
-                    </div>
-                    <div class="text-base font-semibold">
-                      {{ fmtDate(reservation.checkIn) }}
-                    </div>
-                    <div class="text-xs text-muted-foreground">
-                      2:00 PM
-                    </div>
-                  </div>
-                  <div class="flex flex-col items-center gap-1">
-                    <div class="flex h-9 w-9 items-center justify-center bg-primary/10 text-primary">
-                      <Icon name="lucide:moon-star" class="size-4" />
-                    </div>
-                    <span class="text-[11px] font-medium text-muted-foreground">
-                      {{ reservation.nights }} nights
-                    </span>
-                  </div>
-                  <div class="text-right">
-                    <div class="text-xs text-muted-foreground">
-                      Check-out
-                    </div>
-                    <div class="text-base font-semibold">
-                      {{ fmtDate(reservation.checkOut) }}
-                    </div>
-                    <div class="text-xs text-muted-foreground">
-                      11:00 AM
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <!-- Upsells purchased by the guest (accordion) -->
               <Accordion type="single" collapsible class="w-full border-b px-2">
