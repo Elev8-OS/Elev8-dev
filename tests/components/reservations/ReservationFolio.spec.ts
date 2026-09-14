@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { initialReservations } from '~/components/reservations/data/reservations'
 import FolioAddItemDialog from '~/components/reservations/FolioAddItemDialog.vue'
+import FolioPayDialog from '~/components/reservations/FolioPayDialog.vue'
 import FolioVoidDialog from '~/components/reservations/FolioVoidDialog.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '~/components/ui/accordion'
@@ -15,6 +16,7 @@ import { Label } from '~/components/ui/label'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { Textarea } from '~/components/ui/textarea'
+import { buildFolioInvoicePdf } from '~/lib/folio-invoice-pdf'
 
 /**
  * The shadcn primitives must be registered or an unresolved `Input` renders as a
@@ -354,7 +356,7 @@ describe('reservationFolioSection', () => {
     // 13.20 still due against 19.80 refundable nets to a 6.60 refund, the
     // same figure the old single-line summary showed, now stated as the
     // net of the two rows above rather than in place of them.
-    expect(wrapper.text()).toContain('Refund 6.60')
+    expect(wrapper.text()).toContain('Refund USD 6.60')
   })
 
   it('shows both rows for the mirror case: a large unpaid item and a smaller voided-paid one', async () => {
@@ -486,5 +488,72 @@ describe('reservationFolioSection', () => {
     const rows = wrapper.findAll('[data-testid="folio-item-row"]')
 
     expect(rows[2]!.find('[aria-label="Item actions"]').exists()).toBe(false)
+  })
+
+  it('renders Download invoice button and Mark all as paid button', async () => {
+    const wrapper = await mountSection()
+    const downloadBtn = wrapper.find('[data-testid="folio-download-invoice"]')
+    expect(downloadBtn.exists()).toBe(true)
+    expect(downloadBtn.text()).toContain('Download invoice')
+
+    const payAllBtn = wrapper.find('[data-testid="folio-mark-all-paid"]')
+    expect(payAllBtn.exists()).toBe(true)
+    expect(payAllBtn.text()).toContain('Mark all as paid')
+  })
+
+  it('generates a valid invoice PDF blob', () => {
+    const reservation = initialReservations.find(r => r.id === 'res-3')!
+    const blob = buildFolioInvoicePdf(reservation, { download: false })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.size).toBeGreaterThan(100)
+    expect(blob.type).toBe('application/pdf')
+  })
+})
+
+describe('folioPayDialog', () => {
+  it('renders full payment by default and allows switching to partial DP', async () => {
+    const reservation = initialReservations.find(r => r.id === 'res-3')!
+    const _wrapper = mount(FolioPayDialog, {
+      props: { open: true, reservation },
+      global: { components },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    expect(body().text()).toContain('Mark Folio as Paid')
+    expect(body().text()).toContain('Full Payment')
+    expect(body().text()).toContain('Partial / DP')
+
+    // Switch to Partial / DP
+    await body().find('[data-testid="folio-pay-mode-partial"]').trigger('click')
+    await nextTick()
+
+    expect(body().text()).toContain('Quick DP Presets')
+    expect(body().find('[data-testid="folio-pay-amount-input"]').exists()).toBe(true)
+  })
+
+  it('emits confirm payload with method and amount on confirm', async () => {
+    const reservation = initialReservations.find(r => r.id === 'res-3')!
+    const wrapper = mount(FolioPayDialog, {
+      props: { open: true, reservation },
+      global: { components },
+      attachTo: document.body,
+    })
+    await flushPromises()
+
+    // Select Card
+    await body().find('[data-testid="folio-pay-method-card"]').trigger('click')
+    await nextTick()
+
+    // Confirm
+    await body().find('[data-testid="folio-pay-confirm"]').trigger('click')
+    await nextTick()
+
+    const emitted = wrapper.emitted('confirm')
+    expect(emitted).toHaveLength(1)
+    expect(emitted![0]![0]).toMatchObject({
+      method: 'card',
+      isPartial: false,
+    })
   })
 })

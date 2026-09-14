@@ -145,6 +145,26 @@ export function useJourneys() {
     }
   }
 
+  function onNewBooking(reservation: { id: string, guestName: string, listingId?: string, listingName?: string }, paymentRequest?: { id: string, amount: number, paymentLink: string }) {
+    for (const journey of journeys.value) {
+      if (journey.status !== 'active')
+        continue
+      const triggerStep = journey.steps.find((s): s is TriggerStep => s.type === 'trigger')
+      if (!triggerStep)
+        continue
+      const matches = triggerStep.triggers.some((t: TriggerEntry) => t.type === 'new_booking')
+      if (!matches)
+        continue
+      const inScope = triggerStep.properties.includes('All Properties')
+        || (reservation.listingId && triggerStep.properties.includes(reservation.listingId))
+      if (!inScope)
+        continue
+      toast.info(`Journey "${journey.name}" triggered by new booking`, {
+        description: `Booking #${reservation.id} for ${reservation.guestName}`,
+      })
+    }
+  }
+
   /**
    * Resolve whether a WhatsApp message step should fire for a given listing.
    * A step is skippable only when it targets WhatsApp — an uncovered listing
@@ -176,6 +196,7 @@ export function useJourneys() {
     addJourneysToGroup,
     onMinutEvent,
     onEmailReceived,
+    onNewBooking,
     resolveWhatsAppStep,
   }
 }

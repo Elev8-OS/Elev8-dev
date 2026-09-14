@@ -2,6 +2,7 @@ import type { ApoaConnectionDetails, AvsConnectionDetails, FeratelConnectionDeta
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { buildApoaPayload, buildAvsPayload, buildFeratelPayload, generateRegistrationId, isRegistrationComplete, isReportingRequired, mockSubmitToGovernment } from '~/components/guest-registration/data/guest-registration'
 import { listings } from '~/components/listings/data/listings'
+import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const CONNECTIONS_KEY = 'elev8-guest-registration-connections'

@@ -230,4 +230,53 @@ describe('useReservationFolio', () => {
 
     expect(JSON.stringify(services.value)).toBe(snapshot)
   })
+
+  it('marks all unpaid folio items as paid in full', () => {
+    const folio = useReservationFolio()
+    expect(folio.summaryFor(RES)!.unpaidTotal).toBeGreaterThan(0)
+
+    folio.markAllAsPaid(RES, { method: 'card' })
+
+    const summary = folio.summaryFor(RES)!
+    expect(summary.unpaidTotal).toBe(0)
+    expect(folio.itemsFor(RES).filter(i => i.status !== 'voided').every(i => i.status === 'paid')).toBe(true)
+    expect(reservation().activity.at(-1)!.title).toBe('Folio marked paid in full')
+  })
+
+  it('records a partial payment (DP) across unpaid folio items', () => {
+    const folio = useReservationFolio()
+    // Seeded res-3 has one unpaid item: Minibar - Bintang Beer, 2 x 6 = 12 + 10% tax = 13.20.
+    const unpaidBefore = folio.summaryFor(RES)!.unpaidTotal
+    expect(unpaidBefore).toBe(13.2)
+
+    // Pay 5.00 DP via cash
+    folio.markAllAsPaid(RES, {
+      method: 'cash',
+      amount: 5,
+      isPartial: true,
+      note: 'Deposit 5 USD',
+    })
+
+    const summary = folio.summaryFor(RES)!
+    expect(summary.unpaidTotal).toBe(8.2)
+    const item = folio.itemsFor(RES).find(i => i.id === 'fol-res3-1')!
+    expect(item.status).toBe('partially_paid')
+    expect(item.paidAmount).toBe(5)
+    expect(item.paymentMethod).toBe('cash')
+    expect(reservation().activity.at(-1)!.title).toBe('Folio down payment (DP) received')
+  })
+
+  it('partially pays a single item via markPaid with options', () => {
+    const folio = useReservationFolio()
+    const posted = folio.addItem(RES, draft())! // 2 x 6 = 12.00
+    const owedBefore = folio.summaryFor(RES)!.unpaidTotal
+
+    folio.markPaid(RES, posted.id, 'bank_transfer', { amount: 4, note: 'BCA transfer DP' })
+
+    const item = folio.itemsFor(RES).find(i => i.id === posted.id)!
+    expect(item.status).toBe('partially_paid')
+    expect(item.paidAmount).toBe(4)
+    expect(item.paymentMethod).toBe('bank_transfer')
+    expect(folio.summaryFor(RES)!.unpaidTotal).toBe(Math.round((owedBefore - 4) * 100) / 100)
+  })
 })

@@ -5,7 +5,6 @@ import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalize
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
-import OwnerStayApprovalsPanel from '~/components/owners/OwnerStayApprovalsPanel.vue'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
@@ -283,7 +282,7 @@ function confirmRejectOwnerStay() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <OwnerStayApprovalsPanel />
+        <OwnersOwnerStayApprovalsPanel />
       </CardContent>
     </Card>
 
@@ -474,12 +473,17 @@ function confirmRejectOwnerStay() {
       @reject-owner-stay="openRejectOwnerStay"
     />
 
-    <ReservationDetailSheet
-      :reservation="detailReservation"
-      :open="detailOpen"
-      @update:open="detailOpen = $event"
-      @open-guest="openGuest"
-    />
+    <ClientOnly fallback-tag="span">
+      <ReservationDetailSheet
+        :reservation="detailReservation"
+        :open="detailOpen"
+        @update:open="detailOpen = $event"
+        @open-guest="openGuest"
+      />
+      <template #fallback>
+        <span />
+      </template>
+    </ClientOnly>
 
     <NewReservationDialog
       v-model:open="createOpen"

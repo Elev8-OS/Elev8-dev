@@ -229,4 +229,49 @@ describe('promoCodeCreateDialog', () => {
     expect(first.text()).toContain('Step 1 of 4')
     expect((first.find('input.font-mono').element as HTMLInputElement).value).toBe('')
   })
+
+  it('creates a code with minimum stay configured', async () => {
+    const { codes } = usePromoCodes()
+    const before = codes.value.length
+    const wrapper = open()
+
+    await reachLastStep(wrapper, 'MINSTAY3')
+    const minStayInput = wrapper.find('#promo-create-rules-min-stay')
+    expect(minStayInput.exists()).toBe(true)
+    await minStayInput.setValue('3')
+    expect(wrapper.text()).toContain('Min stay')
+    expect(wrapper.text()).toContain('3 nights')
+
+    await findButton(wrapper, 'Create code')!.trigger('click')
+    expect(codes.value.length).toBe(before + 1)
+    expect(codes.value[0]!.minStay).toBe(3)
+  })
+
+  it('creates a code with dynamic validity window configured', async () => {
+    const { codes } = usePromoCodes()
+    const before = codes.value.length
+    const wrapper = open()
+
+    await reachLastStep(wrapper, 'ROLLING7')
+    const addWindowButtons = wrapper.findAll('button').filter(b => b.text().includes('Add window'))
+    expect(addWindowButtons.length).toBeGreaterThanOrEqual(1)
+    await addWindowButtons[0]!.trigger('click')
+
+    const dynamicButton = wrapper.findAll('button').find(b => b.text().includes('Rolling window'))
+    expect(dynamicButton).toBeDefined()
+    await dynamicButton!.trigger('click')
+
+    const daysInput = wrapper.find('#promo-create-rules-bookingWindows-days-0')
+    expect(daysInput.exists()).toBe(true)
+    await daysInput.setValue('7')
+
+    expect(wrapper.text()).toContain('Within 7 days')
+
+    await findButton(wrapper, 'Create code')!.trigger('click')
+    expect(codes.value.length).toBe(before + 1)
+    const created = codes.value[0]!
+    expect(created.bookingWindows).toEqual([
+      { type: 'dynamic', days: 7, from: null, until: null },
+    ])
+  })
 })

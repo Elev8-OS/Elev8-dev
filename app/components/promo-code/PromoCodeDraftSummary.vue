@@ -62,12 +62,17 @@ const usageLabel = computed(() =>
   props.draft.usageLimit === null ? 'Unlimited redemptions' : `Up to ${props.draft.usageLimit} redemptions`,
 )
 
+const minStayLabel = computed(() =>
+  props.draft.minStay === null ? 'No minimum' : `${props.draft.minStay} night${props.draft.minStay === 1 ? '' : 's'}`,
+)
+
 const rows = computed(() => [
   { label: 'Discount', value: formatDraftDiscount(props.draft) },
   ...(upsellItemNames.value.length > 0 ? [{ label: 'Free items', value: upsellItemNames.value.join(', ') }] : []),
   { label: 'Channel', value: channelLabel.value },
   { label: 'Listings', value: listingsLabel.value },
   { label: 'Validity', value: windowsLabel.value },
+  ...(props.draft.minStay !== null ? [{ label: 'Min stay', value: minStayLabel.value }] : []),
   { label: 'Usage', value: usageLabel.value },
 ])
 </script>

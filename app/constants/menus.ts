@@ -73,6 +73,12 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
+        title: 'City Tax',
+        icon: 'i-lucide-landmark',
+        link: '/city-tax',
+        new: true,
+      },
+      {
         title: 'Procurement',
         icon: 'i-lucide-shopping-cart',
         link: '/procurement',

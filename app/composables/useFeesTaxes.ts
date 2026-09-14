@@ -29,6 +29,32 @@ const seedFeeTaxItems: ListingFeeTaxItem[] = [
     skipNights: null,
     maxNights: null,
     applicableDateRanges: [],
+    cityTax: {
+      // Airbnb collects and remits in this jurisdiction; the other two do not,
+      // which is the split the whole feature exists to make visible.
+      channelPolicy: { Airbnb: 'channel', 'Booking.com': 'host', Direct: 'host' },
+      chargeableGuests: { adults: true, children: false, infants: false },
+      authorityName: 'Badung Regency',
+    },
+  },
+  {
+    id: 'ft-3',
+    title: 'Kurtaxe',
+    type: 'city_tax',
+    logic: 'per_person_per_night',
+    rate: 3,
+    currency: 'EUR',
+    isInclusive: false,
+    skipNights: null,
+    maxNights: 21,
+    applicableDateRanges: [],
+    cityTax: {
+      // Nobody collects this for the host, which is the common European case.
+      channelPolicy: { Airbnb: 'host', 'Booking.com': 'host', Direct: 'host' },
+      chargeableGuests: { adults: true, children: false, infants: false },
+      authorityName: 'Kurverwaltung',
+      note: 'Cash at the desk, receipt book behind reception.',
+    },
   },
 ]
 
@@ -48,6 +74,9 @@ const seedTaxSets: TaxSet[] = [
 
 const seedAssignments: Record<string, ListingFeeTaxAssignment> = {
   'lst-1': { feeTaxIds: ['ft-1', 'ft-2'], taxSetIds: ['ts-1'] },
+  'lst-2': { feeTaxIds: ['ft-2'], taxSetIds: [] },
+  'lst-3': { feeTaxIds: ['ft-3'], taxSetIds: [] },
+  'lst-4': { feeTaxIds: ['ft-3'], taxSetIds: [] },
 }
 
 // Module-level singleton refs so state is shared across every component and

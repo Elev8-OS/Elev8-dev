@@ -1,3 +1,4 @@
+import type { ListingCleaningConfig } from '~/components/reservations/data/cleaning-schedule'
 import { computed, ref } from 'vue'
 
 export type OverrideAudience = 'future' | 'current' | 'inquiry'
@@ -47,6 +48,41 @@ export interface TaxDateRange {
   before: string
 }
 
+/**
+ * The booking channels a city tax policy can name. Declared here rather than in
+ * `reservations.ts` because `listings.ts` imports nothing, so this direction can
+ * never close an import cycle. `ReservationEntry.channel` imports it back.
+ */
+export type BookingChannel = 'Airbnb' | 'Booking.com' | 'Direct'
+
+export const BOOKING_CHANNELS: BookingChannel[] = ['Airbnb', 'Booking.com', 'Direct']
+
+export type CityTaxCollector = 'host' | 'channel' | 'not_applicable'
+
+export interface CityTaxChargeableGuests {
+  adults: boolean
+  children: boolean
+  infants: boolean
+}
+
+/**
+ * Only meaningful when `ListingFeeTaxItem.type === 'city_tax'`.
+ */
+export interface CityTaxConfig {
+  /**
+   * Who collects this tax, per channel. An unset channel falls back to 'host'.
+   * The fallback is deliberately the one that raises an alert: the feature
+   * exists to stop a collection being missed, so an unconfigured channel must
+   * over-alert rather than go silent. Do not "fix" this to 'not_applicable'.
+   */
+  channelPolicy: Partial<Record<BookingChannel, CityTaxCollector>>
+  /** Which guest categories count toward a per-person logic. */
+  chargeableGuests: CityTaxChargeableGuests
+  /** Who levies it. Shown to staff at the desk. */
+  authorityName?: string
+  note?: string
+}
+
 export interface ListingFeeTaxItem {
   id: string
   title: string
@@ -58,6 +94,8 @@ export interface ListingFeeTaxItem {
   skipNights?: number | null
   maxNights?: number | null
   applicableDateRanges: TaxDateRange[]
+  /** Collection policy. Only read when `type === 'city_tax'`. */
+  cityTax?: CityTaxConfig
 }
 
 export interface TaxSetTaxRef {
@@ -140,6 +178,7 @@ export interface MaintenanceTask {
 
 export interface ListingMaintenance {
   cleaningSchedule: Array<{ task: string, frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' }>
+  defaultCleaningSchedule?: ListingCleaningConfig
   tasks: MaintenanceTask[]
 }
 
@@ -694,6 +733,12 @@ export const listings = ref<Listing[]>([
         { task: 'Deep clean', frequency: 'biweekly' },
         { task: 'AC filter replacement', frequency: 'monthly' },
       ],
+      defaultCleaningSchedule: {
+        type: 'daily',
+        startOffset: 'check_in',
+        time: '11:00',
+        assigneeId: 'staff-3',
+      },
       tasks: [
         { id: 'mt-1', title: 'Fix leaking faucet - Master bathroom', date: '2026-06-03', assignedTo: 'Wayan Adi', status: 'pending', type: 'repair' },
         { id: 'mt-2', title: 'Pre-arrival deep clean', date: '2026-06-04', assignedTo: 'Made Surya', status: 'in_progress', type: 'cleaning' },
@@ -748,7 +793,16 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: {
+      cleaningSchedule: [],
+      defaultCleaningSchedule: {
+        type: 'checkout',
+        startOffset: 'check_in',
+        time: '11:00',
+        assigneeId: 'staff-3',
+      },
+      tasks: [],
+    },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -776,7 +830,20 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: {
+      cleaningSchedule: [],
+      defaultCleaningSchedule: {
+        type: 'custom',
+        startOffset: 'day_after_check_in',
+        time: '11:00',
+        assigneeId: 'staff-4',
+        custom: {
+          frequency: 'day',
+          dayInterval: 2,
+        },
+      },
+      tasks: [],
+    },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -804,7 +871,20 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: {
+      cleaningSchedule: [],
+      defaultCleaningSchedule: {
+        type: 'custom',
+        startOffset: 'check_in',
+        time: '11:00',
+        assigneeId: 'staff-3',
+        custom: {
+          frequency: 'week',
+          weekDays: ['monday', 'thursday', 'friday'],
+        },
+      },
+      tasks: [],
+    },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {

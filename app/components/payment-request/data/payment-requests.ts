@@ -18,7 +18,7 @@ export interface PaymentRequest {
   title: string
   description?: string
   amount: number
-  currency: 'USD' | 'IDR'
+  currency: 'USD' | 'IDR' | 'EUR' | 'CHF'
   feeMode: FeeMode
   customFeePercentage?: number
   feeAmount: number
@@ -45,7 +45,7 @@ export interface PaymentRequestDraft {
   title: string
   description?: string
   amount: number
-  currency: 'USD' | 'IDR'
+  currency: 'USD' | 'IDR' | 'EUR' | 'CHF'
   feeMode: FeeMode
   customFeePercentage?: number
   expiresInHours: number

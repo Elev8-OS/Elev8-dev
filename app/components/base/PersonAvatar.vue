@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { avatarColorFor, initials } from '~/lib/avatar-colors'
 
 /**
@@ -13,13 +14,16 @@ import { avatarColorFor, initials } from '~/lib/avatar-colors'
 withDefaults(defineProps<{
   name: string
   textClass?: string
+  src?: string
 }>(), {
   textClass: 'text-xs',
+  src: undefined,
 })
 </script>
 
 <template>
   <Avatar>
+    <AvatarImage v-if="src" :src="src" :alt="name" />
     <AvatarFallback :class="[avatarColorFor(name), textClass]">
       {{ initials(name) }}
     </AvatarFallback>

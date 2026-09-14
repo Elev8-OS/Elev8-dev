@@ -19,18 +19,50 @@ const draft = defineModel<PromoCodeFormDraft>({ required: true })
 type WindowKey = 'bookingWindows' | 'stayWindows'
 
 function addWindow(key: WindowKey) {
-  draft.value = { ...draft.value, [key]: [...draft.value[key], { from: null, until: null }] }
+  draft.value = {
+    ...draft.value,
+    [key]: [...draft.value[key], { type: 'fixed', from: null, until: null, days: null }],
+  }
 }
 
 function removeWindow(key: WindowKey, index: number) {
   draft.value = { ...draft.value, [key]: draft.value[key].filter((_, i) => i !== index) }
 }
 
-function updateWindow(key: WindowKey, index: number, field: keyof PromoCodeWindow, value: string) {
+function updateWindow(key: WindowKey, index: number, field: keyof PromoCodeWindow, value: any) {
   draft.value = {
     ...draft.value,
-    [key]: draft.value[key].map((w, i) => (i === index ? { ...w, [field]: value || null } : w)),
+    [key]: draft.value[key].map((w, i) => (i === index ? { ...w, [field]: value } : w)),
   }
+}
+
+function setWindowType(key: WindowKey, index: number, type: 'fixed' | 'dynamic') {
+  draft.value = {
+    ...draft.value,
+    [key]: draft.value[key].map((w, i) => {
+      if (i !== index)
+        return w
+      if (type === 'dynamic') {
+        return {
+          ...w,
+          type: 'dynamic',
+          days: w.days ?? 7,
+          from: null,
+          until: null,
+        }
+      }
+      return {
+        ...w,
+        type: 'fixed',
+        days: null,
+      }
+    }),
+  }
+}
+
+function onMinStayInput(event: Event) {
+  const raw = (event.target as HTMLInputElement).value
+  draft.value = { ...draft.value, minStay: raw === '' ? null : Number(raw) }
 }
 
 function onUsageLimitInput(event: Event) {
@@ -41,17 +73,17 @@ function onUsageLimitInput(event: Event) {
 const windowGroups: { key: WindowKey, label: string, icon: string, empty: string, hint: string }[] = [
   {
     key: 'bookingWindows',
-    label: 'Booking windows',
+    label: 'Booking window',
     icon: 'lucide:calendar-clock',
-    empty: 'No booking window — the code is bookable any time.',
-    hint: 'When guests are allowed to make the reservation.',
+    empty: 'No booking restrictions — guests can redeem this code anytime.',
+    hint: 'Restricts when guests are allowed to make their reservation.',
   },
   {
     key: 'stayWindows',
-    label: 'Stay windows',
+    label: 'Stay window',
     icon: 'lucide:bed',
-    empty: 'No stay window — the code applies to any check-in date.',
-    hint: 'Which check-in dates the code covers.',
+    empty: 'No stay restrictions — valid for check-ins on any date.',
+    hint: 'Restricts which check-in or stay dates qualify for this discount.',
   },
 ]
 </script>
@@ -64,8 +96,7 @@ const windowGroups: { key: WindowKey, label: string, icon: string, empty: string
           Validity windows
         </p>
         <p class="text-xs text-muted-foreground">
-          Leave both lists empty for an always-valid code. With windows set, a guest can redeem when
-          at least one booking window <em>and</em> at least one stay window are open.
+          Control when guests can redeem this promo code and which stay dates qualify. Leave both empty to allow bookings and stays at any time.
         </p>
       </div>
 
@@ -92,44 +123,106 @@ const windowGroups: { key: WindowKey, label: string, icon: string, empty: string
         <div v-else class="space-y-2">
           <div v-for="(window, idx) in draft[group.key]" :key="`${group.key}-${idx}`" class="space-y-1">
             <fieldset
-              class="grid grid-cols-[1fr_1fr_auto] items-end gap-2 rounded-md border bg-muted/30 p-2"
+              class="rounded-md border bg-muted/30 p-2.5"
               :class="props.errors[`${group.key}.${idx}`] ? 'border-destructive' : ''"
             >
               <legend class="sr-only">
                 {{ group.label }} {{ idx + 1 }}
               </legend>
-              <div class="space-y-1">
-                <Label :for="`${props.idPrefix}-${group.key}-from-${idx}`" class="text-xs">From</Label>
-                <Input
-                  :id="`${props.idPrefix}-${group.key}-from-${idx}`"
-                  :model-value="window.from ?? ''"
-                  type="date"
-                  :aria-label="`${group.label} ${idx + 1} start date`"
-                  :aria-invalid="props.errors[`${group.key}.${idx}`] ? 'true' : 'false'"
-                  @input="(e: Event) => updateWindow(group.key, idx, 'from', (e.target as HTMLInputElement).value)"
-                />
+
+              <div class="flex items-center justify-between gap-2 border-b border-border/50 pb-2 mb-2">
+                <span class="text-[11px] font-medium text-muted-foreground">
+                  #{{ idx + 1 }}
+                </span>
+                <div class="flex items-center gap-1">
+                  <div class="flex items-center rounded-md border bg-muted/50 p-0.5 text-xs">
+                    <button
+                      type="button"
+                      class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer"
+                      :class="(window.type ?? 'fixed') === 'fixed' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                      @click="setWindowType(group.key, idx, 'fixed')"
+                    >
+                      Fixed dates
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer"
+                      :class="window.type === 'dynamic' ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                      @click="setWindowType(group.key, idx, 'dynamic')"
+                    >
+                      Rolling window
+                    </button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    class="size-7 text-muted-foreground hover:text-destructive ml-1"
+                    :aria-label="`Remove ${group.label} ${idx + 1}`"
+                    @click="removeWindow(group.key, idx)"
+                  >
+                    <Icon name="lucide:trash-2" class="size-3.5" aria-hidden="true" />
+                  </Button>
+                </div>
               </div>
-              <div class="space-y-1">
-                <Label :for="`${props.idPrefix}-${group.key}-until-${idx}`" class="text-xs">Until</Label>
-                <Input
-                  :id="`${props.idPrefix}-${group.key}-until-${idx}`"
-                  :model-value="window.until ?? ''"
-                  type="date"
-                  :aria-label="`${group.label} ${idx + 1} end date`"
-                  :aria-invalid="props.errors[`${group.key}.${idx}`] ? 'true' : 'false'"
-                  @input="(e: Event) => updateWindow(group.key, idx, 'until', (e.target as HTMLInputElement).value)"
-                />
+
+              <!-- Fixed Dates Mode -->
+              <div v-if="(window.type ?? 'fixed') === 'fixed'" class="grid grid-cols-2 gap-2">
+                <div class="space-y-1">
+                  <Label :for="`${props.idPrefix}-${group.key}-from-${idx}`" class="text-xs">From</Label>
+                  <Input
+                    :id="`${props.idPrefix}-${group.key}-from-${idx}`"
+                    :model-value="window.from ?? ''"
+                    type="date"
+                    :aria-label="`${group.label} ${idx + 1} start date`"
+                    :aria-invalid="props.errors[`${group.key}.${idx}`] ? 'true' : 'false'"
+                    @input="(e: Event) => updateWindow(group.key, idx, 'from', (e.target as HTMLInputElement).value || null)"
+                  />
+                </div>
+                <div class="space-y-1">
+                  <Label :for="`${props.idPrefix}-${group.key}-until-${idx}`" class="text-xs">Until</Label>
+                  <Input
+                    :id="`${props.idPrefix}-${group.key}-until-${idx}`"
+                    :model-value="window.until ?? ''"
+                    type="date"
+                    :aria-label="`${group.label} ${idx + 1} end date`"
+                    :aria-invalid="props.errors[`${group.key}.${idx}`] ? 'true' : 'false'"
+                    @input="(e: Event) => updateWindow(group.key, idx, 'until', (e.target as HTMLInputElement).value || null)"
+                  />
+                </div>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                class="size-8 text-muted-foreground hover:text-destructive"
-                :aria-label="`Remove ${group.label} ${idx + 1}`"
-                @click="removeWindow(group.key, idx)"
-              >
-                <Icon name="lucide:trash-2" class="size-3.5" aria-hidden="true" />
-              </Button>
+
+              <!-- Dynamic Mode -->
+              <div v-else class="space-y-1">
+                <Label :for="`${props.idPrefix}-${group.key}-days-${idx}`" class="text-xs">
+                  {{ group.key === 'bookingWindows' ? 'Bookable within' : 'Check-in within' }}
+                </Label>
+                <div class="relative max-w-xs">
+                  <Input
+                    :id="`${props.idPrefix}-${group.key}-days-${idx}`"
+                    :model-value="window.days == null ? '' : String(window.days)"
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 7"
+                    class="pr-14"
+                    :aria-label="`${group.label} ${idx + 1} dynamic days`"
+                    :aria-invalid="props.errors[`${group.key}.${idx}`] ? 'true' : 'false'"
+                    @input="(e: Event) => {
+                      const v = (e.target as HTMLInputElement).value
+                      updateWindow(group.key, idx, 'days', v === '' ? null : Number(v))
+                    }"
+                  />
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+                    days
+                  </div>
+                </div>
+                <p class="text-[11px] text-muted-foreground">
+                  {{ group.key === 'bookingWindows'
+                    ? 'Rolling from today: valid for reservations made within this duration.'
+                    : 'Rolling from today: eligible for stays checking in within this duration.'
+                  }}
+                </p>
+              </div>
             </fieldset>
             <p v-if="props.errors[`${group.key}.${idx}`]" role="alert" class="text-xs text-destructive">
               {{ props.errors[`${group.key}.${idx}`] }}
@@ -137,6 +230,40 @@ const windowGroups: { key: WindowKey, label: string, icon: string, empty: string
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="space-y-2">
+      <Label :for="`${props.idPrefix}-min-stay`">
+        Minimum stay <span class="font-normal text-muted-foreground">(optional)</span>
+      </Label>
+      <div class="relative">
+        <Input
+          :id="`${props.idPrefix}-min-stay`"
+          :model-value="draft.minStay === null ? '' : String(draft.minStay)"
+          type="number"
+          min="1"
+          placeholder="No minimum"
+          class="pr-14"
+          :class="props.errors.minStay ? 'border-destructive' : ''"
+          :aria-invalid="props.errors.minStay ? 'true' : 'false'"
+          :aria-describedby="props.errors.minStay ? `${props.idPrefix}-min-stay-error` : `${props.idPrefix}-min-stay-help`"
+          @input="onMinStayInput"
+        />
+        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+          nights
+        </div>
+      </div>
+      <p
+        v-if="props.errors.minStay"
+        :id="`${props.idPrefix}-min-stay-error`"
+        role="alert"
+        class="text-xs text-destructive"
+      >
+        {{ props.errors.minStay }}
+      </p>
+      <p v-else :id="`${props.idPrefix}-min-stay-help`" class="text-xs text-muted-foreground">
+        Minimum stay length in nights required to use this code. Leave blank for no minimum.
+      </p>
     </div>
 
     <div class="space-y-2">

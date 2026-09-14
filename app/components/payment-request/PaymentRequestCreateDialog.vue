@@ -175,8 +175,7 @@ const amountError = computed(() => {
   if (!amount.value || amount.value <= 0)
     return 'Amount must be greater than 0'
   if (amount.value < minAmount.value) {
-    const symbol = currency.value === 'IDR' ? 'Rp' : '$'
-    return `Minimum amount is ${symbol}${minAmount.value}`
+    return `Minimum amount is ${currency.value} ${minAmount.value}`
   }
   return ''
 })
