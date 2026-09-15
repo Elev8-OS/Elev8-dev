@@ -67,7 +67,7 @@ const isFinished = computed(() =>
   && current.value !== 'import'
   && !showReconnect.value)
 
-const currentDotIndex = computed(() => {
+const currentStepIndex = computed(() => {
   if (showWelcome.value)
     return 0
   if (showReconnect.value || isFinished.value)
@@ -81,6 +81,26 @@ const currentDotIndex = computed(() => {
     case 'integration':
     case 'import': return 4
     default: return 4
+  }
+})
+
+const progressPercent = computed(() => {
+  if (isFinished.value)
+    return 100
+  if (showWelcome.value)
+    return 0
+  switch (current.value) {
+    case 'profile': return 20
+    case 'branding': return 40
+    case 'select_model': return 50
+    case 'select_plan': return 65
+    case 'payment': return 80
+    case 'integration':
+    case 'import': return 90
+    default:
+      if (showReconnect.value)
+        return 95
+      return 20
   }
 })
 
@@ -308,17 +328,6 @@ function handleLogout(): void {
           </Button>
         </div>
 
-        <!-- 4. Select Model step -->
-        <Button
-          v-else-if="current === 'select_model'"
-          type="submit"
-          form="ob-model-form"
-          size="lg"
-          class="w-full h-12 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs cursor-pointer"
-        >
-          Next
-        </Button>
-
         <!-- 5. Select Plan step -->
         <Button
           v-else-if="current === 'select_plan'"
@@ -445,11 +454,6 @@ function handleLogout(): void {
           >
             Reset onboarding
           </Button>
-        </div>
-
-        <!-- 5-Dot Stepper (Matches Reference Image 1 & 2) -->
-        <div class="flex items-center">
-          <OnboardingStepper :current="wizardStep" :step-index="currentDotIndex" />
         </div>
       </div>
     </aside>
@@ -799,5 +803,12 @@ function handleLogout(): void {
         </p>
       </div>
     </main>
+
+    <!-- Full-width top progress line in primary yellow -->
+    <OnboardingStepper
+      :current="wizardStep"
+      :step-index="currentStepIndex"
+      :progress="progressPercent"
+    />
   </div>
 </template>
