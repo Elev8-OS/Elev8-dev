@@ -30,7 +30,6 @@ import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 
 const {
   templates,
-  getDefaultTemplate,
   setDefaultTemplate,
   deleteTemplate,
   duplicateTemplate,
@@ -45,22 +44,6 @@ const assigningTemplate = ref<InvoiceTemplate | null>(null)
 
 const deleteTarget = ref<InvoiceTemplate | null>(null)
 const deleteDialogOpen = ref(false)
-
-const totalListingsCount = computed(() => listings.value.length)
-
-const assignedListingsCount = computed(() => {
-  const set = new Set<string>()
-  for (const t of templates.value) {
-    for (const lid of t.assignedListingIds) {
-      set.add(lid)
-    }
-  }
-  return set.size
-})
-
-const unassignedCount = computed(() =>
-  Math.max(0, totalListingsCount.value - assignedListingsCount.value),
-)
 
 const filteredTemplates = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -153,57 +136,6 @@ function executeDelete() {
         <Icon name="lucide:plus" class="mr-1.5 size-4" />
         Create Template
       </Button>
-    </div>
-
-    <!-- Summary Metrics -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card class="p-4 space-y-1">
-        <p class="text-xs font-medium text-muted-foreground">
-          Total Templates
-        </p>
-        <p class="text-2xl font-bold">
-          {{ templates.length }}
-        </p>
-        <p class="text-[11px] text-muted-foreground">
-          Billing entities configured
-        </p>
-      </Card>
-
-      <Card class="p-4 space-y-1">
-        <p class="text-xs font-medium text-muted-foreground">
-          Default Entity
-        </p>
-        <p class="text-sm font-bold truncate">
-          {{ getDefaultTemplate()?.company.companyName || 'None' }}
-        </p>
-        <p class="text-[11px] text-muted-foreground">
-          Fallback for unassigned listings
-        </p>
-      </Card>
-
-      <Card class="p-4 space-y-1">
-        <p class="text-xs font-medium text-muted-foreground">
-          Assigned Listings
-        </p>
-        <p class="text-2xl font-bold text-emerald-600">
-          {{ assignedListingsCount }} / {{ totalListingsCount }}
-        </p>
-        <p class="text-[11px] text-muted-foreground">
-          Explicitly mapped properties
-        </p>
-      </Card>
-
-      <Card class="p-4 space-y-1">
-        <p class="text-xs font-medium text-muted-foreground">
-          Using Default
-        </p>
-        <p class="text-2xl font-bold text-slate-700 dark:text-slate-300">
-          {{ unassignedCount }}
-        </p>
-        <p class="text-[11px] text-muted-foreground">
-          Properties using default company
-        </p>
-      </Card>
     </div>
 
     <!-- Filter Bar -->
