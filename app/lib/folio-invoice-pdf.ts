@@ -19,25 +19,34 @@ import {
   folioLineTotal,
   roundFolioAmount,
 } from '~/components/reservations/data/folio'
+import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 
 const PAGE_WIDTH = 210 // A4 mm
 const MARGIN = 16
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
 
 export interface FolioInvoicePdfOptions {
-  download?: boolean
   companyName?: string
+  taxId?: string
   addressLine?: string
   city?: string
   zipCode?: string
-  country?: string
   phone?: string
   website?: string
-  taxId?: string
+  email?: string
+  commercialRegisterNo?: string
+  managingDirector?: string
+  registeredCity?: string
+  vatNumber?: string
+  headerMessage?: string
+  footerMessage?: string
   logoDataUrl?: string
-  bankAccountName?: string
   bankNameOrBsb?: string
+  bankAccountName?: string
   bankAccountNumber?: string
+  iban?: string
+  bicSwift?: string
+  download?: boolean
 }
 
 function fmtCurrency(amount: number, currency: string): string {
@@ -91,8 +100,12 @@ export function buildFolioInvoicePdf(
   const currency = reservation.currency || 'USD'
   const summary = buildFolioSummary(reservation)
 
+  // Resolve template for this reservation's listing
+  const { getTemplateForListing } = useInvoiceTemplates()
+  const template = getTemplateForListing(reservation.listingId)
+
   // Resolve branding / company defaults
-  let logoDataUrl = opts.logoDataUrl
+  let logoDataUrl = opts.logoDataUrl || template.company.logoDataUrl
   if (!logoDataUrl && typeof window !== 'undefined') {
     try {
       const raw = window.localStorage?.getItem('elev8-tenant-branding-v1')
@@ -106,30 +119,73 @@ export function buildFolioInvoicePdf(
     }
   }
 
-  const companyName = (opts.companyName || 'ELEV8 PROPERTY GROUP').toUpperCase()
-  const addressLine = opts.addressLine || '22a Pantai Berawa'
-  const cityLine = opts.city ? `${opts.city} ${opts.zipCode || ''}` : 'Canggu, Bali 80361'
-  const phone = opts.phone ? (opts.phone.startsWith('Phone:') ? opts.phone : `Phone: ${opts.phone}`) : 'Phone: +62 361 908 1234'
-  const website = opts.website || 'https://elev8bali.com'
-  const taxId = opts.taxId || 'NPWP: 01.234.567.8-901.000'
+  const companyName = (opts.companyName || template.company.companyName || 'ELEV8 PROPERTY GROUP').toUpperCase()
+  const addressLine = opts.addressLine || template.company.address || '22a Pantai Berawa'
+  const cityLine = opts.city
+    ? `${opts.city} ${opts.zipCode || ''}`.trim()
+    : [template.company.postalCode, template.company.city].filter(Boolean).join(' ') || 'Canggu, Bali 80361'
+  const commercialRegisterNo = opts.commercialRegisterNo || template.company.commercialRegisterNo
+  const managingDirector = opts.managingDirector || template.company.managingDirector
+  const registeredCity = opts.registeredCity || template.company.registeredCity
+  const email = opts.email || template.company.email
+  const phone = opts.phone || template.company.phone
+  const website = opts.website || template.company.website
+  const taxId = opts.vatNumber || opts.taxId || template.company.vatNumber
+
+  const headerMessage = opts.headerMessage !== undefined ? opts.headerMessage : template.headerMessage
+  const footerMessage = opts.footerMessage !== undefined ? opts.footerMessage : template.footerMessage
 
   // Invoice number (e.g. 3189 or INV-102)
   const invoiceNum = reservation.id.replace(/^res-/, '').toUpperCase()
 
   // --- Top Left: Company Information --------------------------------------
+  let compY = 15
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10.5)
   doc.setTextColor(17, 24, 39)
-  doc.text(companyName, MARGIN, 15)
+  doc.text(companyName, MARGIN, compY)
+  compY += 5
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(17, 24, 39)
-  doc.text(addressLine, MARGIN, 20)
-  doc.text(cityLine, MARGIN, 24.5)
-  doc.text(phone, MARGIN, 30.5)
-  doc.text(website, MARGIN, 35.5)
-  doc.text(taxId, MARGIN, 40.5)
+  if (addressLine) {
+    doc.text(addressLine, MARGIN, compY)
+    compY += 4.5
+  }
+  if (cityLine) {
+    doc.text(cityLine, MARGIN, compY)
+    compY += 4.5
+  }
+  if (commercialRegisterNo || registeredCity) {
+    const regLine = [
+      commercialRegisterNo ? `Reg: ${commercialRegisterNo}` : '',
+      registeredCity ? `Registered: ${registeredCity}` : '',
+    ].filter(Boolean).join(' · ')
+    doc.text(regLine, MARGIN, compY)
+    compY += 4.5
+  }
+  if (managingDirector) {
+    doc.text(`Managing Director: ${managingDirector}`, MARGIN, compY)
+    compY += 4.5
+  }
+  const contactLine = [
+    email ? `Email: ${email}` : '',
+    phone ? (phone.startsWith('Phone:') ? phone : `Phone: ${phone}`) : '',
+  ].filter(Boolean).join(' · ')
+  if (contactLine) {
+    doc.text(contactLine, MARGIN, compY)
+    compY += 4.5
+  }
+  if (website) {
+    doc.text(website, MARGIN, compY)
+    compY += 4.5
+  }
+  if (taxId) {
+    const vatLabel = taxId.toLowerCase().startsWith('vat') || taxId.toLowerCase().startsWith('npwp') ? taxId : `VAT / Tax ID: ${taxId}`
+    doc.text(vatLabel, MARGIN, compY)
+    compY += 4.5
+  }
 
   // --- Top Right: Logo + Tax Invoice / Receipt + Invoice # -----------------
   let logoRendered = false
@@ -175,10 +231,11 @@ export function buildFolioInvoicePdf(
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(17, 24, 39)
-  doc.text(issueDateStr, MARGIN, 52)
+  const dateY = Math.max(compY + 3, 52)
+  doc.text(issueDateStr, MARGIN, dateY)
 
   // --- Invoiced To Section -------------------------------------------------
-  const invoicedToY = 64
+  const invoicedToY = dateY + 10
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9.5)
   doc.setTextColor(17, 24, 39)
@@ -205,8 +262,19 @@ export function buildFolioInvoicePdf(
     || 'Canggu, Bali'
   doc.text(locationLine, guestColX, guestDetailY)
 
+  // --- Header Message (Above Items Table) ---------------------------------
+  let beforeTableY = Math.max(guestDetailY + 6, 80)
+  if (headerMessage) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(100, 116, 139)
+    const headerLines = doc.splitTextToSize(headerMessage, CONTENT_WIDTH)
+    doc.text(headerLines, MARGIN, beforeTableY)
+    beforeTableY += headerLines.length * 3.5 + 4
+  }
+
   // --- Items Table ---------------------------------------------------------
-  const tableY = Math.max(guestDetailY + 8, 83)
+  const tableY = beforeTableY
 
   // Solid gray table header bar
   doc.setFillColor(175, 178, 183)
@@ -414,17 +482,33 @@ export function buildFolioInvoicePdf(
   doc.setTextColor(17, 24, 39)
   doc.text('Bank Transfer Details', MARGIN, lowerY)
 
-  const bankAccountName = opts.bankAccountName || opts.companyName || 'Elev8 Property Group'
-  const bankName = opts.bankNameOrBsb || 'Bank Central Asia (BCA)'
-  const bankAccountNumber = opts.bankAccountNumber || '7890 1234 56'
+  const bankAccountName = opts.bankAccountName || template.bank.accountHolder || opts.companyName || template.company.companyName || 'Elev8 Property Group'
+  const bankName = opts.bankNameOrBsb || template.bank.bankName || 'Bank Central Asia (BCA)'
+  const bankAccountNumber = opts.bankAccountNumber || template.bank.accountNumber
+  const iban = opts.iban || template.bank.iban
+  const bicSwift = opts.bicSwift || template.bank.bicSwift
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
   doc.setTextColor(17, 24, 39)
-  doc.text(`Account Name: ${bankAccountName}`, MARGIN, lowerY + 5)
-  doc.text(`Bank: ${bankName}`, MARGIN, lowerY + 9.5)
-  doc.text(`Account No: ${bankAccountNumber}`, MARGIN, lowerY + 14)
-  doc.text(`Reference: ${invoiceNum}`, MARGIN, lowerY + 18.5)
+  let bankY = lowerY + 5
+  doc.text(`Bank: ${bankName}`, MARGIN, bankY)
+  bankY += 4.5
+  doc.text(`Account Holder: ${bankAccountName}`, MARGIN, bankY)
+  bankY += 4.5
+  if (iban) {
+    doc.text(`IBAN: ${iban}`, MARGIN, bankY)
+    bankY += 4.5
+  }
+  else if (bankAccountNumber) {
+    doc.text(`Account No: ${bankAccountNumber}`, MARGIN, bankY)
+    bankY += 4.5
+  }
+  if (bicSwift) {
+    doc.text(`BIC / SWIFT: ${bicSwift}`, MARGIN, bankY)
+    bankY += 4.5
+  }
+  doc.text(`Reference: ${invoiceNum}`, MARGIN, bankY)
 
   // Right Column: Payment Method Gray Bar & Status Stamp
   const rightSectionX = MARGIN + 85
@@ -475,6 +559,16 @@ export function buildFolioInvoicePdf(
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
     doc.text(`Due by ${formatShortDate(reservation.checkIn)}`, PAGE_WIDTH - MARGIN - 3, statusY + 5, { align: 'right' })
+  }
+
+  // --- Footer Message (Bottom) --------------------------------------------
+  if (footerMessage) {
+    const footerY = Math.max(statusY + 14, bankY + 8, 260)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(100, 116, 139)
+    const footerLines = doc.splitTextToSize(footerMessage, CONTENT_WIDTH)
+    doc.text(footerLines, MARGIN, footerY)
   }
 
   const blob = doc.output('blob')

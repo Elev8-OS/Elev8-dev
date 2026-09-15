@@ -83,4 +83,16 @@ describe('buildFolioInvoicePdf', () => {
     })
     expect(blob.size).toBeGreaterThan(500)
   })
+
+  it('automatically applies the template assigned to the reservation listing', async () => {
+    // res-1 is on listing-1 which is assigned to Elevate Schweiz GmbH
+    const res1 = { ...initialReservations[0]!, listingId: 'listing-1' }
+    const blob1 = buildFolioInvoicePdf(res1, { download: false })
+    expect(blob1.size).toBeGreaterThan(500)
+
+    // res-bali on listing-11 which is assigned to PT Elev8 Bali Mandiri
+    const resBali = { ...initialReservations[0]!, listingId: 'listing-11' }
+    const blobBali = buildFolioInvoicePdf(resBali, { download: false })
+    expect(blobBali.size).toBeGreaterThan(500)
+  })
 })

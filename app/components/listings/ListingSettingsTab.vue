@@ -4,6 +4,8 @@ import { reservations as allReservations } from '~/components/inbox/data/convers
 import { toast } from 'vue-sonner'
 import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
 import GuideAssignPopover from '~/components/listings/GuideAssignPopover.vue'
+import InvoiceTemplateAssignPopover from '~/components/listings/InvoiceTemplateAssignPopover.vue'
+import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -13,6 +15,9 @@ const { guides } = useGuestGuides()
 const assignedGuide = computed(() =>
   guides.value.find(g => g.assignedListingIds.includes(props.listing.id)),
 )
+
+const { getTemplateForListing } = useInvoiceTemplates()
+const assignedInvoiceTemplate = computed(() => getTemplateForListing(props.listing.id))
 
 const editForm = ref({
   name: props.listing.name,
@@ -845,6 +850,47 @@ function handleRevokeCode(codeId: string) {
         </div>
         <div v-else class="text-sm text-muted-foreground">
           No guide assigned. <NuxtLink to="/guest-guides/new" class="underline">Create one</NuxtLink>.
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Invoice Template Card -->
+    <Card>
+      <CardHeader class="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Invoice Template</CardTitle>
+          <CardDescription>Company billing entity and bank account used on guest tax invoices</CardDescription>
+        </div>
+        <InvoiceTemplateAssignPopover
+          :listing-id="listing.id"
+          :listing-name="listing.name"
+        />
+      </CardHeader>
+      <CardContent>
+        <div v-if="assignedInvoiceTemplate" class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-foreground">{{ assignedInvoiceTemplate.name }}</span>
+              <Badge v-if="assignedInvoiceTemplate.isDefault" variant="secondary" class="text-[10px]">
+                Default Entity
+              </Badge>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {{ assignedInvoiceTemplate.company.companyName }}
+              <span v-if="assignedInvoiceTemplate.company.vatNumber">· {{ assignedInvoiceTemplate.company.vatNumber }}</span>
+            </p>
+            <p class="text-[11px] text-muted-foreground">
+              Bank: {{ assignedInvoiceTemplate.bank.bankName }} ({{ assignedInvoiceTemplate.bank.iban || assignedInvoiceTemplate.bank.accountNumber || '—' }})
+            </p>
+          </div>
+
+          <div class="flex gap-2 shrink-0">
+            <NuxtLink to="/settings/invoice-templates">
+              <Button variant="outline" size="sm">
+                Manage Templates
+              </Button>
+            </NuxtLink>
+          </div>
         </div>
       </CardContent>
     </Card>

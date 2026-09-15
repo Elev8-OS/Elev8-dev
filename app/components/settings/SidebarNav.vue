@@ -27,6 +27,7 @@ const sections: Section[] = [
       { title: 'Fees & Taxes', href: '/settings/fees-taxes' },
       { title: 'Cancellation Policies', href: '/settings/cancellation-policies' },
       { title: 'Payouts', href: '/settings/payouts' },
+      { title: 'Invoice Templates', href: '/settings/invoice-templates' },
     ],
   },
   {

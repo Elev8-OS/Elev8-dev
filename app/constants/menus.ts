@@ -302,6 +302,11 @@ export const navMenu: NavMenu[] = [
             link: '/settings/payouts',
           },
           {
+            title: 'Invoice Templates',
+            icon: 'i-lucide-circle',
+            link: '/settings/invoice-templates',
+          },
+          {
             title: 'Integrations',
             icon: 'i-lucide-circle',
             link: '/settings/integrations',
