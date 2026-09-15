@@ -24,6 +24,7 @@ import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useUpsellOrders } from '~/composables/useUpsellOrders'
+import { buildFolioInvoicePdf } from '~/lib/folio-invoice-pdf'
 
 const route = useRoute()
 const router = useRouter()
@@ -109,6 +110,19 @@ const relatedGuide = computed(() => {
 function openConversation() {
   if (relatedConversation.value)
     router.push(`/inbox?conversation=${relatedConversation.value.id}`)
+}
+
+function handleDownloadInvoice() {
+  if (!primaryStay.value)
+    return
+  try {
+    buildFolioInvoicePdf(primaryStay.value, { download: true })
+    toast.success('Invoice PDF downloaded')
+  }
+  catch (err) {
+    console.error(err)
+    toast.error('Failed to generate invoice PDF')
+  }
 }
 
 function saveNotes(notes: string) {
@@ -215,6 +229,64 @@ function reservationStatusMeta(status?: ReservationStatus): string {
   }
   return status ? map[status] : ''
 }
+
+interface BookingStep {
+  key: string
+  label: string
+  icon: string
+  status: 'completed' | 'pending'
+  progress: number
+}
+
+const bookingSteps = computed<BookingStep[]>(() => {
+  const stay = primaryStay.value
+  if (!stay)
+    return []
+
+  const status = stay.status
+
+  // Fill logic:
+  // - inquiry: all pending / 0%
+  // - unverified: confirmed filled, rest pending
+  // - verified: confirmed & verified filled, rest pending
+  // - checked_in: confirmed, verified & checked_in filled, checkout pending
+  // - checked_out: all 4 steps filled
+  const isCheckedOut = status === 'checked_out'
+  const isCheckedIn = isCheckedOut || status === 'checked_in'
+  const isVerified = isCheckedIn || status === 'verified'
+  const isConfirmed = isVerified || status === 'unverified'
+
+  return [
+    {
+      key: 'confirmed',
+      label: 'Confirmed',
+      icon: 'lucide:clipboard-check',
+      status: isConfirmed ? 'completed' : 'pending',
+      progress: isConfirmed ? 100 : 0,
+    },
+    {
+      key: 'verified',
+      label: 'Verified',
+      icon: 'lucide:shield-check',
+      status: isVerified ? 'completed' : 'pending',
+      progress: isVerified ? 100 : 0,
+    },
+    {
+      key: 'checked_in',
+      label: 'Checked In',
+      icon: 'lucide:key',
+      status: isCheckedIn ? 'completed' : 'pending',
+      progress: isCheckedIn ? 100 : 0,
+    },
+    {
+      key: 'checked_out',
+      label: 'Checked Out',
+      icon: 'lucide:map-pin',
+      status: isCheckedOut ? 'completed' : 'pending',
+      progress: isCheckedOut ? 100 : 0,
+    },
+  ]
+})
 </script>
 
 <template>
@@ -339,121 +411,177 @@ function reservationStatusMeta(status?: ReservationStatus): string {
           </CardContent>
         </Card>
 
-        <!-- Booking Info card, with the booked room as a column inside it -->
+        <!-- Stay & Accommodation card, layout adapted from shipping/reservation tracking card reference -->
         <Card class="md:col-span-2">
-          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle class="text-base">
-              Booking Info
+          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle class="text-base font-semibold">
+              Stay & Accommodation
             </CardTitle>
-            <div class="flex items-center gap-1.5">
-              <Badge variant="outline" :class="reservationStatusMeta(primaryStay?.status)">
-                {{ primaryStay ? reservationStatusLabels[primaryStay.status] : 'No booking' }}
-              </Badge>
-              <Button v-if="primaryStay" variant="ghost" size="sm" class="h-7 w-7 p-0" title="Edit reservation" @click="editReservationOpen = true">
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                v-if="relatedConversation"
+                variant="outline"
+                size="sm"
+                class="h-8 gap-1.5"
+                @click="openConversation"
+              >
+                <Icon name="lucide:message-circle" class="size-3.5" />
+                <span>Open conversation</span>
+              </Button>
+              <Button
+                v-if="primaryStay"
+                variant="outline"
+                size="sm"
+                class="h-8 gap-1.5"
+                @click="handleDownloadInvoice"
+              >
+                <Icon name="lucide:download" class="size-3.5" />
+                <span>Download invoice</span>
+              </Button>
+              <Button
+                v-if="primaryStay"
+                variant="outline"
+                size="sm"
+                class="h-8 gap-1.5"
+                @click="editReservationOpen = true"
+              >
                 <Icon name="lucide:pencil" class="size-3.5" />
-                <span class="sr-only">Edit</span>
+                <span>Edit reservation</span>
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent class="space-y-4">
             <template v-if="primaryStay">
-              <div class="grid gap-6 sm:grid-cols-2">
-                <!-- Booking detail -->
-                <div class="space-y-4">
-                  <div class="space-y-1.5 text-sm">
-                    <p class="flex items-center gap-2 text-muted-foreground">
-                      <Icon name="lucide:hash" class="size-3.5" />
-                      Booking ID:
-                      <span class="font-mono font-medium text-foreground">{{ primaryStay.id }}</span>
-                    </p>
-                    <p class="flex items-center gap-2 text-muted-foreground">
-                      <Icon name="lucide:calendar" class="size-3.5" />
-                      {{ fmtDate(primaryStay.checkIn) }} → {{ fmtDate(primaryStay.checkOut) }}
-                    </p>
-                    <p class="flex items-center gap-2 text-muted-foreground">
-                      <Icon name="lucide:moon" class="size-3.5" />
-                      {{ primaryStay.nights }} nights · {{ primaryStay.guestCount }} guests
-                    </p>
-                  </div>
-
-                  <!-- Party breakdown -->
-                  <div v-if="primaryStay.guests?.length" class="flex items-center gap-3">
-                    <div class="flex -space-x-2">
-                      <BasePersonAvatar
-                        v-for="g in primaryStay.guests.slice(0, 4)"
-                        :key="g.id"
-                        :name="g.name"
-                        class="size-8 border-2 border-background"
-                        text-class="text-[10px]"
-                      />
-                      <span
-                        v-if="primaryStay.guests.length > 4"
-                        class="flex size-8 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium text-muted-foreground"
-                      >
-                        +{{ primaryStay.guests.length - 4 }}
-                      </span>
-                    </div>
-                    <div class="text-xs text-muted-foreground">
-                      <p class="font-medium text-foreground">
-                        {{ partySummary }}
-                      </p>
-                      <p>
-                        {{ primaryStay.guests.map(g => g.name).join(', ') }}
-                      </p>
-                    </div>
-                  </div>
-                  <Separator />
-                  <div class="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p class="text-xs text-muted-foreground">
-                        Channel
-                      </p>
-                      <p class="font-medium">
-                        {{ primaryStay.channel }}
-                      </p>
-                    </div>
-                    <div>
-                      <p class="text-xs text-muted-foreground">
-                        Total
-                      </p>
-                      <p class="font-medium">
-                        {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
-                      </p>
-                    </div>
-                  </div>
-                  <div v-if="primaryStay.guestNotes" class="rounded-md border-l-2 border-primary bg-muted/40 p-2.5 text-xs text-muted-foreground">
-                    {{ primaryStay.guestNotes }}
-                  </div>
+              <!-- Badges on left, ETA on right -->
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" class="rounded-full px-3 py-1 font-medium bg-background border-border">
+                    {{ primaryStay.channel }}
+                  </Badge>
+                  <Badge variant="secondary" class="rounded-full px-3 py-1 font-medium">
+                    #{{ primaryStay.id }}
+                  </Badge>
+                  <Badge variant="secondary" class="rounded-full px-3 py-1 font-medium">
+                    {{ fmtCurrency(primaryStay.totalPrice, primaryStay.currency) }}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    class="rounded-full px-3 py-1 font-medium"
+                    :class="reservationStatusMeta(primaryStay.status)"
+                  >
+                    {{ reservationStatusLabels[primaryStay.status] }}
+                  </Badge>
                 </div>
 
-                <!-- The booked room, formerly its own card -->
-                <div class="space-y-3">
-                  <div class="flex items-center justify-between">
-                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Room
-                    </p>
-                    <Button variant="link" size="sm" class="h-auto p-0 text-xs" as-child>
-                      <NuxtLink :to="`/listings/${primaryStay.listingId}`">
-                        View detail
-                      </NuxtLink>
-                    </Button>
-                  </div>
-                  <div class="flex h-28 w-full items-center justify-center overflow-hidden rounded-md border bg-muted/40">
-                    <img
-                      v-if="listingPhoto(primaryStay.listingId)"
-                      :src="listingPhoto(primaryStay.listingId)"
-                      :alt="primaryStay.listingName"
-                      class="h-full w-full object-cover"
+                <div class="text-right shrink-0">
+                  <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Check-in (ETA)
+                  </p>
+                  <p class="text-sm font-semibold text-foreground">
+                    {{ fmtDate(primaryStay.checkIn) }} · 14:00
+                  </p>
+                </div>
+              </div>
+
+              <!-- Listing name, Guest info, Checkin/checkout/nights info, and Guest names -->
+              <div class="space-y-1.5">
+                <!-- 1. Listing Name -->
+                <div>
+                  <NuxtLink
+                    :to="`/listings/${primaryStay.listingId}`"
+                    class="text-xl font-bold tracking-tight text-foreground hover:underline"
+                  >
+                    {{ primaryStay.listingName }}
+                  </NuxtLink>
+                </div>
+
+                <!-- 2. Info Guest Summary -->
+                <div class="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Icon name="lucide:users" class="size-4 shrink-0 text-muted-foreground" />
+                  <span class="font-medium text-foreground">{{ partySummary }}</span>
+                </div>
+
+                <!-- 3. Info Check-in, Checkout, Nights (tanpa arrow) -->
+                <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+                  <span class="flex items-center gap-1.5">
+                    <Icon name="lucide:calendar" class="size-3.5 text-muted-foreground" />
+                    Check-in: <strong class="font-medium text-foreground">{{ fmtDate(primaryStay.checkIn) }}</strong>
+                  </span>
+                  <span class="text-muted-foreground/40">·</span>
+                  <span class="flex items-center gap-1.5">
+                    <Icon name="lucide:moon" class="size-3.5 text-muted-foreground" />
+                    <strong class="font-medium text-foreground">{{ primaryStay.nights }} Nights</strong>
+                  </span>
+                  <span class="text-muted-foreground/40">·</span>
+                  <span class="flex items-center gap-1.5">
+                    <Icon name="lucide:calendar-check" class="size-3.5 text-muted-foreground" />
+                    Check-out: <strong class="font-medium text-foreground">{{ fmtDate(primaryStay.checkOut) }}</strong>
+                  </span>
+                </div>
+
+                <!-- 4. Nama-nama guest dibawah check-in info -->
+                <div v-if="primaryStay.guests?.length" class="flex items-center gap-2 pt-0.5 text-xs text-muted-foreground">
+                  <div class="flex -space-x-1.5">
+                    <BasePersonAvatar
+                      v-for="g in primaryStay.guests.slice(0, 4)"
+                      :key="g.id"
+                      :name="g.name"
+                      class="size-5 border-2 border-background"
+                      text-class="text-[8px]"
+                    />
+                    <span
+                      v-if="primaryStay.guests.length > 4"
+                      class="flex size-5 items-center justify-center rounded-full border-2 border-background bg-muted text-[8px] font-medium text-muted-foreground"
                     >
-                    <Icon v-else name="lucide:building-2" class="size-8 text-muted-foreground/50" />
+                      +{{ primaryStay.guests.length - 4 }}
+                    </span>
                   </div>
-                  <div>
-                    <p class="text-sm font-semibold leading-tight">
-                      {{ primaryStay.listingName }}
-                    </p>
-                    <p class="text-xs text-muted-foreground">
-                      {{ primaryStay.guestCount }} guests
-                    </p>
+                  <span>
+                    {{ primaryStay.guests.map(g => g.name).join(', ') }}
+                  </span>
+                </div>
+
+                <!-- Guest notes jika ada -->
+                <div
+                  v-if="primaryStay.guestNotes"
+                  class="mt-1.5 rounded-md border-l-2 border-primary bg-muted/40 p-2 text-xs text-muted-foreground"
+                >
+                  <span class="font-medium text-foreground">Note:</span> {{ primaryStay.guestNotes }}
+                </div>
+              </div>
+
+              <!-- Bottom row: Segmented progress tracker -->
+              <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 pt-3.5 border-t">
+                <div v-for="step in bookingSteps" :key="step.key" class="space-y-2">
+                  <div class="flex items-center gap-2.5">
+                    <div
+                      class="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors"
+                      :class="[
+                        step.status === 'completed'
+                          ? 'bg-foreground text-background'
+                          : 'border border-border bg-muted/40 text-muted-foreground/50',
+                      ]"
+                    >
+                      <Icon :name="step.icon" class="size-4" />
+                    </div>
+                    <span
+                      class="text-sm truncate"
+                      :class="[
+                        step.status === 'completed'
+                          ? 'font-semibold text-foreground'
+                          : 'font-medium text-muted-foreground',
+                      ]"
+                    >
+                      {{ step.label }}
+                    </span>
+                  </div>
+
+                  <!-- Segmented progress bar -->
+                  <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      class="h-full rounded-full bg-foreground transition-all duration-300"
+                      :style="{ width: `${step.progress}%` }"
+                    />
                   </div>
                 </div>
               </div>
@@ -544,22 +672,11 @@ function reservationStatusMeta(status?: ReservationStatus): string {
       </Tabs>
 
       <!-- Related links -->
-      <div v-if="relatedConversation || relatedGuide" class="flex flex-wrap items-center gap-2">
+      <div v-if="relatedGuide" class="flex flex-wrap items-center gap-2">
         <span class="text-sm font-semibold text-muted-foreground mr-2">
           Quick links
         </span>
         <Button
-          v-if="relatedConversation"
-          variant="outline"
-          size="sm"
-          class="gap-1.5"
-          @click="openConversation"
-        >
-          <Icon name="lucide:message-circle" class="size-3.5" />
-          Open conversation
-        </Button>
-        <Button
-          v-if="relatedGuide"
           variant="outline"
           size="sm"
           class="gap-1.5"
