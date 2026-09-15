@@ -2,11 +2,14 @@
 import type { Booking } from '~/components/listings/data/listings'
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { toast } from 'vue-sonner'
+import DatePicker from '~/components/base/DatePicker.vue'
+import TimePicker from '~/components/base/TimePicker.vue'
 import { cleanerOptions, cleaningJobPriorityLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
 import CleaningReportPanel from '~/components/operations-calendar/CleaningReportPanel.vue'
 import { cleaningTypeIcons, cleaningTypeVariants } from '~/components/operations-calendar/data/operations-calendar'
 import StaffMultiSelectDropdown from '~/components/shared/StaffMultiSelectDropdown.vue'
+import { Label } from '~/components/ui/label'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useTaskStore } from '~/composables/useTaskStore'
 
@@ -102,12 +105,101 @@ const editingCleanerIds = ref<string[]>([])
 const editingPriority = ref<'low' | 'normal' | 'high' | 'urgent'>('normal')
 const isSavingPriority = ref(false)
 
+// --- Reschedule state ---
+const isRescheduling = ref(false)
+const rescheduleDate = ref<string>('')
+const rescheduleTime = ref<string>('11:00')
+const isSavingReschedule = ref(false)
+
+const todayKey = computed(() => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+})
+
+function initRescheduleState() {
+  if (!cleaningJob.value)
+    return
+  const dt = cleaningJob.value.scheduledAt
+  rescheduleDate.value = dt.slice(0, 10)
+  rescheduleTime.value = dt.includes('T') && dt.length >= 16 ? dt.slice(11, 16) : '11:00'
+}
+
+function startReschedule() {
+  initRescheduleState()
+  isRescheduling.value = true
+}
+
+function cancelReschedule() {
+  initRescheduleState()
+  isRescheduling.value = false
+}
+
+const hasRescheduleChanges = computed(() => {
+  if (!cleaningJob.value || !rescheduleDate.value)
+    return false
+  const origDt = cleaningJob.value.scheduledAt
+  const origDate = origDt.slice(0, 10)
+  const origTime = origDt.includes('T') && origDt.length >= 16 ? origDt.slice(11, 16) : '11:00'
+  return rescheduleDate.value !== origDate || rescheduleTime.value !== origTime
+})
+
+const canSaveReschedule = computed(() => {
+  if (!rescheduleDate.value)
+    return false
+  if (rescheduleDate.value < todayKey.value)
+    return false
+  return hasRescheduleChanges.value
+})
+
+const reschedulePreviewText = computed(() => {
+  if (!cleaningJob.value || !rescheduleDate.value)
+    return ''
+  const origDate = formatDate(cleaningJob.value.scheduledAt)
+  const origTime = formatTime(cleaningJob.value.scheduledAt)
+  const newTime = rescheduleTime.value || '11:00'
+  const newDate = new Date(`${rescheduleDate.value}T${newTime}:00+08:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  return `Rescheduling from ${origDate} (${origTime}) → ${newDate} (${newTime})`
+})
+
+function saveReschedule() {
+  if (!cleaningJob.value || !canSaveReschedule.value)
+    return
+  isSavingReschedule.value = true
+  const time = rescheduleTime.value || '11:00'
+  const newScheduledAt = `${rescheduleDate.value}T${time}:00+08:00`
+  updateJob(cleaningJob.value.id, {
+    scheduledAt: newScheduledAt,
+  })
+  const formattedDate = new Date(`${rescheduleDate.value}T${time}:00+08:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  toast.success(`Cleaning rescheduled to ${formattedDate} at ${time}`)
+  isRescheduling.value = false
+  isSavingReschedule.value = false
+}
+
 watch(cleaningJob, (job) => {
   if (job) {
     editingCleanerIds.value = [...job.cleanerIds]
     editingPriority.value = job.priority
+    initRescheduleState()
   }
 }, { immediate: true })
+
+watch(() => props.open, (open) => {
+  if (!open) {
+    isRescheduling.value = false
+  }
+})
 
 const editingCleanerNames = computed(() => resolveCleanerNames(editingCleanerIds.value))
 
@@ -213,7 +305,7 @@ const overlappingBooking = computed<Booking | null>(() => {
   const listing = listings.value.find(l => l.id === props.event.listingId)
   if (!listing?.bookings?.length)
     return null
-  const eventDay = props.event.start.slice(0, 10)
+  const eventDay = (cleaningJob.value?.scheduledAt ?? props.event.start).slice(0, 10)
   return listing.bookings.find(b =>
     b.status !== 'cancelled'
     && b.status !== 'inquiry'
@@ -266,12 +358,6 @@ const stayInfoLabel = computed(() => {
         <SheetDescription v-if="event?.listingName" class="mt-0.5 text-sm">
           {{ event.listingName }}
         </SheetDescription>
-        <div v-if="event" class="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Icon name="lucide:clock" class="h-3.5 w-3.5" />
-          <span>
-            {{ formatDate(event.start) }} · {{ formatTime(event.start) }} – {{ formatTime(event.end) }}
-          </span>
-        </div>
       </SheetHeader>
 
       <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
@@ -541,6 +627,100 @@ const stayInfoLabel = computed(() => {
                   <p v-else class="font-medium text-muted-foreground">
                     Unassigned
                   </p>
+                </div>
+              </div>
+
+              <!-- Schedule / Reschedule section -->
+              <div class="col-span-2 border-t pt-3" data-testid="detail-schedule-section">
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <p class="text-xs text-muted-foreground">
+                      Scheduled date & time
+                    </p>
+                    <p class="mt-0.5 flex items-center gap-1.5 text-sm font-medium">
+                      <Icon name="lucide:calendar-clock" class="h-4 w-4 text-muted-foreground" />
+                      <span>{{ formatDate(cleaningJob.scheduledAt) }}</span>
+                      <span class="text-xs text-muted-foreground">at {{ formatTime(cleaningJob.scheduledAt) }}</span>
+                    </p>
+                  </div>
+                  <Button
+                    v-if="isEditable && !isRescheduling"
+                    variant="outline"
+                    size="sm"
+                    class="h-8 gap-1.5 text-xs"
+                    data-testid="detail-reschedule-btn"
+                    @click="startReschedule"
+                  >
+                    <Icon name="lucide:calendar-clock" class="h-3.5 w-3.5" />
+                    Reschedule
+                  </Button>
+                </div>
+
+                <!-- Reschedule editor panel -->
+                <div
+                  v-if="isEditable && isRescheduling"
+                  class="mt-3 flex flex-col gap-3 rounded-lg border bg-background p-3 shadow-xs"
+                  data-testid="reschedule-panel"
+                >
+                  <div class="flex items-center justify-between border-b pb-2">
+                    <p class="text-xs font-semibold flex items-center gap-1.5">
+                      <Icon name="lucide:calendar-clock" class="h-3.5 w-3.5 text-primary" />
+                      Reschedule cleaning
+                    </p>
+                    <button
+                      type="button"
+                      class="text-muted-foreground hover:text-foreground text-xs"
+                      @click="cancelReschedule"
+                    >
+                      <Icon name="lucide:x" class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-1.5">
+                      <Label class="text-xs text-muted-foreground">New Date</Label>
+                      <DatePicker
+                        v-model="rescheduleDate"
+                        :min="todayKey"
+                        placeholder="Select new date"
+                        data-testid="reschedule-date-picker"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <Label class="text-xs text-muted-foreground">Start Time</Label>
+                      <TimePicker
+                        v-model="rescheduleTime"
+                        placeholder="Select time"
+                        data-testid="reschedule-time-picker"
+                      />
+                    </div>
+                  </div>
+
+                  <div v-if="reschedulePreviewText" class="text-xs text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5">
+                    {{ reschedulePreviewText }}
+                  </div>
+
+                  <div class="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 text-xs"
+                      @click="cancelReschedule"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      class="h-7 text-xs"
+                      :disabled="!canSaveReschedule || isSavingReschedule"
+                      data-testid="reschedule-save-btn"
+                      @click="saveReschedule"
+                    >
+                      <Icon v-if="isSavingReschedule" name="lucide:loader-2" class="mr-1.5 h-3 w-3 animate-spin" />
+                      <Icon v-else name="lucide:check" class="mr-1.5 h-3 w-3" />
+                      Save Schedule
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div v-if="cleaningJob.notes" class="col-span-2">

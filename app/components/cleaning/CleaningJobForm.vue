@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { CleaningJob, CleaningJobInput, CleaningJobPriority, CleaningJobRecurrence, CleaningJobSource, CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
-import { CLEANING_SOURCE_OPTIONS, cleanerOptions, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
+import DatePicker from '~/components/base/DatePicker.vue'
+import { cleanerOptions, CLEANING_SOURCE_OPTIONS, cleaningJobSourceLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
-import DatePicker from '~/components/base/DatePicker.vue'
 
 const props = withDefaults(defineProps<{
   modelValue?: Partial<CleaningJob> | null
@@ -118,7 +118,7 @@ const cleanerDisplayLabel = computed(() => {
   if (!form.cleanerIds.length)
     return 'Assign housekeeping'
   return resolveCleanerNames(form.cleanerIds)
-    .map((name, idx) => {
+    .map((name) => {
       const opt = cleanerOptions.find(c => c.name === name)
       return opt ? `${name} · ${opt.role}` : name
     })
@@ -149,7 +149,7 @@ function clearStaff() {
 // --- Priority toggle ---
 const isHighPriority = computed<boolean>({
   get: () => form.priority === 'high',
-  set: value => { form.priority = value ? 'high' : 'normal' },
+  set: (value) => { form.priority = value ? 'high' : 'normal' },
 })
 
 // --- Required validation ---
@@ -279,6 +279,22 @@ watch(() => props.modelValue, (next) => {
   cleaningTimeTo.value = ''
 }, { immediate: true })
 
+watch(() => props.defaultListingId, (next) => {
+  if (isCreate.value && next !== undefined && next !== null) {
+    form.listingId = next
+  }
+})
+
+watch(() => props.defaultScheduledAt, (next) => {
+  if (isCreate.value && next !== undefined && next !== null) {
+    form.scheduledAt = next
+    const dt = ensureDateTime(next)
+    cleaningDate.value = dt.date
+    cleaningTimeEnabled.value = Boolean(dt.time)
+    cleaningTimeFrom.value = dt.time || DEFAULT_START_TIME
+  }
+})
+
 const recurrenceModel = computed<CleaningJobRecurrence | null>(() => recurrenceEnabled.value
   ? {
       enabled: true,
@@ -344,8 +360,8 @@ function submit() {
         <PopoverTrigger as-child>
           <Button
             variant="outline"
+            class="h-9 w-full justify-start gap-1.5 px-3 text-sm font-normal"
             :class="[
-              'h-9 w-full justify-start gap-1.5 px-3 text-sm font-normal',
               !form.cleanerIds.length ? 'text-muted-foreground' : '',
             ]"
           >
@@ -354,7 +370,7 @@ function submit() {
             <Icon name="lucide:chevrons-up-down" class="h-4 w-4 shrink-0 text-muted-foreground" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent class="w-72 p-0" align="start" :side-offset="4">
+        <PopoverContent class="w-72 p-0 z-[100]" align="start" :side-offset="4">
           <div class="flex items-center gap-2 border-b px-3 py-2">
             <Icon name="lucide:search" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input

@@ -2,11 +2,11 @@
 import type { CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
 import { toast } from 'vue-sonner'
 import { useTaskStore } from '@/composables/useTaskStore'
-import { useCleaningJobs } from '~/composables/useCleaningJobs'
-import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
-import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
-import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import DatePicker from '~/components/base/DatePicker.vue'
+import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
+import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
+import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
 
 const props = defineProps<{
   open: boolean
@@ -206,289 +206,287 @@ function handleCreateTask() {
 
       <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
         <div class="flex flex-col gap-5 p-6">
+          <Tabs v-model="activeTab" class="mt-2">
+            <TabsList class="grid w-full grid-cols-2">
+              <TabsTrigger value="cleaning">
+                Cleaning
+              </TabsTrigger>
+              <TabsTrigger value="task">
+                Task
+              </TabsTrigger>
+            </TabsList>
 
-      <Tabs v-model="activeTab" class="mt-2">
-        <TabsList class="grid w-full grid-cols-2">
-          <TabsTrigger value="cleaning">
-            Cleaning
-          </TabsTrigger>
-          <TabsTrigger value="task">
-            Task
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="cleaning" class="mt-4">
-          <CleaningJobForm
-            mode="create"
-            :default-listing-id="listingId"
-            :default-scheduled-at="dayKey ? `${dayKey}T11:00` : undefined"
-            @cancel="close"
-            @save="handleCleaningSave"
-          />
-        </TabsContent>
-
-        <TabsContent value="task" class="mt-4">
-          <div class="flex flex-col gap-4">
-            <p class="text-xs text-muted-foreground">
-              Fields marked with <span class="text-destructive">*</span> are required.
-            </p>
-
-            <div class="flex flex-col gap-1.5">
-              <Label>Instructions <span class="text-destructive">*</span></Label>
-              <Input v-model="taskInstructions" placeholder="e.g. Check AC filter and replace if needed" />
-            </div>
-
-            <div class="flex flex-col gap-1.5">
-              <Label>Listing <span class="text-destructive">*</span></Label>
-              <ListingPicker
-                v-model="taskListingId"
-                v-model:listing-name="taskListingName"
-                placeholder="Choose a listing"
+            <TabsContent value="cleaning" class="mt-4">
+              <CleaningJobForm
+                v-if="open"
+                mode="create"
+                :default-listing-id="listingId"
+                :default-scheduled-at="dayKey ? `${dayKey}T11:00` : undefined"
+                @cancel="close"
+                @save="handleCleaningSave"
               />
-              <GuestInfoCard v-if="taskListingId" :listing-id="taskListingId" :target-date="taskDueDate" />
-            </div>
+            </TabsContent>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div class="flex flex-col gap-1.5">
-                <Label>Due date</Label>
-                <DatePicker v-model="taskDueDate" />
-              </div>
-              <div class="flex flex-col gap-1.5">
-                <Label>Priority</Label>
-                <Popover v-model:open="priorityPickerOpen">
-                  <PopoverTrigger as-child>
-                    <Button
-                      variant="outline"
-                      class="h-9 w-full justify-start gap-2 px-3 text-sm font-normal"
-                    >
-                      <Icon name="lucide:flag" class="h-4 w-4" :style="{ color: selectedPriority.color }" />
-                      <span class="flex-1 truncate text-left">{{ selectedPriority.label }}</span>
-                      <Icon name="lucide:chevrons-up-down" class="h-4 w-4 shrink-0 text-muted-foreground" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent class="w-56 p-1" align="start" :side-offset="4">
-                    <button
-                      v-for="p in priorities"
-                      :key="p.value"
-                      type="button"
-                      class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                      :class="taskPriority === p.value ? 'bg-accent' : ''"
-                      @click="taskPriority = p.value; priorityPickerOpen = false"
-                    >
-                      <Icon name="lucide:flag" class="h-4 w-4 shrink-0" :style="{ color: p.color }" />
-                      <span class="flex-1 truncate text-left">{{ p.label }}</span>
-                      <Icon v-if="taskPriority === p.value" name="lucide:check" class="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
+            <TabsContent value="task" class="mt-4">
+              <div class="flex flex-col gap-4">
+                <p class="text-xs text-muted-foreground">
+                  Fields marked with <span class="text-destructive">*</span> are required.
+                </p>
 
-            <div class="flex flex-col gap-1.5">
-              <Label>Assign task to</Label>
-              <Popover v-model:open="assigneePickerOpen">
-                <PopoverTrigger as-child>
-                  <Button
-                    variant="outline"
-                    :class="[
-                      'h-9 w-full justify-start gap-2 px-3 text-sm font-normal',
-                      !taskAssignee ? 'text-muted-foreground' : '',
-                    ]"
+                <div class="flex flex-col gap-1.5">
+                  <Label>Instructions <span class="text-destructive">*</span></Label>
+                  <Input v-model="taskInstructions" placeholder="e.g. Check AC filter and replace if needed" />
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <Label>Listing <span class="text-destructive">*</span></Label>
+                  <ListingPicker
+                    v-model="taskListingId"
+                    v-model:listing-name="taskListingName"
+                    placeholder="Choose a listing"
+                  />
+                  <GuestInfoCard v-if="taskListingId" :listing-id="taskListingId" :target-date="taskDueDate" />
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="flex flex-col gap-1.5">
+                    <Label>Due date</Label>
+                    <DatePicker v-model="taskDueDate" />
+                  </div>
+                  <div class="flex flex-col gap-1.5">
+                    <Label>Priority</Label>
+                    <Popover v-model:open="priorityPickerOpen">
+                      <PopoverTrigger as-child>
+                        <Button
+                          variant="outline"
+                          class="h-9 w-full justify-start gap-2 px-3 text-sm font-normal"
+                        >
+                          <Icon name="lucide:flag" class="h-4 w-4" :style="{ color: selectedPriority.color }" />
+                          <span class="flex-1 truncate text-left">{{ selectedPriority.label }}</span>
+                          <Icon name="lucide:chevrons-up-down" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent class="w-56 p-1" align="start" :side-offset="4">
+                        <button
+                          v-for="p in priorities"
+                          :key="p.value"
+                          type="button"
+                          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+                          :class="taskPriority === p.value ? 'bg-accent' : ''"
+                          @click="taskPriority = p.value; priorityPickerOpen = false"
+                        >
+                          <Icon name="lucide:flag" class="h-4 w-4 shrink-0" :style="{ color: p.color }" />
+                          <span class="flex-1 truncate text-left">{{ p.label }}</span>
+                          <Icon v-if="taskPriority === p.value" name="lucide:check" class="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <Label>Assign task to</Label>
+                  <Popover v-model:open="assigneePickerOpen">
+                    <PopoverTrigger as-child>
+                      <Button
+                        variant="outline"
+                        class="h-9 w-full justify-start gap-2 px-3 text-sm font-normal" :class="[
+                          !taskAssignee ? 'text-muted-foreground' : '',
+                        ]"
+                      >
+                        <Icon
+                          :name="taskAssigneeType === 'person' ? 'lucide:user' : (taskAssigneeType === 'role' ? 'lucide:users-round' : 'lucide:user-plus')"
+                          class="h-4 w-4 shrink-0 text-muted-foreground"
+                        />
+                        <span class="flex-1 truncate text-left">
+                          <template v-if="selectedAssignee">
+                            {{ selectedAssignee.label }}
+                            <span v-if="assigneeRoleLabel" class="text-muted-foreground">· {{ assigneeRoleLabel }}</span>
+                          </template>
+                          <template v-else>
+                            Unassigned
+                          </template>
+                        </span>
+                        <Icon name="lucide:chevrons-up-down" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent class="w-72 p-0" align="start" :side-offset="4">
+                      <div class="flex items-center gap-2 border-b px-3 py-2">
+                        <Icon name="lucide:search" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <input
+                          v-model="assigneeSearch"
+                          class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                          :placeholder="assigneeTab === 'roles' ? 'Search roles…' : 'Search users…'"
+                        >
+                        <button v-if="assigneeSearch" class="shrink-0 text-muted-foreground hover:text-foreground" @click="assigneeSearch = ''">
+                          <Icon name="lucide:x" class="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <Tabs v-model="assigneeTab" class="w-full">
+                        <TabsList class="grid w-full grid-cols-2 rounded-none border-b bg-transparent px-2 py-1.5 h-auto">
+                          <TabsTrigger value="roles" class="gap-1.5 text-xs data-[state=active]:bg-muted">
+                            <Icon name="lucide:users-round" class="h-3.5 w-3.5" />
+                            Roles
+                          </TabsTrigger>
+                          <TabsTrigger value="users" class="gap-1.5 text-xs data-[state=active]:bg-muted">
+                            <Icon name="lucide:user" class="h-3.5 w-3.5" />
+                            Users
+                          </TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="roles" class="mt-0">
+                          <ScrollArea class="h-56">
+                            <div class="p-1">
+                              <button
+                                type="button"
+                                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                                :class="!taskAssignee ? 'bg-accent' : ''"
+                                @click="clearAssignee"
+                              >
+                                <div
+                                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
+                                    !taskAssignee ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
+                                  ]"
+                                >
+                                  <Icon v-if="!taskAssignee" name="lucide:check" class="h-3 w-3" />
+                                </div>
+                                <Icon name="lucide:user-plus" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span class="flex-1 truncate">Unassigned</span>
+                              </button>
+                              <template v-if="filteredRoles.length > 0">
+                                <button
+                                  v-for="role in filteredRoles"
+                                  :key="role.value"
+                                  type="button"
+                                  class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                                  :class="taskAssignee === role.value && taskAssigneeType === 'role' ? 'bg-accent' : ''"
+                                  @click="pickAssignee(role.value, 'role')"
+                                >
+                                  <div
+                                    class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
+                                      taskAssignee === role.value && taskAssigneeType === 'role'
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'border-input',
+                                    ]"
+                                  >
+                                    <Icon v-if="taskAssignee === role.value && taskAssigneeType === 'role'" name="lucide:check" class="h-3 w-3" />
+                                  </div>
+                                  <Icon name="lucide:users-round" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                                  <span class="flex-1 truncate">{{ role.label }}</span>
+                                </button>
+                              </template>
+                              <p v-else class="py-6 text-center text-sm text-muted-foreground">
+                                No roles found
+                              </p>
+                            </div>
+                          </ScrollArea>
+                        </TabsContent>
+                        <TabsContent value="users" class="mt-0">
+                          <ScrollArea class="h-56">
+                            <div class="p-1">
+                              <button
+                                type="button"
+                                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                                :class="!taskAssignee ? 'bg-accent' : ''"
+                                @click="clearAssignee"
+                              >
+                                <div
+                                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
+                                    !taskAssignee ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
+                                  ]"
+                                >
+                                  <Icon v-if="!taskAssignee" name="lucide:check" class="h-3 w-3" />
+                                </div>
+                                <Icon name="lucide:user-plus" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span class="flex-1 truncate">Unassigned</span>
+                              </button>
+                              <template v-if="filteredStaff.length > 0">
+                                <button
+                                  v-for="staff in filteredStaff"
+                                  :key="staff.value"
+                                  type="button"
+                                  class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                                  :class="taskAssignee === staff.value && taskAssigneeType === 'person' ? 'bg-accent' : ''"
+                                  @click="pickAssignee(staff.value, 'person')"
+                                >
+                                  <div
+                                    class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
+                                      taskAssignee === staff.value && taskAssigneeType === 'person'
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'border-input',
+                                    ]"
+                                  >
+                                    <Icon v-if="taskAssignee === staff.value && taskAssigneeType === 'person'" name="lucide:check" class="h-3 w-3" />
+                                  </div>
+                                  <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                                    {{ staff.label.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() }}
+                                  </div>
+                                  <div class="flex min-w-0 flex-col text-left">
+                                    <span class="truncate text-sm leading-tight">{{ staff.label }}</span>
+                                    <span class="truncate text-xs text-muted-foreground">
+                                      {{ assigneeRoles.find(r => r.value === staff.role)?.label ?? staff.role }}
+                                    </span>
+                                  </div>
+                                </button>
+                              </template>
+                              <p v-else class="py-6 text-center text-sm text-muted-foreground">
+                                No users found
+                              </p>
+                            </div>
+                          </ScrollArea>
+                        </TabsContent>
+                      </Tabs>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <Label>Image</Label>
+                  <input
+                    ref="taskImageInputRef"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    class="hidden"
+                    @change="handleImageUpload"
                   >
-                    <Icon
-                      :name="taskAssigneeType === 'person' ? 'lucide:user' : (taskAssigneeType === 'role' ? 'lucide:users-round' : 'lucide:user-plus')"
-                      class="h-4 w-4 shrink-0 text-muted-foreground"
-                    />
-                    <span class="flex-1 truncate text-left">
-                      <template v-if="selectedAssignee">
-                        {{ selectedAssignee.label }}
-                        <span v-if="assigneeRoleLabel" class="text-muted-foreground">· {{ assigneeRoleLabel }}</span>
-                      </template>
-                      <template v-else>
-                        Unassigned
-                      </template>
-                    </span>
-                    <Icon name="lucide:chevrons-up-down" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Button
+                    v-if="!taskImages.length"
+                    type="button"
+                    variant="outline"
+                    class="w-full justify-start gap-1.5 px-3 text-sm font-normal text-muted-foreground"
+                    @click="taskImageInputRef?.click()"
+                  >
+                    <Icon name="lucide:image-plus" class="h-4 w-4" />
+                    Upload image
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent class="w-72 p-0" align="start" :side-offset="4">
-                  <div class="flex items-center gap-2 border-b px-3 py-2">
-                    <Icon name="lucide:search" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <input
-                      v-model="assigneeSearch"
-                      class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                      :placeholder="assigneeTab === 'roles' ? 'Search roles…' : 'Search users…'"
+                  <div v-else class="grid grid-cols-3 gap-2">
+                    <div v-for="(img, idx) in taskImages" :key="idx" class="relative group">
+                      <img
+                        :src="img"
+                        alt=""
+                        class="h-24 w-full rounded-lg border object-cover"
+                      >
+                      <button
+                        type="button"
+                        class="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow-sm hover:text-destructive"
+                        @click="removeImage(idx)"
+                      >
+                        <Icon name="lucide:x" class="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      class="flex h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-xs text-muted-foreground hover:bg-muted"
+                      @click="taskImageInputRef?.click()"
                     >
-                    <button v-if="assigneeSearch" class="shrink-0 text-muted-foreground hover:text-foreground" @click="assigneeSearch = ''">
-                      <Icon name="lucide:x" class="h-3.5 w-3.5" />
+                      <Icon name="lucide:plus" class="h-4 w-4" />
+                      Add more
                     </button>
                   </div>
-                  <Tabs v-model="assigneeTab" class="w-full">
-                    <TabsList class="grid w-full grid-cols-2 rounded-none border-b bg-transparent px-2 py-1.5 h-auto">
-                      <TabsTrigger value="roles" class="gap-1.5 text-xs data-[state=active]:bg-muted">
-                        <Icon name="lucide:users-round" class="h-3.5 w-3.5" />
-                        Roles
-                      </TabsTrigger>
-                      <TabsTrigger value="users" class="gap-1.5 text-xs data-[state=active]:bg-muted">
-                        <Icon name="lucide:user" class="h-3.5 w-3.5" />
-                        Users
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="roles" class="mt-0">
-                      <ScrollArea class="h-56">
-                        <div class="p-1">
-                          <button
-                            type="button"
-                            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                            :class="!taskAssignee ? 'bg-accent' : ''"
-                            @click="clearAssignee"
-                          >
-                            <div
-                              class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
-                                !taskAssignee ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
-                              ]"
-                            >
-                              <Icon v-if="!taskAssignee" name="lucide:check" class="h-3 w-3" />
-                            </div>
-                            <Icon name="lucide:user-plus" class="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span class="flex-1 truncate">Unassigned</span>
-                          </button>
-                          <template v-if="filteredRoles.length > 0">
-                            <button
-                              v-for="role in filteredRoles"
-                              :key="role.value"
-                              type="button"
-                              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                              :class="taskAssignee === role.value && taskAssigneeType === 'role' ? 'bg-accent' : ''"
-                              @click="pickAssignee(role.value, 'role')"
-                            >
-                              <div
-                                class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
-                                  taskAssignee === role.value && taskAssigneeType === 'role'
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-input',
-                                ]"
-                              >
-                                <Icon v-if="taskAssignee === role.value && taskAssigneeType === 'role'" name="lucide:check" class="h-3 w-3" />
-                              </div>
-                              <Icon name="lucide:users-round" class="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <span class="flex-1 truncate">{{ role.label }}</span>
-                            </button>
-                          </template>
-                          <p v-else class="py-6 text-center text-sm text-muted-foreground">
-                            No roles found
-                          </p>
-                        </div>
-                      </ScrollArea>
-                    </TabsContent>
-                    <TabsContent value="users" class="mt-0">
-                      <ScrollArea class="h-56">
-                        <div class="p-1">
-                          <button
-                            type="button"
-                            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                            :class="!taskAssignee ? 'bg-accent' : ''"
-                            @click="clearAssignee"
-                          >
-                            <div
-                              class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
-                                !taskAssignee ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
-                              ]"
-                            >
-                              <Icon v-if="!taskAssignee" name="lucide:check" class="h-3 w-3" />
-                            </div>
-                            <Icon name="lucide:user-plus" class="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span class="flex-1 truncate">Unassigned</span>
-                          </button>
-                          <template v-if="filteredStaff.length > 0">
-                            <button
-                              v-for="staff in filteredStaff"
-                              :key="staff.value"
-                              type="button"
-                              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                              :class="taskAssignee === staff.value && taskAssigneeType === 'person' ? 'bg-accent' : ''"
-                              @click="pickAssignee(staff.value, 'person')"
-                            >
-                              <div
-                                class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
-                                  taskAssignee === staff.value && taskAssigneeType === 'person'
-                                    ? 'border-primary bg-primary text-primary-foreground'
-                                    : 'border-input',
-                                ]"
-                              >
-                                <Icon v-if="taskAssignee === staff.value && taskAssigneeType === 'person'" name="lucide:check" class="h-3 w-3" />
-                              </div>
-                              <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                                {{ staff.label.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() }}
-                              </div>
-                              <div class="flex min-w-0 flex-col text-left">
-                                <span class="truncate text-sm leading-tight">{{ staff.label }}</span>
-                                <span class="truncate text-xs text-muted-foreground">
-                                  {{ assigneeRoles.find(r => r.value === staff.role)?.label ?? staff.role }}
-                                </span>
-                              </div>
-                            </button>
-                          </template>
-                          <p v-else class="py-6 text-center text-sm text-muted-foreground">
-                            No users found
-                          </p>
-                        </div>
-                      </ScrollArea>
-                    </TabsContent>
-                  </Tabs>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div class="flex flex-col gap-1.5">
-              <Label>Image</Label>
-              <input
-                ref="taskImageInputRef"
-                type="file"
-                accept="image/*"
-                multiple
-                class="hidden"
-                @change="handleImageUpload"
-              >
-              <Button
-                v-if="!taskImages.length"
-                type="button"
-                variant="outline"
-                class="w-full justify-start gap-1.5 px-3 text-sm font-normal text-muted-foreground"
-                @click="taskImageInputRef?.click()"
-              >
-                <Icon name="lucide:image-plus" class="h-4 w-4" />
-                Upload image
-              </Button>
-              <div v-else class="grid grid-cols-3 gap-2">
-                <div v-for="(img, idx) in taskImages" :key="idx" class="relative group">
-                  <img
-                    :src="img"
-                    alt=""
-                    class="h-24 w-full rounded-lg border object-cover"
-                  >
-                  <button
-                    type="button"
-                    class="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow-sm hover:text-destructive"
-                    @click="removeImage(idx)"
-                  >
-                    <Icon name="lucide:x" class="h-3.5 w-3.5" />
-                  </button>
                 </div>
-                <button
-                  type="button"
-                  class="flex h-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-xs text-muted-foreground hover:bg-muted"
-                  @click="taskImageInputRef?.click()"
-                >
-                  <Icon name="lucide:plus" class="h-4 w-4" />
-                  Add more
-                </button>
               </div>
-            </div>
-
-          </div>
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+          </Tabs>
         </div>
       </ScrollArea>
       <SheetFooter v-if="activeTab === 'task'" class="shrink-0 border-t px-6 py-4 sm:flex-row sm:justify-end sm:gap-2">

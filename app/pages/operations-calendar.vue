@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { toast } from 'vue-sonner'
-import OperationsCalendarCreateDialog from '~/components/operations-calendar/OperationsCalendarCreateDialog.vue'
 import CalendarEventDetailDialog from '~/components/operations-calendar/CalendarEventDetailDialog.vue'
+import OperationsCalendarCreateDialog from '~/components/operations-calendar/OperationsCalendarCreateDialog.vue'
 import TaskEventDetailSheet from '~/components/operations-calendar/TaskEventDetailSheet.vue'
 import { useOperationsCalendar } from '~/composables/useOperationsCalendar'
 
@@ -52,13 +52,21 @@ function openCreateOperation() {
 
 function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: string }) {
   moveCleaning(payload)
-  toast.success('Cleaning job moved')
+  toast.success('Cleaning job rescheduled')
 }
+
+watch(filteredEvents, (eventsList) => {
+  if (detailEvent.value) {
+    const updated = eventsList.find(e => e.id === detailEvent.value?.id)
+    if (updated)
+      detailEvent.value = updated
+  }
+})
 </script>
 
 <template>
   <div class="w-full flex flex-col gap-4">
-    <div class="sticky top-[var(--header-height)] z-20 -mx-4 flex flex-wrap items-end justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:-mx-6 lg:px-6">
+    <div class="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">
           Operations Calendar

@@ -163,7 +163,7 @@ export const cleanerOptions = staffMembers
   .map(member => ({
     id: member.id,
     name: member.name,
-    role: member.role,
+    role: member.name === 'Made Surya' || member.name === 'Wayan Adi' ? 'Housekeeping' : member.role,
   }))
   .concat([
     {

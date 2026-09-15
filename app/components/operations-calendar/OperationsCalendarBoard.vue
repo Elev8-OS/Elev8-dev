@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CalendarEvent, CalendarListing, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
+import { toast } from 'vue-sonner'
 import { getCalendarListings } from '~/components/operations-calendar/data/operations-calendar'
 
 interface WeekDay {
@@ -227,8 +228,20 @@ const draggedEvent = ref<CalendarEvent | null>(null)
 const pendingMove = ref<{ event: CalendarEvent, listingId: string, dayKey: string } | null>(null)
 const moveConfirmOpen = ref(false)
 
-function onDragStart(event: CalendarEvent) {
+function isCleaningDraggable(event: CalendarEvent): boolean {
   if (event.type !== 'cleaning')
+    return false
+  if (event.status && event.status !== 'scheduled' && event.status !== 'confirmed')
+    return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const scheduled = new Date(event.start)
+  scheduled.setHours(0, 0, 0, 0)
+  return scheduled.getTime() >= today.getTime()
+}
+
+function onDragStart(event: CalendarEvent) {
+  if (!isCleaningDraggable(event))
     return
   draggedEvent.value = event
 }
@@ -236,6 +249,11 @@ function onDragStart(event: CalendarEvent) {
 function onDrop(listingId: string, dayKey: string) {
   if (!draggedEvent.value)
     return
+  if (dayKey < todayKey) {
+    toast.error('Cannot reschedule cleaning to a past date')
+    draggedEvent.value = null
+    return
+  }
   pendingMove.value = { event: draggedEvent.value, listingId, dayKey }
   moveConfirmOpen.value = true
   draggedEvent.value = null
@@ -291,7 +309,7 @@ function onCellClick(listingId: string, dayKey: string) {
       </p>
     </div>
     <!-- Week view -->
-    <div class="max-h-[calc(100vh-var(--header-height)-180px)] overflow-auto">
+    <div class="max-h-[calc(100vh-var(--header-height)-220px)] overflow-auto">
       <div class="min-w-[1100px]">
         <!-- Header -->
         <div class="sticky top-0 z-20 flex border-b bg-background">
@@ -415,7 +433,7 @@ function onCellClick(listingId: string, dayKey: string) {
                       v-for="event in node.listing ? (eventsByListingAndDay.get(node.listing.id)?.get(day.key) ?? []).filter(e => e.type !== 'guest_stay') : []"
                       :key="`${day.key}-${event.id}`"
                       :event="event"
-                      :draggable="event.type === 'cleaning'"
+                      :draggable="isCleaningDraggable(event)"
                       @click="emit('eventClick', event)"
                       @dragstart="onDragStart(event)"
                     />
@@ -428,13 +446,13 @@ function onCellClick(listingId: string, dayKey: string) {
       </div>
     </div>
 
-    <!-- Move confirmation dialog -->
+    <!-- Move / Reschedule confirmation dialog -->
     <Dialog v-model:open="moveConfirmOpen">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Move cleaning?</DialogTitle>
+          <DialogTitle>Reschedule cleaning?</DialogTitle>
           <DialogDescription>
-            Move <strong>{{ pendingMove?.event.title }}</strong> to {{ pendingMove?.listingId ? allListings.find(l => l.id === pendingMove?.listingId)?.roomLabel : '' }} on {{ pendingMove?.dayKey }}?
+            Reschedule <strong>{{ pendingMove?.event.title }}</strong> to {{ pendingMove?.listingId ? allListings.find(l => l.id === pendingMove?.listingId)?.roomLabel : '' }} on {{ pendingMove?.dayKey }}?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -442,7 +460,7 @@ function onCellClick(listingId: string, dayKey: string) {
             Cancel
           </Button>
           <Button @click="confirmMove">
-            Move
+            Reschedule
           </Button>
         </DialogFooter>
       </DialogContent>
