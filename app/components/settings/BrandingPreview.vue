@@ -273,16 +273,6 @@ const faviconHref = computed(() => getBrandingFaviconHref(props.branding))
               </div>
             </div>
           </div>
-
-          <!-- Footer Terms & Contacts -->
-          <div class="space-y-0.5 pt-4 text-[10px] text-muted-foreground border-t border-border/40">
-            <p>Thank you for choosing Elev8 Property Group.</p>
-            <p>W: www.elev8bali.com</p>
-            <p>FB: @elev8propertygroup</p>
-            <p class="pt-1">
-              Terms & Conditions: https://elev8bali.com/terms
-            </p>
-          </div>
         </div>
       </TabsContent>
     </Tabs>

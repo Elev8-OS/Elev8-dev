@@ -477,18 +477,6 @@ export function buildFolioInvoicePdf(
     doc.text(`Due by ${formatShortDate(reservation.checkIn)}`, PAGE_WIDTH - MARGIN - 3, statusY + 5, { align: 'right' })
   }
 
-  // --- Footer -------------------------------------------------------------
-  const footerY = 260
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(17, 24, 39)
-
-  const cleanDomain = website.replace(/^https?:\/\//, '')
-  doc.text(`Thank you for choosing ${opts.companyName || 'Elev8 Property Group'}.`, MARGIN, footerY)
-  doc.text(`W: ${cleanDomain}`, MARGIN, footerY + 4.5)
-  doc.text(`FB: @${companyName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'elev8bali'}`, MARGIN, footerY + 9)
-  doc.text(`Terms & Conditions: ${website}/terms`, MARGIN, footerY + 17)
-
   const blob = doc.output('blob')
   if (opts.download && typeof window !== 'undefined') {
     const url = URL.createObjectURL(blob)
