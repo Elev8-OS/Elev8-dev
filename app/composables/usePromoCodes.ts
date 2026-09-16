@@ -3,12 +3,15 @@ import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import {
   formatChannelRestrictionLabel,
   formatPromoDiscount,
+  formatPromoLengthOfStay,
   formatPromoMinStay,
   generatePromoId,
   getChannelRestriction,
+  getPromoCodeDiscountForStay,
   getPromoCodeStatus,
   isDateInPromoWindow,
   isPromoCodeExpired,
+  meetsPromoCodeLengthOfStay,
   meetsPromoCodeMinStay,
   widgetPromoCodeLinks as seedLinks,
   promoCodes as seedPromoCodes,
@@ -105,12 +108,15 @@ export function usePromoCodes() {
       code: draft.code.trim().toUpperCase(),
       description: draft.description,
       discountType: draft.discountType,
-      value: draft.discountType === 'free_upsell' ? 0 : draft.value,
-      currency: draft.discountType === 'fixed' ? (draft.currency ?? null) : null,
+      value: (draft.discountType === 'free_upsell' || draft.discountType === 'tiered') ? 0 : draft.value,
+      currency: (draft.discountType === 'fixed' || (draft.discountType === 'tiered' && draft.lengthOfStayTiers?.some(t => t.discountType === 'fixed'))) ? (draft.currency ?? null) : null,
       active: draft.active,
       bookingWindows: normalizeWindows(draft.bookingWindows),
       stayWindows: normalizeWindows(draft.stayWindows),
-      minStay: draft.minStay ?? null,
+      lengthOfStayMin: draft.lengthOfStayMin ?? (draft as any).minStay ?? null,
+      lengthOfStayMax: draft.lengthOfStayMax ?? null,
+      lengthOfStayTiers: draft.lengthOfStayTiers ? draft.lengthOfStayTiers.map(t => ({ ...t })) : [],
+      minStay: draft.lengthOfStayMin ?? (draft as any).minStay ?? null,
       usageLimit: draft.usageLimit ?? null,
       redemptionCount: draft.redemptionCount ?? 0,
       createdAt: now,
@@ -129,8 +135,8 @@ export function usePromoCodes() {
       if (c.id !== id)
         return c
       const nextType = patch.discountType ?? c.discountType
-      const nextValue = nextType === 'free_upsell' ? 0 : (patch.value ?? c.value)
-      const nextCurrency = nextType === 'fixed' ? (patch.currency ?? c.currency ?? null) : null
+      const nextValue = (nextType === 'free_upsell' || nextType === 'tiered') ? 0 : (patch.value ?? c.value)
+      const nextCurrency = (nextType === 'fixed' || (nextType === 'tiered' && (patch.lengthOfStayTiers ?? c.lengthOfStayTiers)?.some(t => t.discountType === 'fixed'))) ? (patch.currency ?? c.currency ?? null) : null
       const nextBooking = patch.bookingWindows
         ? normalizeWindows(patch.bookingWindows)
         : (c.bookingWindows ?? [])
@@ -140,6 +146,15 @@ export function usePromoCodes() {
       const nextChannelRestriction = patch.channelRestriction !== undefined
         ? normalizeChannelRestriction(patch.channelRestriction)
         : c.channelRestriction
+      const nextLengthOfStayMin = patch.lengthOfStayMin !== undefined
+        ? (patch.lengthOfStayMin ?? null)
+        : ((patch as any).minStay !== undefined ? ((patch as any).minStay ?? null) : (c.lengthOfStayMin ?? c.minStay ?? null))
+      const nextLengthOfStayMax = patch.lengthOfStayMax !== undefined
+        ? (patch.lengthOfStayMax ?? null)
+        : (c.lengthOfStayMax ?? null)
+      const nextLengthOfStayTiers = patch.lengthOfStayTiers !== undefined
+        ? patch.lengthOfStayTiers.map(t => ({ ...t }))
+        : (c.lengthOfStayTiers ?? [])
       updated = {
         ...c,
         ...patch,
@@ -149,7 +164,10 @@ export function usePromoCodes() {
         currency: nextCurrency,
         bookingWindows: nextBooking,
         stayWindows: nextStay,
-        minStay: patch.minStay !== undefined ? (patch.minStay ?? null) : (c.minStay ?? null),
+        lengthOfStayMin: nextLengthOfStayMin,
+        lengthOfStayMax: nextLengthOfStayMax,
+        lengthOfStayTiers: nextLengthOfStayTiers,
+        minStay: nextLengthOfStayMin,
         usageLimit: patch.usageLimit ?? c.usageLimit ?? null,
         freeUpsellItemIds: nextType === 'free_upsell' ? (patch.freeUpsellItemIds ?? c.freeUpsellItemIds ?? []) : undefined,
         listingIds: patch.listingIds ?? c.listingIds ?? [],
@@ -176,7 +194,10 @@ export function usePromoCodes() {
       code: `${original.code} (Copy)`,
       active: false,
       redemptionCount: 0,
-      minStay: original.minStay ?? null,
+      lengthOfStayMin: original.lengthOfStayMin ?? original.minStay ?? null,
+      lengthOfStayMax: original.lengthOfStayMax ?? null,
+      lengthOfStayTiers: (original.lengthOfStayTiers ?? []).map(t => ({ ...t, id: `lostier-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` })),
+      minStay: original.lengthOfStayMin ?? original.minStay ?? null,
       freeUpsellItemIds: original.freeUpsellItemIds ? [...original.freeUpsellItemIds] : [],
       listingIds: original.listingIds ? [...original.listingIds] : [],
       channelRestriction: {
@@ -243,8 +264,11 @@ export function usePromoCodes() {
     getPromoCodeStatus,
     isPromoCodeExpired,
     formatPromoDiscount,
+    formatPromoLengthOfStay,
     formatPromoMinStay,
+    meetsPromoCodeLengthOfStay,
     meetsPromoCodeMinStay,
+    getPromoCodeDiscountForStay,
     isDateInPromoWindow,
     getChannelRestriction,
     formatChannelRestrictionLabel,

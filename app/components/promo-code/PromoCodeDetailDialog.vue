@@ -6,7 +6,7 @@ import { listings as allListings } from '~/components/listings/data/listings'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { websites as allWebsites } from '~/components/website-builder/data/websites'
 import { usePromoCodes } from '~/composables/usePromoCodes'
-import { formatPromoDiscount, formatPromoWindow, getChannelRestriction, getPromoCodeStatus, getPromoCodeTypeLabel } from './data/promo-codes'
+import { formatPromoDiscount, formatPromoLengthOfStay, formatPromoWindow, getChannelRestriction, getPromoCodeStatus, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const props = defineProps<{
   promoCode: PromoCode | null
@@ -276,13 +276,23 @@ function onRequestDelete() {
                 </li>
               </ul>
             </div>
-            <div>
+            <div :class="promoCode.lengthOfStayTiers && promoCode.lengthOfStayTiers.length > 0 ? 'col-span-2' : ''">
               <p class="text-muted-foreground text-xs flex items-center gap-1">
                 <Icon name="lucide:moon" class="size-3" aria-hidden="true" />
-                Minimum stay
+                Length of stay
               </p>
-              <p class="font-medium text-sm">
-                {{ promoCode.minStay ? `${promoCode.minStay} night${promoCode.minStay === 1 ? '' : 's'}` : 'No minimum' }}
+              <div v-if="promoCode.lengthOfStayTiers && promoCode.lengthOfStayTiers.length > 0" class="mt-1 flex flex-wrap gap-1.5">
+                <Badge
+                  v-for="tier in promoCode.lengthOfStayTiers"
+                  :key="tier.id"
+                  variant="outline"
+                  class="text-xs"
+                >
+                  {{ tier.minNights }}+ nights: {{ tier.value }}{{ tier.discountType === '%' ? '%' : ` ${promoCode.currency ?? 'USD'}` }} off
+                </Badge>
+              </div>
+              <p v-else class="font-medium text-sm">
+                {{ formatPromoLengthOfStay(promoCode) }}
               </p>
             </div>
             <div>

@@ -3,7 +3,7 @@ import type { PromoCode, PromoCodeWindow } from './data/promo-codes'
 import { computed } from 'vue'
 import { Switch } from '~/components/ui/switch'
 import { usePromoCodes } from '~/composables/usePromoCodes'
-import { formatPromoDiscount, formatPromoWindowCompact, getChannelRestriction, getPromoCodeTypeLabel } from './data/promo-codes'
+import { formatPromoDiscount, formatPromoLengthOfStay, formatPromoWindowCompact, getChannelRestriction, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const { codes } = defineProps<{
   codes: PromoCode[]
@@ -70,7 +70,9 @@ const decoratedCodes = computed(() => codes.map((code) => {
     channelWebsiteCount: channel.websiteIds.length,
     bookingWindows: code.bookingWindows ?? [],
     stayWindows: code.stayWindows ?? [],
-    minStay: code.minStay ?? null,
+    lengthOfStayMin: code.lengthOfStayMin ?? (code as any).minStay ?? null,
+    lengthOfStayMax: code.lengthOfStayMax ?? null,
+    lengthOfStayTiers: code.lengthOfStayTiers ?? [],
   }
 }))
 </script>
@@ -149,7 +151,7 @@ const decoratedCodes = computed(() => codes.map((code) => {
             </div>
           </TableCell>
           <TableCell class="text-muted-foreground text-xs space-y-0.5">
-            <template v-if="code.bookingWindows.length === 0 && code.stayWindows.length === 0 && !code.minStay">
+            <template v-if="code.bookingWindows.length === 0 && code.stayWindows.length === 0 && !code.lengthOfStayMin && !code.lengthOfStayMax && code.lengthOfStayTiers.length === 0">
               <div>Always</div>
             </template>
             <template v-else>
@@ -177,9 +179,9 @@ const decoratedCodes = computed(() => codes.map((code) => {
                   </template>
                 </span>
               </div>
-              <div v-if="code.minStay" class="flex items-start gap-1">
+              <div v-if="code.lengthOfStayMin || code.lengthOfStayMax || code.lengthOfStayTiers.length > 0" class="flex items-start gap-1">
                 <Icon name="lucide:moon" class="size-3 shrink-0 mt-0.5" />
-                <span>Min stay: {{ code.minStay }} night{{ code.minStay === 1 ? '' : 's' }}</span>
+                <span>Stay length: {{ formatPromoLengthOfStay(code) }}</span>
               </div>
             </template>
           </TableCell>

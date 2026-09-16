@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-export type PromoCodeDiscountType = '%' | 'fixed' | 'free_upsell'
+export type PromoCodeDiscountType = '%' | 'fixed' | 'tiered' | 'free_upsell'
 
 export type PromoCodeStatus = 'active' | 'inactive' | 'expired'
 
@@ -39,6 +39,13 @@ export interface PromoCodeWindow {
   days?: number | null
 }
 
+export interface PromoCodeLengthOfStayTier {
+  id: string
+  minNights: number
+  discountType: '%' | 'fixed'
+  value: number
+}
+
 export interface PromoCode {
   id: string
   code: string
@@ -55,8 +62,13 @@ export interface PromoCode {
   // Empty array = no stay-date constraint. The code applies to stays
   // whose check-in date falls inside ANY window.
   stayWindows?: PromoCodeWindow[]
-  // Minimum stay length in nights/days required to use this promo code.
-  // null or undefined = no minimum stay constraint.
+  // Length of stay constraints in nights.
+  // null or undefined = no constraint.
+  lengthOfStayMin?: number | null
+  lengthOfStayMax?: number | null
+  /** Tiered length of stay discounts (e.g. 10 nights -> 10%, 20 nights -> 20%) */
+  lengthOfStayTiers?: PromoCodeLengthOfStayTier[]
+  /** @deprecated Use lengthOfStayMin instead */
   minStay?: number | null
   usageLimit?: number | null
   redemptionCount: number
@@ -99,7 +111,8 @@ export const promoCodes = ref<PromoCode[]>([
     active: true,
     bookingWindows: [],
     stayWindows: [],
-    minStay: null,
+    lengthOfStayMin: null,
+    lengthOfStayMax: null,
     usageLimit: null,
     redemptionCount: 3,
     createdAt: '2026-01-01T00:00:00Z',
@@ -122,7 +135,8 @@ export const promoCodes = ref<PromoCode[]>([
     stayWindows: [
       { from: '2026-06-01T00:00:00Z', until: '2026-09-30T00:00:00Z' },
     ],
-    minStay: 3,
+    lengthOfStayMin: 3,
+    lengthOfStayMax: null,
     usageLimit: 50,
     redemptionCount: 0,
     createdAt: '2026-02-10T00:00:00Z',
@@ -210,6 +224,10 @@ export function getPromoCodeStatus(code: PromoCode, now: Date = new Date()): Pro
 }
 
 export function formatPromoDiscount(code: PromoCode): string {
+  if (code.discountType === 'tiered' || (code.lengthOfStayTiers && code.lengthOfStayTiers.length > 0)) {
+    const sorted = [...(code.lengthOfStayTiers ?? [])].sort((a, b) => a.minNights - b.minNights)
+    return sorted.map(t => `${t.minNights}d: ${t.value}${t.discountType === '%' ? '%' : ''}`).join(', ')
+  }
   if (code.discountType === '%')
     return `${code.value}%`
   if (code.discountType === 'free_upsell')
@@ -218,6 +236,8 @@ export function formatPromoDiscount(code: PromoCode): string {
 }
 
 export function getPromoCodeTypeLabel(code: PromoCode): string {
+  if (code.discountType === 'tiered' || (code.lengthOfStayTiers && code.lengthOfStayTiers.length > 0))
+    return 'Length of stay'
   if (code.discountType === '%')
     return 'Percentage'
   if (code.discountType === 'fixed')
@@ -225,18 +245,75 @@ export function getPromoCodeTypeLabel(code: PromoCode): string {
   return 'Free Upsell'
 }
 
-// True when a stay of `nights` satisfies the promo code's minimum stay requirement.
-// Codes with no minimum stay (null / undefined / <= 0) are always satisfied.
-export function meetsPromoCodeMinStay(code: PromoCode, nights: number): boolean {
-  if (code.minStay == null || code.minStay <= 0)
+// True when a stay of `nights` satisfies the promo code's length of stay requirement.
+// Codes with no constraint (null / undefined / <= 0) are always satisfied.
+export function meetsPromoCodeLengthOfStay(code: PromoCode, nights: number): boolean {
+  if (code.lengthOfStayTiers && code.lengthOfStayTiers.length > 0) {
+    const minTierNights = Math.min(...code.lengthOfStayTiers.map(t => t.minNights))
+    if (nights < minTierNights)
+      return false
+    if (code.lengthOfStayMax !== null && code.lengthOfStayMax !== undefined && nights > code.lengthOfStayMax)
+      return false
     return true
-  return nights >= code.minStay
+  }
+  const min = code.lengthOfStayMin ?? code.minStay ?? null
+  const max = code.lengthOfStayMax ?? null
+  if (min !== null && min > 0 && nights < min)
+    return false
+  if (max !== null && max > 0 && nights > max)
+    return false
+  return true
 }
 
+/** Resolves the applicable discount for a given stay length based on promo code tiers or base rate */
+export function getPromoCodeDiscountForStay(
+  code: PromoCode,
+  nights: number,
+): { discountType: PromoCodeDiscountType, value: number } | null {
+  if (!meetsPromoCodeLengthOfStay(code, nights))
+    return null
+
+  if (code.lengthOfStayTiers && code.lengthOfStayTiers.length > 0) {
+    const sorted = [...code.lengthOfStayTiers].sort((a, b) => b.minNights - a.minNights)
+    const matched = sorted.find(t => nights >= t.minNights)
+    if (matched)
+      return { discountType: matched.discountType, value: matched.value }
+    return null
+  }
+
+  return { discountType: code.discountType, value: code.value }
+}
+
+/** @deprecated Use meetsPromoCodeLengthOfStay instead */
+export function meetsPromoCodeMinStay(code: PromoCode, nights: number): boolean {
+  return meetsPromoCodeLengthOfStay(code, nights)
+}
+
+export function formatPromoLengthOfStay(code: PromoCode): string {
+  if (code.lengthOfStayTiers && code.lengthOfStayTiers.length > 0) {
+    const sorted = [...code.lengthOfStayTiers].sort((a, b) => a.minNights - b.minNights)
+    return sorted.map(t => `${t.minNights}+ nights (${t.value}${t.discountType === '%' ? '%' : ''})`).join(' · ')
+  }
+  const min = code.lengthOfStayMin ?? code.minStay ?? null
+  const max = code.lengthOfStayMax ?? null
+  if (min && max) {
+    if (min === max)
+      return `${min} night${min === 1 ? '' : 's'}`
+    return `${min}–${max} nights`
+  }
+  if (min)
+    return `Min ${min} night${min === 1 ? '' : 's'}`
+  if (max)
+    return `Max ${max} night${max === 1 ? '' : 's'}`
+  return 'Any length'
+}
+
+/** @deprecated Use formatPromoLengthOfStay instead */
 export function formatPromoMinStay(code: PromoCode): string {
-  if (!code.minStay)
+  const min = code.lengthOfStayMin ?? code.minStay
+  if (!min)
     return 'No minimum stay'
-  return `${code.minStay} night${code.minStay === 1 ? '' : 's'}`
+  return `${min} night${min === 1 ? '' : 's'}`
 }
 
 function fmt(iso: string | null | undefined): string {

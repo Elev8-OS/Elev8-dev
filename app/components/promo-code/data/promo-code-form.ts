@@ -2,6 +2,7 @@ import type {
   PromoCode,
   PromoCodeChannel,
   PromoCodeDiscountType,
+  PromoCodeLengthOfStayTier,
   PromoCodeWindow,
 } from './promo-codes'
 
@@ -23,7 +24,11 @@ export interface PromoCodeFormDraft {
   currency: string
   bookingWindows: PromoCodeWindow[]
   stayWindows: PromoCodeWindow[]
-  minStay: number | null
+  lengthOfStayMin: number | null
+  lengthOfStayMax: number | null
+  lengthOfStayTiers: PromoCodeLengthOfStayTier[]
+  /** @deprecated Use lengthOfStayMin instead */
+  minStay?: number | null
   usageLimit: number | null
   active: boolean
   freeUpsellItemIds: string[]
@@ -91,7 +96,9 @@ export function createDefaultPromoCodeFormDraft(): PromoCodeFormDraft {
     currency: 'USD',
     bookingWindows: [],
     stayWindows: [],
-    minStay: null,
+    lengthOfStayMin: null,
+    lengthOfStayMax: null,
+    lengthOfStayTiers: [],
     usageLimit: null,
     active: true,
     freeUpsellItemIds: [],
@@ -131,7 +138,10 @@ export function promoCodeToFormDraft(code: PromoCode): PromoCodeFormDraft {
     currency: code.currency ?? 'USD',
     bookingWindows: toDateInputWindows(code.bookingWindows),
     stayWindows: toDateInputWindows(code.stayWindows),
-    minStay: code.minStay ?? null,
+    lengthOfStayMin: code.lengthOfStayMin ?? code.minStay ?? null,
+    lengthOfStayMax: code.lengthOfStayMax ?? null,
+    lengthOfStayTiers: (code.lengthOfStayTiers ?? []).map(t => ({ ...t })),
+    minStay: code.lengthOfStayMin ?? code.minStay ?? null,
     usageLimit: code.usageLimit ?? null,
     active: code.active,
     freeUpsellItemIds: code.freeUpsellItemIds ? [...code.freeUpsellItemIds] : [],
@@ -148,12 +158,13 @@ export function promoCodeToFormDraft(code: PromoCode): PromoCodeFormDraft {
  */
 export function formDraftToPromoCodePayload(draft: PromoCodeFormDraft) {
   const isFreeUpsell = draft.discountType === 'free_upsell'
+  const isTiered = draft.discountType === 'tiered'
   return {
     code: draft.code.trim(),
     description: draft.description.trim() || undefined,
     discountType: draft.discountType,
-    value: isFreeUpsell ? 0 : draft.value,
-    currency: draft.discountType === 'fixed' ? draft.currency : null,
+    value: (isFreeUpsell || isTiered) ? 0 : draft.value,
+    currency: (draft.discountType === 'fixed' || (draft.discountType === 'tiered' && draft.lengthOfStayTiers?.some(t => t.discountType === 'fixed'))) ? draft.currency : null,
     active: draft.active,
     bookingWindows: draft.bookingWindows.map(w => ({
       ...(w.type ? { type: w.type } : {}),
@@ -167,7 +178,10 @@ export function formDraftToPromoCodePayload(draft: PromoCodeFormDraft) {
       until: w.type === 'dynamic' ? null : (w.until || null),
       ...(w.type === 'dynamic' ? { days: w.days ?? null } : {}),
     })),
-    minStay: draft.minStay ?? null,
+    lengthOfStayMin: draft.lengthOfStayMin ?? draft.minStay ?? null,
+    lengthOfStayMax: draft.lengthOfStayMax ?? null,
+    lengthOfStayTiers: (draft.lengthOfStayTiers ?? []).map(t => ({ ...t })),
+    minStay: draft.lengthOfStayMin ?? draft.minStay ?? null,
     usageLimit: draft.usageLimit,
     freeUpsellItemIds: isFreeUpsell ? [...draft.freeUpsellItemIds] : [],
     listingIds: [...draft.listingIds],
@@ -330,6 +344,27 @@ export function validatePromoCodeStep(
         }
       }
     }
+    else if (draft.discountType === 'tiered') {
+      if (!draft.lengthOfStayTiers || draft.lengthOfStayTiers.length === 0) {
+        errors.lengthOfStayTiers = 'Add at least one stay tier for a length of stay discount'
+      }
+      else {
+        const seenNights = new Set<number>()
+        draft.lengthOfStayTiers.forEach((tier, idx) => {
+          if (!tier.minNights || tier.minNights < 1 || !Number.isInteger(tier.minNights))
+            errors[`lengthOfStayTiers.${idx}.minNights`] = 'Nights must be at least 1'
+          else if (seenNights.has(tier.minNights))
+            errors[`lengthOfStayTiers.${idx}.minNights`] = `Duplicate tier for ${tier.minNights} nights`
+          else
+            seenNights.add(tier.minNights)
+
+          if (!tier.value || tier.value <= 0)
+            errors[`lengthOfStayTiers.${idx}.value`] = 'Discount value must be greater than 0'
+          else if (tier.discountType === '%' && tier.value > 100)
+            errors[`lengthOfStayTiers.${idx}.value`] = 'Percentage cannot exceed 100%'
+        })
+      }
+    }
     else if (!draft.value || draft.value <= 0) {
       errors.value = 'Value must be greater than 0'
     }
@@ -341,8 +376,25 @@ export function validatePromoCodeStep(
   if (stepId === 'rules') {
     validateWindows(draft.bookingWindows, 'bookingWindows', errors)
     validateWindows(draft.stayWindows, 'stayWindows', errors)
-    if (draft.minStay !== null && (draft.minStay < 1 || !Number.isInteger(draft.minStay)))
-      errors.minStay = 'Minimum stay must be at least 1 night'
+    const minStay = draft.lengthOfStayMin ?? draft.minStay ?? null
+    const maxStay = draft.lengthOfStayMax ?? null
+    if (minStay !== null && (minStay < 1 || !Number.isInteger(minStay))) {
+      errors.lengthOfStayMin = 'Minimum stay must be at least 1 night'
+      if (draft.minStay !== undefined)
+        errors.minStay = 'Minimum stay must be at least 1 night'
+    }
+    if (maxStay !== null && (maxStay < 1 || !Number.isInteger(maxStay)))
+      errors.lengthOfStayMax = 'Maximum stay must be at least 1 night'
+    if (
+      minStay !== null
+      && maxStay !== null
+      && Number.isInteger(minStay)
+      && Number.isInteger(maxStay)
+      && minStay > maxStay
+    ) {
+      errors.lengthOfStayMax = 'Maximum stay cannot be less than minimum stay'
+    }
+
     if (draft.usageLimit !== null && draft.usageLimit < 1)
       errors.usageLimit = 'Usage limit must be at least 1'
   }
@@ -374,6 +426,10 @@ export function firstInvalidPromoCodeStep(
 
 /** Human-readable discount line, reused by the review block. */
 export function formatDraftDiscount(draft: PromoCodeFormDraft): string {
+  if (draft.discountType === 'tiered' || (draft.lengthOfStayTiers && draft.lengthOfStayTiers.length > 0)) {
+    const sorted = [...(draft.lengthOfStayTiers ?? [])].sort((a, b) => a.minNights - b.minNights)
+    return `Tiered: ${sorted.map(t => `${t.minNights}+ nts (${t.value}${t.discountType === '%' ? '%' : ` ${draft.currency}`})`).join(', ')}`
+  }
   if (draft.discountType === '%')
     return `${draft.value}% off`
   if (draft.discountType === 'fixed')

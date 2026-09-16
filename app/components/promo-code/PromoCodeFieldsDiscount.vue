@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import type { PromoCodeFormDraft, PromoCodeFormErrors } from './data/promo-code-form'
-import type { PromoCodeDiscountType } from './data/promo-codes'
+import type { PromoCodeDiscountType, PromoCodeLengthOfStayTier } from './data/promo-codes'
 import { computed, ref } from 'vue'
 import { listings as allListings } from '~/components/listings/data/listings'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { PROMO_CODE_CURRENCIES, upsellServiceCoverage } from './data/promo-code-form'
 
 /**
- * Step 2 fields — what the code gives away.
+ * Step 3 fields — what the code gives away.
  *
- * The three discount types are cards rather than a select, because the choice
+ * The four discount types are cards rather than a select, because the choice
  * changes which fields appear underneath and a select hides that consequence.
  * The upsell picker is inline rather than behind a Popover: the wizard split
  * the form up precisely to make room, and a popover inside a modal put the
@@ -28,20 +28,64 @@ const props = defineProps<{
 const draft = defineModel<PromoCodeFormDraft>({ required: true })
 
 const isFreeUpsell = computed(() => draft.value.discountType === 'free_upsell')
+const isTiered = computed(() => draft.value.discountType === 'tiered')
+const isValueBased = computed(() => draft.value.discountType === '%' || draft.value.discountType === 'fixed')
 
 const typeOptions: { value: PromoCodeDiscountType, label: string, hint: string, icon: string }[] = [
   { value: '%', label: 'Percentage', hint: 'Take a share off the total', icon: 'lucide:percent' },
   { value: 'fixed', label: 'Fixed amount', hint: 'Take a set amount off', icon: 'lucide:banknote' },
+  { value: 'tiered', label: 'Length of stay', hint: 'Tiered discount by stay length', icon: 'lucide:calendar-range' },
   { value: 'free_upsell', label: 'Free upsell', hint: 'Include a service for free', icon: 'lucide:sparkles' },
 ]
 
 function selectType(next: PromoCodeDiscountType) {
+  let tiers = draft.value.lengthOfStayTiers ?? []
+  if (next === 'tiered' && tiers.length === 0) {
+    tiers = [
+      { id: `tier-${Date.now()}-1`, minNights: 10, discountType: '%', value: 10 },
+      { id: `tier-${Date.now()}-2`, minNights: 20, discountType: '%', value: 20 },
+    ]
+  }
   draft.value = {
     ...draft.value,
     discountType: next,
-    // A free-upsell code carries no numeric value; restore a sane default when
-    // the host switches back to a value-based type.
-    value: next === 'free_upsell' ? 0 : (draft.value.value || 10),
+    // Free-upsell and tiered codes carry no single numeric value; restore a sane default when
+    // switching back to a value-based type.
+    value: (next === 'free_upsell' || next === 'tiered') ? 0 : (draft.value.value || 10),
+    lengthOfStayTiers: tiers,
+  }
+}
+
+function addLengthOfStayTier() {
+  const currentTiers = draft.value.lengthOfStayTiers ?? []
+  const nextMinNights = currentTiers.length > 0
+    ? Math.max(...currentTiers.map(t => t.minNights)) + 5
+    : 7
+  const newTier: PromoCodeLengthOfStayTier = {
+    id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    minNights: nextMinNights,
+    discountType: '%',
+    value: 10,
+  }
+  draft.value = {
+    ...draft.value,
+    lengthOfStayTiers: [...currentTiers, newTier],
+  }
+}
+
+function removeLengthOfStayTier(index: number) {
+  const currentTiers = draft.value.lengthOfStayTiers ?? []
+  draft.value = {
+    ...draft.value,
+    lengthOfStayTiers: currentTiers.filter((_, i) => i !== index),
+  }
+}
+
+function updateLengthOfStayTier(index: number, patch: Partial<PromoCodeLengthOfStayTier>) {
+  const currentTiers = draft.value.lengthOfStayTiers ?? []
+  draft.value = {
+    ...draft.value,
+    lengthOfStayTiers: currentTiers.map((t, i) => (i === index ? { ...t, ...patch } : t)),
   }
 }
 
@@ -199,7 +243,7 @@ defineExpose({ focus: () => focusElement(focusRef.value) })
       </legend>
       <RadioGroup
         :model-value="draft.discountType"
-        class="grid grid-cols-1 gap-2 sm:grid-cols-3"
+        class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4"
         @update:model-value="(v: string) => selectType(v as PromoCodeDiscountType)"
       >
         <label
@@ -223,7 +267,7 @@ defineExpose({ focus: () => focusElement(focusRef.value) })
     </fieldset>
 
     <!-- Value-based types -->
-    <div v-if="!isFreeUpsell" class="grid gap-3" :class="draft.discountType === 'fixed' ? 'sm:grid-cols-2' : ''">
+    <div v-if="isValueBased" class="grid gap-3" :class="draft.discountType === 'fixed' ? 'sm:grid-cols-2' : ''">
       <div class="space-y-2">
         <Label :for="`${props.idPrefix}-value`">Value</Label>
         <div class="flex items-center gap-2">
@@ -273,8 +317,147 @@ defineExpose({ focus: () => focusElement(focusRef.value) })
       </div>
     </div>
 
+    <!-- Tiered length of stay -->
+    <div v-else-if="isTiered" class="space-y-3 rounded-md border p-3">
+      <div class="flex items-center justify-between gap-2">
+        <div class="space-y-0.5">
+          <Label class="text-sm font-medium">
+            Length of stay tiers
+          </Label>
+          <p class="text-xs text-muted-foreground">
+            Set progressive discounts based on how long guests stay (e.g. 10 nights → 10% off, 20 nights → 20% off).
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          class="h-7 text-xs shrink-0"
+          @click="addLengthOfStayTier"
+        >
+          <Icon name="lucide:plus" class="mr-1 size-3.5" aria-hidden="true" />
+          Add tier
+        </Button>
+      </div>
+
+      <div v-if="draft.lengthOfStayTiers.length === 0" class="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
+        No tiers configured yet. Click "Add tier" to set up length-based discounts.
+      </div>
+
+      <div v-else class="space-y-2.5">
+        <div
+          v-for="(tier, idx) in draft.lengthOfStayTiers"
+          :key="tier.id || `tier-${idx}`"
+          class="rounded-md border bg-muted/30 p-2.5 space-y-2"
+          :class="props.errors[`lengthOfStayTiers.${idx}.minNights`] || props.errors[`lengthOfStayTiers.${idx}.value`] ? 'border-destructive' : ''"
+        >
+          <div class="flex items-center justify-between gap-2 border-b border-border/50 pb-1.5 text-xs">
+            <span class="font-medium text-muted-foreground">Tier #{{ idx + 1 }}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              class="size-6 text-muted-foreground hover:text-destructive"
+              :aria-label="`Remove tier ${idx + 1}`"
+              @click="removeLengthOfStayTier(idx)"
+            >
+              <Icon name="lucide:trash-2" class="size-3.5" aria-hidden="true" />
+            </Button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+            <!-- Stay duration (min nights) -->
+            <div class="space-y-1">
+              <Label :for="`${props.idPrefix}-tier-nights-${idx}`" class="text-xs">
+                Stay at least
+              </Label>
+              <div class="relative">
+                <Input
+                  :id="`${props.idPrefix}-tier-nights-${idx}`"
+                  :model-value="tier.minNights == null ? '' : String(tier.minNights)"
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 10"
+                  class="pr-14 text-xs"
+                  :class="props.errors[`lengthOfStayTiers.${idx}.minNights`] ? 'border-destructive' : ''"
+                  :aria-invalid="props.errors[`lengthOfStayTiers.${idx}.minNights`] ? 'true' : 'false'"
+                  @input="(e: Event) => {
+                    const raw = (e.target as HTMLInputElement).value
+                    updateLengthOfStayTier(idx, { minNights: raw === '' ? 0 : Number(raw) })
+                  }"
+                />
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+                  nights
+                </div>
+              </div>
+            </div>
+
+            <!-- Discount Type -->
+            <div class="space-y-1">
+              <Label class="text-xs">Discount type</Label>
+              <Select
+                :model-value="tier.discountType"
+                @update:model-value="(val) => updateLengthOfStayTier(idx, { discountType: val as '%' | 'fixed' })"
+              >
+                <SelectTrigger class="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="%">
+                    Percentage (%)
+                  </SelectItem>
+                  <SelectItem value="fixed">
+                    Fixed amount ({{ draft.currency || 'USD' }})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <!-- Discount Value -->
+            <div class="space-y-1">
+              <Label :for="`${props.idPrefix}-tier-value-${idx}`" class="text-xs">Discount value</Label>
+              <div class="relative">
+                <Input
+                  :id="`${props.idPrefix}-tier-value-${idx}`"
+                  :model-value="tier.value == null ? '' : String(tier.value)"
+                  type="number"
+                  min="1"
+                  :max="tier.discountType === '%' ? 100 : undefined"
+                  placeholder="e.g. 10"
+                  class="pr-14 text-xs"
+                  :class="props.errors[`lengthOfStayTiers.${idx}.value`] ? 'border-destructive' : ''"
+                  :aria-invalid="props.errors[`lengthOfStayTiers.${idx}.value`] ? 'true' : 'false'"
+                  @input="(e: Event) => {
+                    const raw = (e.target as HTMLInputElement).value
+                    updateLengthOfStayTier(idx, { value: raw === '' ? 0 : Number(raw) })
+                  }"
+                />
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+                  {{ tier.discountType === '%' ? '%' : (draft.currency || 'USD') }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error messages for this tier -->
+          <div v-if="props.errors[`lengthOfStayTiers.${idx}.minNights`] || props.errors[`lengthOfStayTiers.${idx}.value`]" class="space-y-0.5 pt-1">
+            <p v-if="props.errors[`lengthOfStayTiers.${idx}.minNights`]" role="alert" class="text-xs text-destructive">
+              {{ props.errors[`lengthOfStayTiers.${idx}.minNights`] }}
+            </p>
+            <p v-if="props.errors[`lengthOfStayTiers.${idx}.value`]" role="alert" class="text-xs text-destructive">
+              {{ props.errors[`lengthOfStayTiers.${idx}.value`] }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p v-if="props.errors.lengthOfStayTiers" role="alert" class="text-xs text-destructive">
+        {{ props.errors.lengthOfStayTiers }}
+      </p>
+    </div>
+
     <!-- Free upsell items, inline -->
-    <div v-else class="space-y-2">
+    <div v-else-if="isFreeUpsell" class="space-y-2">
       <div class="flex items-end justify-between gap-2">
         <Label :for="`${props.idPrefix}-upsell-search`">
           Free upsell items <span class="font-normal text-muted-foreground">(required)</span>

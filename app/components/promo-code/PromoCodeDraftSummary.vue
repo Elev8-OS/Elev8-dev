@@ -62,9 +62,24 @@ const usageLabel = computed(() =>
   props.draft.usageLimit === null ? 'Unlimited redemptions' : `Up to ${props.draft.usageLimit} redemptions`,
 )
 
-const minStayLabel = computed(() =>
-  props.draft.minStay === null ? 'No minimum' : `${props.draft.minStay} night${props.draft.minStay === 1 ? '' : 's'}`,
-)
+const lengthOfStayLabel = computed(() => {
+  if (props.draft.lengthOfStayTiers && props.draft.lengthOfStayTiers.length > 0) {
+    const sorted = [...props.draft.lengthOfStayTiers].sort((a, b) => a.minNights - b.minNights)
+    return sorted.map(t => `${t.minNights}+ nights (${t.value}${t.discountType === '%' ? '%' : ` ${props.draft.currency}`})`).join(' · ')
+  }
+  const min = props.draft.lengthOfStayMin ?? props.draft.minStay ?? null
+  const max = props.draft.lengthOfStayMax ?? null
+  if (min !== null && max !== null) {
+    if (min === max)
+      return `${min} night${min === 1 ? '' : 's'}`
+    return `${min}–${max} nights`
+  }
+  if (min !== null)
+    return `Min ${min} night${min === 1 ? '' : 's'}`
+  if (max !== null)
+    return `Max ${max} night${max === 1 ? '' : 's'}`
+  return null
+})
 
 const rows = computed(() => [
   { label: 'Discount', value: formatDraftDiscount(props.draft) },
@@ -72,7 +87,7 @@ const rows = computed(() => [
   { label: 'Channel', value: channelLabel.value },
   { label: 'Listings', value: listingsLabel.value },
   { label: 'Validity', value: windowsLabel.value },
-  ...(props.draft.minStay !== null ? [{ label: 'Min stay', value: minStayLabel.value }] : []),
+  ...(lengthOfStayLabel.value ? [{ label: 'Length of stay', value: lengthOfStayLabel.value }] : []),
   { label: 'Usage', value: usageLabel.value },
 ])
 </script>

@@ -182,18 +182,22 @@ describe('promoCodeEditDialog', () => {
     expect((wrapper.find('input.font-mono').element as HTMLInputElement).value).toBe('FREESPA')
   })
 
-  it('updates minStay and writes back to store', async () => {
+  it('updates length of stay and writes back to store', async () => {
     const { codes } = usePromoCodes()
     const target = codes.value.find(c => c.code === 'WELCOME10')!
     const wrapper = open(makeCode({ id: target.id }))
 
     await reachLastStep(wrapper)
-    const minStayInput = wrapper.find('#promo-edit-rules-min-stay')
+    const minStayInput = wrapper.find('#promo-edit-rules-length-of-stay-min')
+    const maxStayInput = wrapper.find('#promo-edit-rules-length-of-stay-max')
     expect(minStayInput.exists()).toBe(true)
+    expect(maxStayInput.exists()).toBe(true)
     await minStayInput.setValue('5')
+    await maxStayInput.setValue('14')
     await findButton(wrapper, 'Save changes')!.trigger('click')
 
-    expect(codes.value.find(c => c.id === target.id)!.minStay).toBe(5)
+    expect(codes.value.find(c => c.id === target.id)!.lengthOfStayMin).toBe(5)
+    expect(codes.value.find(c => c.id === target.id)!.lengthOfStayMax).toBe(14)
   })
 
   it('navigates back and forth without losing edited values', async () => {

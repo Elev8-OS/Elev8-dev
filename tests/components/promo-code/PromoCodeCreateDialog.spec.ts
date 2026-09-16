@@ -230,21 +230,25 @@ describe('promoCodeCreateDialog', () => {
     expect((first.find('input.font-mono').element as HTMLInputElement).value).toBe('')
   })
 
-  it('creates a code with minimum stay configured', async () => {
+  it('creates a code with length of stay configured', async () => {
     const { codes } = usePromoCodes()
     const before = codes.value.length
     const wrapper = open()
 
-    await reachLastStep(wrapper, 'MINSTAY3')
-    const minStayInput = wrapper.find('#promo-create-rules-min-stay')
+    await reachLastStep(wrapper, 'LOS37')
+    const minStayInput = wrapper.find('#promo-create-rules-length-of-stay-min')
+    const maxStayInput = wrapper.find('#promo-create-rules-length-of-stay-max')
     expect(minStayInput.exists()).toBe(true)
+    expect(maxStayInput.exists()).toBe(true)
     await minStayInput.setValue('3')
-    expect(wrapper.text()).toContain('Min stay')
-    expect(wrapper.text()).toContain('3 nights')
+    await maxStayInput.setValue('7')
+    expect(wrapper.text()).toContain('Length of stay')
+    expect(wrapper.text()).toContain('3–7 nights')
 
     await findButton(wrapper, 'Create code')!.trigger('click')
     expect(codes.value.length).toBe(before + 1)
-    expect(codes.value[0]!.minStay).toBe(3)
+    expect(codes.value[0]!.lengthOfStayMin).toBe(3)
+    expect(codes.value[0]!.lengthOfStayMax).toBe(7)
   })
 
   it('creates a code with dynamic validity window configured', async () => {
@@ -273,5 +277,40 @@ describe('promoCodeCreateDialog', () => {
     expect(created.bookingWindows).toEqual([
       { type: 'dynamic', days: 7, from: null, until: null },
     ])
+  })
+
+  it('creates a tiered length of stay promo code configured in step 3', async () => {
+    const { codes } = usePromoCodes()
+    const before = codes.value.length
+    const wrapper = open()
+
+    await setCode(wrapper, 'TIERSTAY')
+    await findButton(wrapper, 'Next')!.trigger('click')
+    await findButton(wrapper, 'Next')!.trigger('click')
+
+    // On Step 3 (Discount)
+    expect(wrapper.text()).toContain('Step 3 of 4 — Discount')
+    const tieredRadio = wrapper.find('#promo-create-discount-type-tiered')
+    expect(tieredRadio.exists()).toBe(true)
+    await tieredRadio.trigger('click')
+
+    expect(wrapper.text()).toContain('Length of stay tiers')
+    expect(wrapper.text()).toContain('Tier #1')
+    expect(wrapper.text()).toContain('Tier #2')
+
+    // Advance to Step 4 (Limits)
+    await findButton(wrapper, 'Next')!.trigger('click')
+    expect(wrapper.text()).toContain('Step 4 of 4 — Limits')
+    expect(wrapper.text()).toContain('Tiered: 10+ nts (10%), 20+ nts (20%)')
+
+    // Create code
+    await findButton(wrapper, 'Create code')!.trigger('click')
+    expect(codes.value.length).toBe(before + 1)
+    const created = codes.value[0]!
+    expect(created.code).toBe('TIERSTAY')
+    expect(created.discountType).toBe('tiered')
+    expect(created.lengthOfStayTiers?.length).toBe(2)
+    expect(created.lengthOfStayTiers?.[0]?.minNights).toBe(10)
+    expect(created.lengthOfStayTiers?.[1]?.minNights).toBe(20)
   })
 })

@@ -60,9 +60,15 @@ function setWindowType(key: WindowKey, index: number, type: 'fixed' | 'dynamic')
   }
 }
 
-function onMinStayInput(event: Event) {
+function onLengthOfStayMinInput(event: Event) {
   const raw = (event.target as HTMLInputElement).value
-  draft.value = { ...draft.value, minStay: raw === '' ? null : Number(raw) }
+  const val = raw === '' ? null : Number(raw)
+  draft.value = { ...draft.value, lengthOfStayMin: val, minStay: val }
+}
+
+function onLengthOfStayMaxInput(event: Event) {
+  const raw = (event.target as HTMLInputElement).value
+  draft.value = { ...draft.value, lengthOfStayMax: raw === '' ? null : Number(raw) }
 }
 
 function onUsageLimitInput(event: Event) {
@@ -232,37 +238,112 @@ const windowGroups: { key: WindowKey, label: string, icon: string, empty: string
       </div>
     </div>
 
-    <div class="space-y-2">
-      <Label :for="`${props.idPrefix}-min-stay`">
-        Minimum stay <span class="font-normal text-muted-foreground">(optional)</span>
-      </Label>
-      <div class="relative">
-        <Input
-          :id="`${props.idPrefix}-min-stay`"
-          :model-value="draft.minStay === null ? '' : String(draft.minStay)"
-          type="number"
-          min="1"
-          placeholder="No minimum"
-          class="pr-14"
-          :class="props.errors.minStay ? 'border-destructive' : ''"
-          :aria-invalid="props.errors.minStay ? 'true' : 'false'"
-          :aria-describedby="props.errors.minStay ? `${props.idPrefix}-min-stay-error` : `${props.idPrefix}-min-stay-help`"
-          @input="onMinStayInput"
-        />
-        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
-          nights
+    <!-- Length of stay (when tiered in Step 3) -->
+    <div v-if="draft.discountType === 'tiered'" class="rounded-md border bg-muted/20 p-3 space-y-2">
+      <div class="flex items-center justify-between gap-3">
+        <div class="space-y-0.5">
+          <div class="flex items-center gap-1.5">
+            <Icon name="lucide:calendar-range" class="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <Label class="text-sm font-medium">
+              Length of stay limits
+            </Label>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            Discounts are tiered by stay length in Step 3. You can set an optional maximum stay cap here.
+          </p>
+        </div>
+        <div class="relative w-36 shrink-0">
+          <Input
+            :id="`${props.idPrefix}-length-of-stay-max`"
+            :model-value="draft.lengthOfStayMax === null ? '' : String(draft.lengthOfStayMax)"
+            type="number"
+            min="1"
+            placeholder="No maximum"
+            class="pr-14"
+            :class="props.errors.lengthOfStayMax ? 'border-destructive' : ''"
+            :aria-invalid="props.errors.lengthOfStayMax ? 'true' : 'false'"
+            @input="onLengthOfStayMaxInput"
+          />
+          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+            nights
+          </div>
         </div>
       </div>
-      <p
-        v-if="props.errors.minStay"
-        :id="`${props.idPrefix}-min-stay-error`"
-        role="alert"
-        class="text-xs text-destructive"
-      >
-        {{ props.errors.minStay }}
+      <p v-if="props.errors.lengthOfStayMax" role="alert" class="text-xs text-destructive">
+        {{ props.errors.lengthOfStayMax }}
       </p>
-      <p v-else :id="`${props.idPrefix}-min-stay-help`" class="text-xs text-muted-foreground">
-        Minimum stay length in nights required to use this code. Leave blank for no minimum.
+    </div>
+
+    <!-- Length of stay (when standard value or free upsell) -->
+    <div v-else class="space-y-2">
+      <Label class="text-sm font-medium">
+        Length of stay <span class="font-normal text-muted-foreground">(optional)</span>
+      </Label>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="space-y-1">
+          <Label :for="`${props.idPrefix}-length-of-stay-min`" class="text-xs text-muted-foreground">
+            Min nights
+          </Label>
+          <div class="relative">
+            <Input
+              :id="`${props.idPrefix}-length-of-stay-min`"
+              :model-value="draft.lengthOfStayMin === null ? '' : String(draft.lengthOfStayMin)"
+              type="number"
+              min="1"
+              placeholder="No minimum"
+              class="pr-14"
+              :class="props.errors.lengthOfStayMin ? 'border-destructive' : ''"
+              :aria-invalid="props.errors.lengthOfStayMin ? 'true' : 'false'"
+              :aria-describedby="props.errors.lengthOfStayMin ? `${props.idPrefix}-length-of-stay-min-error` : undefined"
+              @input="onLengthOfStayMinInput"
+            />
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+              nights
+            </div>
+          </div>
+          <p
+            v-if="props.errors.lengthOfStayMin"
+            :id="`${props.idPrefix}-length-of-stay-min-error`"
+            role="alert"
+            class="text-xs text-destructive"
+          >
+            {{ props.errors.lengthOfStayMin }}
+          </p>
+        </div>
+
+        <div class="space-y-1">
+          <Label :for="`${props.idPrefix}-length-of-stay-max`" class="text-xs text-muted-foreground">
+            Max nights
+          </Label>
+          <div class="relative">
+            <Input
+              :id="`${props.idPrefix}-length-of-stay-max`"
+              :model-value="draft.lengthOfStayMax === null ? '' : String(draft.lengthOfStayMax)"
+              type="number"
+              min="1"
+              placeholder="No maximum"
+              class="pr-14"
+              :class="props.errors.lengthOfStayMax ? 'border-destructive' : ''"
+              :aria-invalid="props.errors.lengthOfStayMax ? 'true' : 'false'"
+              :aria-describedby="props.errors.lengthOfStayMax ? `${props.idPrefix}-length-of-stay-max-error` : undefined"
+              @input="onLengthOfStayMaxInput"
+            />
+            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs text-muted-foreground">
+              nights
+            </div>
+          </div>
+          <p
+            v-if="props.errors.lengthOfStayMax"
+            :id="`${props.idPrefix}-length-of-stay-max-error`"
+            role="alert"
+            class="text-xs text-destructive"
+          >
+            {{ props.errors.lengthOfStayMax }}
+          </p>
+        </div>
+      </div>
+      <p :id="`${props.idPrefix}-length-of-stay-help`" class="text-xs text-muted-foreground">
+        Stay duration in nights required to redeem this promo code. Leave blank for any length of stay.
       </p>
     </div>
 

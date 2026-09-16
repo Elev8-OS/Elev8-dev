@@ -14,10 +14,14 @@ import {
   validatePromoCodeStep,
 } from '~/components/promo-code/data/promo-code-form'
 import {
+  formatPromoDiscount,
+  formatPromoLengthOfStay,
   formatPromoMinStay,
   formatPromoWindow,
   formatPromoWindowCompact,
+  getPromoCodeDiscountForStay,
   isDateInPromoWindow,
+  meetsPromoCodeLengthOfStay,
   meetsPromoCodeMinStay,
 } from '~/components/promo-code/data/promo-codes'
 
@@ -87,6 +91,86 @@ describe('validatePromoCodeStep — discount', () => {
       'discount',
     )).toEqual({})
   })
+
+  it('requires at least one tier for a tiered code', () => {
+    expect(validatePromoCodeStep(draft({ discountType: 'tiered', lengthOfStayTiers: [] }), 'discount').lengthOfStayTiers)
+      .toBe('Add at least one stay tier for a length of stay discount')
+  })
+
+  it('rejects lengthOfStayTiers with non-integer or minNights below 1', () => {
+    const errorZero = validatePromoCodeStep(
+      draft({
+        discountType: 'tiered',
+        lengthOfStayTiers: [
+          { id: 't1', minNights: 0, discountType: '%', value: 10 },
+        ],
+      }),
+      'discount',
+    )
+    expect(errorZero['lengthOfStayTiers.0.minNights']).toBe('Nights must be at least 1')
+
+    const errorFloat = validatePromoCodeStep(
+      draft({
+        discountType: 'tiered',
+        lengthOfStayTiers: [
+          { id: 't1', minNights: 3.5, discountType: '%', value: 10 },
+        ],
+      }),
+      'discount',
+    )
+    expect(errorFloat['lengthOfStayTiers.0.minNights']).toBe('Nights must be at least 1')
+  })
+
+  it('rejects lengthOfStayTiers with duplicate minNights', () => {
+    const errors = validatePromoCodeStep(
+      draft({
+        discountType: 'tiered',
+        lengthOfStayTiers: [
+          { id: 't1', minNights: 10, discountType: '%', value: 10 },
+          { id: 't2', minNights: 10, discountType: '%', value: 15 },
+        ],
+      }),
+      'discount',
+    )
+    expect(errors['lengthOfStayTiers.1.minNights']).toBe('Duplicate tier for 10 nights')
+  })
+
+  it('rejects lengthOfStayTiers with invalid value or percentage > 100', () => {
+    const errorZero = validatePromoCodeStep(
+      draft({
+        discountType: 'tiered',
+        lengthOfStayTiers: [
+          { id: 't1', minNights: 10, discountType: '%', value: 0 },
+        ],
+      }),
+      'discount',
+    )
+    expect(errorZero['lengthOfStayTiers.0.value']).toBe('Discount value must be greater than 0')
+
+    const errorOver100 = validatePromoCodeStep(
+      draft({
+        discountType: 'tiered',
+        lengthOfStayTiers: [
+          { id: 't1', minNights: 10, discountType: '%', value: 110 },
+        ],
+      }),
+      'discount',
+    )
+    expect(errorOver100['lengthOfStayTiers.0.value']).toBe('Percentage cannot exceed 100%')
+  })
+
+  it('accepts valid lengthOfStayTiers', () => {
+    expect(validatePromoCodeStep(
+      draft({
+        discountType: 'tiered',
+        lengthOfStayTiers: [
+          { id: 't1', minNights: 10, discountType: '%', value: 10 },
+          { id: 't2', minNights: 20, discountType: '%', value: 20 },
+        ],
+      }),
+      'discount',
+    )).toEqual({})
+  })
 })
 
 describe('validatePromoCodeStep — rules', () => {
@@ -128,23 +212,39 @@ describe('validatePromoCodeStep — rules', () => {
   })
 
   it('rejects a minimum stay below 1', () => {
-    expect(validatePromoCodeStep(draft({ minStay: 0 }), 'rules').minStay)
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: 0 }), 'rules').lengthOfStayMin)
       .toBe('Minimum stay must be at least 1 night')
-    expect(validatePromoCodeStep(draft({ minStay: -1 }), 'rules').minStay)
-      .toBe('Minimum stay must be at least 1 night')
-  })
-
-  it('rejects a non-integer minimum stay', () => {
-    expect(validatePromoCodeStep(draft({ minStay: 2.5 }), 'rules').minStay)
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: -1 }), 'rules').lengthOfStayMin)
       .toBe('Minimum stay must be at least 1 night')
   })
 
-  it('accepts a positive integer minimum stay', () => {
-    expect(validatePromoCodeStep(draft({ minStay: 3 }), 'rules')).toEqual({})
+  it('rejects a maximum stay below 1', () => {
+    expect(validatePromoCodeStep(draft({ lengthOfStayMax: 0 }), 'rules').lengthOfStayMax)
+      .toBe('Maximum stay must be at least 1 night')
+    expect(validatePromoCodeStep(draft({ lengthOfStayMax: -1 }), 'rules').lengthOfStayMax)
+      .toBe('Maximum stay must be at least 1 night')
   })
 
-  it('treats a null minimum stay as no constraint', () => {
-    expect(validatePromoCodeStep(draft({ minStay: null }), 'rules')).toEqual({})
+  it('rejects maximum stay less than minimum stay', () => {
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: 7, lengthOfStayMax: 3 }), 'rules').lengthOfStayMax)
+      .toBe('Maximum stay cannot be less than minimum stay')
+  })
+
+  it('rejects a non-integer length of stay', () => {
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: 2.5 }), 'rules').lengthOfStayMin)
+      .toBe('Minimum stay must be at least 1 night')
+    expect(validatePromoCodeStep(draft({ lengthOfStayMax: 4.2 }), 'rules').lengthOfStayMax)
+      .toBe('Maximum stay must be at least 1 night')
+  })
+
+  it('accepts valid length of stay', () => {
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: 3 }), 'rules')).toEqual({})
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: 3, lengthOfStayMax: 7 }), 'rules')).toEqual({})
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: 3, lengthOfStayMax: 3 }), 'rules')).toEqual({})
+  })
+
+  it('treats a null length of stay as no constraint', () => {
+    expect(validatePromoCodeStep(draft({ lengthOfStayMin: null, lengthOfStayMax: null }), 'rules')).toEqual({})
   })
 
   it('rejects a dynamic window with days below 1 or non-integer', () => {
@@ -174,7 +274,7 @@ describe('firstInvalidPromoCodeStep', () => {
     expect(firstInvalidPromoCodeStep(draft({ code: '', value: 0 }))).toBe('basics')
     expect(firstInvalidPromoCodeStep(draft({ code: 'OK', value: 0 }))).toBe('discount')
     expect(firstInvalidPromoCodeStep(draft({ code: 'OK', usageLimit: 0 }))).toBe('rules')
-    expect(firstInvalidPromoCodeStep(draft({ code: 'OK', minStay: 0 }))).toBe('rules')
+    expect(firstInvalidPromoCodeStep(draft({ code: 'OK', lengthOfStayMin: 0 }))).toBe('rules')
   })
 
   it('returns null for a complete draft', () => {
@@ -233,9 +333,11 @@ describe('promoCodeToFormDraft', () => {
     expect(stored.listingIds).toEqual(['lst-1'])
   })
 
-  it('hydrates minStay from the stored code', () => {
+  it('hydrates length of stay from the stored code', () => {
+    expect(promoCodeToFormDraft({ ...stored, lengthOfStayMin: 4, lengthOfStayMax: 10 }).lengthOfStayMin).toBe(4)
+    expect(promoCodeToFormDraft({ ...stored, lengthOfStayMin: 4, lengthOfStayMax: 10 }).lengthOfStayMax).toBe(10)
+    expect(promoCodeToFormDraft({ ...stored, lengthOfStayMin: undefined }).lengthOfStayMin).toBeNull()
     expect(promoCodeToFormDraft({ ...stored, minStay: 4 }).minStay).toBe(4)
-    expect(promoCodeToFormDraft({ ...stored, minStay: undefined }).minStay).toBeNull()
   })
 })
 
@@ -288,9 +390,24 @@ describe('formDraftToPromoCodePayload', () => {
     expect(formDraftToPromoCodePayload(draft({ code: 'A', description: '   ' })).description).toBeUndefined()
   })
 
-  it('persists minStay from the draft', () => {
-    expect(formDraftToPromoCodePayload(draft({ code: 'STAY3', minStay: 3 })).minStay).toBe(3)
-    expect(formDraftToPromoCodePayload(draft({ code: 'STAY3', minStay: null })).minStay).toBeNull()
+  it('persists length of stay and tiers from the draft', () => {
+    const payload = formDraftToPromoCodePayload(draft({
+      code: 'STAY3',
+      lengthOfStayMin: 3,
+      lengthOfStayMax: 7,
+      lengthOfStayTiers: [
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+        { id: 't2', minNights: 20, discountType: '%', value: 20 },
+      ],
+    }))
+    expect(payload.lengthOfStayMin).toBe(3)
+    expect(payload.lengthOfStayMax).toBe(7)
+    expect(payload.minStay).toBe(3)
+    expect(payload.lengthOfStayTiers).toEqual([
+      { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      { id: 't2', minNights: 20, discountType: '%', value: 20 },
+    ])
+    expect(formDraftToPromoCodePayload(draft({ code: 'STAY3', lengthOfStayMin: null, lengthOfStayMax: null, lengthOfStayTiers: [] })).lengthOfStayMin).toBeNull()
   })
 
   it('round-trips through the form without losing a stored code', () => {
@@ -304,6 +421,9 @@ describe('formDraftToPromoCodePayload', () => {
       active: true,
       bookingWindows: [],
       stayWindows: [],
+      lengthOfStayTiers: [
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      ],
       usageLimit: null,
       redemptionCount: 3,
       createdAt: '2026-01-01T00:00:00Z',
@@ -320,6 +440,9 @@ describe('formDraftToPromoCodePayload', () => {
       currency: null,
       active: true,
       listingIds: ['lst-1'],
+      lengthOfStayTiers: [
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      ],
       channelRestriction: { channel: 'widget', websiteIds: [] },
     })
   })
@@ -331,6 +454,15 @@ describe('formatDraftDiscount', () => {
     expect(formatDraftDiscount(draft({ discountType: 'fixed', value: 50, currency: 'EUR' }))).toBe('EUR 50 off')
     expect(formatDraftDiscount(draft({ discountType: 'free_upsell', freeUpsellItemIds: ['a'] }))).toBe('Free upsell · 1 item')
     expect(formatDraftDiscount(draft({ discountType: 'free_upsell', freeUpsellItemIds: ['a', 'b'] }))).toBe('Free upsell · 2 items')
+  })
+
+  it('reads back tiered discounts for the review block', () => {
+    expect(formatDraftDiscount(draft({
+      lengthOfStayTiers: [
+        { id: 't2', minNights: 20, discountType: '%', value: 20 },
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      ],
+    }))).toBe('Tiered: 10+ nts (10%), 20+ nts (20%)')
   })
 })
 
@@ -454,6 +586,130 @@ describe('validatePromoCodeStep — free upsell reach', () => {
       draft({ discountType: 'free_upsell', freeUpsellItemIds: ['a'] }),
       'discount',
     )).toEqual({})
+  })
+})
+
+describe('meetsPromoCodeLengthOfStay', () => {
+  it('returns true when code has no length of stay constraint', () => {
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMin: null, lengthOfStayMax: null } as any, 1)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMin: undefined } as any, 1)).toBe(true)
+  })
+
+  it('checks minimum stay constraint', () => {
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMin: 3 } as any, 3)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMin: 3 } as any, 5)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMin: 3 } as any, 2)).toBe(false)
+  })
+
+  it('checks maximum stay constraint', () => {
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMax: 7 } as any, 5)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMax: 7 } as any, 7)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay({ lengthOfStayMax: 7 } as any, 8)).toBe(false)
+  })
+
+  it('checks length of stay range constraint', () => {
+    const code = { lengthOfStayMin: 3, lengthOfStayMax: 7 } as any
+    expect(meetsPromoCodeLengthOfStay(code, 2)).toBe(false)
+    expect(meetsPromoCodeLengthOfStay(code, 3)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(code, 5)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(code, 7)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(code, 8)).toBe(false)
+  })
+
+  it('checks tiered length of stay constraints', () => {
+    const tieredCode = {
+      lengthOfStayTiers: [
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+        { id: 't2', minNights: 20, discountType: '%', value: 20 },
+      ],
+      lengthOfStayMax: 30,
+    } as any
+
+    expect(meetsPromoCodeLengthOfStay(tieredCode, 5)).toBe(false)
+    expect(meetsPromoCodeLengthOfStay(tieredCode, 10)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(tieredCode, 15)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(tieredCode, 20)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(tieredCode, 30)).toBe(true)
+    expect(meetsPromoCodeLengthOfStay(tieredCode, 35)).toBe(false)
+  })
+})
+
+describe('getPromoCodeDiscountForStay', () => {
+  const tieredCode = {
+    discountType: '%',
+    value: 5,
+    lengthOfStayTiers: [
+      { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      { id: 't2', minNights: 20, discountType: '%', value: 20 },
+    ],
+  } as any
+
+  it('returns null if stay does not qualify for promo code', () => {
+    expect(getPromoCodeDiscountForStay(tieredCode, 5)).toBeNull()
+  })
+
+  it('resolves correct tier based on stay length', () => {
+    expect(getPromoCodeDiscountForStay(tieredCode, 10)).toEqual({ discountType: '%', value: 10 })
+    expect(getPromoCodeDiscountForStay(tieredCode, 15)).toEqual({ discountType: '%', value: 10 })
+    expect(getPromoCodeDiscountForStay(tieredCode, 20)).toEqual({ discountType: '%', value: 20 })
+    expect(getPromoCodeDiscountForStay(tieredCode, 25)).toEqual({ discountType: '%', value: 20 })
+  })
+
+  it('falls back to base promo code discount when code has no tiers', () => {
+    const regularCode = {
+      discountType: '%',
+      value: 15,
+      lengthOfStayMin: 3,
+    } as any
+
+    expect(getPromoCodeDiscountForStay(regularCode, 2)).toBeNull()
+    expect(getPromoCodeDiscountForStay(regularCode, 4)).toEqual({ discountType: '%', value: 15 })
+  })
+})
+
+describe('formatPromoLengthOfStay', () => {
+  it('formats range when both min and max are set', () => {
+    expect(formatPromoLengthOfStay({ lengthOfStayMin: 3, lengthOfStayMax: 7 } as any)).toBe('3–7 nights')
+    expect(formatPromoLengthOfStay({ lengthOfStayMin: 1, lengthOfStayMax: 1 } as any)).toBe('1 night')
+  })
+
+  it('formats min only', () => {
+    expect(formatPromoLengthOfStay({ lengthOfStayMin: 1 } as any)).toBe('Min 1 night')
+    expect(formatPromoLengthOfStay({ lengthOfStayMin: 3 } as any)).toBe('Min 3 nights')
+  })
+
+  it('formats max only', () => {
+    expect(formatPromoLengthOfStay({ lengthOfStayMax: 7 } as any)).toBe('Max 7 nights')
+  })
+
+  it('formats tiers when present', () => {
+    expect(formatPromoLengthOfStay({
+      lengthOfStayTiers: [
+        { id: 't2', minNights: 20, discountType: '%', value: 20 },
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      ],
+    } as any)).toBe('10+ nights (10%) · 20+ nights (20%)')
+  })
+
+  it('returns Any length when neither is set', () => {
+    expect(formatPromoLengthOfStay({ lengthOfStayMin: null, lengthOfStayMax: null } as any)).toBe('Any length')
+  })
+})
+
+describe('formatPromoDiscount', () => {
+  it('formats standard discount types', () => {
+    expect(formatPromoDiscount({ discountType: '%', value: 10 } as any)).toBe('10%')
+    expect(formatPromoDiscount({ discountType: 'fixed', value: 50 } as any)).toBe('50')
+    expect(formatPromoDiscount({ discountType: 'free_upsell' } as any)).toBe('Free Upsell')
+  })
+
+  it('formats tiered stay discounts', () => {
+    expect(formatPromoDiscount({
+      lengthOfStayTiers: [
+        { id: 't2', minNights: 20, discountType: '%', value: 20 },
+        { id: 't1', minNights: 10, discountType: '%', value: 10 },
+      ],
+    } as any)).toBe('10d: 10%, 20d: 20%')
   })
 })
 
