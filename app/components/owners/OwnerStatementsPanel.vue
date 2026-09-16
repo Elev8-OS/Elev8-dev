@@ -6,6 +6,7 @@
 import { toast } from 'vue-sonner'
 import StatementPublishDialog from '~/components/owner-statements/StatementPublishDialog.vue'
 import { mockOwners } from '~/components/owners/data/owners'
+import StatementIssuesPanel from '~/components/owners/StatementIssuesPanel.vue'
 import StatementTable from '~/components/owners/StatementTable.vue'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
 
@@ -81,7 +82,7 @@ function submitAdjust() {
     reason: adjustReason.value.trim(),
   })
   if (result.ok) {
-    toast.success('Adjustment recorded for next period.')
+    toast.success(`Adjustment recorded. It appears in the ${result.adjustment.nextPeriod} statement.`)
     adjustDialogOpen.value = false
   }
   else {
@@ -224,6 +225,9 @@ const publishedPage = computed(() => paginate(sortedList(published.value.map(enr
         <TabsTrigger value="published">
           Published ({{ published.length }})
         </TabsTrigger>
+        <TabsTrigger value="issues">
+          Issues ({{ openIssuesCount }})
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="drafts" class="space-y-3">
@@ -269,6 +273,10 @@ const publishedPage = computed(() => paginate(sortedList(published.value.map(enr
           @adjust="openAdjust"
         />
       </TabsContent>
+
+      <TabsContent value="issues" class="space-y-3">
+        <StatementIssuesPanel />
+      </TabsContent>
     </Tabs>
 
     <StatementPublishDialog
@@ -284,7 +292,9 @@ const publishedPage = computed(() => paginate(sortedList(published.value.map(enr
         <DialogHeader>
           <DialogTitle>Record adjustment</DialogTitle>
           <DialogDescription>
-            Apply a correction against the next period. The published statement remains locked.
+            The published statement stays locked. The correction is added as a
+            line on the next statement generated for this property, and the
+            owner sees it on both.
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-3">

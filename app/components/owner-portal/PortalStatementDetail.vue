@@ -161,8 +161,9 @@ function hasOpenIssue(lineId: string) {
     />
 
     <PortalStatementAdjustments
-      v-if="detail.adjustments.length > 0"
+      v-if="detail.adjustments.length > 0 || detail.relatedAdjustments.length > 0"
       :adjustments="detail.adjustments"
+      :related="detail.relatedAdjustments"
       :currency="currency"
     />
 

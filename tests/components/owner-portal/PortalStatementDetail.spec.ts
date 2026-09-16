@@ -190,4 +190,45 @@ describe('owner portal statements', () => {
     expect(document.body.textContent).toContain('already open')
     expect(issues.value.filter(issue => issue.statementId === 'stmt-2' && issue.lineId === 'sl-7' && !issue.resolvedAt)).toHaveLength(1)
   })
+  it('discloses a pending correction on the statement it corrects, and the money on the one that carried it', async () => {
+    loginAs('own-1')
+    const { recordAdjustment, adjustments } = useOwnerStatements()
+    const recorded = recordAdjustment({
+      ownerStatementId: 'stmt-2',
+      amount: -180_000,
+      reason: 'Airbnb host fee understated in May.',
+    })
+    expect(recorded.ok).toBe(true)
+
+    // May: a promise, kept out of the statement's own total.
+    const may = mount(PortalStatementDetail, {
+      props: { statementId: 'stmt-2' },
+      global: globalOptions,
+    })
+    await flushPromises()
+    expect(may.findAll('[data-testid="adjustment-related"]')).toHaveLength(1)
+    expect(may.text()).toContain('Will appear in the 2026-06 statement')
+    expect(may.findAll('[data-testid="adjustment-applied"]')).toHaveLength(0)
+
+    // Once folded in, the money shows on June and May reads as settled.
+    adjustments.value = adjustments.value.map(a => a.id === (recorded as { adjustment: { id: string } }).adjustment.id
+      ? { ...a, appliedToStatementId: 'stmt-6', appliedInPeriod: '2026-06' }
+      : a)
+
+    const june = mount(PortalStatementDetail, {
+      props: { statementId: 'stmt-6' },
+      global: globalOptions,
+    })
+    await flushPromises()
+    expect(june.findAll('[data-testid="adjustment-applied"]')).toHaveLength(1)
+    expect(june.text()).toContain('Correction for 2026-05')
+    expect(june.text()).toContain('Total adjustment impact')
+
+    const mayAgain = mount(PortalStatementDetail, {
+      props: { statementId: 'stmt-2' },
+      global: globalOptions,
+    })
+    await flushPromises()
+    expect(mayAgain.text()).toContain('Paid out in the 2026-06 statement')
+  })
 })

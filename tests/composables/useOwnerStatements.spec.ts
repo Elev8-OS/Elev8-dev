@@ -13,7 +13,7 @@ import type {
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { alertDisplayLabels, alertIcons, alertRouteMap, getDescription as getAlertDescription } from '~/components/notifications/data/alerts'
 import { calculateCommission, mockCommissionRules } from '~/components/owners/data/commission-rules'
-import { mockOwnerLedgerEntries } from '~/components/owners/data/owner-ledger'
+import { mockOwnerLedgerEntries, roundCurrency } from '~/components/owners/data/owner-ledger'
 import { mockOwnerStatements } from '~/components/owners/data/owner-statements'
 import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
@@ -790,6 +790,184 @@ describe('useOwnerStatements', () => {
         reason: 'spread test',
       })
       expect(adjustments.value).not.toBe(before)
+    })
+  })
+
+  describe('folding corrections into the next statement', () => {
+    // A correction filed against a published statement must reach the owner
+    // as money, not just as an audit row: `generateForPeriod` picks up every
+    // unapplied adjustment for the (owner, listing) whose `nextPeriod` has
+    // arrived and folds it into the new draft as its own line.
+    //
+    // `tests/setup.ts` clears the useState store before every test, so each
+    // case below builds its own chain (generate, publish, record, generate)
+    // rather than leaning on the one before it.
+    const OWN = 'own-1'
+    const LST = 'lst-1'
+
+    function syntheticLedger(period: string): OwnerLedgerEntry {
+      return {
+        id: `led-fold-${period}`,
+        ownerId: OWN,
+        listingId: LST,
+        period,
+        currency: 'IDR',
+        grossRevenue: 20_000_000,
+        expenses: 1_000_000,
+        taxes: 1_000_000,
+        platformFees: 1_200_000,
+        sources: [],
+        occupiedNights: 10,
+        availableNights: 30,
+        nightlyRateSum: 20_000_000,
+        reservationCount: 4,
+        averageRating: 4.8,
+        ratingsCount: 4,
+        upcomingReservations: [],
+        isPriorPeriodAdjustment: false,
+        createdAt: '2028-01-01T00:00:00.000Z',
+        updatedAt: '2028-01-01T00:00:00.000Z',
+      }
+    }
+
+    async function generateWithLedger(period: string, entries: OwnerLedgerEntry[]): Promise<void> {
+      const ledgerModule = await import('~/components/owners/data/owner-ledger')
+      const real = ledgerModule.mockOwnerLedgerEntries
+      const spy = vi
+        .spyOn(ledgerModule, 'mockOwnerLedgerEntries', 'get')
+        .mockReturnValue([...real, ...entries])
+      try {
+        useOwnerStatements().generateForPeriod(period)
+      }
+      finally {
+        spy.mockRestore()
+      }
+    }
+
+    function statementFor(period: string) {
+      const found = useOwnerStatements().statements.value.find(
+        s => s.ownerId === OWN && s.listingId === LST && s.period === period,
+      )
+      if (!found)
+        throw new Error(`No statement for ${period}.`)
+      return found
+    }
+
+    it('folds a pending correction into the next draft as its own line and stamps it applied', async () => {
+      const { publish, recordAdjustment, adjustments } = useOwnerStatements()
+
+      await generateWithLedger('2028-01', [syntheticLedger('2028-01')])
+      const january = statementFor('2028-01')
+      expect(publish(january.id, 'staff-1').ok).toBe(true)
+
+      const recorded = recordAdjustment({
+        ownerStatementId: january.id,
+        amount: -180_000,
+        reason: 'Airbnb host fee understated in the January statement.',
+      })
+      if (!recorded.ok)
+        throw new Error('recordAdjustment returned an error envelope')
+      expect(recorded.adjustment.currency).toBe('IDR')
+      expect(recorded.adjustment.appliedToStatementId).toBeUndefined()
+
+      await generateWithLedger('2028-02', [syntheticLedger('2028-02')])
+      const february = statementFor('2028-02')
+
+      // One line per correction, labelled with the period it corrects, and
+      // linked back to the record that carries the reason.
+      const adjustmentLines = february.lines.filter(l => l.category === 'adjustment')
+      expect(adjustmentLines).toHaveLength(1)
+      expect(adjustmentLines[0].amount).toBe(-180_000)
+      expect(adjustmentLines[0].label).toBe('Correction for 2028-01')
+      expect(adjustmentLines[0].adjustmentId).toBe(recorded.adjustment.id)
+
+      // The lines the owner reads still sum to the total shown.
+      const lineSum = february.lines.reduce((sum, line) => sum + line.amount, 0)
+      expect(february.totalAmount).toBe(roundCurrency(lineSum))
+
+      // And the January statement is untouched — publication is a freeze.
+      const januaryAfter = statementFor('2028-01')
+      expect(januaryAfter.lines.some(l => l.category === 'adjustment')).toBe(false)
+      expect(januaryAfter.totalAmount).toBe(january.totalAmount)
+
+      const stored = adjustments.value.find(a => a.id === recorded.adjustment.id)!
+      expect(stored.appliedToStatementId).toBe(february.id)
+      expect(stored.appliedInPeriod).toBe('2028-02')
+    })
+
+    it('never applies the same correction twice', async () => {
+      const { publish, recordAdjustment, adjustments } = useOwnerStatements()
+
+      await generateWithLedger('2028-01', [syntheticLedger('2028-01')])
+      const january = statementFor('2028-01')
+      publish(january.id, 'staff-1')
+      const recorded = recordAdjustment({
+        ownerStatementId: january.id,
+        amount: -180_000,
+        reason: 'Airbnb host fee understated in the January statement.',
+      })
+      if (!recorded.ok)
+        throw new Error('recordAdjustment returned an error envelope')
+
+      await generateWithLedger('2028-02', [syntheticLedger('2028-02')])
+      await generateWithLedger('2028-03', [syntheticLedger('2028-03')])
+
+      const february = statementFor('2028-02')
+      const march = statementFor('2028-03')
+      expect(february.lines.filter(l => l.category === 'adjustment')).toHaveLength(1)
+      expect(march.lines.some(l => l.category === 'adjustment')).toBe(false)
+      expect(adjustments.value.find(a => a.id === recorded.adjustment.id)!.appliedToStatementId)
+        .toBe(february.id)
+    })
+
+    it('draws an adjustment-only statement when the period has no ledger activity', async () => {
+      const { publish, recordAdjustment, adjustments } = useOwnerStatements()
+
+      await generateWithLedger('2028-03', [syntheticLedger('2028-03')])
+      const march = statementFor('2028-03')
+      expect(publish(march.id, 'staff-1').ok).toBe(true)
+
+      const recorded = recordAdjustment({
+        ownerStatementId: march.id,
+        amount: 250_000,
+        reason: 'Cleaning charged twice in March.',
+      })
+      if (!recorded.ok)
+        throw new Error('recordAdjustment returned an error envelope')
+
+      // No ledger entry for April: the property produced nothing, but the
+      // correction is still owed, so it must not be dropped.
+      await generateWithLedger('2028-04', [])
+      const april = statementFor('2028-04')
+      expect(april.currency).toBe('IDR')
+      expect(april.lines).toHaveLength(1)
+      expect(april.lines[0].category).toBe('adjustment')
+      expect(april.totalAmount).toBe(250_000)
+      expect(adjustments.value.find(a => a.id === recorded.adjustment.id)!.appliedToStatementId)
+        .toBe(april.id)
+    })
+
+    it('leaves a correction filed in another currency pending rather than converting it', async () => {
+      const { adjustments } = useOwnerStatements()
+      const foreign = {
+        id: 'osa-foreign-currency',
+        ownerStatementId: 'stmt-2',
+        ownerId: OWN,
+        listingId: LST,
+        period: '2028-04',
+        nextPeriod: '2028-05',
+        amount: -500,
+        currency: 'USD',
+        reason: 'Filed in the wrong currency.',
+        createdAt: '2028-05-01T00:00:00.000Z',
+      }
+      adjustments.value = [...adjustments.value, foreign]
+
+      await generateWithLedger('2028-05', [syntheticLedger('2028-05')])
+      const may = statementFor('2028-05')
+      expect(may.currency).toBe('IDR')
+      expect(may.lines.some(l => l.category === 'adjustment')).toBe(false)
+      expect(adjustments.value.find(a => a.id === foreign.id)!.appliedToStatementId).toBeUndefined()
     })
   })
 

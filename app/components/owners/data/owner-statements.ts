@@ -27,6 +27,12 @@ export interface OwnerStatementLine {
   amount: number
   /** Source ledger entry this line was generated from. May be undefined for manual adjustments. */
   ledgerEntryId?: string
+  /**
+   * Source `OwnerStatementAdjustment` when this line is a post-publication
+   * correction folded in from an earlier period. Lets the portal pair the
+   * line with the reason the correction was filed.
+   */
+  adjustmentId?: string
 }
 
 export interface OwnerIssueMessage {

@@ -99,11 +99,25 @@ export interface OwnerStatementAdjustment {
   listingId: string
   /** Period of the published statement the correction refers to. */
   period: string
-  /** Period the adjustment will appear against (typically `period + 1 month`). */
+  /** Earliest period the adjustment may appear in (`period + 1 month`). */
   nextPeriod: string
   amount: number
+  /**
+   * Currency of the source statement. Copied at record time so a correction
+   * can never be folded into a statement drawn in another currency — the
+   * repo never converts between currencies.
+   */
+  currency: string
   reason: string
   createdAt: string
+  /**
+   * Statement the correction was folded into by `generateForPeriod`.
+   * Undefined while the adjustment is still pending. Set once and never
+   * cleared, so an adjustment can never be applied twice.
+   */
+  appliedToStatementId?: string
+  /** Period of the statement that carried the money. Set with `appliedToStatementId`. */
+  appliedInPeriod?: string
 }
 
 // --- Result envelopes ------------------------------------------------------
@@ -361,6 +375,9 @@ export function useOwnerStatements() {
     let created = 0
     let skipped = 0
     const additions: OwnerStatement[] = []
+    // Adjustments folded into a draft this pass, stamped once the drafts are
+    // committed so a failed pass cannot mark a correction as delivered.
+    const applied: { adjustmentId: string, statementId: string, period: string }[] = []
     // Single timestamp for every draft this call produces — keeps
     // related rows aligned and eliminates ms-drift between the seed
     // builder and the alert-emission loop below.
@@ -391,37 +408,78 @@ export function useOwnerStatements() {
             && e.period === period
             && !e.isPriorPeriodAdjustment,
         )
-        if (!entry) {
-          // No financial activity for this (owner, listing, period) — nothing to draft.
+
+        // Post-publication corrections filed against an earlier statement for
+        // this (owner, listing) that have not been folded into a statement
+        // yet. `nextPeriod <= period` rather than `=== period` so a correction
+        // recorded after its own next period was already published still lands
+        // in the next statement generated, instead of being stranded forever.
+        const pendingAll = adjustments.value.filter(a => a.ownerId === owner.id
+          && a.listingId === mapping.listingId
+          && !a.appliedToStatementId
+          && a.nextPeriod <= period)
+
+        if (!entry && pendingAll.length === 0) {
+          // No financial activity and nothing to correct — nothing to draft.
           skipped += 1
           continue
         }
 
-        const referencedRule = rules.find(candidate => candidate.id === mapping.commissionRuleId)
-        const rule = referencedRule
-          ? findEffectiveCommissionRule(
-              [referencedRule],
-              owner.id,
-              mapping.listingId,
-              period,
-            )
-          : undefined
-        if (!rule) {
-          // A mapping without an effective commission rule is a configuration
-          // gap — skip rather than emit a draft with a zero commission.
-          skipped += 1
-          continue
+        // A correction never converts currency (house rule). Anything filed in
+        // a different currency than the statement being drawn stays pending.
+        const currency = entry?.currency ?? pendingAll[0]!.currency
+        const pending = pendingAll.filter(a => a.currency === currency)
+        const adjustmentLines = pending.map(adjustmentLine)
+
+        let draft: OwnerStatement
+        if (entry) {
+          const referencedRule = rules.find(candidate => candidate.id === mapping.commissionRuleId)
+          const rule = referencedRule
+            ? findEffectiveCommissionRule(
+                [referencedRule],
+                owner.id,
+                mapping.listingId,
+                period,
+              )
+            : undefined
+          if (!rule) {
+            // A mapping without an effective commission rule is a configuration
+            // gap — skip rather than emit a draft with a zero commission. The
+            // pending corrections stay pending; they are not lost.
+            skipped += 1
+            continue
+          }
+
+          draft = buildDraftFromLedger(
+            owner,
+            mapping,
+            entry,
+            rule,
+            adjustmentLines,
+            createdAt,
+            () => deriveUniqueId('stmt', statementIdTaken),
+          )
+        }
+        else {
+          // No revenue this period, but a correction is owed. Draw a statement
+          // carrying the correction alone rather than dropping it — a property
+          // that stops producing revenue must still be able to receive the
+          // money it was over- or under-paid.
+          draft = buildAdjustmentOnlyDraft(
+            owner,
+            mapping,
+            period,
+            currency,
+            adjustmentLines,
+            createdAt,
+            () => deriveUniqueId('stmt', statementIdTaken),
+          )
         }
 
-        const draft = buildDraftFromLedger(
-          owner,
-          mapping,
-          entry,
-          rule,
-          createdAt,
-          () => deriveUniqueId('stmt', statementIdTaken),
-        )
         additions.push(draft)
+        for (const adjustment of pending) {
+          applied.push({ adjustmentId: adjustment.id, statementId: draft.id, period })
+        }
         existingKeys.add(key)
         created += 1
       }
@@ -429,6 +487,15 @@ export function useOwnerStatements() {
 
     if (additions.length > 0) {
       statements.value = [...statements.value, ...additions]
+      if (applied.length > 0) {
+        const stampById = new Map(applied.map(row => [row.adjustmentId, row]))
+        adjustments.value = adjustments.value.map((adjustment) => {
+          const stamp = stampById.get(adjustment.id)
+          return stamp
+            ? { ...adjustment, appliedToStatementId: stamp.statementId, appliedInPeriod: stamp.period }
+            : adjustment
+        })
+      }
       for (const draft of additions) {
         emitOwnerAlert('OWNER_STATEMENT_DRAFT_READY', 'INFO', {
           statementId: draft.id,
@@ -717,6 +784,7 @@ export function useOwnerStatements() {
       period: source.period,
       nextPeriod: nextPeriod(source.period),
       amount: input.amount,
+      currency: source.publishedSnapshot?.currency ?? source.currency,
       reason: input.reason,
       createdAt: nowIso(),
     }
@@ -819,11 +887,62 @@ export function useOwnerStatements() {
  * See the "single source of `nowIso` per generation" + "per-instance
  * collision-free IDs" invariants in the composable header.
  */
+/**
+ * One statement line per pending correction, rather than the single
+ * aggregate "Adjustments" line `buildStatementLines` emits. Each line names
+ * the period it corrects so the owner can see which month moved; the reason
+ * text lives on the adjustment record and is rendered beside it in the
+ * portal's Adjustments card.
+ *
+ * The amount is rounded here, and `buildDraftFromLedger` derives the
+ * statement's adjustment total from these already-rounded line amounts, so
+ * the lines the owner reads always sum to the total shown.
+ */
+function adjustmentLine(adjustment: OwnerStatementAdjustment): OwnerStatementLine {
+  return {
+    id: `line-adj-${adjustment.id}`,
+    category: 'adjustment',
+    label: `Correction for ${adjustment.period}`,
+    amount: roundCurrency(adjustment.amount),
+    adjustmentId: adjustment.id,
+  }
+}
+
+/**
+ * A statement for a period with no ledger activity but an outstanding
+ * correction. Revenue, expenses, commission and taxes are all absent, so the
+ * net payout is the correction itself.
+ */
+function buildAdjustmentOnlyDraft(
+  owner: Owner,
+  mapping: OwnerPropertyMapping,
+  period: string,
+  currency: string,
+  adjustmentLines: OwnerStatementLine[],
+  createdAt: string,
+  nextStatementId: () => string,
+): OwnerStatement {
+  const lines = adjustmentLines.map(line => ({ ...line }))
+  return {
+    id: nextStatementId(),
+    ownerId: owner.id,
+    listingId: mapping.listingId,
+    period,
+    currency,
+    status: 'draft',
+    lines,
+    totalAmount: roundCurrency(lines.reduce((sum, line) => sum + line.amount, 0)),
+    createdAt,
+    issues: [],
+  }
+}
+
 function buildDraftFromLedger(
   owner: Owner,
   mapping: OwnerPropertyMapping,
   entry: OwnerLedgerEntry,
   rule: CommissionRule,
+  adjustmentLines: OwnerStatementLine[],
   createdAt: string,
   nextStatementId: () => string,
 ): OwnerStatement {
@@ -838,8 +957,15 @@ function buildDraftFromLedger(
     taxes: entry.taxes,
     platformFees: entry.platformFees,
   })
-  const input: StatementInput = ledgerEntryToStatementInput(entry, commission)
-  const lines = buildStatementLines(input)
+  // Sum the already-rounded line amounts so the per-line breakdown and the
+  // total agree to the cent.
+  const adjustmentTotal = roundCurrency(
+    adjustmentLines.reduce((sum, line) => sum + line.amount, 0),
+  )
+  const input: StatementInput = ledgerEntryToStatementInput(entry, commission, adjustmentTotal)
+  // The aggregate adjustment line is dropped in favour of one line per
+  // correction, appended below. The total still carries `adjustmentTotal`.
+  const lines = buildStatementLines(input).filter(line => line.id !== 'line-adjustment')
   const totals = calculateStatementTotals(input)
   // Round line amounts so what the UI displays is the source of truth.
   const roundedLines: OwnerStatementLine[] = lines.map((line) => {
@@ -853,6 +979,7 @@ function buildDraftFromLedger(
     }
     return { ...line, amount: roundCurrency(line.amount) }
   })
+  roundedLines.push(...adjustmentLines.map(line => ({ ...line })))
   const totalAmount = roundCurrency(totals.netPayout)
   return {
     id: nextStatementId(),

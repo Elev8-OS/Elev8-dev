@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mockOwnerReservationsForPeriod } from '~/components/owners/data/owner-statement-reservations'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerStatementDetail } from '~/composables/useOwnerStatementDetail'
+import { useOwnerStatements } from '~/composables/useOwnerStatements'
 
 async function loginAs(ownerEmail: string): Promise<void> {
   const auth = useOwnerAuth()
@@ -103,6 +104,93 @@ describe('useOwnerStatementDetail', () => {
       // share sums to 1 (within float tolerance)
       const totalShare = breakdown.reduce((s, b) => s + b.share, 0)
       expect(totalShare).toBeCloseTo(1, 5)
+    })
+  })
+  describe('staff-recorded corrections', () => {
+    // A published statement is frozen, so a correction filed against it is
+    // paid out in a later statement. The owner has to be able to see both
+    // halves of that: the promise on the statement they disputed, and the
+    // money on the statement that carried it.
+    function recordAgainstStmt2() {
+      const { recordAdjustment } = useOwnerStatements()
+      const result = recordAdjustment({
+        ownerStatementId: 'stmt-2',
+        amount: -180_000,
+        reason: 'Airbnb host fee understated in May.',
+      })
+      if (!result.ok)
+        throw new Error('recordAdjustment returned an error envelope')
+      return result.adjustment
+    }
+
+    it('lists a pending correction against the statement it corrects, without touching its total', async () => {
+      await loginAs('wayan.sari@example.com')
+      const recorded = recordAgainstStmt2()
+
+      const id = ref<string | null>('stmt-2')
+      const { detail } = useOwnerStatementDetail(id)
+
+      const related = detail.value.relatedAdjustments.find(a => a.id === recorded.id)!
+      expect(related).toBeTruthy()
+      expect(related.amount).toBe(-180_000)
+      expect(related.adjustsPeriod).toBe('2026-05')
+      expect(related.appliesInPeriod).toBe('2026-06')
+      expect(related.applied).toBe(false)
+      expect(related.reason).toMatch(/host fee/i)
+
+      // It is NOT part of this statement's own adjustment total.
+      expect(detail.value.adjustments.some(a => a.id === recorded.id)).toBe(false)
+      const stmt2 = detail.value.statement!
+      expect(stmt2.publishedSnapshot?.totalAmount ?? stmt2.totalAmount).toBe(stmt2.totalAmount)
+    })
+
+    it('moves the correction onto the statement that carried the money once it is applied', async () => {
+      await loginAs('wayan.sari@example.com')
+      const recorded = recordAgainstStmt2()
+
+      // Stand in for `generateForPeriod` folding it into the June statement.
+      const { adjustments } = useOwnerStatements()
+      adjustments.value = adjustments.value.map(a => a.id === recorded.id
+        ? { ...a, appliedToStatementId: 'stmt-6', appliedInPeriod: '2026-06' }
+        : a)
+
+      const juneId = ref<string | null>('stmt-6')
+      const june = useOwnerStatementDetail(juneId)
+      const applied = june.detail.value.adjustments.find(a => a.id === recorded.id)!
+      expect(applied).toBeTruthy()
+      expect(applied.applied).toBe(true)
+      expect(applied.appliesInPeriod).toBe('2026-06')
+      expect(applied.adjustsPeriod).toBe('2026-05')
+      expect(june.detail.value.relatedAdjustments).toHaveLength(0)
+
+      // May still discloses it, now as settled rather than pending.
+      const mayId = ref<string | null>('stmt-2')
+      const may = useOwnerStatementDetail(mayId)
+      const disclosed = may.detail.value.relatedAdjustments.find(a => a.id === recorded.id)!
+      expect(disclosed.applied).toBe(true)
+      expect(disclosed.appliesInPeriod).toBe('2026-06')
+    })
+
+    it('keeps another owner\'s correction out of the view', async () => {
+      await loginAs('wayan.sari@example.com')
+      const { adjustments } = useOwnerStatements()
+      adjustments.value = [...adjustments.value, {
+        id: 'osa-other-owner',
+        ownerStatementId: 'stmt-11',
+        ownerId: 'own-2',
+        listingId: 'lst-8',
+        period: '2026-05',
+        nextPeriod: '2026-06',
+        amount: -50_000,
+        currency: 'USD',
+        reason: 'Not Wayan\'s.',
+        createdAt: '2026-06-01T00:00:00.000Z',
+      }]
+
+      const id = ref<string | null>('stmt-2')
+      const { detail } = useOwnerStatementDetail(id)
+      expect(detail.value.relatedAdjustments.some(a => a.id === 'osa-other-owner')).toBe(false)
+      expect(detail.value.adjustments.some(a => a.id === 'osa-other-owner')).toBe(false)
     })
   })
 })

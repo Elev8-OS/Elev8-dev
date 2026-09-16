@@ -365,6 +365,70 @@ accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); p
 exemptions beyond the adults / children / infants categories plus a manual waive; reading
 from a real channel API; and any background job (alerts come from `emitCityTaxAlerts()`).
 
+### Owner Statement Corrections (`app/composables/useOwnerStatements.ts` + `useOwnerStatementDetail.ts`)
+
+Correcting a statement the owner has already been shown. Publishing freezes a statement
+(`publishedSnapshot`), so a correction is never an edit: `recordAdjustment()` files an
+`OwnerStatementAdjustment` against the published source, and `generateForPeriod()` folds it into a
+later draft as its own line.
+
+- **Pending is picked up by period, not by an exact match.** Generation folds in every unapplied
+  adjustment for that (owner, listing) whose `nextPeriod <= period` being drawn. `=== nextPeriod`
+  would strand a correction filed after its own next period was already published.
+- ⚠️ **`appliedToStatementId` is the double-apply guard**, stamped only after the drafts are
+  committed, and never cleared. `appliedInPeriod` records which statement carried the money.
+- ⚠️ **No currency conversion, ever.** `OwnerStatementAdjustment.currency` is copied from the
+  source statement; a correction in another currency stays pending rather than being blended into
+  the statement being drawn. Same rule as city tax and the reservation folio.
+- **One statement line per correction** (`Correction for <period>`, carrying `adjustmentId`), not
+  the single aggregate `line-adjustment` from `buildStatementLines` (which is filtered out). Line
+  amounts are rounded first and the statement total is derived from those rounded values, so the
+  breakdown always sums to the total.
+- **A period with no ledger activity still draws an adjustment-only statement** when a correction
+  is owed. A property that stops producing revenue must still be able to receive money it was
+  over- or under-paid.
+- **The portal shows the same correction twice, on purpose**, via two lists on
+  `OwnerStatementDetail`: `adjustments` (money inside THIS statement, what the card totals) and
+  `relatedAdjustments` (filed against this statement, paid out in a later one, excluded from the
+  total). `PortalStatementAdjustments.vue` renders them as two groups. Do not merge them: summing
+  a related row would claim a payout this statement never carried.
+- Ledger-derived rows (`isPriorPeriodAdjustment` entries in `owner-ledger.ts`) keep their original
+  meaning and still land in `adjustments`; they have no `appliesInPeriod`.
+
+#### Disputes (the flow that produces most corrections)
+
+An owner raises an issue on one statement **line** from the portal
+(`PortalRaiseIssueDialog.vue`, one open issue per line). Staff answer and close it from the
+**Issues** tab on `/owner-statements`.
+
+- **`StatementIssuesPanel.vue`** is the worklist (Open / Resolved, open list sorted oldest first
+  so the most neglected dispute is on top). **`StatementIssueDrawer.vue`** is where it is answered.
+- ⚠️ **Resolving as `adjusted` files the adjustment in the same handler that writes the
+  resolution** (`StatementIssueDrawer.resolve()`), so a dispute can never be closed as "adjusted"
+  with no correction behind it. `resolution.adjustmentId` is what links the two.
+- ⚠️ **`adjusted` is offered only on a published statement.** A draft's numbers can still be
+  edited directly, and `recordAdjustment` refuses a draft anyway.
+- **The resolution note is posted to the thread as well as stored on the resolution.** The thread
+  is what the owner reads and what emits `OWNER_ISSUE_RESPONDED`; the resolution field is the
+  audit record. Resolution itself emits no alert, which is why the note is posted first.
+- The portal dialog is two-faced: with an open issue it is the conversation (description, thread,
+  owner reply box) and the new-issue form is withheld, which is what enforces one-open-issue-per-
+  line in the UI; with none it shows resolved history above the form.
+
+**Tests:** `tests/composables/useOwnerStatements.spec.ts` (folding, no double-apply,
+adjustment-only statement, currency guard), `tests/composables/useOwnerStatementDetail.spec.ts`
+(pending vs applied, cross-owner isolation), `tests/components/owner-portal/PortalStatementDetail.spec.ts`
+(both card groups), `tests/components/owners/StatementIssues.spec.ts` (reply, both resolutions, the
+draft refusal, worklist filtering). ⚠️ `tests/setup.ts` clears the `useState` store before every
+test, so each case builds its own generate/publish/record chain. ⚠️ A `Button` stub must not
+re-emit `click` (the parent handler already falls through onto the stub root), and the `Sheet` stub
+must honour `open` or a closed drawer still renders its slot.
+
+**NOT implemented (intentionally out of scope):** no approval step on a correction (the required
+reason is the audit trail); no settlement of the payout itself (no paid status, transfer date, or
+payout integration, only `netPayout` as a figure); no delete or edit of a recorded adjustment; no
+reopening a resolved issue (the owner raises a new one on the same line).
+
 ### SmartLock Integration (`app/components/settings/` + `app/composables/useSmartLock.ts`)
 
 Single-connection (one API key per tenant), multi-lock assignment (many locks per listing or per room). Mock/demo only — no real provider API calls. The integration is provider-agnostic; only the connection sheet references the underlying provider name.
