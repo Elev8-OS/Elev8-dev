@@ -10,6 +10,7 @@ import { isoDiffDays } from '~/components/gm/data/gm-dashboard'
 import GmBookingRow from '~/components/gm/GmBookingRow.vue'
 import GmBookingsPanel from '~/components/gm/GmBookingsPanel.vue'
 import GmDashboard from '~/components/gm/GmDashboard.vue'
+import GmDashboardConfigureDropdown from '~/components/gm/GmDashboardConfigureDropdown.vue'
 import GmKpiCard from '~/components/gm/GmKpiCard.vue'
 import GmOccupancyChart from '~/components/gm/GmOccupancyChart.vue'
 import GmRevenueChart from '~/components/gm/GmRevenueChart.vue'
@@ -22,6 +23,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useGmDashboard } from '~/composables/useGmDashboard'
+import { useGmDashboardWidgets } from '~/composables/useGmDashboardWidgets'
 
 const ANCHOR = '2026-09-08'
 
@@ -33,6 +35,7 @@ const components = {
   // test environment does not provide.
   GmBookingRow,
   GmBookingsPanel,
+  GmDashboardConfigureDropdown,
   GmKpiCard,
   GmOccupancyChart,
   GmRevenueChart,
@@ -265,6 +268,87 @@ describe('gmDashboard', () => {
     await wrapper.vm.$nextTick()
     const charts = wrapper.findAll('[data-testid="bar-chart"]')
     expect(charts[1]!.attributes('data-points')).toBe('14')
+  })
+
+  it('supports direct widget customization mode and widget removal', async () => {
+    const widgets = useGmDashboardWidgets()
+    widgets.resetToDefaults()
+    const wrapper = mount(GmDashboard, { global: globalOptions })
+
+    expect(text(wrapper)).toContain('Occupancy flow')
+    expect(text(wrapper)).toContain('Revenue trend')
+
+    // Remove revenue_trend directly
+    widgets.removeWidget('revenue_trend')
+    await wrapper.vm.$nextTick()
+
+    // Revenue trend is removed from view
+    expect(text(wrapper)).not.toContain('Revenue trend')
+    // Other widgets still remain
+    expect(text(wrapper)).toContain('Occupancy flow')
+
+    // Add operations_summary widget directly
+    widgets.addWidget('operations_summary')
+    await wrapper.vm.$nextTick()
+    expect(text(wrapper)).toContain('Operations summary')
+
+    // Reset back
+    widgets.resetToDefaults()
+    await wrapper.vm.$nextTick()
+    expect(text(wrapper)).toContain('Revenue trend')
+  })
+
+  it('can directly toggle edit mode from the dashboard', async () => {
+    const widgets = useGmDashboardWidgets()
+    widgets.resetToDefaults()
+    const wrapper = mount(GmDashboard, { global: globalOptions })
+
+    expect(widgets.isEditMode.value).toBe(false)
+    const configureBtn = wrapper.findAll('button').find(b => b.text().includes('Configure'))
+    expect(configureBtn).toBeDefined()
+
+    // When edit mode is activated via composable or configure dropdown
+    widgets.isEditMode.value = true
+    await wrapper.vm.$nextTick()
+    expect(text(wrapper)).toContain('Layout editing active')
+
+    // Click Done editing in the active banner
+    const doneBtn = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('done editing'))
+    expect(doneBtn).toBeDefined()
+    await doneBtn?.trigger('click')
+    expect(widgets.isEditMode.value).toBe(false)
+  })
+
+  it('renders 12-column blueprint grid guide and block column indicators in edit mode', async () => {
+    const widgets = useGmDashboardWidgets()
+    widgets.resetToDefaults()
+    const wrapper = mount(GmDashboard, { global: globalOptions })
+
+    widgets.isEditMode.value = true
+    await wrapper.vm.$nextTick()
+
+    // Header labels for 12 columns
+    expect(text(wrapper)).toContain('Column 1')
+    expect(text(wrapper)).toContain('Column 12')
+
+    // Block handles rendered for each widget
+    const blockHandles = wrapper.findAll('.widget-block-handle')
+    expect(blockHandles.length).toBeGreaterThan(0)
+    expect(text(wrapper)).toContain('/12 Columns')
+
+    // Row grid blueprint indicators
+    expect(text(wrapper)).toContain('Row Block 1')
+    expect(text(wrapper)).toContain('Row Block 2')
+
+    // Horizontal (ke samping) and vertical row resize handles
+    const rightResizeHandles = wrapper.findAll('.group\\/resize-x')
+    expect(rightResizeHandles.length).toBeGreaterThan(0)
+
+    const bottomResizeHandles = wrapper.findAll('.group\\/resize-y')
+    expect(bottomResizeHandles.length).toBeGreaterThan(0)
+
+    const cornerResizeHandles = wrapper.findAll('.group\\/resize-corner')
+    expect(cornerResizeHandles.length).toBeGreaterThan(0)
   })
 })
 

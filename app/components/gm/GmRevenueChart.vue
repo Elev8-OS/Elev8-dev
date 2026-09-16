@@ -9,10 +9,16 @@ import {
 } from '~/components/gm/data/gm-dashboard'
 import { makeChartTooltip } from '~/components/owner-portal/chart-format'
 
-const props = defineProps<{
-  series: GmRevenuePoint[]
-  metrics: GmPeriodMetrics
-}>()
+const props = withDefaults(
+  defineProps<{
+    series: GmRevenuePoint[]
+    metrics: GmPeriodMetrics
+    height?: number
+  }>(),
+  {
+    height: 360,
+  },
+)
 
 const range = defineModel<GmRevenueRange>('range', { required: true })
 
@@ -27,8 +33,8 @@ const tooltip = makeChartTooltip((value: number) => formatMoney(value))
 </script>
 
 <template>
-  <Card class="@container/card">
-    <CardHeader>
+  <Card class="@container/card flex h-full flex-col">
+    <CardHeader class="pb-2">
       <CardTitle>Revenue trend</CardTitle>
       <CardDescription>
         {{ formatMoney(metrics.revenue) }} booked ·
@@ -46,18 +52,20 @@ const tooltip = makeChartTooltip((value: number) => formatMoney(value))
         </ToggleGroup>
       </CardAction>
     </CardHeader>
-    <CardContent>
-      <BarChart
-        :data="chartData"
-        :categories="[REVENUE]"
-        index="label"
-        :colors="['var(--vis-primary-color)']"
-        :rounded-corners="4"
-        :custom-tooltip="tooltip"
-        :y-formatter="(tick: number | Date) => formatCompactMoney(Number(tick))"
-        :show-legend="false"
-        class="h-[240px]"
-      />
+    <CardContent class="flex flex-1 flex-col min-h-0 pt-0 pb-3">
+      <div class="flex-1 min-h-[140px] w-full">
+        <BarChart
+          :data="chartData"
+          :categories="[REVENUE]"
+          index="label"
+          :colors="['var(--vis-primary-color)']"
+          :rounded-corners="4"
+          :custom-tooltip="tooltip"
+          :y-formatter="(tick: number | Date) => formatCompactMoney(Number(tick))"
+          :show-legend="false"
+          class="w-full h-full min-h-[140px]"
+        />
+      </div>
     </CardContent>
   </Card>
 </template>
