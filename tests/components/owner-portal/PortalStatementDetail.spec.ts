@@ -124,23 +124,49 @@ describe('owner portal statements', () => {
     expect(wrapper.findAll('input, textarea, select').length).toBe(0)
   })
 
-  it('opens the browser print dialog for PDF (no mock export)', async () => {
+  it('downloads a generated PDF file and records the export, without the print dialog', async () => {
     loginAs('own-1')
 
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
+    const createObjectUrl = vi.fn(() => 'blob:statement')
+    const revokeObjectUrl = vi.fn()
+    const originalCreate = URL.createObjectURL
+    const originalRevoke = URL.revokeObjectURL
+    URL.createObjectURL = createObjectUrl as unknown as typeof URL.createObjectURL
+    URL.revokeObjectURL = revokeObjectUrl as unknown as typeof URL.revokeObjectURL
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const wrapper = mount(PortalStatementDetail, {
-      props: { statementId: 'stmt-2' },
-      global: globalOptions,
-    })
-    await flushPromises()
+    try {
+      const { exportActivity } = useOwnerStatements()
+      const before = exportActivity.value.length
 
-    await wrapper.get('[data-testid="export-pdf"]').trigger('click')
-    expect(printSpy).toHaveBeenCalled()
-    // PDF button never shows "Exporting" — it just opens the print dialog
-    expect(wrapper.get('[data-testid="export-pdf"]').text()).not.toContain('Exporting')
-    // And it never calls mockExport for the PDF format
-    expect(toastMock.success).not.toHaveBeenCalled()
+      const wrapper = mount(PortalStatementDetail, {
+        props: { statementId: 'stmt-2' },
+        global: globalOptions,
+      })
+      await flushPromises()
+
+      await wrapper.get('[data-testid="export-pdf"]').trigger('click')
+      // A real file, handed over by an anchor — never the browser print dialog.
+      expect(createObjectUrl).toHaveBeenCalledOnce()
+      expect(createObjectUrl.mock.calls[0]![0]).toBeInstanceOf(Blob)
+      expect(anchorClick).toHaveBeenCalledOnce()
+      expect(printSpy).not.toHaveBeenCalled()
+      expect(toastMock.success).toHaveBeenCalledWith(expect.stringMatching(/pdf/i))
+
+      await vi.runAllTimersAsync()
+      await flushPromises()
+      // The download is logged like any other export.
+      const added = exportActivity.value.slice(before)
+      expect(added).toHaveLength(1)
+      expect(added[0]!.format).toBe('pdf')
+      expect(added[0]!.statementId).toBe('stmt-2')
+    }
+    finally {
+      anchorClick.mockRestore()
+      URL.createObjectURL = originalCreate
+      URL.revokeObjectURL = originalRevoke
+    }
   })
 
   it('shows loading and success feedback for XLSX mock export', async () => {

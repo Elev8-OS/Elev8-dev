@@ -29,6 +29,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '~/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useOwnerContracts } from '~/composables/useOwnerContracts'
 import { useOwnerOperationalFees } from '~/composables/useOwnerOperationalFees'
+import { useOwnerPayoutDetails } from '~/composables/useOwnerPayoutDetails'
 import { useOwnerPermissions } from '~/composables/useOwnerPermissions'
 import { useOwnerQuotas } from '~/composables/useOwnerQuotas'
 import { useOwners } from '~/composables/useOwners'
@@ -125,6 +126,13 @@ const ownerMappings = computed(() => owner.value ? mappings.value.filter(m => m.
 const ownerRules = computed<CommissionRule[]>(() => owner.value ? commissionRules.value.filter(r => r.ownerId === owner.value!.id) : [])
 const ownerStatements = computed(() => owner.value ? statements.value.filter(s => s.ownerId === owner.value!.id) : [])
 const ownerPermissions = computed(() => owner.value ? findPermissions(owner.value!.id) : undefined)
+
+// The owner's own payout details, read-only here — see the note in the
+// Financials tab.
+const { detailsFor: payoutDetailsFor, payoutAddressLines: toAddressLines, payoutBankLines: toBankLines } = useOwnerPayoutDetails()
+const ownerPayoutDetails = computed(() => owner.value ? payoutDetailsFor(owner.value.id) : undefined)
+const ownerPayoutLines = computed(() => toBankLines(ownerPayoutDetails.value))
+const ownerAddressLines = computed(() => toAddressLines(ownerPayoutDetails.value))
 
 const listingById = computed(() => new Map(listings.value.map(l => [l.id, l])))
 
@@ -985,6 +993,39 @@ function saveAnnualCap() {
 
           <!-- Financials: Statements + Contract -->
           <TabsContent value="financials" class="space-y-3 pt-3">
+            <!--
+              Read-only on purpose: the owner enters these in their portal, so
+              a wrong account number is always their own entry and never a
+              transcription error made on their behalf.
+            -->
+            <div class="rounded-md border p-3" data-testid="owner-payout-details">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-medium">
+                  Payout account
+                </p>
+                <Badge :variant="ownerPayoutLines.length > 0 ? 'secondary' : 'destructive'">
+                  {{ ownerPayoutLines.length > 0 ? 'On file' : 'Not provided' }}
+                </Badge>
+              </div>
+              <div v-if="ownerPayoutLines.length > 0" class="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                <p v-for="line in ownerPayoutLines" :key="line">
+                  {{ line }}
+                </p>
+              </div>
+              <p v-else class="mt-2 text-xs text-muted-foreground">
+                The owner has not added a payout account in their portal yet, so
+                their statements print no bank details.
+              </p>
+              <div v-if="ownerAddressLines.length > 0" class="mt-3 space-y-0.5 text-xs text-muted-foreground">
+                <p class="font-medium text-foreground">
+                  Address
+                </p>
+                <p v-for="line in ownerAddressLines" :key="line">
+                  {{ line }}
+                </p>
+              </div>
+            </div>
+
             <div v-if="ownerStatements.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
               No statements yet.
             </div>

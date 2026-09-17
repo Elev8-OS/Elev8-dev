@@ -5,6 +5,7 @@
 import type { OwnerContract } from '~/components/owners/data/owner-contracts'
 import type { Owner } from '~/components/owners/data/owners'
 import { jsPDF as JsPdf } from 'jspdf'
+import { OWNER_CONTRACT_PAYOUT_CLAUSE } from '~/components/owners/data/owner-contracts'
 
 const PAGE_WIDTH = 210 // A4 mm
 const MARGIN = 20
@@ -81,6 +82,8 @@ export function buildOwnerContractPdf(
     '',
     'A signed copy of this contract is stored in the owner\'s Document Center and remains',
     'available for download at any time.',
+    '',
+    OWNER_CONTRACT_PAYOUT_CLAUSE,
   ]
   const bodyText = body.join('\n')
   const bodyLines = doc.splitTextToSize(bodyText, CONTENT_WIDTH)

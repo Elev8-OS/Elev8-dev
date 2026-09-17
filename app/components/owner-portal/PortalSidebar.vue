@@ -15,6 +15,7 @@ const links = computed(() => [
   { label: 'Overview', to: '/owner-portal', icon: 'lucide:layout-dashboard', badge: 0 },
   { label: 'Statements', to: '/owner-portal/statements', icon: 'lucide:file-text', badge: 0 },
   { label: 'My Stays', to: '/owner-portal/stays', icon: 'lucide:calendar-days', badge: 0 },
+  { label: 'Bank Details', to: '/owner-portal/payout', icon: 'lucide:landmark', badge: 0 },
   { label: 'Documents', to: '/owner-portal/documents', icon: 'lucide:folder-open', badge: 0 },
   { label: 'Maintenance', to: '/owner-portal/maintenance', icon: 'lucide:wrench', badge: awaitingApproval.value },
 ])

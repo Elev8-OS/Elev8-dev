@@ -3,6 +3,7 @@ import type { OwnerStatementField } from '~/components/owners/data/owner-permiss
 import type { OwnerStatementLine } from '~/components/owners/data/owner-statements'
 import { computed, ref, toRef } from 'vue'
 import { listings } from '~/components/listings/data/listings'
+import { ownerStatementFieldForLineCategory } from '~/components/owners/data/owner-permissions'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
@@ -54,15 +55,6 @@ function canView(field: OwnerStatementField) {
   return portal.canViewStatementField(field)
 }
 
-const fieldForCategory: Record<OwnerStatementLine['category'], OwnerStatementField> = {
-  revenue: 'revenueLines',
-  expense: 'expenseDetails',
-  commission: 'commissionDetails',
-  tax: 'taxesAndFees',
-  fee: 'taxesAndFees',
-  adjustment: 'adjustments',
-}
-
 const sectionLabels: Record<OwnerStatementField, string> = {
   revenueLines: 'Revenue',
   expenseDetails: 'Operating expenses',
@@ -85,7 +77,7 @@ const visibleSections = computed(() => sectionOrder
   .map(field => ({
     field,
     label: sectionLabels[field],
-    lines: sourceLines.value.filter(line => fieldForCategory[line.category] === field),
+    lines: sourceLines.value.filter(line => ownerStatementFieldForLineCategory[line.category] === field),
   }))
   .filter(section => section.lines.length > 0))
 

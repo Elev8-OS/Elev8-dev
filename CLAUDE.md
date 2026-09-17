@@ -415,6 +415,76 @@ An owner raises an issue on one statement **line** from the portal
   owner reply box) and the new-issue form is withheld, which is what enforces one-open-issue-per-
   line in the UI; with none it shows resolved history above the form.
 
+#### PDF export (owner portal)
+
+The portal's **PDF** button generates a real file with `buildOwnerStatementPdf`
+(`app/lib/owner-statement-pdf.ts`, jsPDF) and downloads it. It used to call `window.print()`,
+which produced no file and left the result to whatever the browser's Save as PDF did.
+
+**The design is the guest invoice's** (`folio-invoice-pdf.ts`), deliberately: clean white page,
+company block top-left, logo and title top-right, a "Statement For" block, grey-header tables
+(`175,178,183`), and a two-column closing section where the invoice puts its payment block. It
+even resolves the company letterhead from the **same** `useInvoiceTemplates().getTemplateForListing`,
+so a tenant configures its address, registration and VAT once for both documents. Keep the two
+files' palette, column anchors and type scale in step; a change to one that is not mirrored is
+what makes a tenant's paperwork look like two different companies.
+
+- ⚠️ **Never `−` (U+2212) in a PDF string.** jsPDF's built-in Helvetica is WinAnsi and renders it
+  as a stray quote mark. Every deduction on a statement is negative, so the wrong glyph showed on
+  every line until it became an ASCII hyphen. `folio-invoice-pdf.ts` still carries the same
+  U+2212 in its `fmtCurrency`; it is invisible there only because invoice amounts are rarely
+  negative.
+- ⚠️ **The file prints the frozen `publishedSnapshot`**, falling back to the live lines only when
+  a statement has no snapshot. What the owner was told is what the file must say.
+- ⚠️ **It prints only what the owner may see.** `PortalExportButtons.vue` filters the lines
+  through `ownerStatementFieldForLineCategory` (in `owner-permissions.ts` — shared with
+  `PortalStatementDetail.vue`, do not re-inline it) and passes `showPayout` from
+  `canViewStatementField('netPayout')`. Reservations and adjustments arrive already gated by
+  `useOwnerStatementDetail`. A leak here outlives the session, so the builder never re-derives
+  visibility: it prints the `lines` it is handed and nothing else.
+- **Each figure appears once.** The totals live only in the closing Payout block (category
+  subtotals, then the hero NET PAYOUT); the items table closes with a rule and nothing else. An
+  earlier pass printed gross/deductions under the table *and* by category in the block, so the
+  reader met the same number twice.
+- **Layout order mirrors the invoice**: *Statement For* (owner, their address, the property) and
+  *Statement Details* (period, owner split, cost share, published date) sit side by side at the
+  top, and the closing section is **Payout Account** on the left.
+- ⚠️ **That block is the OWNER's account, never the manager's.** It answers "where does my money
+  land", so printing the company's remittance account there would read as an instruction to pay
+  us. With nothing on file the file says so in as many words (`No payout account on file`) and
+  points at the portal; it never falls back to `template.bank`.
+- ⚠️ **There is no statement document number, so none is printed.** `statement.id` is an internal
+  id; putting "Statement # STMT-2" in the header dressed it up as a reference an owner could
+  quote back. The issue date is gone too — `Published` in Statement Details is the real one.
+- **Adjustment details** restate the reason per correction, never a second amount: an applied
+  correction is already one of the items above, so its row reads "Included in the items above",
+  while a related one names the statement that carries the money.
+- ⚠️ **The closing block is measured before it is drawn.** It grows a row per category and ends
+  in a 16pt figure, so a fixed height guess pushed the hero number straight through the footer.
+  `closingHeight` mirrors the drawing arithmetic; change one and change the other.
+- **Branding** uses `useTenantBranding().branding.primaryLogo`, falling back to the template's
+  own `company.logoDataUrl` and then to the invoice's E8 mark. jsPDF decodes PNG and JPEG only,
+  so a WebP logo, or one that fails to decode, falls back rather than throwing.
+- **Pagination** is real: every block calls `ensure()` first, the booking table repeats its
+  column headers on each page, and the footer is stamped per page with `Page n of m` once there
+  is more than one.
+- The download is recorded through `mockExport({ format: 'pdf' })` **after** the file is handed
+  over, so a failed activity row can never read as a failed export.
+- ⚠️ The on-screen `PortalStatementSummary` card does **not** gate its "Net revenue" figure,
+  while the PDF gates the payout on `netPayout`. Both built-in templates have that field on, so
+  nothing differs today; if a custom config turns it off, the card is the one that is wrong.
+  Occupancy and ADR are hardcoded `0` in that card and are deliberately absent from the PDF
+  rather than printed as zeros.
+
+**Tests:** `tests/lib/owner-statement-pdf.spec.ts` (12 — jsPDF is replaced with a recorder, so
+the assertions are about what lands on the page: snapshot over live figures, only the given
+lines, payout gating, the adjustment notes, pagination and repeated headers, logo embed and both
+fallbacks, filename). ⚠️ Money assertions build their expected string with the same
+`toLocaleString('de-CH')` the writer uses — hardcoding `25'180'000` pins the test to one ICU
+version, which groups with a typographic apostrophe on modern Node. A recorder cannot catch a
+layout regression, so render a real PDF and look at it (`pdftoppm -png`) after changing the
+geometry.
+
 **Tests:** `tests/composables/useOwnerStatements.spec.ts` (folding, no double-apply,
 adjustment-only statement, currency guard), `tests/composables/useOwnerStatementDetail.spec.ts`
 (pending vs applied, cross-owner isolation), `tests/components/owner-portal/PortalStatementDetail.spec.ts`
@@ -428,6 +498,47 @@ must honour `open` or a closed drawer still renders its slot.
 reason is the audit trail); no settlement of the payout itself (no paid status, transfer date, or
 payout integration, only `netPayout` as a figure); no delete or edit of a recorded adjustment; no
 reopening a resolved issue (the owner raises a new one on the same line).
+
+### Owner Payout Details (`app/components/owners/data/owner-payout-details.ts` + `useOwnerPayoutDetails.ts`)
+
+Where an owner's money goes, and the postal address their statement is addressed to. Entered by
+the owner at **Bank Details** in the portal (`/owner-portal/payout`).
+
+- **Its own store keyed by ownerId**, not fields on `Owner` — the same shape permissions and
+  operational fees use. Seed owners need no migration, and "no record yet" is a real state the
+  statement PDF has to be able to report.
+- ⚠️ **`saveForCurrentOwner(draft)` takes the owner id from the portal session, never from its
+  caller.** That is the whole access model: a portal page cannot be talked into writing another
+  owner's account, because it never names one. Staff read it and never write it
+  (`OwnerDetailSheet.vue` → Financials tab, read-only), so a wrong account number is always the
+  owner's own entry rather than a transcription error made on their behalf.
+- ⚠️ **IBANs are checked with the ISO 13616 mod-97 checksum**, not just length and shape: a
+  transposed pair of digits passes every structural rule and still sends the money nowhere. The
+  expansion overflows `Number.MAX_SAFE_INTEGER`, so the remainder is taken digit by digit.
+- ⚠️ **Either an IBAN or a local account number is required, never an IBAN specifically.**
+  Indonesian banks issue none, and requiring one would lock out the owners this product was
+  built for.
+- `payoutAddressLines()` / `payoutBankLines()` are the one formatting of these fields; the portal
+  page, the staff sheet and the statement PDF all print what they return, so the owner reads the
+  same account everywhere.
+- Persisted to LocalStorage (`elev8-owner-payout-details-v1`), guarded on storage availability
+  rather than `import.meta.client`, which Vitest does not substitute.
+- **The first-login agreement says so.** `OWNER_CONTRACT_PAYOUT_CLAUSE` (in `owner-contracts.ts`)
+  is rendered on the signing screen and written into the signed contract PDF, so the promise
+  about where payouts go reads identically in the document the owner keeps and the screen they
+  clicked through. It is one constant for exactly that reason.
+
+**Tests:** `tests/lib/owner-payout-details.spec.ts` (20 — the mod-97 checksum including a
+transposed-digit IBAN that every structural rule accepts, the IBAN-or-account-number rule, draft
+round-trip, printed lines), `tests/components/owner-portal/PortalPayout.spec.ts` (5 — hydration,
+the empty state, saving against the session owner without touching another's record, the rejected
+IBAN, and the no-session guard), `tests/lib/owner-contract-pdf.spec.ts` (1 — the clause reaches
+the signed copy).
+
+**NOT implemented (intentionally out of scope):** no verification of the account (no micro-deposit,
+no name match against the owner record); no change history or approval when an owner edits the
+account; no notification to staff that it changed; and nothing actually transfers money — see the
+settlement gap noted under Owner Statement Corrections.
 
 ### SmartLock Integration (`app/components/settings/` + `app/composables/useSmartLock.ts`)
 

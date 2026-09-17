@@ -10,6 +10,8 @@
 // is shared, but whichever composable runs first seeds storage with the
 // same strict canonical view).
 
+import type { OwnerStatementLineCategory } from './owner-statements'
+
 export type OwnerDashboardField
   = | 'grossRevenue'
     | 'netRevenue'
@@ -28,6 +30,23 @@ export type OwnerStatementField
     | 'netPayout'
 
 export type OwnerPermissionTemplateId = 'full_transparency' | 'financial_summary' | 'custom'
+
+/**
+ * Which permission field governs a statement line of a given category.
+ *
+ * Shared by the portal's statement detail and the PDF export: a line the
+ * portal hides must not reappear in a downloaded file, so both surfaces have
+ * to gate on the same map. It was inline in `PortalStatementDetail.vue` until
+ * the PDF needed it; do not re-inline it.
+ */
+export const ownerStatementFieldForLineCategory: Record<OwnerStatementLineCategory, OwnerStatementField> = {
+  revenue: 'revenueLines',
+  expense: 'expenseDetails',
+  commission: 'commissionDetails',
+  tax: 'taxesAndFees',
+  fee: 'taxesAndFees',
+  adjustment: 'adjustments',
+}
 
 export interface OwnerPermissionConfig {
   ownerId: string

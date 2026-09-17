@@ -7,7 +7,7 @@
 
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
-import { OWNER_CONTRACT_STATUS_LABELS } from '~/components/owners/data/owner-contracts'
+import { OWNER_CONTRACT_PAYOUT_CLAUSE, OWNER_CONTRACT_STATUS_LABELS } from '~/components/owners/data/owner-contracts'
 import OwnerSignaturePad from '~/components/OwnerSignaturePad.vue'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
@@ -146,6 +146,16 @@ function doSign() {
           (cleaning, utilities, maintenance) are billed separately and are never
           percentage-based. A signed copy is stored in your Document Center.
         </p>
+
+        <div class="rounded-md border bg-muted/40 p-3" data-testid="contract-payout-clause">
+          <p class="flex items-center gap-2 text-xs font-medium">
+            <Icon name="lucide:landmark" class="size-3.5 shrink-0" aria-hidden="true" />
+            How you get paid
+          </p>
+          <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {{ OWNER_CONTRACT_PAYOUT_CLAUSE }}
+          </p>
+        </div>
 
         <Separator />
 

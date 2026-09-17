@@ -58,6 +58,19 @@ export const OWNER_CONTRACT_STATUS_LABELS: Record<OwnerContractStatus, string> =
   signed: 'Signed',
 }
 
+/**
+ * The payout clause the owner agrees to at first login, and the single source
+ * of that sentence. It is rendered on the signing screen AND written into the
+ * signed PDF: a promise about where money goes must read identically in the
+ * document the owner keeps and the screen they clicked through.
+ */
+export const OWNER_CONTRACT_PAYOUT_CLAUSE
+  = 'Payouts are transferred to the bank account you enter under Bank Details in '
+    + 'your owner portal, and your statements are addressed to the postal address '
+    + 'you enter there. Keep both current: we can only pay out to the account on '
+    + 'file, and a change made after a statement is published applies from the '
+    + 'next payout onwards.'
+
 // --- Seed fixtures ----------------------------------------------------------
 
 export const mockOwnerContracts: OwnerContract[] = [
