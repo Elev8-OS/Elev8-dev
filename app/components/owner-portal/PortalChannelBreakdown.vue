@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OwnerChannelBreakdownRow } from '~/composables/useOwnerStatementDetail'
 import { computed } from 'vue'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 
 const props = defineProps<{
@@ -60,7 +61,7 @@ const totalShare = computed(() => props.breakdown.reduce((s, b) => s + b.share, 
           </div>
           <div class="flex items-center gap-4 text-muted-foreground tabular-nums">
             <span>{{ row.reservations }} reservations</span>
-            <span class="font-medium text-foreground">{{ currency }} {{ row.revenue.toLocaleString('id-ID') }}</span>
+            <span class="font-medium text-foreground">{{ formatOwnerMoney(row.revenue, currency) }}</span>
             <span class="w-12 text-right">{{ (row.share * 100).toFixed(0) }}%</span>
           </div>
         </div>

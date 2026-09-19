@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatOwnerMoneyRounded } from '~/components/owners/data/owner-money'
 import { useOwnerDashboard } from '~/composables/useOwnerDashboard'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
 import PortalAdrChart from './PortalAdrChart.vue'
@@ -26,10 +27,10 @@ const kpis = computed(() => {
   if (!current.value)
     return []
   return [
-    { key: 'grossRevenue' as const, label: 'Gross revenue', value: `${currency.value} ${Math.round(current.value.grossRevenue).toLocaleString('id-ID')}` },
-    { key: 'netRevenue' as const, label: 'Net revenue', value: `${currency.value} ${Math.round(current.value.netRevenue).toLocaleString('id-ID')}` },
+    { key: 'grossRevenue' as const, label: 'Gross revenue', value: formatOwnerMoneyRounded(current.value.grossRevenue, currency.value) },
+    { key: 'netRevenue' as const, label: 'Net revenue', value: formatOwnerMoneyRounded(current.value.netRevenue, currency.value) },
     { key: 'occupancy' as const, label: 'Occupancy', value: `${Math.round(current.value.occupancy * 100)}%` },
-    { key: 'adr' as const, label: 'ADR', value: `${currency.value} ${Math.round(current.value.adr).toLocaleString('id-ID')}` },
+    { key: 'adr' as const, label: 'ADR', value: formatOwnerMoneyRounded(current.value.adr, currency.value) },
   ].filter(k => portal.canViewDashboardField(k.key))
 })
 </script>
@@ -45,11 +46,45 @@ const kpis = computed(() => {
           How your property has been doing over the last 12 months.
         </p>
       </div>
-      <PortalPropertyPicker
-        v-model="portal.selectedPropertyId.value"
-        :properties="portal.assignedProperties.value"
-      />
+      <div class="flex items-end gap-2">
+        <!--
+          Shown only when this owner genuinely earns in more than one currency.
+          Figures are never converted or blended, so switching here changes
+          which slice of the ledger the whole page reports on.
+        -->
+        <Select
+          v-if="dashboard.availableCurrencies.value.length > 1"
+          :model-value="currency"
+          @update:model-value="(v) => dashboard.selectedCurrency.value = v as string"
+        >
+          <SelectTrigger class="w-28" aria-label="Currency" data-testid="dashboard-currency-picker">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="code in dashboard.availableCurrencies.value"
+              :key="code"
+              :value="code"
+            >
+              {{ code }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <PortalPropertyPicker
+          v-model="portal.selectedPropertyId.value"
+          :properties="portal.assignedProperties.value"
+        />
+      </div>
     </div>
+
+    <p
+      v-if="dashboard.availableCurrencies.value.length > 1"
+      class="text-xs text-muted-foreground"
+      data-testid="dashboard-currency-note"
+    >
+      You earn in {{ dashboard.availableCurrencies.value.join(' and ') }}. These figures
+      cover {{ currency }} only and are not converted.
+    </p>
 
     <!-- Empty state: no metrics visible -->
     <div

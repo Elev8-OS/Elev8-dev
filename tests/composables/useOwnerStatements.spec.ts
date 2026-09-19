@@ -14,8 +14,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { alertDisplayLabels, alertIcons, alertRouteMap, getDescription as getAlertDescription } from '~/components/notifications/data/alerts'
 import { calculateCommission, mockCommissionRules } from '~/components/owners/data/commission-rules'
 import { mockOwnerLedgerEntries, roundCurrency } from '~/components/owners/data/owner-ledger'
+import { buildOwnerPermissionTemplate } from '~/components/owners/data/owner-permissions'
 import { mockOwnerStatements } from '~/components/owners/data/owner-statements'
 import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
+import { useOwners } from '~/composables/useOwners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
 
 // Restrict the period helper to fixtures we control — keeps tests deterministic
@@ -261,13 +263,73 @@ describe('useOwnerStatements', () => {
       expect(statements.value.length).toBe(before)
     })
 
-    it('seeds draft statements with currency matching the owner\'s statementCurrency', () => {
+    // A statement is denominated by the LEDGER it is drawn from, never by the
+    // owner record's `statementCurrency`. The old version of this test was
+    // named for the owner field and passed only because the seed currencies
+    // happened to agree, so it would have stayed green no matter how badly
+    // the two diverged. own-2 is the case that separates them: they prefer
+    // USD, yet own an IDR-earning property.
+    it('denominates a draft by its ledger currency, not the owner\'s statementCurrency', () => {
       const { generateForPeriod, statements } = useOwnerStatements()
       generateForPeriod(TEST_PERIOD)
+
+      const putu = mockOwners.find(o => o.id === 'own-2')!
+      expect(putu.statementCurrency).toBe('USD')
+
+      // lst-8 earns USD and agrees with the preference.
       const putuLst8 = statements.value.find(s => s.id === 'stmt-3')!
-      expect(putuLst8.currency).toBe('USD')
+      const ledgerLst8 = mockOwnerLedgerEntries.find(
+        e => e.ownerId === 'own-2' && e.listingId === 'lst-8' && e.period === TEST_PERIOD,
+      )!
+      expect(putuLst8.currency).toBe(ledgerLst8.currency)
+
+      // lst-3 earns IDR and disagrees with it. The ledger wins.
+      const putuLst3 = statements.value.find(
+        s => s.ownerId === 'own-2' && s.listingId === 'lst-3' && s.period === TEST_PERIOD,
+      )!
+      const ledgerLst3 = mockOwnerLedgerEntries.find(
+        e => e.ownerId === 'own-2' && e.listingId === 'lst-3' && e.period === TEST_PERIOD,
+      )!
+      expect(ledgerLst3.currency).toBe('IDR')
+      expect(putuLst3.currency).toBe('IDR')
+      expect(putuLst3.currency).not.toBe(putu.statementCurrency)
+
       const wayanLst1 = statements.value.find(s => s.id === 'stmt-1')!
       expect(wayanLst1.currency).toBe('IDR')
+    })
+
+    // Regression: generation used to read the module seed arrays directly, so
+    // an owner created through the UI (which writes to the `useOwners` store)
+    // was invisible to it and silently never received a statement.
+    it('sees an owner created through the store, not just the seed array', () => {
+      const { createOwner, owners, mappings } = useOwners()
+      const created = createOwner({
+        owner: {
+          name: 'Currency Test Owner',
+          email: 'currency.test@example.com',
+          phone: '+6281234500999',
+          language: 'en',
+          statementCurrency: 'USD',
+          annualOwnerUseNightCap: undefined,
+        },
+        mappings: [],
+        commissionRules: [],
+        permissions: buildOwnerPermissionTemplate('financial_summary', 'placeholder', new Date().toISOString()),
+        inviteNow: false,
+      })
+      expect(created.success).toBe(true)
+      expect(owners.value.some(o => o.id === created.ownerId)).toBe(true)
+      // The seed array is untouched, which is exactly why reading it was a bug.
+      expect(mockOwners.some(o => o.id === created.ownerId)).toBe(false)
+
+      // Generation must now consider the new owner. It still draws nothing,
+      // because no ledger rows exist for them, but it must not be because the
+      // owner was never looked at.
+      const { generateForPeriod } = useOwnerStatements()
+      const result = generateForPeriod(TEST_PERIOD)
+      expect(result.ok).toBe(true)
+      const considered = mappings.value.filter(m => m.ownerId === created.ownerId)
+      expect(considered).toHaveLength(0)
     })
 
     it('idempotency does not emit OWNER_STATEMENT_DRAFT_READY on a no-op re-run', () => {
@@ -1253,7 +1315,7 @@ describe('useOwnerStatements', () => {
     })
   })
 
-  describe('PRD 5.5 — preview, pre-publish adjustments, dispute thread', () => {
+  describe('pRD 5.5 — preview, pre-publish adjustments, dispute thread', () => {
     it('moves a draft into preview and back', () => {
       const { moveToPreview, backToDraft, statements } = useOwnerStatements()
       const target = statements.value.find(s => s.id === 'stmt-1')!

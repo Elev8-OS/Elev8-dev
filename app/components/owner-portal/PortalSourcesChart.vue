@@ -3,6 +3,7 @@ import type { OwnerSourcesRow } from '~/composables/useOwnerDashboard'
 import { computed } from 'vue'
 import { formatChannel, formatPeriod, makeChartTooltip } from '~/components/owner-portal/chart-format'
 import ChartInfo from '~/components/owner-portal/ChartInfo.vue'
+import { formatOwnerMoneyRounded } from '~/components/owners/data/owner-money'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { BarChart } from '~/components/ui/chart-bar'
 
@@ -33,7 +34,7 @@ const data = computed(() => props.series.map((row) => {
 }))
 
 function formatCurrency(amount: number) {
-  return `${props.currency} ${Math.round(amount).toLocaleString('id-ID')}`
+  return formatOwnerMoneyRounded(amount, props.currency)
 }
 
 const tooltip = makeChartTooltip(formatCurrency)

@@ -124,8 +124,14 @@ function sortedList(list: StatementRow[]) {
       return a.ownerLabel.localeCompare(b.ownerLabel) * factor
     if (sortKey.value === 'listing')
       return a.listingId.localeCompare(b.listingId) * factor
-    if (sortKey.value === 'amount')
-      return (a.totalAmount - b.totalAmount) * factor
+    if (sortKey.value === 'amount') {
+      // Group by currency first: ordering IDR 72,800,000 against USD 5,000 on
+      // the raw number puts every IDR statement on top regardless of how much
+      // money it represents. Within one currency the amounts compare honestly.
+      if (a.currency !== b.currency)
+        return a.currency.localeCompare(b.currency)
+    }
+    return (a.totalAmount - b.totalAmount) * factor
     if (sortKey.value === 'issues')
       return (a.openIssues - b.openIssues) * factor
     return a.period.localeCompare(b.period) * factor

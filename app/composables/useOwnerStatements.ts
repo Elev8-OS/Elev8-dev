@@ -61,7 +61,6 @@ import {
   calculateCommission,
   commissionBasisLabel,
   findEffectiveCommissionRule,
-  mockCommissionRules,
 } from '~/components/owners/data/commission-rules'
 import {
   calculateStatementTotals,
@@ -73,8 +72,8 @@ import {
   buildStatementLines,
   mockOwnerStatements,
 } from '~/components/owners/data/owner-statements'
-import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
 import { useNotifications } from '~/composables/useNotifications'
+import { useOwners } from '~/composables/useOwners'
 
 // --- Public types ----------------------------------------------------------
 
@@ -360,9 +359,19 @@ export function useOwnerStatements() {
       }
     }
 
-    const owners = mockOwners
-    const mappings = mockOwnerPropertyMappings
-    const rules = mockCommissionRules
+    // Read the live stores, not the seed arrays. `useOwners` clones the seeds
+    // into `useState` on first call, so an owner, property mapping or
+    // commission rule created through the UI exists ONLY there. Reading
+    // `mockOwners` here meant every owner added after startup was invisible to
+    // generation and silently never received a statement.
+    const ownersStore = useOwners()
+    const owners = ownersStore.owners.value
+    const mappings = ownersStore.mappings.value
+    const rules = ownersStore.commissionRules.value
+    // The ledger has no store of its own yet, so the fixture stays the source
+    // of truth. This is why a newly created owner still draws no statement:
+    // nothing generates ledger rows for them. See `generateForPeriod`'s
+    // caller-facing note.
     const ledger = mockOwnerLedgerEntries
 
     const existingKeys = new Set(
@@ -805,7 +814,7 @@ export function useOwnerStatements() {
       return { ok: false, reason: 'statement_not_found' }
     }
 
-    const owner = mockOwners.find(o => o.id === statement.ownerId)
+    const owner = useOwners().owners.value.find(o => o.id === statement.ownerId)
     const activity: OwnerExportActivity = {
       id: deriveUniqueId('exa', exportIdTaken),
       format: input.format,

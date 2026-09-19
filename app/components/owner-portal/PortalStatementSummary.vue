@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OwnerStatementDetail } from '~/composables/useOwnerStatementDetail'
 import { computed } from 'vue'
+import { formatOwnerMoney, formatOwnerMoneyRounded } from '~/components/owners/data/owner-money'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import PortalStatementPeriodDelta from './PortalStatementPeriodDelta.vue'
 
@@ -43,7 +44,7 @@ const adr = computed(() => occupancy.value)
             Gross revenue
           </p>
           <p class="text-xl font-semibold tabular-nums">
-            {{ currency }} {{ grossRevenue.toLocaleString('id-ID') }}
+            {{ formatOwnerMoney(grossRevenue, currency) }}
           </p>
           <PortalStatementPeriodDelta
             v-if="comparison"
@@ -56,7 +57,7 @@ const adr = computed(() => occupancy.value)
             Net revenue
           </p>
           <p class="text-xl font-semibold tabular-nums">
-            {{ currency }} {{ netRevenue.toLocaleString('id-ID') }}
+            {{ formatOwnerMoney(netRevenue, currency) }}
           </p>
           <PortalStatementPeriodDelta
             v-if="comparison"
@@ -82,7 +83,7 @@ const adr = computed(() => occupancy.value)
             ADR
           </p>
           <p class="text-xl font-semibold tabular-nums">
-            {{ currency }} {{ Math.round(adr).toLocaleString('id-ID') }}
+            {{ formatOwnerMoneyRounded(adr, currency) }}
           </p>
           <PortalStatementPeriodDelta
             v-if="comparison"

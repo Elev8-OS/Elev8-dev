@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OwnerReservationForStatement } from '~/components/owners/data/owner-statement-reservations'
 import { ref } from 'vue'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { Badge } from '~/components/ui/badge'
 import { Card, CardContent } from '~/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -78,13 +79,13 @@ const open = ref(false)
                   {{ res.nights }}
                 </td>
                 <td class="px-4 py-3 text-right font-medium tabular-nums">
-                  {{ currency }} {{ res.grossAmount.toLocaleString('id-ID') }}
+                  {{ formatOwnerMoney(res.grossAmount, currency) }}
                 </td>
                 <td class="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                  {{ currency }} {{ res.channelFee.toLocaleString('id-ID') }}
+                  {{ formatOwnerMoney(res.channelFee, currency) }}
                 </td>
                 <td class="px-4 py-3 text-right font-semibold tabular-nums">
-                  {{ currency }} {{ res.netToOwner.toLocaleString('id-ID') }}
+                  {{ formatOwnerMoney(res.netToOwner, currency) }}
                 </td>
               </tr>
             </tbody>

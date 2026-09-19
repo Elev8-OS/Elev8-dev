@@ -17,6 +17,7 @@ import { computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import StatementPublishDialog from '~/components/owner-statements/StatementPublishDialog.vue'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -1040,7 +1041,7 @@ function saveAnnualCap() {
                     {{ stmt.period }} · {{ listingById.get(stmt.listingId)?.name ?? stmt.listingId }}
                   </div>
                   <div class="text-xs text-muted-foreground">
-                    {{ stmt.currency }} {{ stmt.totalAmount.toLocaleString() }}
+                    {{ formatOwnerMoney(stmt.totalAmount, stmt.currency) }}
                   </div>
                 </div>
                 <div class="flex shrink-0 items-center gap-2">

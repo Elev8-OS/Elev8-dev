@@ -578,21 +578,29 @@ describe('useOwnerPortal', () => {
       const { dashboardMetrics } = useOwnerPortal()
       const metrics = dashboardMetrics.value!
 
-      // The seed mixes IDR + USD, and the 12-month extension now puts many
-      // own-2 entries on the books. dashboardMetrics normalises to a single
-      // currency bucket per owner, using the LATEST non-adjustment period.
-      // What we pin down is that the result reflects ONLY own-2's ledgers.
+      // The seed mixes IDR + USD in own-2's latest period (two USD listings
+      // and one IDR one). The roll-up reports ONE currency and drops the
+      // rest, so the expected figure is the sum of that currency's rows
+      // alone. Summing all three would produce "USD 148,020,900", which is
+      // the cross-currency blend this behaviour exists to prevent.
       const own2Current = mockOwnerLedgerEntries
         .filter(e => e.ownerId === 'own-2' && !e.isPriorPeriodAdjustment)
         .map(e => e.period)
         .sort()
         .pop()!
-      const own2CurrentGross = mockOwnerLedgerEntries
-        .filter(
-          e => e.ownerId === 'own-2' && e.period === own2Current && !e.isPriorPeriodAdjustment,
-        )
+      const own2CurrentRows = mockOwnerLedgerEntries.filter(
+        e => e.ownerId === 'own-2' && e.period === own2Current && !e.isPriorPeriodAdjustment,
+      )
+      const own2CurrentGross = own2CurrentRows
+        .filter(e => e.currency === metrics.currency)
         .reduce((sum, e) => sum + e.grossRevenue, 0)
       expect(metrics.grossRevenue).toBe(own2CurrentGross)
+
+      // own-2 prefers USD and does earn in it, so that is what they open on,
+      // and the blended total must not survive anywhere.
+      expect(metrics.currency).toBe('USD')
+      const blended = own2CurrentRows.reduce((sum, e) => sum + e.grossRevenue, 0)
+      expect(metrics.grossRevenue).not.toBe(blended)
 
       // And it must NOT include own-1's led-1 (any month).
       const wayanGross = mockOwnerLedgerEntries
@@ -613,8 +621,13 @@ describe('useOwnerPortal', () => {
         e => e.ownerId === 'own-1' && !e.isPriorPeriodAdjustment,
       )
       const currentPeriod = own1Entries.map(e => e.period).sort().pop()!
-      const currentEntry = own1Entries.find(e => e.period === currentPeriod)!
-      const expectedGuests = currentEntry.upcomingReservations
+      // own-1 holds more than one listing in that period, so the expected
+      // list is every matching row flattened, not just the first one found.
+      const currentEntries = own1Entries.filter(
+        e => e.period === currentPeriod && e.currency === dashboardMetrics.value!.currency,
+      )
+      const expectedGuests = currentEntries
+        .flatMap(e => e.upcomingReservations)
         .map(u => u.guestName)
         .sort()
       const guestNames = upcoming.map(u => u.guestName).sort()

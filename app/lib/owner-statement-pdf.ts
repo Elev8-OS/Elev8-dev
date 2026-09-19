@@ -110,7 +110,9 @@ function fmtCurrency(amount: number, currency: string): string {
   // true minus sign renders there as a stray quote mark. Every deduction on
   // this document is negative, so the wrong glyph would show on every line.
   const sign = amount < 0 ? '-' : ''
-  return `${sign}${currency} ${grouped}`
+  // `.trim()` so a statement with no currency prints a bare number rather
+  // than a leading space. Visibly incomplete beats confidently wrong.
+  return `${sign}${currency} ${grouped}`.trim()
 }
 
 function monthLabel(period: string): string {
@@ -153,7 +155,11 @@ export function buildOwnerStatementPdf(input: StatementPdfInput, opts: { downloa
   // The frozen snapshot is what the owner was shown. Never re-derive these
   // from the live statement when a snapshot exists.
   const source = statement.publishedSnapshot ?? statement
-  const currency = source.currency || statement.currency || 'IDR'
+  // No `|| 'IDR'` fallback: defaulting to a currency on a document the owner
+  // keeps would state, in writing, a fact nobody established. A statement
+  // always carries its ledger currency; if one is somehow missing, the file
+  // prints the figures without a code instead of inventing one.
+  const currency = source.currency || statement.currency || ''
   const totalAmount = source.totalAmount
   const lines = input.lines ?? source.lines
   const adjustments = input.adjustments ?? []

@@ -26,6 +26,8 @@ export interface OwnerSourcesRow {
 
 export interface OwnerDashboardMonth {
   period: string
+  /** The ledger currency these figures are in. Never blended across currencies. */
+  currency: string
   grossRevenue: number
   netRevenue: number
   occupancy: number
@@ -58,9 +60,18 @@ function previousPeriod(period: string): string {
 }
 
 function aggregateMonth(entries: OwnerLedgerEntry[]): OwnerDashboardMonth | null {
-  if (entries.length === 0)
+  const head = entries[0]
+  if (!head)
     return null
-  const period = entries[0].period
+  // Callers must hand this a single-currency slice. Money fields below are
+  // summed as raw numbers, so a mixed slice would silently add IDR to USD.
+  // There is no FX rate anywhere in this app by design (see the "no currency
+  // conversion, ever" rule the folio, city tax and statement modules share),
+  // so the only safe response is to refuse rather than blend.
+  const currency = head.currency
+  if (entries.some(e => e.currency !== currency))
+    return null
+  const period = head.period
   const grossRevenue = entries.reduce((s, e) => s + e.grossRevenue, 0)
   const expenses = entries.reduce((s, e) => s + e.expenses, 0)
   const taxes = entries.reduce((s, e) => s + e.taxes, 0)
@@ -95,6 +106,7 @@ function aggregateMonth(entries: OwnerLedgerEntry[]): OwnerDashboardMonth | null
 
   return {
     period,
+    currency,
     grossRevenue,
     netRevenue: grossRevenue - expenses - taxes - platformFees,
     occupancy: availableNights > 0 ? occupiedNights / availableNights : 0,
@@ -118,6 +130,12 @@ export function useOwnerDashboard(): {
   hasYearOverYearData: ComputedRef<boolean>
   hasVisibleMetrics: ComputedRef<boolean>
   selectedPropertyId: Ref<string | null>
+  /** Currencies this owner earns in, busiest first. Empty when there is no ledger. */
+  availableCurrencies: ComputedRef<string[]>
+  /** Explicit viewer choice; `null` follows the busiest currency. */
+  selectedCurrency: Ref<string | null>
+  /** The currency every figure on the dashboard is currently expressed in. */
+  activeCurrency: ComputedRef<string>
 } {
   const { session } = useOwnerAuth()
   const { mappings } = useOwners()
@@ -137,7 +155,14 @@ export function useOwnerDashboard(): {
     return map
   })
 
-  const ownerEntries = computed<OwnerLedgerEntry[]>(() => {
+  /**
+   * Owner- and property-scoped ledger, before the currency filter.
+   *
+   * An owner can legitimately hold properties that earn in different
+   * currencies (own-2 owns an IDR villa and a USD one), so this list is the
+   * honest superset and `activeCurrency` picks one slice of it to display.
+   */
+  const ownerScopedEntries = computed<OwnerLedgerEntry[]>(() => {
     const id = ownerId.value
     if (!id)
       return []
@@ -159,6 +184,55 @@ export function useOwnerDashboard(): {
         }
       })
   })
+
+  /**
+   * Currencies this owner actually earns in, busiest first.
+   *
+   * Derived from the ledger rather than from `owner.statementCurrency`: the
+   * owner record's preference has no bearing on what the money actually is,
+   * and labelling CHF figures "IDR" because someone picked IDR on the create
+   * form is the bug this ordering exists to prevent.
+   */
+  const availableCurrencies = computed<string[]>(() => {
+    const rowsByCurrency = new Map<string, number>()
+    for (const entry of ownerScopedEntries.value)
+      rowsByCurrency.set(entry.currency, (rowsByCurrency.get(entry.currency) ?? 0) + 1)
+    // Ordered by how many ledger rows each currency has, NOT by revenue.
+    // Ranking on revenue would compare 148,000,000 IDR against 20,900 USD as
+    // raw numbers and put IDR first purely because its unit is smaller, which
+    // is the same category error this whole change exists to remove. A row
+    // count is unitless, so it can be compared honestly.
+    return Array.from(rowsByCurrency.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([currency]) => currency)
+  })
+
+  /** Explicit viewer choice. `null` = follow the busiest currency. */
+  const selectedCurrency = vueRef<string | null>(null)
+
+  /**
+   * The currency every figure on the dashboard is in. Falls back to the
+   * busiest one whenever the explicit choice is unset or no longer earns
+   * anything (e.g. after switching the property filter).
+   */
+  const activeCurrency = computed<string>(() => {
+    const available = availableCurrencies.value
+    const chosen = selectedCurrency.value
+    if (chosen !== null && available.includes(chosen))
+      return chosen
+    // This is the one job `owner.statementCurrency` can safely do: choose
+    // which of the owner's currencies to open on. It only ever SELECTS a
+    // slice that is already in that currency, so unlike the old behaviour it
+    // cannot put its label on figures that are in something else.
+    const preferred = currentOwner.value?.statementCurrency
+    if (preferred && available.includes(preferred))
+      return preferred
+    return available[0] ?? ''
+  })
+
+  const ownerEntries = computed<OwnerLedgerEntry[]>(
+    () => ownerScopedEntries.value.filter(e => e.currency === activeCurrency.value),
+  )
 
   const allEntries = useOwnerEntries()
 
@@ -191,6 +265,9 @@ export function useOwnerDashboard(): {
       .filter(e => e.ownerId === id && !e.isPriorPeriodAdjustment)
       .filter(e => priorPeriods.has(e.period))
       .filter(e => selectedPropertyId.value === null || e.listingId === selectedPropertyId.value)
+      // Same currency as the months being compared against, or the YoY badge
+      // reports a change between two different currencies as a percentage.
+      .filter(e => e.currency === activeCurrency.value)
       .map((e) => {
         const share = shares.get(e.listingId) ?? 1
         if (share === 1)
@@ -223,7 +300,10 @@ export function useOwnerDashboard(): {
   const timeSeries = computed<OwnerDashboardTimeSeries>(() => ({
     months: months.value,
     priorYearMonths: priorYearMonths.value,
-    currency: currentOwner.value?.statementCurrency ?? '',
+    // The ledger's own currency, so the label and the figures beside it can
+    // never disagree. `owner.statementCurrency` is a stated preference and is
+    // deliberately not consulted here.
+    currency: activeCurrency.value,
   }))
 
   const currentPeriod = computed<OwnerDashboardMonth | null>(() => {
@@ -308,6 +388,9 @@ export function useOwnerDashboard(): {
     hasYearOverYearData,
     hasVisibleMetrics,
     selectedPropertyId,
+    availableCurrencies,
+    selectedCurrency,
+    activeCurrency,
   }
 }
 
