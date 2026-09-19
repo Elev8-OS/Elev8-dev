@@ -10,6 +10,7 @@ import type {
   OwnerStatementIssue,
   OwnerStatementLine,
 } from '~/components/owners/data/owner-statements'
+import type { GenerateSkip } from '~/composables/useOwnerStatements'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { alertDisplayLabels, alertIcons, alertRouteMap, getDescription as getAlertDescription } from '~/components/notifications/data/alerts'
 import { calculateCommission, mockCommissionRules } from '~/components/owners/data/commission-rules'
@@ -18,7 +19,8 @@ import { buildOwnerPermissionTemplate } from '~/components/owners/data/owner-per
 import { mockOwnerStatements } from '~/components/owners/data/owner-statements'
 import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
 import { useOwners } from '~/composables/useOwners'
-import { useOwnerStatements } from '~/composables/useOwnerStatements'
+import { summariseGenerateSkips, useOwnerStatements } from '~/composables/useOwnerStatements'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 // Restrict the period helper to fixtures we control — keeps tests deterministic
 // and prevents flakiness if the seed set ever grows.
@@ -322,14 +324,86 @@ describe('useOwnerStatements', () => {
       // The seed array is untouched, which is exactly why reading it was a bug.
       expect(mockOwners.some(o => o.id === created.ownerId)).toBe(false)
 
-      // Generation must now consider the new owner. It still draws nothing,
-      // because no ledger rows exist for them, but it must not be because the
-      // owner was never looked at.
-      const { generateForPeriod } = useOwnerStatements()
-      const result = generateForPeriod(TEST_PERIOD)
-      expect(result.ok).toBe(true)
       const considered = mappings.value.filter(m => m.ownerId === created.ownerId)
       expect(considered).toHaveLength(0)
+    })
+
+    // The whole chain, as a user walks it: create an owner, map them to a
+    // property that has real bookings, activate them, generate. Every link
+    // used to be broken somewhere — generation read the seed array, and even
+    // once it read the store there were no ledger rows to draw from.
+    it('draws a statement for a newly created owner from real reservations', () => {
+      const { createOwner, inviteOwner, activateOwner, owners, mappings: allMappings } = useOwners()
+      const { reservations } = useReservationsModule()
+
+      // A paying guest booking on a property nobody owns yet, so the 100%
+      // ownership ceiling does not reject the new mapping.
+      const ownedListingIds = new Set(allMappings.value.map(m => m.listingId))
+      const booking = reservations.value.find(
+        r => !ownedListingIds.has(r.listingId)
+          && r.blockReason === undefined
+          && ['unverified', 'verified', 'checked_in', 'checked_out'].includes(r.status)
+          && (r.priceDetails?.guestPaid ?? r.totalPrice) > 0,
+      )!
+      expect(booking).toBeDefined()
+      const period = booking.checkOut.slice(0, 7)
+
+      const created = createOwner({
+        owner: {
+          name: 'Fresh Owner',
+          email: 'fresh.owner@example.com',
+          phone: '+6281234500111',
+          language: 'en',
+          statementCurrency: 'IDR',
+          annualOwnerUseNightCap: undefined,
+        },
+        mappings: [{
+          listingId: booking.listingId,
+          ownershipPercentage: 100,
+          effectiveFrom: '2026-01-01',
+        }],
+        commissionRules: [{
+          name: 'Standard',
+          type: 'flat',
+          rate: 20,
+          listingId: booking.listingId,
+          effectiveFrom: '2026-01-01',
+        }] as never,
+        permissions: buildOwnerPermissionTemplate('full_transparency', 'placeholder', new Date().toISOString()),
+        inviteNow: true,
+      })
+      expect(created.success).toBe(true)
+
+      inviteOwner(created.ownerId!)
+      activateOwner(created.ownerId!)
+      expect(owners.value.find(o => o.id === created.ownerId)!.status).toBe('active')
+
+      const { generateForPeriod, statements } = useOwnerStatements()
+      const result = generateForPeriod(period)
+      expect(result.ok).toBe(true)
+
+      const drawn = statements.value.find(
+        st => st.ownerId === created.ownerId && st.period === period,
+      )
+      expect(drawn).toBeDefined()
+      // Denominated by the booking, not by the owner's stated preference.
+      expect(drawn!.currency).toBe(booking.currency)
+      expect(drawn!.lines.length).toBeGreaterThan(0)
+    })
+
+    // The silence is the bug: "Generated 0 drafts" told a misconfigured owner
+    // apart from an up-to-date one in no way at all.
+    it('says why nothing was generated', () => {
+      const { generateForPeriod } = useOwnerStatements()
+      const first = generateForPeriod(TEST_PERIOD)
+      expect(first.ok).toBe(true)
+
+      const again = generateForPeriod(TEST_PERIOD)
+      expect(again.ok && again.created).toBe(0)
+      expect(again.ok && again.skips.length).toBeGreaterThan(0)
+      expect(again.ok && again.skips.every(sk => sk.ownerName !== '')).toBe(true)
+      const summary = summariseGenerateSkips((again as { skips: GenerateSkip[] }).skips)
+      expect(summary).toMatch(/already had a statement/)
     })
 
     it('idempotency does not emit OWNER_STATEMENT_DRAFT_READY on a no-op re-run', () => {

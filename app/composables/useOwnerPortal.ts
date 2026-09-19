@@ -32,8 +32,8 @@ import type { OwnerStatement, OwnerStatementIssue } from '~/components/owners/da
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import type { Owner, OwnerPropertyMapping } from '~/components/owners/data/owners'
 import { computed, ref } from 'vue'
-import { mockOwnerLedgerEntries } from '~/components/owners/data/owner-ledger'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
+import { useOwnerLedger } from '~/composables/useOwnerLedger'
 import { useOwnerPermissions } from '~/composables/useOwnerPermissions'
 import { useOwners } from '~/composables/useOwners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
@@ -243,7 +243,7 @@ export function useOwnerPortal() {
     const owner = currentOwner.value
     if (!owner)
       return null
-    const entries = mockOwnerLedgerEntries.filter(entry => entry.ownerId === owner.id && (!selectedPropertyId.value || entry.listingId === selectedPropertyId.value)).map((entry) => {
+    const entries = useOwnerLedger().entries.value.filter(entry => entry.ownerId === owner.id && (!selectedPropertyId.value || entry.listingId === selectedPropertyId.value)).map((entry) => {
       const share = (ownerFilteredMappings.value.find(mapping => mapping.listingId === entry.listingId)?.ownershipPercentage ?? 100) / 100
       return { ...entry, grossRevenue: entry.grossRevenue * share, expenses: entry.expenses * share, taxes: entry.taxes * share, platformFees: entry.platformFees * share, nightlyRateSum: entry.nightlyRateSum * share }
     })
@@ -270,19 +270,17 @@ export function useOwnerPortal() {
   const ownerUseNights = computed(() => ownerFilteredStays.value.filter(stay => stay.status !== 'cancelled' && stay.countsAgainstOwnerUseCap).reduce((sum, stay) => sum + stay.nights, 0))
 
   /**
-   * The
-   * ledger module is a pure fixture; we read it directly. (A real
-   * implementation would route through a `useOwnerLedger` composable
-   * that owns its own useState — until then, the seed is the source of
-   * truth and isolation is preserved because the owner filter is the
-   * outer one.)
+   * Read through `useOwnerLedger`, which is the fixture plus every row the
+   * app's reservations imply for a mapped listing the fixture does not cover.
+   * Reading the seed directly meant an owner created through the UI had no
+   * ledger at all. Isolation is unchanged: the owner filter is still outer.
    */
   const dashboardMetrics = computed<OwnerDashboardMetrics | null>(() => {
     const owner = currentOwner.value
     if (!owner)
       return null
 
-    const ownerEntries = mockOwnerLedgerEntries.filter(entry => entry.ownerId === owner.id)
+    const ownerEntries = useOwnerLedger().entries.value.filter(entry => entry.ownerId === owner.id)
     const period = latestNonAdjustmentPeriod(ownerEntries)
     if (!period)
       return null

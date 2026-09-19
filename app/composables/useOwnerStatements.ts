@@ -65,7 +65,6 @@ import {
 import {
   calculateStatementTotals,
   ledgerEntryToStatementInput,
-  mockOwnerLedgerEntries,
   roundCurrency,
 } from '~/components/owners/data/owner-ledger'
 import {
@@ -73,6 +72,7 @@ import {
   mockOwnerStatements,
 } from '~/components/owners/data/owner-statements'
 import { useNotifications } from '~/composables/useNotifications'
+import { useOwnerLedger } from '~/composables/useOwnerLedger'
 import { useOwners } from '~/composables/useOwners'
 
 // --- Public types ----------------------------------------------------------
@@ -121,9 +121,56 @@ export interface OwnerStatementAdjustment {
 
 // --- Result envelopes ------------------------------------------------------
 
+/**
+ * Why one (owner, listing) drew no statement.
+ *
+ * Generation used to return a bare `skipped` count, so an owner who never
+ * received a statement looked identical to one who already had it. These
+ * reasons are what the UI needs to tell the two apart.
+ */
+export type GenerateSkipReason
+  = 'already_generated'
+    | 'mapping_not_effective'
+    | 'no_commission_rule'
+    | 'no_ledger_activity'
+
+export interface GenerateSkip {
+  ownerId: string
+  ownerName: string
+  listingId: string
+  reason: GenerateSkipReason
+}
+
 export type GenerateForPeriodResult
-  = | { ok: true, created: number, skipped: number }
+  = | { ok: true, created: number, skipped: number, skips: GenerateSkip[] }
     | { ok: false, error: string }
+
+export const generateSkipReasonLabels: Record<GenerateSkipReason, string> = {
+  already_generated: 'already had a statement for this period',
+  mapping_not_effective: 'not assigned to the property in this period',
+  no_commission_rule: 'no commission rule in effect',
+  no_ledger_activity: 'no bookings in this period',
+}
+
+/**
+ * Why a generation run produced nothing, in one sentence.
+ *
+ * "Generated 0 drafts" was the entire feedback before this existed, so an
+ * owner who was misconfigured looked exactly like one who was already up to
+ * date. Reasons are ordered by how many owners each affects, so the most
+ * common explanation leads.
+ */
+export function summariseGenerateSkips(skips: GenerateSkip[]): string {
+  if (skips.length === 0)
+    return 'Nothing was eligible for this period.'
+  const counts = new Map<GenerateSkipReason, number>()
+  for (const skip of skips)
+    counts.set(skip.reason, (counts.get(skip.reason) ?? 0) + 1)
+  const parts = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([reason, count]) => `${count} ${generateSkipReasonLabels[reason]}`)
+  return `${parts.join(', ')}.`
+}
 
 export type PublishResult
   = | { ok: true }
@@ -368,11 +415,10 @@ export function useOwnerStatements() {
     const owners = ownersStore.owners.value
     const mappings = ownersStore.mappings.value
     const rules = ownersStore.commissionRules.value
-    // The ledger has no store of its own yet, so the fixture stays the source
-    // of truth. This is why a newly created owner still draws no statement:
-    // nothing generates ledger rows for them. See `generateForPeriod`'s
-    // caller-facing note.
-    const ledger = mockOwnerLedgerEntries
+    // The fixture plus every row the app's reservations imply for a mapped
+    // listing it does not already cover, so an owner created through the UI
+    // and mapped to a property draws a real statement instead of nothing.
+    const ledger = useOwnerLedger().entries.value
 
     const existingKeys = new Set(
       statements.value
@@ -383,6 +429,11 @@ export function useOwnerStatements() {
 
     let created = 0
     let skipped = 0
+    const skips: GenerateSkip[] = []
+    function noteSkip(owner: Owner, listingId: string, reason: GenerateSkipReason): void {
+      skipped += 1
+      skips.push({ ownerId: owner.id, ownerName: owner.name, listingId, reason })
+    }
     const additions: OwnerStatement[] = []
     // Adjustments folded into a draft this pass, stamped once the drafts are
     // committed so a failed pass cannot mark a correction as delivered.
@@ -401,13 +452,13 @@ export function useOwnerStatements() {
         const mappingIsEffective = mapping.effectiveFrom <= periodEnd
           && (mapping.effectiveTo === undefined || mapping.effectiveTo >= periodEnd)
         if (!mappingIsEffective) {
-          skipped += 1
+          noteSkip(owner, mapping.listingId, 'mapping_not_effective')
           continue
         }
 
         const key = `${owner.id}::${mapping.listingId}`
         if (existingKeys.has(key)) {
-          skipped += 1
+          noteSkip(owner, mapping.listingId, 'already_generated')
           continue
         }
 
@@ -430,7 +481,7 @@ export function useOwnerStatements() {
 
         if (!entry && pendingAll.length === 0) {
           // No financial activity and nothing to correct — nothing to draft.
-          skipped += 1
+          noteSkip(owner, mapping.listingId, 'no_ledger_activity')
           continue
         }
 
@@ -455,7 +506,7 @@ export function useOwnerStatements() {
             // A mapping without an effective commission rule is a configuration
             // gap — skip rather than emit a draft with a zero commission. The
             // pending corrections stay pending; they are not lost.
-            skipped += 1
+            noteSkip(owner, mapping.listingId, 'no_commission_rule')
             continue
           }
 
@@ -516,7 +567,7 @@ export function useOwnerStatements() {
       }
     }
 
-    return { ok: true, created, skipped }
+    return { ok: true, created, skipped, skips }
   }
 
   // --- Publish -----------------------------------------------------------

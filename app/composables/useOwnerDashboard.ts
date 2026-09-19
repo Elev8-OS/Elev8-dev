@@ -11,9 +11,8 @@
 import type { ComputedRef, Ref } from 'vue'
 import type { OwnerLedgerEntry, OwnerLedgerSource, OwnerLedgerSourceBreakdown } from '~/components/owners/data/owner-ledger'
 import { computed, ref as vueRef } from 'vue'
-/** Internal: re-export the raw fixture so the composable can read it. */
-import { mockOwnerLedgerEntries } from '~/components/owners/data/owner-ledger'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
+import { useOwnerLedger } from '~/composables/useOwnerLedger'
 
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
 import { useOwners } from '~/composables/useOwners'
@@ -394,6 +393,11 @@ export function useOwnerDashboard(): {
   }
 }
 
+/**
+ * The ledger, fixture rows plus anything the app's reservations imply for a
+ * mapped listing the fixture does not cover. Reading the raw seed here left an
+ * owner created through the UI with a permanently empty dashboard.
+ */
 function useOwnerEntries(): Ref<OwnerLedgerEntry[]> {
-  return vueRef(mockOwnerLedgerEntries) as Ref<OwnerLedgerEntry[]>
+  return useOwnerLedger().entries as unknown as Ref<OwnerLedgerEntry[]>
 }

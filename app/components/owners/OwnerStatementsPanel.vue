@@ -8,7 +8,7 @@ import StatementPublishDialog from '~/components/owner-statements/StatementPubli
 import { mockOwners } from '~/components/owners/data/owners'
 import StatementIssuesPanel from '~/components/owners/StatementIssuesPanel.vue'
 import StatementTable from '~/components/owners/StatementTable.vue'
-import { useOwnerStatements } from '~/composables/useOwnerStatements'
+import { summariseGenerateSkips, useOwnerStatements } from '~/composables/useOwnerStatements'
 
 const { statements, generateForPeriod, recordAdjustment } = useOwnerStatements()
 
@@ -55,7 +55,18 @@ async function handleGenerate() {
   try {
     const result = generateForPeriod(periodInput.value)
     if (result.ok) {
-      toast.success(`Generated ${result.created} draft${result.created === 1 ? '' : 's'} for ${periodInput.value}.`)
+      if (result.created === 0) {
+        // Say WHY. A silent "0 drafts" is what let a misconfigured owner look
+        // identical to one who was already up to date.
+        toast.info(`No drafts generated for ${periodInput.value}.`, {
+          description: summariseGenerateSkips(result.skips),
+        })
+      }
+      else {
+        toast.success(`Generated ${result.created} draft${result.created === 1 ? '' : 's'} for ${periodInput.value}.`, {
+          description: result.skipped > 0 ? summariseGenerateSkips(result.skips) : undefined,
+        })
+      }
     }
     else {
       toast.error(result.error)
