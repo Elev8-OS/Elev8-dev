@@ -16,6 +16,7 @@ import type { OwnerStatementLine } from '~/components/owners/data/owner-statemen
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { mockOwners } from '~/components/owners/data/owners'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -84,7 +85,7 @@ function staffLabel(id: string) {
 }
 
 function formatAmount(amount: number) {
-  return `${currency.value} ${amount.toLocaleString('en-US')}`
+  return formatOwnerMoney(amount, currency.value)
 }
 
 function formatDate(iso?: string) {

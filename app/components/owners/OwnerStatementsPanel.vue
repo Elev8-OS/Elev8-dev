@@ -8,7 +8,7 @@ import StatementPublishDialog from '~/components/owner-statements/StatementPubli
 import { mockOwners } from '~/components/owners/data/owners'
 import StatementIssuesPanel from '~/components/owners/StatementIssuesPanel.vue'
 import StatementTable from '~/components/owners/StatementTable.vue'
-import { useOwnerStatements } from '~/composables/useOwnerStatements'
+import { summariseGenerateSkips, useOwnerStatements } from '~/composables/useOwnerStatements'
 
 const { statements, generateForPeriod, recordAdjustment } = useOwnerStatements()
 
@@ -55,7 +55,18 @@ async function handleGenerate() {
   try {
     const result = generateForPeriod(periodInput.value)
     if (result.ok) {
-      toast.success(`Generated ${result.created} draft${result.created === 1 ? '' : 's'} for ${periodInput.value}.`)
+      if (result.created === 0) {
+        // Say WHY. A silent "0 drafts" is what let a misconfigured owner look
+        // identical to one who was already up to date.
+        toast.info(`No drafts generated for ${periodInput.value}.`, {
+          description: summariseGenerateSkips(result.skips),
+        })
+      }
+      else {
+        toast.success(`Generated ${result.created} draft${result.created === 1 ? '' : 's'} for ${periodInput.value}.`, {
+          description: result.skipped > 0 ? summariseGenerateSkips(result.skips) : undefined,
+        })
+      }
     }
     else {
       toast.error(result.error)
@@ -124,8 +135,14 @@ function sortedList(list: StatementRow[]) {
       return a.ownerLabel.localeCompare(b.ownerLabel) * factor
     if (sortKey.value === 'listing')
       return a.listingId.localeCompare(b.listingId) * factor
-    if (sortKey.value === 'amount')
-      return (a.totalAmount - b.totalAmount) * factor
+    if (sortKey.value === 'amount') {
+      // Group by currency first: ordering IDR 72,800,000 against USD 5,000 on
+      // the raw number puts every IDR statement on top regardless of how much
+      // money it represents. Within one currency the amounts compare honestly.
+      if (a.currency !== b.currency)
+        return a.currency.localeCompare(b.currency)
+    }
+    return (a.totalAmount - b.totalAmount) * factor
     if (sortKey.value === 'issues')
       return (a.openIssues - b.openIssues) * factor
     return a.period.localeCompare(b.period) * factor

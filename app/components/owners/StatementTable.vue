@@ -2,6 +2,7 @@
 // StatementTable — sortable, paginated table for owner statement lists
 // (drafts + published). Reused by OwnerStatementsPanel.
 
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table'
@@ -42,7 +43,7 @@ function sortIcon(key: RowKey) {
 type RowKey = 'owner' | 'listing' | 'period' | 'amount' | 'issues'
 
 function formatAmount(row: Row) {
-  return `${row.currency} ${row.totalAmount.toLocaleString('en-US')}`
+  return formatOwnerMoney(row.totalAmount, row.currency)
 }
 
 function pageNumbers(): (number | 'ellipsis')[] {

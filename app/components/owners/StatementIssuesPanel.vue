@@ -9,6 +9,7 @@
 
 import { computed, ref } from 'vue'
 import { listings } from '~/components/listings/data/listings'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { mockOwners } from '~/components/owners/data/owners'
 import StatementIssueDrawer from '~/components/owners/StatementIssueDrawer.vue'
 import { Badge } from '~/components/ui/badge'
@@ -57,7 +58,7 @@ function openIssue(id: string) {
 }
 
 function formatAmount(row: { currency: string, amount: number }) {
-  return `${row.currency} ${row.amount.toLocaleString('en-US')}`
+  return formatOwnerMoney(row.amount, row.currency)
 }
 
 function formatDate(iso?: string) {

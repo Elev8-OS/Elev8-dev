@@ -10,13 +10,17 @@ import type {
   OwnerStatementIssue,
   OwnerStatementLine,
 } from '~/components/owners/data/owner-statements'
+import type { GenerateSkip } from '~/composables/useOwnerStatements'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { alertDisplayLabels, alertIcons, alertRouteMap, getDescription as getAlertDescription } from '~/components/notifications/data/alerts'
 import { calculateCommission, mockCommissionRules } from '~/components/owners/data/commission-rules'
 import { mockOwnerLedgerEntries, roundCurrency } from '~/components/owners/data/owner-ledger'
+import { buildOwnerPermissionTemplate } from '~/components/owners/data/owner-permissions'
 import { mockOwnerStatements } from '~/components/owners/data/owner-statements'
 import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
-import { useOwnerStatements } from '~/composables/useOwnerStatements'
+import { useOwners } from '~/composables/useOwners'
+import { summariseGenerateSkips, useOwnerStatements } from '~/composables/useOwnerStatements'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 // Restrict the period helper to fixtures we control — keeps tests deterministic
 // and prevents flakiness if the seed set ever grows.
@@ -261,13 +265,145 @@ describe('useOwnerStatements', () => {
       expect(statements.value.length).toBe(before)
     })
 
-    it('seeds draft statements with currency matching the owner\'s statementCurrency', () => {
+    // A statement is denominated by the LEDGER it is drawn from, never by the
+    // owner record's `statementCurrency`. The old version of this test was
+    // named for the owner field and passed only because the seed currencies
+    // happened to agree, so it would have stayed green no matter how badly
+    // the two diverged. own-2 is the case that separates them: they prefer
+    // USD, yet own an IDR-earning property.
+    it('denominates a draft by its ledger currency, not the owner\'s statementCurrency', () => {
       const { generateForPeriod, statements } = useOwnerStatements()
       generateForPeriod(TEST_PERIOD)
+
+      const putu = mockOwners.find(o => o.id === 'own-2')!
+      expect(putu.statementCurrency).toBe('USD')
+
+      // lst-8 earns USD and agrees with the preference.
       const putuLst8 = statements.value.find(s => s.id === 'stmt-3')!
-      expect(putuLst8.currency).toBe('USD')
+      const ledgerLst8 = mockOwnerLedgerEntries.find(
+        e => e.ownerId === 'own-2' && e.listingId === 'lst-8' && e.period === TEST_PERIOD,
+      )!
+      expect(putuLst8.currency).toBe(ledgerLst8.currency)
+
+      // lst-3 earns IDR and disagrees with it. The ledger wins.
+      const putuLst3 = statements.value.find(
+        s => s.ownerId === 'own-2' && s.listingId === 'lst-3' && s.period === TEST_PERIOD,
+      )!
+      const ledgerLst3 = mockOwnerLedgerEntries.find(
+        e => e.ownerId === 'own-2' && e.listingId === 'lst-3' && e.period === TEST_PERIOD,
+      )!
+      expect(ledgerLst3.currency).toBe('IDR')
+      expect(putuLst3.currency).toBe('IDR')
+      expect(putuLst3.currency).not.toBe(putu.statementCurrency)
+
       const wayanLst1 = statements.value.find(s => s.id === 'stmt-1')!
       expect(wayanLst1.currency).toBe('IDR')
+    })
+
+    // Regression: generation used to read the module seed arrays directly, so
+    // an owner created through the UI (which writes to the `useOwners` store)
+    // was invisible to it and silently never received a statement.
+    it('sees an owner created through the store, not just the seed array', () => {
+      const { createOwner, owners, mappings } = useOwners()
+      const created = createOwner({
+        owner: {
+          name: 'Currency Test Owner',
+          email: 'currency.test@example.com',
+          phone: '+6281234500999',
+          language: 'en',
+          statementCurrency: 'USD',
+          annualOwnerUseNightCap: undefined,
+        },
+        mappings: [],
+        commissionRules: [],
+        permissions: buildOwnerPermissionTemplate('financial_summary', 'placeholder', new Date().toISOString()),
+        inviteNow: false,
+      })
+      expect(created.success).toBe(true)
+      expect(owners.value.some(o => o.id === created.ownerId)).toBe(true)
+      // The seed array is untouched, which is exactly why reading it was a bug.
+      expect(mockOwners.some(o => o.id === created.ownerId)).toBe(false)
+
+      const considered = mappings.value.filter(m => m.ownerId === created.ownerId)
+      expect(considered).toHaveLength(0)
+    })
+
+    // The whole chain, as a user walks it: create an owner, map them to a
+    // property that has real bookings, activate them, generate. Every link
+    // used to be broken somewhere — generation read the seed array, and even
+    // once it read the store there were no ledger rows to draw from.
+    it('draws a statement for a newly created owner from real reservations', () => {
+      const { createOwner, inviteOwner, activateOwner, owners, mappings: allMappings } = useOwners()
+      const { reservations } = useReservationsModule()
+
+      // A paying guest booking on a property nobody owns yet, so the 100%
+      // ownership ceiling does not reject the new mapping.
+      const ownedListingIds = new Set(allMappings.value.map(m => m.listingId))
+      const booking = reservations.value.find(
+        r => !ownedListingIds.has(r.listingId)
+          && r.blockReason === undefined
+          && ['unverified', 'verified', 'checked_in', 'checked_out'].includes(r.status)
+          && (r.priceDetails?.guestPaid ?? r.totalPrice) > 0,
+      )!
+      expect(booking).toBeDefined()
+      const period = booking.checkOut.slice(0, 7)
+
+      const created = createOwner({
+        owner: {
+          name: 'Fresh Owner',
+          email: 'fresh.owner@example.com',
+          phone: '+6281234500111',
+          language: 'en',
+          statementCurrency: 'IDR',
+          annualOwnerUseNightCap: undefined,
+        },
+        mappings: [{
+          listingId: booking.listingId,
+          ownershipPercentage: 100,
+          effectiveFrom: '2026-01-01',
+        }],
+        commissionRules: [{
+          name: 'Standard',
+          type: 'flat',
+          rate: 20,
+          listingId: booking.listingId,
+          effectiveFrom: '2026-01-01',
+        }] as never,
+        permissions: buildOwnerPermissionTemplate('full_transparency', 'placeholder', new Date().toISOString()),
+        inviteNow: true,
+      })
+      expect(created.success).toBe(true)
+
+      inviteOwner(created.ownerId!)
+      activateOwner(created.ownerId!)
+      expect(owners.value.find(o => o.id === created.ownerId)!.status).toBe('active')
+
+      const { generateForPeriod, statements } = useOwnerStatements()
+      const result = generateForPeriod(period)
+      expect(result.ok).toBe(true)
+
+      const drawn = statements.value.find(
+        st => st.ownerId === created.ownerId && st.period === period,
+      )
+      expect(drawn).toBeDefined()
+      // Denominated by the booking, not by the owner's stated preference.
+      expect(drawn!.currency).toBe(booking.currency)
+      expect(drawn!.lines.length).toBeGreaterThan(0)
+    })
+
+    // The silence is the bug: "Generated 0 drafts" told a misconfigured owner
+    // apart from an up-to-date one in no way at all.
+    it('says why nothing was generated', () => {
+      const { generateForPeriod } = useOwnerStatements()
+      const first = generateForPeriod(TEST_PERIOD)
+      expect(first.ok).toBe(true)
+
+      const again = generateForPeriod(TEST_PERIOD)
+      expect(again.ok && again.created).toBe(0)
+      expect(again.ok && again.skips.length).toBeGreaterThan(0)
+      expect(again.ok && again.skips.every(sk => sk.ownerName !== '')).toBe(true)
+      const summary = summariseGenerateSkips((again as { skips: GenerateSkip[] }).skips)
+      expect(summary).toMatch(/already had a statement/)
     })
 
     it('idempotency does not emit OWNER_STATEMENT_DRAFT_READY on a no-op re-run', () => {
@@ -1253,7 +1389,7 @@ describe('useOwnerStatements', () => {
     })
   })
 
-  describe('PRD 5.5 — preview, pre-publish adjustments, dispute thread', () => {
+  describe('pRD 5.5 — preview, pre-publish adjustments, dispute thread', () => {
     it('moves a draft into preview and back', () => {
       const { moveToPreview, backToDraft, statements } = useOwnerStatements()
       const target = statements.value.find(s => s.id === 'stmt-1')!

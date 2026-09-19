@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { listings } from '~/components/listings/data/listings'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
 
 const { currentOwner, visibleStatements, canViewStatementField } = useOwnerPortal()
@@ -17,7 +18,7 @@ function listingName(listingId: string) {
 }
 
 function formatCurrency(currency: string, amount: number) {
-  return `${currency} ${amount.toLocaleString('id-ID')}`
+  return formatOwnerMoney(amount, currency)
 }
 </script>
 

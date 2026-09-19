@@ -3,6 +3,7 @@ import type { OwnerStatementField } from '~/components/owners/data/owner-permiss
 import type { OwnerStatementLine } from '~/components/owners/data/owner-statements'
 import { computed, ref, toRef } from 'vue'
 import { listings } from '~/components/listings/data/listings'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { ownerStatementFieldForLineCategory } from '~/components/owners/data/owner-permissions'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -90,7 +91,7 @@ function openIssue(line: OwnerStatementLine) {
 }
 
 function formatCurrency(amount: number) {
-  return `${currency.value} ${amount.toLocaleString('id-ID')}`
+  return formatOwnerMoney(amount, currency.value)
 }
 
 function hasOpenIssue(lineId: string) {

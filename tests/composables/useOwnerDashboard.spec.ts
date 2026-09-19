@@ -7,11 +7,11 @@
 //   4. Ownership percentage is applied to magnitudes
 //   5. Permission gating returns empty arrays for off fields
 //   6. YoY deltas compute correctly when prior-year data exists
-//   7. Currency comes from currentOwner.statementCurrency, not from the ledger
+//   7. Currency comes from the LEDGER, and figures are never blended across currencies
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mockOwnerLedgerEntries } from '~/components/owners/data/owner-ledger'
-import { mockOwnerPropertyMappings, mockOwners } from '~/components/owners/data/owners'
+import { mockOwners } from '~/components/owners/data/owners'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerDashboard } from '~/composables/useOwnerDashboard'
 
@@ -82,11 +82,95 @@ describe('useOwnerDashboard', () => {
       }
     })
 
-    it('currency comes from currentOwner.statementCurrency, not from the ledger', async () => {
+    it('currency comes from the ledger, not from currentOwner.statementCurrency', async () => {
       await loginAs('wayan.sari@example.com')
       const { timeSeries } = useOwnerDashboard()
-      const wayan = mockOwners.find(o => o.id === 'own-1')!
-      expect(timeSeries.value.currency).toBe(wayan.statementCurrency)
+      const ledgerCurrencies = new Set(
+        mockOwnerLedgerEntries
+          .filter(e => e.ownerId === 'own-1' && !e.isPriorPeriodAdjustment)
+          .map(e => e.currency),
+      )
+      expect(ledgerCurrencies.has(timeSeries.value.currency)).toBe(true)
+    })
+  })
+
+  // The bug this guards: the label was read from `owner.statementCurrency`
+  // while the figures came from the ledger, so an owner whose properties earn
+  // CHF but whose record said IDR was shown CHF amounts labelled "IDR". And
+  // because own-2's rows were summed across currencies, their portal read
+  // "USD 148,020,900" for a period in which they earned USD 20,900 and
+  // IDR 148,000,000.
+  describe('currency scoping', () => {
+    it('never blends two currencies into one month', async () => {
+      await loginAs('putu.antara@example.com') // own-2 earns in IDR and USD
+      const dashboard = useOwnerDashboard()
+      const currency = dashboard.timeSeries.value.currency
+
+      for (const month of dashboard.timeSeries.value.months) {
+        expect(month.currency).toBe(currency)
+        const rowsThatMonth = mockOwnerLedgerEntries.filter(
+          e => e.ownerId === 'own-2' && e.period === month.period && !e.isPriorPeriodAdjustment,
+        )
+        const blended = rowsThatMonth.reduce((sum, e) => sum + e.grossRevenue, 0)
+        const sameCurrencyOnly = rowsThatMonth.filter(e => e.currency === currency)
+        // Only meaningful where the month actually mixes currencies.
+        if (sameCurrencyOnly.length !== rowsThatMonth.length)
+          expect(month.grossRevenue).not.toBe(blended)
+      }
+    })
+
+    it('lists every currency the owner earns in', async () => {
+      await loginAs('putu.antara@example.com')
+      const dashboard = useOwnerDashboard()
+      const expected = new Set(
+        mockOwnerLedgerEntries
+          .filter(e => e.ownerId === 'own-2' && !e.isPriorPeriodAdjustment)
+          .map(e => e.currency),
+      )
+      expect(new Set(dashboard.availableCurrencies.value)).toEqual(expected)
+      expect(dashboard.availableCurrencies.value.length).toBeGreaterThan(1)
+    })
+
+    it('opens on the owner\'s preferred currency when they actually earn in it', async () => {
+      await loginAs('putu.antara@example.com')
+      const dashboard = useOwnerDashboard()
+      const putu = mockOwners.find(o => o.id === 'own-2')!
+      expect(dashboard.availableCurrencies.value).toContain(putu.statementCurrency)
+      expect(dashboard.activeCurrency.value).toBe(putu.statementCurrency)
+    })
+
+    it('switching currency reports the other slice, with no conversion', async () => {
+      await loginAs('putu.antara@example.com')
+      const dashboard = useOwnerDashboard()
+      const [first, second] = dashboard.availableCurrencies.value
+      expect(second).toBeDefined()
+
+      dashboard.selectedCurrency.value = second
+      expect(dashboard.timeSeries.value.currency).toBe(second)
+      for (const month of dashboard.timeSeries.value.months)
+        expect(month.currency).toBe(second)
+
+      dashboard.selectedCurrency.value = first
+      expect(dashboard.timeSeries.value.currency).toBe(first)
+    })
+
+    it('falls back when the chosen currency is not earned under the current property filter', async () => {
+      await loginAs('putu.antara@example.com')
+      const dashboard = useOwnerDashboard()
+      // lst-3 earns IDR only, so a USD choice cannot be honoured there.
+      dashboard.selectedCurrency.value = 'USD'
+      dashboard.selectedPropertyId.value = 'lst-3'
+      expect(dashboard.availableCurrencies.value).not.toContain('USD')
+      expect(dashboard.activeCurrency.value).toBe('IDR')
+      expect(dashboard.timeSeries.value.currency).toBe('IDR')
+    })
+
+    it('compares year over year within one currency', async () => {
+      await loginAs('putu.antara@example.com')
+      const dashboard = useOwnerDashboard()
+      const currency = dashboard.timeSeries.value.currency
+      for (const month of dashboard.timeSeries.value.priorYearMonths)
+        expect(month.currency).toBe(currency)
     })
   })
 
@@ -130,7 +214,7 @@ describe('useOwnerDashboard', () => {
     })
   })
 
-  describe('YoY', () => {
+  describe('yoY', () => {
     it('yoyChange returns null when no prior-year data exists for the field', async () => {
       await loginAs('wayan.sari@example.com')
       const dashboard = useOwnerDashboard()

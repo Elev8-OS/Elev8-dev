@@ -32,8 +32,8 @@ import type { OwnerStatement, OwnerStatementIssue } from '~/components/owners/da
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import type { Owner, OwnerPropertyMapping } from '~/components/owners/data/owners'
 import { computed, ref } from 'vue'
-import { mockOwnerLedgerEntries } from '~/components/owners/data/owner-ledger'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
+import { useOwnerLedger } from '~/composables/useOwnerLedger'
 import { useOwnerPermissions } from '~/composables/useOwnerPermissions'
 import { useOwners } from '~/composables/useOwners'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
@@ -45,10 +45,9 @@ import { useOwnerStays } from '~/composables/useOwnerStays'
  * `YYYY-MM` present in the owner's ledger — the most useful single
  * snapshot to render on the dashboard.
  *
- * Mixed-currency ledgers (e.g. own-2 has one IDR and one USD ledger in
- * the same period) are summed as raw numbers. A real implementation
- * would convert across the owner's `statementCurrency` using an FX
- * rate; the mock skips that because no rate fixture exists.
+ * Mixed-currency ledgers (own-2 holds one IDR and one USD ledger in the
+ * same period) are NOT summed together. The busiest currency wins and the
+ * rest are dropped from the roll-up; see `sumMetricsForPeriod`.
  */
 export interface OwnerDashboardMetrics {
   /** Latest non-adjustment period used to roll up the numbers. */
@@ -64,7 +63,10 @@ export interface OwnerDashboardMetrics {
   reservationCount: number
   /** Flattened `upcomingReservations` list from the owner's latest period. */
   upcomingReservations: OwnerLedgerUpcomingReservation[]
-  /** Owner's `statementCurrency` from the owner record (not the ledger's). */
+  /**
+   * The ledger currency these figures are in, never the owner record's
+   * `statementCurrency` — the label and the numbers must share one source.
+   */
   currency: string
 }
 
@@ -79,12 +81,49 @@ function latestNonAdjustmentPeriod(entries: OwnerLedgerEntry[]): string | null {
   return latest
 }
 
+/**
+ * Roll up one period for one currency.
+ *
+ * The currency is picked from the ledger (busiest by gross revenue) and every
+ * row in another currency is dropped, rather than summed in. An owner can hold
+ * properties earning in different currencies, and there is no FX rate in this
+ * app by design, so blending them would produce a number that is not money in
+ * any currency at all.
+ *
+ * `owner.statementCurrency` is deliberately not consulted: it is a stated
+ * preference on the owner record and says nothing about what the ledger holds.
+ */
+/**
+ * Which single currency to roll this period up in.
+ *
+ * Ordered by ledger ROW COUNT, never by revenue: ranking on revenue would
+ * compare 148,000,000 IDR against 20,900 USD as raw numbers and pick IDR
+ * purely because its unit is smaller. A row count is unitless.
+ *
+ * The owner's `statementCurrency` wins when they actually earn in it. That is
+ * the only safe use of the field: it selects a slice that is already in that
+ * currency, so it can never end up labelling figures that are in another one.
+ */
+function pickDisplayCurrency(entries: OwnerLedgerEntry[], owner: Owner): string {
+  const rowsByCurrency = new Map<string, number>()
+  for (const entry of entries)
+    rowsByCurrency.set(entry.currency, (rowsByCurrency.get(entry.currency) ?? 0) + 1)
+  const ranked = Array.from(rowsByCurrency.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([code]) => code)
+  if (ranked.includes(owner.statementCurrency))
+    return owner.statementCurrency
+  return ranked[0] ?? ''
+}
+
 function sumMetricsForPeriod(
   entries: OwnerLedgerEntry[],
   period: string,
   owner: Owner,
 ): OwnerDashboardMetrics {
-  const inPeriod = entries.filter(entry => entry.period === period && !entry.isPriorPeriodAdjustment)
+  const allInPeriod = entries.filter(entry => entry.period === period && !entry.isPriorPeriodAdjustment)
+  const currency = pickDisplayCurrency(allInPeriod, owner)
+  const inPeriod = allInPeriod.filter(entry => entry.currency === currency)
   const grossRevenue = inPeriod.reduce((sum, entry) => sum + entry.grossRevenue, 0)
   const netRevenue = inPeriod.reduce(
     (sum, entry) => sum + entry.grossRevenue - entry.expenses - entry.taxes - entry.platformFees,
@@ -105,7 +144,7 @@ function sumMetricsForPeriod(
     adr: reservationCount > 0 ? nightlyRateSum / reservationCount : 0,
     reservationCount,
     upcomingReservations,
-    currency: owner.statementCurrency,
+    currency,
   }
 }
 
@@ -204,7 +243,7 @@ export function useOwnerPortal() {
     const owner = currentOwner.value
     if (!owner)
       return null
-    const entries = mockOwnerLedgerEntries.filter(entry => entry.ownerId === owner.id && (!selectedPropertyId.value || entry.listingId === selectedPropertyId.value)).map((entry) => {
+    const entries = useOwnerLedger().entries.value.filter(entry => entry.ownerId === owner.id && (!selectedPropertyId.value || entry.listingId === selectedPropertyId.value)).map((entry) => {
       const share = (ownerFilteredMappings.value.find(mapping => mapping.listingId === entry.listingId)?.ownershipPercentage ?? 100) / 100
       return { ...entry, grossRevenue: entry.grossRevenue * share, expenses: entry.expenses * share, taxes: entry.taxes * share, platformFees: entry.platformFees * share, nightlyRateSum: entry.nightlyRateSum * share }
     })
@@ -231,19 +270,17 @@ export function useOwnerPortal() {
   const ownerUseNights = computed(() => ownerFilteredStays.value.filter(stay => stay.status !== 'cancelled' && stay.countsAgainstOwnerUseCap).reduce((sum, stay) => sum + stay.nights, 0))
 
   /**
-   * The
-   * ledger module is a pure fixture; we read it directly. (A real
-   * implementation would route through a `useOwnerLedger` composable
-   * that owns its own useState — until then, the seed is the source of
-   * truth and isolation is preserved because the owner filter is the
-   * outer one.)
+   * Read through `useOwnerLedger`, which is the fixture plus every row the
+   * app's reservations imply for a mapped listing the fixture does not cover.
+   * Reading the seed directly meant an owner created through the UI had no
+   * ledger at all. Isolation is unchanged: the owner filter is still outer.
    */
   const dashboardMetrics = computed<OwnerDashboardMetrics | null>(() => {
     const owner = currentOwner.value
     if (!owner)
       return null
 
-    const ownerEntries = mockOwnerLedgerEntries.filter(entry => entry.ownerId === owner.id)
+    const ownerEntries = useOwnerLedger().entries.value.filter(entry => entry.ownerId === owner.id)
     const period = latestNonAdjustmentPeriod(ownerEntries)
     if (!period)
       return null

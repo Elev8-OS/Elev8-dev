@@ -5,6 +5,7 @@ import { toRaw } from 'vue'
 import PortalRaiseIssueDialog from '~/components/owner-portal/PortalRaiseIssueDialog.vue'
 import PortalStatementDetail from '~/components/owner-portal/PortalStatementDetail.vue'
 import PortalStatementsArchive from '~/components/owner-portal/PortalStatementsArchive.vue'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { useOwnerAuth } from '~/composables/useOwnerAuth'
 import { useOwnerStatements } from '~/composables/useOwnerStatements'
 
@@ -119,7 +120,11 @@ describe('owner portal statements', () => {
     })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('25.180.000')
+    // Built with the shared formatter rather than hardcoded: pinning the
+    // grouped string ties the test to one locale, which is what made this
+    // assertion read '25.180.000' back when the portal formatted every
+    // currency with Indonesian separators.
+    expect(wrapper.text()).toContain(formatOwnerMoney(25_180_000, 'IDR'))
     expect(wrapper.text()).toContain('Gross booking revenue')
     expect(wrapper.findAll('input, textarea, select').length).toBe(0)
   })

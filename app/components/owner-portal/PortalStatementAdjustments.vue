@@ -12,6 +12,7 @@
 
 import type { OwnerStatementAdjustment } from '~/composables/useOwnerStatementDetail'
 import { computed } from 'vue'
+import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { Badge } from '~/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 
@@ -28,7 +29,7 @@ const totalImpact = computed(() => props.adjustments.reduce((s, a) => s + a.amou
 const count = computed(() => props.adjustments.length + relatedRows.value.length)
 
 function formatAmount(amount: number) {
-  return `${props.currency} ${amount.toLocaleString('id-ID')}`
+  return formatOwnerMoney(amount, props.currency)
 }
 </script>
 
