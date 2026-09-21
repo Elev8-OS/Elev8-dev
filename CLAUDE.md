@@ -365,6 +365,130 @@ accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); p
 exemptions beyond the adults / children / infants categories plus a manual waive; reading
 from a real channel API; and any background job (alerts come from `emitCityTaxAlerts()`).
 
+### Damage Protection (`app/components/reservations/data/damage-protection.ts` + `app/composables/useDamageProtection.ts`)
+
+Something breaks: who pays, and out of what? The guest chooses before arrival between a
+non-refundable **damage waiver** and a refundable **security deposit**.
+
+- ⚠️ **The deposit is a REAL charge that is really refunded. Never an authorization hold,
+  never a stored card.** Stripe holds run 7 days (31 with extended auth, IC+ pricing only),
+  Xendit ~7 with a single capture, Doku acquirer-dependent, so a hold cannot span a stay.
+  Worse, a manual-capture card session cannot offer QRIS, virtual account or e-wallet, which
+  is most of this market, so a hold-based deposit silently excludes most guests. Every
+  gateway will happily accept `capture: false`; the feature just stops working.
+- ⚠️ **Card-on-file is a staff-applied risk control, never a guest-facing option.** The
+  moment it reaches the choice screen it becomes the free option and the waiver dies.
+- ⚠️ **It is a waiver, never insurance.** Distributing insurance in Indonesia needs OJK
+  licensing. No type, field or string says `insurance`.
+- ⚠️ **`channelPolicy` falls back to `'skip'`, the OPPOSITE of the city tax `'host'`
+  fallback.** Airbnb and Booking.com run their own damage programmes, so charging an OTA
+  guest twice for the same cover is a chargeback. Do not unify the two fallbacks.
+- ⚠️ **Status is checked before channel.** `GUEST_STAY_STATUSES` excludes `cancelled`,
+  `blocked` and `owner_request`, which are all channel `Direct`. Without it an owner is asked
+  to buy a waiver to stay in their own villa.
+- ⚠️ **`amount`, `coverageCap`, `termsVersion` and `termsText` are FROZEN at acceptance.**
+  `policyId` is provenance, never a live join. Same rule as a folio catalog pick.
+- ⚠️ **Nothing here writes `priceDetails` or the folio.** A deposit is guest money held, so
+  it must never reach `guestPaid`, `payout` or an owner statement; and
+  `useReservationFolio.commit()` REPLACES `priceDetails.extras` outright, so a second writer
+  of that field is silently wiped by the next posting. Excess damage is posted to the folio
+  BY HAND: deciding a guest owes more than they agreed is a judgement call.
+- ⚠️ **No currency conversion, ever.** `assignBand` refuses a policy whose currency differs
+  from the listing's payout account, at assignment time rather than at charge time.
+- ⚠️ **`refundDestination` is collected on the CHOICE SCREEN**, not at checkout. QRIS,
+  virtual account and e-wallet payments frequently cannot be reversed to source, and you
+  will not get bank details from a guest who has already flown home. `railForListing`
+  answers `'non_card'` for anything that is not Stripe, including a listing with no payout
+  account, which is the safe side.
+
+**A claim is recorded on BOTH paths.** `ProtectionClaim` drives the deduction on a deposit;
+on a waiver it moves no money and records what the pot paid out. `waiverPotTotal` is the
+only signal that says whether the fee is priced right, and the worklist shows fees collected
+against claims paid as **two figures, never netted**. `claimCoverage()` splits an assessed
+amount into covered and excess; `isClaimValid` deliberately does **not** cap the amount,
+because capping at input time would shrink the operator's own record of what a stay cost.
+
+⚠️ **`canRelease` refuses while any claim lacks `guestNotifiedAt`.** A deduction the guest
+first meets as a smaller refund is a chargeback. `notifyGuestOfClaim` reaches the inbox
+through a **dynamic** `import('~/composables/useInbox')` (a static import closes a cycle,
+same rule as `useUpsellLockAccess.messageGuest`), and a missing conversation leaves the
+stamp unset so the gate stays shut rather than opening on a notice nobody received.
+
+⚠️ **A cancellation refunds in full on both paths and admits no claim.** No stay happened,
+so no damage did. `resolveBucket` reads `reservation.status`, so a cancelled stay holding
+money is `refund_due` **immediately** regardless of check-out, and a cancelled stay in
+`deposit_pending` is never charged. This deliberately does not reuse the graduated ladder in
+`upsells/data/cancellation-policies.ts`, which prices a service the operator held capacity
+for. A no-show on a non-refundable rate is a folio charge.
+
+⚠️ **`refund_failed` exists because a rejected refund that reads as settled is the worst way
+to lose a guest's money.** The worklist would say settled, the guest would say they never
+received it, and nothing in the record would disagree.
+
+**Long stays are a different product.** `LONG_STAY_THRESHOLD_NIGHTS = 28`. Bands live on the
+**assignment** (`DamageProtectionAssignment`, non-overlapping per listing), not as price
+tiers, because the exclusions, terms, SLA and offered options all differ across the
+threshold. Every policy lookup therefore takes `nights`. Long-stay bands ship **waiver-only**
+pending a per-market legal answer on whether a months-long held deposit is a tenancy deposit
+(Bali, Germany, Switzerland differ sharply). Wear and tear must be an explicit exclusion, and
+there is deliberately **no recurring waiver billing**: a renewal failing in month four with a
+guest in the property who believes they are covered is a state nothing else here has.
+Extending across a band boundary re-opens the choice for the added period via
+`reassessOnExtension` and never re-prices the original.
+
+**Permissions**: `damage_protection` is its own `PermissionModule`. `dashboardView` opens the
+worklist, **`dashboardEdit` gates recording a claim and releasing a deposit**. Reading a stay
+must not imply the right to take money from it.
+
+**Alerts** (all five new ones must stay in `FINANCE_TYPES` or they are invisible in the bell):
+`PROTECTION_CHOICE_MISSING` (WARNING), `DEPOSIT_FAILED_AT_CHECKIN` (CRITICAL, **already
+existed in `alerts.ts` and was emitted by nothing**; this feature is its first emitter and
+only its route changed), `DEPOSIT_REFUND_DUE` (WARNING), `DEPOSIT_REFUND_OVERDUE` and
+`DEPOSIT_REFUND_FAILED` (CRITICAL), `DAMAGE_CLAIM_RECORDED` (INFO, named for the claim
+because it fires on the waiver path too). Releasing resolves live refund alerts **directly**,
+not through `dismiss()`.
+
+**Surfaces:** `ReservationDamageProtectionSection.vue` (accordion, right after city tax),
+`ProtectionClaimDialog.vue` (shows the covered/excess split live),
+`ProtectionChoiceDialog.vue` (staff recording a choice at the desk, the only resolution for
+`awaiting_choice` since a fee cannot be charged against terms nobody accepted),
+`DamageProtectionStatusChip.vue` (shared with `ReservationTable`), the `/damage-protection`
+worklist, `/settings/damage-protection`, and in the guide app
+`sections/DamageProtectionSection.vue` + `forms/DamageProtectionForm.vue` behind
+`POST /api/guest-guides/by-token/[token]/protection-choice`.
+
+⚠️ **That endpoint's body never accepts a `reservationId`** — the token identifies the
+reservation. Same access model as `saveForCurrentOwner` in `useOwnerPayoutDetails`.
+⚠️ **`ProtectionOptionCards` names its prop `selectable`, not `readonly`**: `readonly`
+resolves to Vue's auto-imported `readonly()` inside a template, never to the prop.
+⚠️ A policy assigned to a listing is a **silent no-op** unless that listing's guest guide has
+an enabled `damage_protection` section. `listingsMissingGuideSection()` surfaces the mismatch
+in settings.
+
+**Seeds:** `damage-protection-seed.ts` (three USD policies against the Stripe account that
+covers lst-1/lst-2) and `damage-protection-demo.ts` (nine stays making every bucket reachable
+on load: awaiting choice, charge due, an unnotified claim blocking release, refund overdue,
+refund failed, a cancelled stay owed its money, a 60-night waiver-only stay with a claim, plus
+an owner stay and a block that render nothing). ⚠️ Its dates are **relative to today**,
+computed at module load; a fixed fixture rots into a stay that already ended.
+
+**Tests:** `tests/lib/damage-protection.spec.ts` (45),
+`tests/composables/useDamageProtection.spec.ts` (41),
+`tests/components/reservations/ReservationDamageProtection.spec.ts` (12).
+⚠️ The composable spec clears `reservations.value` in `beforeEach`: the demo seeds exist for
+the UI and would otherwise land in portfolio-wide totals. ⚠️ `settle()` fakes timers **before**
+the call, the only ordering that works against the 1.5s gateway mock. ⚠️ Date assertions
+compare **local** day strings: `toISOString()` shifts a UTC+8 midnight to the previous date.
+
+**NOT implemented (intentionally out of scope):** real gateway calls (charge, retry and
+refund are mocked timers); authorization holds (ruled out, not deferred); card-on-file as a
+guest option; a third-party underwriter (the pot is self-funded); a claims workflow beyond a
+recorded claim (no adjuster, appeal or guest dispute); any accounting push (held deposits are
+a liability whose posting rules are a finance decision); owner payout impact; booking-widget
+collection (`BookingWidgetConfig.depositPct` keeps its unrelated meaning); per-room protection
+on a multi-room booking; early check-out (the refund clock keys off the booked check-out); and
+any background job (alerts come from `emitProtectionAlerts()`).
+
 ### Owner Statement Corrections (`app/composables/useOwnerStatements.ts` + `useOwnerStatementDetail.ts`)
 
 Correcting a statement the owner has already been shown. Publishing freezes a statement
@@ -2393,6 +2517,7 @@ const table = useVueTable({
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
 | `useReservationFolio` | `app/composables/useReservationFolio.ts` | Staff-posted charges on a stay (minibar, laundry). The only writer of `ReservationEntry.folioItems` | `itemsFor(id)`, `summaryFor(id)`, `canPostTo(id)`, `catalogRowsFor(id)`, `addItem()`, `markPaid()`, `deleteItem()`, `voidItem()`. Never writes to `useUpsellOrders`; keeps `priceDetails.extras`/`guestPaid`/`payout` in step in one `updateReservation` call. |
 | `useCityTax` | `app/composables/useCityTax.ts` | Who collects the tourist levy on a stay, and chasing the host's share | `assessmentFor(id)`, `markCollected()`, `waive()`, `undoSettlement()`, `rows`, `overdue`, `dueToday`, `upcoming`, `settled`, `outstandingTotal`, `collectedTotal`, `notifyOnBooking`, `emitCityTaxAlerts()`. The only writer of `cityTaxSettlement`; never touches `priceDetails` or the folio. |
+| `useDamageProtection` | `app/composables/useDamageProtection.ts` | A guest chooses a waiver or a deposit before arrival. The only writer of `ReservationEntry.damageProtection` | `policyFor(listingId, nights)`, `isOfferedFor`, `optionsFor`, `bucketFor`, `railForListing`, `recordChoice()`, `chargeDeposit()`, `recordClaim()`, `notifyGuestOfClaim()`, `releaseDeposit()`, `cancelProtection()`, `reassessOnExtension()`, `rows`, `waiverPotTotals`, `canEditProtection`, `emitProtectionAlerts()`. Never writes `priceDetails` or the folio. Persisted to LocalStorage. |
 
 ### State Management Rules
 - **Inbox conversations**: `useState<Conversation[]>()` — reactive, persists per request

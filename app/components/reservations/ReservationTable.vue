@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
+import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { useCityTax } from '~/composables/useCityTax'
@@ -27,6 +28,7 @@ function fmtCurrency(amount: number, currency: string): string {
 }
 
 const cityTax = useCityTax()
+const damageProtection = useDamageProtection()
 
 function cityTaxRow(reservationId: string) {
   return cityTax.rows.value.find(row => row.reservation.id === reservationId) ?? null
@@ -220,6 +222,10 @@ const pageNumbers = computed(() => {
                   v-if="cityTaxRow(r.id)"
                   :status="cityTaxRow(r.id)!.assessment.status"
                   :stage="cityTaxRow(r.id)!.stage"
+                />
+                <DamageProtectionStatusChip
+                  :bucket="damageProtection.bucketFor(r.id)"
+                  :option="r.damageProtection?.option"
                 />
               </div>
             </td>

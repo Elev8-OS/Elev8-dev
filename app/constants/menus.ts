@@ -73,6 +73,12 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
+        title: 'Damage Protection',
+        icon: 'i-lucide-shield-check',
+        link: '/damage-protection',
+        new: true,
+      },
+      {
         title: 'City Tax',
         icon: 'i-lucide-landmark',
         link: '/city-tax',

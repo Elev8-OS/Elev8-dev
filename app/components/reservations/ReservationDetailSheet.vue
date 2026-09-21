@@ -7,6 +7,7 @@ import { reservationStatusLabels } from '~/components/reservations/data/reservat
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationCityTaxSection from '~/components/reservations/ReservationCityTaxSection.vue'
+import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
@@ -594,6 +595,8 @@ const guestGuideRoute = computed(() => {
 
                   <!-- City tax: what the municipality is owed on this stay -->
                   <ReservationCityTaxSection :reservation="reservation" />
+
+                  <ReservationDamageProtectionSection :reservation="reservation" />
 
                   <!-- Guests group (occupants) + identity & documents -->
                   <Accordion v-if="reservation.guests?.length" type="single" collapsible class="w-full border-b px-2">

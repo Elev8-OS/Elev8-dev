@@ -19,6 +19,7 @@ export type PermissionModule
     | 'activity_reports'
     | 'finance'
     | 'payment_requests'
+    | 'damage_protection'
     | 'integrations'
     | 'users'
     | 'role_management'
@@ -42,6 +43,7 @@ export const DASHBOARD_PERMISSION_MODULES: { id: PermissionModule, label: string
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'analytics', label: 'Analytics' },
   { id: 'reservations', label: 'Reservations' },
+  { id: 'damage_protection', label: 'Damage Protection' },
   { id: 'cockpit_calendar', label: 'Cockpit (Calendar)' },
   { id: 'journeys', label: 'Journey' },
   { id: 'iot_automations', label: 'IoT and Automations' },

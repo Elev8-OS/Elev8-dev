@@ -104,6 +104,17 @@ export function useNotifications() {
       severity = 'WARNING'
     createAlert(type, severity, context)
   }
+  function createProtectionAlert(
+    type: 'PROTECTION_CHOICE_MISSING' | 'DEPOSIT_FAILED_AT_CHECKIN' | 'DEPOSIT_REFUND_DUE' | 'DEPOSIT_REFUND_OVERDUE' | 'DEPOSIT_REFUND_FAILED' | 'DAMAGE_CLAIM_RECORDED',
+    context: Record<string, any>,
+  ) {
+    let severity: AlertSeverity = 'INFO'
+    if (type === 'DEPOSIT_FAILED_AT_CHECKIN' || type === 'DEPOSIT_REFUND_OVERDUE' || type === 'DEPOSIT_REFUND_FAILED')
+      severity = 'CRITICAL'
+    else if (type === 'PROTECTION_CHOICE_MISSING' || type === 'DEPOSIT_REFUND_DUE')
+      severity = 'WARNING'
+    createAlert(type, severity, context)
+  }
   function createCityTaxAlert(type: 'CITY_TAX_COLLECTION_UPCOMING' | 'CITY_TAX_COLLECTION_DUE' | 'CITY_TAX_COLLECTION_MISSED', context: Record<string, any>) {
     let severity: AlertSeverity = 'INFO'
     if (type === 'CITY_TAX_COLLECTION_MISSED')
@@ -112,7 +123,7 @@ export function useNotifications() {
       severity = 'WARNING'
     createAlert(type, severity, context)
   }
-  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createGuestRegistrationAlert, createLexwareAlert, createCityTaxAlert }
+  return { alerts, visibleAlerts, activeAlerts, unreadCount, selectedSeverity, selectedKind, filteredAlerts, markAsRead, markAllAsRead, dismiss, navigateToAlert, getTimeAgo, getDescription, createAlert, createUpsellAlert, createGuestActivityAlert, createEmailReplyAlert, createGuestRegistrationAlert, createLexwareAlert, createCityTaxAlert, createProtectionAlert }
 }
 
 export { getNotificationKind as getAlertKind }
