@@ -2,6 +2,7 @@ import type { DamageProtection, ReservationEntry } from '~/components/reservatio
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '~/components/ui/accordion'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Label } from '~/components/ui/label'
@@ -73,6 +74,34 @@ function mountSection(entry: ReservationEntry) {
         AccordionTrigger: { template: '<button><slot /></button>' },
         AccordionContent: { template: '<div><slot /></div>' },
       },
+      stubs: {
+        Icon: true,
+        Separator: true,
+        Switch: { template: '<button />' },
+        ProtectionChoiceDialog: { template: '<div />' },
+        ProtectionClaimDialog: { template: '<div />' },
+      },
+    },
+  })
+}
+
+/**
+ * Mounts with the REAL reka-ui accordion instead of the div stubs above.
+ *
+ * The stubs cannot see a missing `<Accordion>` root: reka-ui resolves that
+ * through context injection, and a plain `<div>` injects nothing. The section
+ * shipped with `<AccordionItem>` as its template root and every test here still
+ * passed, while the live component threw
+ * `Injection Symbol(AccordionRootContext) not found` and took the whole
+ * reservation detail sheet down with it.
+ */
+function mountSectionWithRealAccordion(entry: ReservationEntry) {
+  const { reservations } = useReservationsModule()
+  reservations.value = [entry, ...reservations.value.filter(r => r.id !== entry.id)]
+  return mount(ReservationDamageProtectionSection, {
+    props: { reservation: entry },
+    global: {
+      components: { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Badge, Button, Label },
       stubs: {
         Icon: true,
         Separator: true,
@@ -241,5 +270,15 @@ describe('reservationDamageProtectionSection', () => {
       }),
     }))
     expect(wrapper.text()).toContain('above the cover')
+  })
+
+  // Regression: the section must carry its own accordion root. The detail sheet
+  // mounts it as a sibling of the other sections, not inside a shared one.
+  it('mounts inside a real accordion, so it brings its own root', () => {
+    const entry = reservation({ damageProtection: protection() })
+    expect(() => mountSectionWithRealAccordion(entry)).not.toThrow()
+
+    const wrapper = mountSectionWithRealAccordion(entry)
+    expect(wrapper.find('[data-testid="damage-protection-section"]').exists()).toBe(true)
   })
 })
