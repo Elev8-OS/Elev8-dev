@@ -11,6 +11,7 @@ const label = ref('')
 const amount = ref<number | undefined>(undefined)
 const reason = ref('')
 const evidenceUrls = ref<string[]>([])
+const evidenceInputEl = ref<HTMLInputElement | null>(null)
 const error = ref('')
 
 const draft = computed(() => ({
@@ -28,8 +29,15 @@ const coverage = computed(() => claimCoverage(props.protection, amount.value ?? 
 const valid = computed(() => isClaimValid(draft.value))
 
 function onFiles(event: Event) {
-  const files = Array.from((event.target as HTMLInputElement).files ?? [])
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
   evidenceUrls.value = [...evidenceUrls.value, ...files.map(f => `/mock/evidence/${f.name}`)]
+  // Clearing lets the same file be picked again after it was removed.
+  input.value = ''
+}
+
+function removeEvidence(url: string) {
+  evidenceUrls.value = evidenceUrls.value.filter(u => u !== url)
 }
 
 function reset() {
@@ -102,20 +110,41 @@ function submit() {
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <Label for="claim-evidence">Evidence</Label>
+          <Label>Evidence</Label>
           <input
-            id="claim-evidence"
+            ref="evidenceInputEl"
             type="file"
             multiple
             accept="image/*,application/pdf"
-            class="text-sm file:mr-3 file:rounded-md file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm"
+            aria-label="Add evidence"
+            class="hidden"
             @change="onFiles"
           >
-          <ul v-if="evidenceUrls.length" class="flex flex-col gap-1 text-xs text-muted-foreground">
-            <li v-for="url in evidenceUrls" :key="url">
-              {{ url.split('/').pop() }}
+
+          <ul v-if="evidenceUrls.length" class="flex flex-col gap-1">
+            <li
+              v-for="url in evidenceUrls"
+              :key="url"
+              class="flex items-center gap-2 rounded-md border px-2 py-1 text-xs text-muted-foreground"
+            >
+              <Icon name="lucide:paperclip" class="size-3.5 shrink-0" />
+              <span class="truncate">{{ url.split('/').pop() }}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="ml-auto size-6 shrink-0 hover:text-destructive"
+                :aria-label="`Remove ${url.split('/').pop()}`"
+                @click="removeEvidence(url)"
+              >
+                <Icon name="lucide:x" class="size-3.5" />
+              </Button>
             </li>
           </ul>
+
+          <Button variant="outline" size="sm" class="w-full gap-1.5 border-dashed" @click="evidenceInputEl?.click()">
+            <Icon name="lucide:plus" class="size-3.5" />
+            Add evidence
+          </Button>
         </div>
 
         <p v-if="error" class="text-sm text-destructive">
