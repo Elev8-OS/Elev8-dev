@@ -14,7 +14,7 @@ const props = defineProps<{
 defineEmits<{ 'update:open': [v: boolean] }>()
 
 function formatDate(iso?: string): string {
-  return iso ? new Date(iso).toLocaleString() : '—'
+  return iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) : '—'
 }
 
 function maskIdNumber(num?: string): string {

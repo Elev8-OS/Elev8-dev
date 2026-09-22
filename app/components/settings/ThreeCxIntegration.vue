@@ -137,7 +137,7 @@ function assignExtensionLocal(staffId: string, value: string) {
             <p class="truncate text-sm font-medium">{{ activeAccount?.displayName }}</p>
             <p class="text-xs text-muted-foreground">FQDN: {{ activeAccount?.fqdn }} · PBX {{ activeAccount?.pbxVersion }}</p>
             <p class="mt-1 text-[11px] text-muted-foreground/60">
-              Connected {{ new Date(activeAccount?.connectedAt ?? '').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) }}
+              Connected {{ new Date(activeAccount?.connectedAt ?? '').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}
               · {{ activeAccount?.extensionMappings.length }} extension{{ activeAccount?.extensionMappings.length !== 1 ? 's' : 's' }} mapped
             </p>
             <div class="mt-3 flex flex-wrap gap-2">

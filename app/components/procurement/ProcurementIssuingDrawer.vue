@@ -157,7 +157,7 @@ function handleSave(asDraft: boolean) {
                 Date
               </p>
               <p class="text-sm font-medium">
-                {{ new Date(issuing.issuedAt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) }}
+                {{ new Date(issuing.issuedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }}
               </p>
             </div>
           </div>

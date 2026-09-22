@@ -123,7 +123,7 @@ function hasOpenIssue(lineId: string) {
           </Badge>
         </div>
         <p class="text-sm text-muted-foreground">
-          Statement for {{ statement.period }} · Published {{ statement.publishedAt ? new Date(statement.publishedAt).toLocaleDateString('en-US') : '—' }}
+          Statement for {{ statement.period }} · Published {{ statement.publishedAt ? new Date(statement.publishedAt).toLocaleDateString('en-GB') : '—' }}
         </p>
       </div>
       <PortalExportButtons :statement-id="statement.id" />

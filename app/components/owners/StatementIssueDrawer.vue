@@ -91,7 +91,7 @@ function formatAmount(amount: number) {
 function formatDate(iso?: string) {
   if (!iso)
     return '—'
-  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
 }
 
 watch(open, (isOpen) => {

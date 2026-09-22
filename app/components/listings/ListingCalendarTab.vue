@@ -9,7 +9,7 @@ const bookingStatusColors: Record<string, string> = Object.fromEntries(
 )
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function monthKey(dateStr: string) {
@@ -20,7 +20,7 @@ function formatMonth(monthKey: string) {
   const [year, month] = monthKey.split('-')
   if (!year || !month)
     return monthKey
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
 const sortedBookings = computed(() =>

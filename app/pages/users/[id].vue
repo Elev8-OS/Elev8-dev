@@ -108,7 +108,7 @@ function fmtActivityTimestamp(iso: string): { date: string, time: string } {
   const d = new Date(iso)
   return {
     date: format(d, 'EEE, d MMM'),
-    time: format(d, 'h:mm a'),
+    time: format(d, 'HH:mm'),
   }
 }
 function lastActiveLabel(): string {
@@ -137,7 +137,7 @@ const attendanceInsights = computed(() => {
 
   // Average clock-in time across records (parse HH:mm → minutes since midnight)
   const totalMins = records.reduce((sum, r) => {
-    const [h, m] = r.clockIn.split(':').map(Number)
+    const [h = 0, m = 0] = r.clockIn.split(':').map(Number)
     return sum + (h * 60 + m)
   }, 0)
   const avgMins = Math.round(totalMins / records.length)

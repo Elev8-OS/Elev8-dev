@@ -79,7 +79,7 @@ export function useWhatsApp() {
       accessToken: _accessToken,
       webhookToken,
       status: 'connected',
-      connectedAt: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      connectedAt: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
       listingIds: [],
     }
 

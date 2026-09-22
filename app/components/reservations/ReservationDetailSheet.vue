@@ -140,7 +140,7 @@ function docKindMeta(kind: GuestDocument['kind']) {
 function fmtUploadTime(iso: string): string {
   if (!iso)
     return ''
-  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 function onStatusChange(value: unknown) {
@@ -255,7 +255,7 @@ async function copyCode(code: string) {
 }
 
 function formatExpiry(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 function categoryLabel(category: string): string {
@@ -389,7 +389,7 @@ const guestGuideRoute = computed(() => {
                             {{ fmtDate(reservation.checkIn) }}
                           </div>
                           <div class="text-xs text-muted-foreground">
-                            2:00 PM
+                            14:00
                           </div>
                         </div>
                         <div class="flex flex-col items-center gap-1">
@@ -408,7 +408,7 @@ const guestGuideRoute = computed(() => {
                             {{ fmtDate(reservation.checkOut) }}
                           </div>
                           <div class="text-xs text-muted-foreground">
-                            11:00 AM
+                            11:00
                           </div>
                         </div>
                       </div>

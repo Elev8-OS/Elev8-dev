@@ -24,7 +24,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string | null]
 }>()
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 function toCalendarDate(value?: string | null) {
   if (!value)

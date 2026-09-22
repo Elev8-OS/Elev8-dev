@@ -9,7 +9,7 @@
     { "type": "welcome", "order": 1, "enabled": true, "data": { "message": "Welcome to your home in the mountains. We hope you love the crisp air, quiet mornings, and starry nights as much as we do." } },
     { "type": "pre_arrival", "order": 2, "enabled": true, "data": { "fields": ["arrival_time", "guests", "mobile", "requests"] } },
     { "type": "wifi", "order": 3, "enabled": true, "data": { "ssid": "", "password": "", "networkNotes": "Signal can be weak in storms" } },
-    { "type": "house_rules", "order": 4, "enabled": true, "data": { "rules": ["No smoking indoors", "Keep fireplace screen closed", "Quiet hours 10pm-8am", "Store firewood away from deck"] } },
+    { "type": "house_rules", "order": 4, "enabled": true, "data": { "rules": ["No smoking indoors", "Keep fireplace screen closed", "Quiet hours 22:00-08:00", "Store firewood away from deck"] } },
     { "type": "amenities", "order": 5, "enabled": true, "data": { "items": ["Fireplace", "WiFi", "Heating", "Hot tub", "Washer", "Free parking", "Mountain views"] } },
     { "type": "checkout", "order": 6, "enabled": true, "data": { "time": "11:00", "instructions": "Start the dishwasher and leave the firewood box closed. Safe travels down the mountain!" } }
   ]

@@ -112,7 +112,7 @@ export const mockLexwareInvoices: LexwareInvoice[] = [
     lineItems: [
       { category: 'Accommodation', description: '7 nights accommodation', quantity: 7, unitPrice: 280.0, vatRate: 7, postingAccountId: 'la-8210' },
       { category: 'CleaningFee', description: 'Final cleaning', quantity: 1, unitPrice: 120.0, vatRate: 19, postingAccountId: 'la-8300' },
-      { category: 'Upsell', description: 'Late checkout (until 2pm)', quantity: 1, unitPrice: 60.0, vatRate: 19, postingAccountId: 'la-8400' },
+      { category: 'Upsell', description: 'Late checkout (until 14:00)', quantity: 1, unitPrice: 60.0, vatRate: 19, postingAccountId: 'la-8400' },
     ],
     createdAt: '2026-07-28T11:32:00Z',
     finalizedAt: null,

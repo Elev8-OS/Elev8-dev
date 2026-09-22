@@ -126,7 +126,7 @@ const formattedExpiry = computed(() => {
     return ''
   try {
     const d = new Date(props.paymentRequest.expiresAt)
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
   }
   catch {
     return props.paymentRequest.expiresAt

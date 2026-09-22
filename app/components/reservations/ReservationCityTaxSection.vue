@@ -58,7 +58,7 @@ function methodLabel(method?: CityTaxPaymentMethod): string {
 }
 
 function settledOn(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
 }
 
 function collect(payload: { method: CityTaxPaymentMethod, note?: string }) {

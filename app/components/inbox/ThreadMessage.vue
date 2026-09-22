@@ -20,7 +20,7 @@ const { retryMessage, autoTranslate, selectedConversation } = useInbox()
 
 const mockTranslations: Record<string, string> = {
   'Hi! We\'re arriving tomorrow and wanted to confirm the check-in process.': 'Halo! Kami tiba besok dan ingin mengonfirmasi proses check-in.',
-  'What time is check-in? We arrive at 3 PM.': 'Jam berapa check-in? Kami tiba jam 3 sore.',
+  'What time is check-in? We arrive at 15:00.': 'Jam berapa check-in? Kami tiba jam 15:00.',
   'Thanks for the info! I\'ll confirm soon.': 'Terima kasih infonya! Saya akan konfirmasi segera.',
   'Is there parking available at the property?': 'Apakah ada parkir di properti?',
   'Thank you so much! Really looking forward to our stay.': 'Terima kasih banyak! Sangat menantikan masa tinggal kami.',
@@ -29,7 +29,7 @@ const mockTranslations: Record<string, string> = {
   'We had an issue with the AC. Can someone come fix it?': 'Kami ada masalah dengan AC. Bisa kirim orang untuk memperbaiki?',
   'What\'s the WiFi password?': 'Password WiFi-nya apa?',
   'Thanks for the wonderful stay! We\'ll definitely be back.': 'Terima kasih untuk masa tinggal yang menyenangkan! Kami pasti akan kembali.',
-  'Is early check-in possible? Our flight arrives at 10 AM.': 'Apakah early check-in memungkinkan? Penerbangan kami tiba jam 10 pagi.',
+  'Is early check-in possible? Our flight arrives at 10:00.': 'Apakah early check-in memungkinkan? Penerbangan kami tiba jam 10:00.',
   'Can we extend our stay by one night?': 'Bisa memperpanjang masa tinggal kami satu malam?',
   'The hot water isn\'t working properly.': 'Air panas tidak berfungsi dengan baik.',
   'Do you provide airport transfer service?': 'Apakah Anda menyediakan layanan transfer bandara?',
@@ -40,7 +40,7 @@ const mockTranslations: Record<string, string> = {
   'That sounds perfect, thank you!': 'Kedengarannya sempurna, terima kasih!',
   'We\'d also like to arrange airport pickup if possible.': 'Kami juga ingin mengatur penjemputan bandara jika memungkinkan.',
   'How far is the villa from the beach?': 'Seberapa jauh vila dari pantai?',
-  'We have a late flight on checkout day, can we stay until 6 PM?': 'Kami ada penerbangan malam saat checkout, bisa tinggal sampai jam 6 sore?',
+  'We have a late flight on checkout day, can we stay until 18:00?': 'Kami ada penerbangan malam saat checkout, bisa tinggal sampai jam 18:00?',
   'Is the pool heated?': 'Apakah kolam renangnya dipanaskan?',
   'Can you help us book a scooter?': 'Bisa bantu kami pesan scooter?',
   'We\'re celebrating our anniversary, any special arrangements?': 'Kami merayakan anniversary, ada pengaturan khusus?',
@@ -50,7 +50,7 @@ const mockTranslations: Record<string, string> = {
 
 const mockHostTranslations: Record<string, Record<string, string>> = {
   English: {
-    'Check-in is at 3 PM. Our team will meet you at the villa.': 'Check-in is at 3 PM. Our team will meet you at the villa.',
+    'Check-in is at 15:00. Our team will meet you at the villa.': 'Check-in is at 15:00. Our team will meet you at the villa.',
     'Welcome to the villa! Let me know if you need anything.': 'Welcome to the villa! Let me know if you need anything.',
     'Thank you for reaching out! Here are the directions to our property.': 'Thank you for reaching out! Here are the directions to our property.',
     'Sure, I\'ll send someone to fix the AC right away.': 'Sure, I\'ll send someone to fix the AC right away.',
@@ -62,7 +62,7 @@ const mockHostTranslations: Record<string, Record<string, string>> = {
     'Yes, we provide airport transfer for an additional fee. Would you like to arrange one?': 'Yes, we provide airport transfer for an additional fee. Would you like to arrange one?',
   },
   Japanese: {
-    'Check-in is at 3 PM. Our team will meet you at the villa.': 'チェックインは午後3時です。スタッフがヴィラでお待ちしております。',
+    'Check-in is at 15:00. Our team will meet you at the villa.': 'チェックインは15:00です。スタッフがヴィラでお待ちしております。',
     'Welcome to the villa! Let me know if you need anything.': 'ヴィラへようこそ！何か必要なことがあればお知らせください。',
     'Thank you for reaching out! Here are the directions to our property.': 'お問い合わせありがとうございます！プロパティへの道順をお送りします。',
     'Sure, I\'ll send someone to fix the AC right away.': 'すぐにエアコンの修理にスタッフを送ります。',
@@ -174,7 +174,7 @@ const timeLabel = computed(() => {
   if (isToday(date)) {
     return formatDistanceToNow(date, { addSuffix: true })
   }
-  return format(date, 'h:mm a')
+  return format(date, 'HH:mm')
 })
 
 const dateLabel = computed(() => {

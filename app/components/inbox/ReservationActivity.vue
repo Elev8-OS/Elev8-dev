@@ -21,9 +21,9 @@ const dotColorMap: Record<string, string> = {
 function formatTimestamp(ts: string) {
   const date = new Date(ts)
   if (isToday(date)) {
-    return `Today, ${format(date, 'h:mm a')}`
+    return `Today, ${format(date, 'HH:mm')}`
   }
-  return format(date, 'EEEE, d MMM yyyy, h:mm a')
+  return format(date, 'EEEE, d MMM yyyy, HH:mm')
 }
 
 const reversedActivity = computed(() =>
@@ -76,7 +76,7 @@ const generatedEvents = computed(() => {
   events.push({
     id: 'sys-checkout',
     title: 'Check-out',
-    description: `Guest checks out at ${new Date(props.reservation.checkOut).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}`,
+    description: `Guest checks out at ${new Date(props.reservation.checkOut).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}`,
     timestamp: props.reservation.checkOut,
     type: 'system',
     colorDot: 'gray',
@@ -89,7 +89,7 @@ const generatedEvents = computed(() => {
         events.push({
           id: `tpl-${tpl.id}`,
           title: `Scheduled — ${tpl.label}`,
-          description: `Will be sent ${new Date(tpl.scheduledFor).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric' })}`,
+          description: `Will be sent ${new Date(tpl.scheduledFor).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}`,
           timestamp: tpl.scheduledFor,
           type: 'system',
           colorDot: 'gray',

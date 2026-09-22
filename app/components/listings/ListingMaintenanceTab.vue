@@ -152,7 +152,7 @@ function addTask() {
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
 function handleSaveCleaningJob(jobInput: Parameters<typeof createJob>[0]) {

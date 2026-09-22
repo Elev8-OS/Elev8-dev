@@ -41,7 +41,7 @@ function handleRevoke() {
       </div>
       <div v-if="submission" class="mt-4 space-y-2 text-sm">
         <h4 class="font-medium">Submitted</h4>
-        <div v-if="submission.arrivalTime">Arrival: {{ new Date(submission.arrivalTime).toLocaleString() }}</div>
+        <div v-if="submission.arrivalTime">Arrival: {{ new Date(submission.arrivalTime).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) }}</div>
         <div v-if="submission.guests">Guests: {{ submission.guests }}</div>
         <div v-if="submission.requests">Requests: {{ submission.requests }}</div>
       </div>

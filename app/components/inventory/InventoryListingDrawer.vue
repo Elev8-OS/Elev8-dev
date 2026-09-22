@@ -181,7 +181,7 @@ function formatRelativeDate(iso: string) {
     return 'Yesterday'
   if (diff < 7)
     return `${diff} days ago`
-  return date.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 </script>
 

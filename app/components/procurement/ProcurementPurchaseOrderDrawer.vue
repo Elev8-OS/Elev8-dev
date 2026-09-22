@@ -181,7 +181,7 @@ function getItemName(itemId: string): string {
 function formatDate(d?: string) {
   if (!d)
     return '-'
-  return new Date(d).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function formatAmount(amount: number, curr: string) {

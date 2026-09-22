@@ -64,10 +64,10 @@ function selectCall(id: string) {
 function formatCallTimestamp(ts: string): string {
   const d = new Date(ts)
   if (isToday(d))
-    return `Today, ${format(d, 'h:mm a')}`
+    return `Today, ${format(d, 'HH:mm')}`
   if (isYesterday(d))
-    return `Yesterday, ${format(d, 'h:mm a')}`
-  return format(d, 'MMM d, h:mm a')
+    return `Yesterday, ${format(d, 'HH:mm')}`
+  return format(d, 'd MMM, HH:mm')
 }
 
 function formatDuration(seconds: number): string {

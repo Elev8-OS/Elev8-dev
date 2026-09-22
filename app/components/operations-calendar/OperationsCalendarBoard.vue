@@ -187,10 +187,10 @@ const weekRangeLabel = computed(() => {
   const startDate = new Date(`${first.key}T00:00:00+08:00`)
   const endDate = new Date(`${last.key}T00:00:00+08:00`)
   const sameMonth = startDate.getMonth() === endDate.getMonth()
-  const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const startStr = startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   const endStr = sameMonth
-    ? endDate.toLocaleDateString('en-US', { day: 'numeric' })
-    : endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    ? endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    : endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   return `${startStr} – ${endStr}, ${endDate.getFullYear()}`
 })
 

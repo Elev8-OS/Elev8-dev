@@ -27,7 +27,7 @@ const checkIn = ref('')
 const checkOut = ref('')
 const estimatedArrivalTime = ref('')
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 function parseDateToCalendarDate(dateStr: string): any {
   if (!dateStr)

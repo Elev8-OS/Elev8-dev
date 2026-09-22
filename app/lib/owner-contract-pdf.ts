@@ -108,7 +108,7 @@ export function buildOwnerContractPdf(
   doc.text('Signature', MARGIN, signatureY + 4)
   doc.text(
     contract.signature
-      ? `${contract.signature.name} — ${new Date(contract.signature.signedAt).toLocaleString('en-GB')}`
+      ? `${contract.signature.name} — ${new Date(contract.signature.signedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })}`
       : 'Not yet signed',
     MARGIN + 90,
     signatureY + 4,
@@ -118,7 +118,7 @@ export function buildOwnerContractPdf(
   doc.setFontSize(8)
   doc.setTextColor(150)
   doc.text(
-    `Generated ${new Date().toLocaleDateString()} · Elev8 Owner Portal`,
+    `Generated ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · Elev8 Owner Portal`,
     MARGIN,
     290,
   )

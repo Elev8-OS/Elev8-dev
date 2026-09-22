@@ -59,7 +59,7 @@ function formatPrice(price: number, currency: string): string {
         </span>
       </div>
       <div class="flex items-center justify-between text-xs">
-        <span class="text-muted-foreground">{{ new Date(order.serviceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}</span>
+        <span class="text-muted-foreground">{{ new Date(order.serviceDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
         <span class="font-semibold">{{ formatPrice(order.grandTotal, order.currency) }}</span>
       </div>
     </div>

@@ -41,7 +41,7 @@ function getMockResponse(question: string): string {
   if (q.includes('pool')) {
     const hasPool = props.listing.amenities.some(a => a.toLowerCase().includes('pool'))
     return hasPool
-      ? 'Yes! The property has a private pool available for guests. Pool hours are 7am–10pm.'
+      ? 'Yes! The property has a private pool available for guests. Pool hours are 07:00–22:00.'
       : 'This property does not have a pool, but there are nearby facilities available.'
   }
   return 'That\'s a great question! I\'ll check with the host and get back to you shortly. Is there anything else I can help with?'

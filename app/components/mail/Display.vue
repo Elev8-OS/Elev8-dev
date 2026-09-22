@@ -85,7 +85,7 @@ const today = new Date()
                   >
                     Later today
                     <span class="ml-auto text-muted-foreground">
-                      {{ format(addHours(today, 4), "E, h:m b") }}
+                      {{ format(addHours(today, 4), "EEE, HH:mm") }}
                     </span>
                   </Button>
                   <Button
@@ -94,7 +94,7 @@ const today = new Date()
                   >
                     Tomorrow
                     <span class="ml-auto text-muted-foreground">
-                      {{ format(addDays(today, 1), "E, h:m b") }}
+                      {{ format(addDays(today, 1), "EEE, HH:mm") }}
                     </span>
                   </Button>
                   <Button
@@ -103,7 +103,7 @@ const today = new Date()
                   >
                     This weekend
                     <span class="ml-auto text-muted-foreground">
-                      {{ format(nextSaturday(today), "E, h:m b") }}
+                      {{ format(nextSaturday(today), "EEE, HH:mm") }}
                     </span>
                   </Button>
                   <Button
@@ -112,7 +112,7 @@ const today = new Date()
                   >
                     Next week
                     <span class="ml-auto text-muted-foreground">
-                      {{ format(addDays(today, 7), "E, h:m b") }}
+                      {{ format(addDays(today, 7), "EEE, HH:mm") }}
                     </span>
                   </Button>
                 </div>
@@ -192,7 +192,7 @@ const today = new Date()
           </div>
         </div>
         <div v-if="mail.date" class="ml-auto text-xs text-muted-foreground">
-          {{ format(new Date(mail.date), "PPpp") }}
+          {{ format(new Date(mail.date), "d MMM yyyy, HH:mm") }}
         </div>
       </div>
       <Separator />

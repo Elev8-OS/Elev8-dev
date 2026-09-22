@@ -84,7 +84,7 @@ const faviconHref = computed(() => getBrandingFaviconHref(props.branding))
               <p class="text-sm font-medium">
                 Good to know
               </p><p class="mt-1 text-xs text-muted-foreground">
-                Check-in is available from 3:00 PM.
+                Check-in is available from 15:00.
               </p>
             </div><button type="button" class="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground">
               View check-in steps

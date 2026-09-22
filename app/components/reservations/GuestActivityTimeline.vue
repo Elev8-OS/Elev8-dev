@@ -3,7 +3,7 @@ import type { ActivityEvent } from '~/components/inbox/data/conversations'
 
 const props = defineProps<{ events: ActivityEvent[], bare?: boolean }>()
 
-const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })
+const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
 
 function fmtTimestamp(iso: string): string {
   return df.format(new Date(iso))

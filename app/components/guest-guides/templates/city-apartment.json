@@ -8,7 +8,7 @@
     { "type": "hero", "order": 0, "enabled": true, "data": { "photoUrl": "", "title": "Welcome to the City", "subtitle": "Your home base in the heart of town" } },
     { "type": "welcome", "order": 1, "enabled": true, "data": { "message": "Welcome to your city apartment. Everything you need is within walking distance - we hope you enjoy the neighborhood as much as we do." } },
     { "type": "wifi", "order": 2, "enabled": true, "data": { "ssid": "", "password": "", "networkNotes": "Gigabit fiber wired connection available" } },
-    { "type": "house_rules", "order": 3, "enabled": true, "data": { "rules": ["No smoking indoors", "No parties or events", "Quiet hours 10pm-8am", "Respect downstairs neighbors"] } },
+    { "type": "house_rules", "order": 3, "enabled": true, "data": { "rules": ["No smoking indoors", "No parties or events", "Quiet hours 22:00-08:00", "Respect downstairs neighbors"] } },
     { "type": "amenities", "order": 4, "enabled": true, "data": { "items": ["WiFi", "Air conditioning", "Kitchenette", "Washer/Dryer", "Smart TV", "Elevator", "Workspace"] } },
     { "type": "checkout", "order": 5, "enabled": true, "data": { "time": "11:00", "instructions": "Drop keys in the lockbox. Take the train downtown for your onward journey!" } }
   ]

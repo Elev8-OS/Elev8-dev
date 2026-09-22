@@ -13,7 +13,7 @@ import PaymentRequestShareDialog from '~/components/payment-request/PaymentReque
 import PaymentRequestTable from '~/components/payment-request/PaymentRequestTable.vue'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 
-const df = new DateFormatter('en-US', {
+const df = new DateFormatter('en-GB', {
   dateStyle: 'medium',
 })
 
@@ -80,10 +80,10 @@ function exportToExcel() {
       r.status,
       r.feeMode,
       getStaffName(r.createdBy),
-      r.createdAt ? new Date(r.createdAt).toLocaleString() : '',
-      r.expiresAt ? new Date(r.expiresAt).toLocaleString() : '',
-      r.paidAt ? new Date(r.paidAt).toLocaleString() : '',
-      r.cancelledAt ? new Date(r.cancelledAt).toLocaleString() : '',
+      r.createdAt ? new Date(r.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) : '',
+      r.expiresAt ? new Date(r.expiresAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) : '',
+      r.paidAt ? new Date(r.paidAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) : '',
+      r.cancelledAt ? new Date(r.cancelledAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) : '',
       r.cancelledBy ? getStaffName(r.cancelledBy) : '',
     ]
   })

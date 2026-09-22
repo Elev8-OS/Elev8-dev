@@ -18,7 +18,7 @@ const weekLabel = computed(() => {
   const parsed = new Date(props.title)
   if (Number.isNaN(parsed.getTime()))
     return props.title
-  return `Week of ${format(parsed, 'MMM d, yyyy')}`
+  return `Week of ${format(parsed, 'd MMM yyyy')}`
 })
 
 // Format a value: add % when it looks like a rate (>10 on a 0-100 scale), else /10-style

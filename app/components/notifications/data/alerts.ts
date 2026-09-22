@@ -670,7 +670,7 @@ export const mockAlerts: Alert[] = [
     resolved_at: null,
     auto_resolve: true,
     resolve_condition: 'Call ends',
-    context: { guestName: 'Michael Tan', callerNumber: '+65 9123-4567', listingName: 'Villa Sari', listingId: 'listing-villa-3', duration: '4m 32s', aiSummary: 'Guest asked about late checkout options and pool heating availability. Confirmed late checkout until 2pm and pool heating is available on request.' },
+    context: { guestName: 'Michael Tan', callerNumber: '+65 9123-4567', listingName: 'Villa Sari', listingId: 'listing-villa-3', duration: '4m 32s', aiSummary: 'Guest asked about late checkout options and pool heating availability. Confirmed late checkout until 14:00 and pool heating is available on request.' },
   },
   {
     alert_id: 'alert-call-004',

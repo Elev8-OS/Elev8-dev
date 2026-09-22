@@ -448,7 +448,7 @@ export const mockUpsellOrders: UpsellOrder[] = [
     guestName: 'Reto Wyss',
     guestEmail: 'reto.wyss@email.com',
     serviceId: 'svc-006',
-    serviceName: 'Late Check-out (until 2pm)',
+    serviceName: 'Late Check-out (until 14:00)',
     serviceCategory: 'Late Check-out',
     items: [
       { id: 'itm-006a', name: 'Late Check-out', price: 450000, quantity: 1 },

@@ -1832,14 +1832,14 @@ export function getWeekDays(anchorDate = new Date()) {
     date.setDate(start.getDate() + index)
     return {
       key: date.toISOString().slice(0, 10),
-      label: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      label: date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
       date,
     }
   })
 }
 
 export function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 export function formatDateKey(value: string) {
@@ -1853,8 +1853,8 @@ export function formatWeekRange(days: Array<{ date: Date }>) {
   const endDay = days[days.length - 1]
   if (!startDay || !endDay)
     return ''
-  const start = startDay.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const end = endDay.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const start = startDay.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const end = endDay.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   return `${start} - ${end}`
 }
 

@@ -107,7 +107,7 @@ function handleSimulateInbound() {
     from: 'emily.wilson@gmail.com',
     to: email.activeAccount.value?.address ?? 'acme-inc@mail.elev8-suite.com',
     subject: 'Re: Check-in details',
-    content: 'Hi! Thanks for the details — we arrive tomorrow at 2 PM. See you soon!',
+    content: 'Hi! Thanks for the details — we arrive tomorrow at 14:00. See you soon!',
   })
   toast.success('Inbound email simulated — check the Unified Inbox.')
 }
@@ -176,7 +176,7 @@ function copyRecord(record: { host: string, value: string }) {
               {{ activeAccount?.mode === 'default' ? 'Default Elev8 address' : `Custom domain · ${activeAccount?.domain}` }}
             </p>
             <p class="mt-1 text-[11px] text-muted-foreground/60">
-              Connected {{ new Date(activeAccount?.connectedAt ?? '').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) }}
+              Connected {{ new Date(activeAccount?.connectedAt ?? '').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) }}
             </p>
             <div class="mt-3 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" class="h-8 gap-1.5" @click="copyText(activeAccount?.address ?? '', 'Address')">

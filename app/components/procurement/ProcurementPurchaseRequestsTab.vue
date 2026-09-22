@@ -84,7 +84,7 @@ function getStaffName(staffId: string): string {
 }
 
 function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function formatAmount(amount: number, currency: string) {

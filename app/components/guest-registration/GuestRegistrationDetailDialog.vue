@@ -90,7 +90,7 @@ function statusBadgeVariant(status: GuestRegistration['status']) {
             Reference: <span class="font-mono">{{ registration.submissionId }}</span>
           </p>
           <p v-if="registration.submittedAt" class="text-[11px] text-green-700/70">
-            {{ new Date(registration.submittedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) }}
+            {{ new Date(registration.submittedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) }}
           </p>
         </div>
         <div v-else-if="registration.status === 'failed'" class="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">

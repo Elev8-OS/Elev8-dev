@@ -345,7 +345,7 @@ function removeLengthOfStayDiscount(index: number) {
   form.lengthOfStayDiscounts = form.lengthOfStayDiscounts.filter((_, i) => i !== index)
 }
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 function parseDateToCalendarDate(dateStr: string): CalendarDate | undefined {
   if (!dateStr)

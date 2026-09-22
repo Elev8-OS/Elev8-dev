@@ -173,10 +173,10 @@ const canSubmit = computed(() =>
 function formatSummaryDate(value: string) {
   if (!value)
     return ''
-  return new Date(`${value}T00:00:00+08:00`).toLocaleDateString('en-US', {
+  return new Date(`${value}T00:00:00+08:00`).toLocaleDateString('en-GB', {
     weekday: 'short',
-    month: 'short',
     day: 'numeric',
+    month: 'short',
     year: 'numeric',
     timeZone: 'Asia/Singapore',
   })

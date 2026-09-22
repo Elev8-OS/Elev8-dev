@@ -39,7 +39,7 @@ const statusConfig: Record<string, { label: string, class: string }> = {
         Assigned to {{ task.assignee }}
       </div>
       <div v-if="task.dueDate" class="text-xs text-muted-foreground">
-        Due {{ new Date(task.dueDate).toLocaleDateString() }}
+        Due {{ new Date(task.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }}
       </div>
     </div>
   </div>

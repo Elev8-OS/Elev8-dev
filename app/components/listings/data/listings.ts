@@ -754,7 +754,7 @@ export const listings = ref<Listing[]>([
         description: 'A serene 5-bedroom villa with private pool near Canggu beach. Perfect for families and groups seeking a luxurious Bali experience with modern amenities and traditional Balinese architecture.',
         checkInTime: '14:00',
         checkOutTime: '11:00',
-        houseRules: 'No smoking inside\nNo parties or events\nQuiet hours after 10pm\nCheck-out by 11:00 AM',
+        houseRules: 'No smoking inside\nNo parties or events\nQuiet hours after 22:00\nCheck-out by 11:00',
       },
       topicsToAvoid: ['competitor pricing', 'refund disputes'],
       propertyUpsells: [],

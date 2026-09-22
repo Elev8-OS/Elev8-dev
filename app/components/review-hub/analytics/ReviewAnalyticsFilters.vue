@@ -45,7 +45,7 @@ const comparisonOptions: { value: AnalyticsComparisonMode, label: string, hint: 
   { value: 'previous_period', label: 'vs previous period', hint: 'Compare with the same number of days immediately before the selected period' },
 ]
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 function parseDateToCalendarDate(date: string | null) {
   if (!date)

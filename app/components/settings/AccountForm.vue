@@ -25,7 +25,7 @@ const languages = [
   { label: 'Chinese', value: 'zh' },
 ] as const
 
-const df = new DateFormatter('en-US', {
+const df = new DateFormatter('en-GB', {
   dateStyle: 'long',
 })
 

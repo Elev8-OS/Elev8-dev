@@ -45,14 +45,14 @@ function findConversationByPhone(phone: string): string | undefined {
 }
 
 const MOCK_TRANSCRIPT_SAMPLES: string[] = [
-  'Guest: Hi, I wanted to confirm the check-in time for tomorrow.\nKomang: Of course! Check-in is at 3 PM, but we can arrange early check-in if the room is ready.\nGuest: That would be great, thank you.\nKomang: I will let the housekeeping team know. We will message you once it is ready.',
-  'Guest: Hello, is the airport pickup still scheduled for Friday?\nKomang: Yes, the driver will meet you at the arrivals hall at 2 PM with a sign with your name.\nGuest: Perfect, thank you so much.',
+  'Guest: Hi, I wanted to confirm the check-in time for tomorrow.\nKomang: Of course! Check-in is at 15:00, but we can arrange early check-in if the room is ready.\nGuest: That would be great, thank you.\nKomang: I will let the housekeeping team know. We will message you once it is ready.',
+  'Guest: Hello, is the airport pickup still scheduled for Friday?\nKomang: Yes, the driver will meet you at the arrivals hall at 14:00 with a sign with your name.\nGuest: Perfect, thank you so much.',
   'Komang: Hi, I am calling to follow up on the WiFi issue you reported.\nGuest: Yes, it has been working much better since the reset, thank you.\nKomang: Wonderful, glad to hear it. Have a great rest of your stay.',
 ]
 
 const MOCK_SUMMARY_SAMPLES: string[] = [
   'Komang menghubungi guest untuk konfirmasi detail check-in. Early check-in mungkin di-atur tergantung kesiapan kamar. Guest puas dengan respons cepat.',
-  'Guest mengkonfirmasi airport pickup untuk hari Jumat. Driver akan jemput di terminal kedatangan jam 2 siang dengan papan nama. Sudah di-koordinasikan dengan vendor.',
+  'Guest mengkonfirmasi airport pickup untuk hari Jumat. Driver akan jemput di terminal kedatangan jam 14:00 dengan papan nama. Sudah di-koordinasikan dengan vendor.',
   'Komang melakukan follow-up masalah WiFi. Issue sudah resolved setelah router di-reset. Guest tidak punya complaint tambahan.',
 ]
 

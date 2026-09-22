@@ -215,7 +215,7 @@ function handleElevaiDisable() {
             {{ format(checkInDate!, 'EEEE, d MMM yyyy') }}
           </div>
           <div class="text-[10px] text-muted-foreground">
-            {{ format(checkInDate!, 'h:mm a') }}
+            {{ format(checkInDate!, 'HH:mm') }}
           </div>
         </div>
         <div class="flex flex-col items-center gap-0.5 px-3">
@@ -236,7 +236,7 @@ function handleElevaiDisable() {
             {{ format(checkOutDate!, 'EEEE, d MMM yyyy') }}
           </div>
           <div class="text-[10px] text-muted-foreground">
-            {{ format(checkOutDate!, 'h:mm a') }}
+            {{ format(checkOutDate!, 'HH:mm') }}
           </div>
         </div>
       </div>

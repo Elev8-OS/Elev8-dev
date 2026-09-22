@@ -11,7 +11,7 @@ import {
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
 import { listings } from '@/components/listings/data/listings'
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 function parseDateToCalendarDate(dateStr: string): CalendarDate | undefined {
   if (!dateStr) return undefined

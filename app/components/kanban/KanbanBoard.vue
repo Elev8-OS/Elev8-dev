@@ -14,7 +14,7 @@ import CardFooter from '../ui/card/CardFooter.vue'
 
 const { board, addTask, updateTask, removeTask, setColumns, removeColumn, updateColumn } = useKanban()
 
-const df = new DateFormatter('en-US', {
+const df = new DateFormatter('en-GB', {
   dateStyle: 'medium',
 })
 const dueDate = ref<DateValue | undefined>()

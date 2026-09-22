@@ -96,7 +96,7 @@ const guestOptions = computed<GuestOption[]>(() => {
         email: conv.guestEmail ?? '',
         avatar: conv.guestAvatar,
         source: 'inbox',
-        lastStay: conv.reservation ? new Date(conv.reservation.checkIn).toLocaleDateString() : undefined,
+        lastStay: conv.reservation ? new Date(conv.reservation.checkIn).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined,
         listingName: conv.listingName,
       })
     }

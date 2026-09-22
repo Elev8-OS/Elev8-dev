@@ -43,9 +43,9 @@ const statusMeta = computed(() => {
 })
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-US', {
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: '2-digit',
     month: 'short',
-    day: 'numeric',
   })
 }
 </script>

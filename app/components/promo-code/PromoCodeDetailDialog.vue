@@ -122,7 +122,7 @@ const websiteScopeLabel = computed(() => {
 function formatDateTime(iso: string | null | undefined) {
   if (!iso)
     return '—'
-  return new Date(iso).toLocaleString()
+  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
 }
 
 function statusVariant() {

@@ -319,7 +319,7 @@ export function formatPromoMinStay(code: PromoCode): string {
 function fmt(iso: string | null | undefined): string {
   if (!iso)
     return '—'
-  return new Date(iso).toLocaleDateString()
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 // Checks if a target date (e.g. check-in date or booking date) falls within this window.
@@ -365,8 +365,8 @@ export function formatPromoWindowCompact(window: PromoCodeWindow): string | null
       return 'Rolling'
     return `Within ${window.days}d`
   }
-  const f = window.from ? new Date(window.from).toLocaleDateString() : null
-  const u = window.until ? new Date(window.until).toLocaleDateString() : null
+  const f = window.from ? new Date(window.from).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null
+  const u = window.until ? new Date(window.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null
   if (f && u)
     return `${f} → ${u}`
   if (f)

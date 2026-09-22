@@ -174,7 +174,7 @@ export function getWeekDays(anchorDate = new Date()) {
     date.setDate(start.getDate() + index)
     return {
       key: formatLocalDateKey(date),
-      label: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      label: date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
       date,
     }
   })
@@ -183,13 +183,13 @@ export function getWeekDays(anchorDate = new Date()) {
 export function formatWeekRange(days: Array<{ date: Date }>) {
   if (!days.length)
     return ''
-  const start = days[0]?.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const end = days[days.length - 1]?.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const start = days[0]?.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const end = days[days.length - 1]?.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   return `${start} - ${end}`
 }
 
 export function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 export function getTimeSlots() {
@@ -197,7 +197,7 @@ export function getTimeSlots() {
   for (let hour = DAY_START_HOUR; hour <= DAY_END_HOUR; hour += TIME_SLOT_INTERVAL) {
     slots.push({
       hour,
-      label: new Date(0, 0, 0, hour).toLocaleTimeString('en-US', { hour: 'numeric' }),
+      label: new Date(0, 0, 0, hour).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
     })
   }
   return slots

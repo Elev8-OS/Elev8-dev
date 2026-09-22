@@ -51,7 +51,7 @@ function sentimentFor(sentiment: string) {
 const categoryFor = actionCategoryFor
 
 function formatCreatedAt(iso: string) {
-  return format(new Date(iso), 'MMM d h:mm a')
+  return format(new Date(iso), 'd MMM, HH:mm')
 }
 
 // Sorting state for both tables

@@ -375,7 +375,7 @@ export const mockUpsellServices: UpsellService[] = [
     category: 'Activity',
     currency: 'IDR',
     youtubeLinks: [],
-    internalNotes: 'Pickup at 8am. Bring sunscreen and comfortable shoes.',
+    internalNotes: 'Pickup at 08:00. Bring sunscreen and comfortable shoes.',
     notificationUsers: ['Komang Juliantara'],
     pricingEnabled: true,
     taxPercent: 11,
@@ -419,8 +419,8 @@ export const mockUpsellServices: UpsellService[] = [
   },
   {
     id: 'svc-006',
-    name: 'Late Check-out (until 2pm)',
-    description: 'Extend your check-out time until 2:00 PM. Subject to availability and next-day bookings.',
+    name: 'Late Check-out (until 14:00)',
+    description: 'Extend your check-out time until 14:00. Subject to availability and next-day bookings.',
     category: 'Late Check-out',
     currency: 'IDR',
     youtubeLinks: [],
@@ -430,7 +430,7 @@ export const mockUpsellServices: UpsellService[] = [
     taxPercent: 11,
     servicePercent: 0,
     items: [
-      { id: 'itm-006a', name: 'Late Check-out', description: 'Extend until 2:00 PM. Subject to next-day booking availability.', price: 450000 },
+      { id: 'itm-006a', name: 'Late Check-out', description: 'Extend until 14:00. Subject to next-day booking availability.', price: 450000 },
     ],
     assignedListings: BALI_LISTINGS,
     availability: 'by_request',
@@ -442,8 +442,8 @@ export const mockUpsellServices: UpsellService[] = [
   },
   {
     id: 'svc-007',
-    name: 'Early Check-in (from 10am)',
-    description: 'Check in early from 10:00 AM instead of the standard 3:00 PM. Subject to availability and prior-night bookings.',
+    name: 'Early Check-in (from 10:00)',
+    description: 'Check in early from 10:00 instead of the standard 15:00. Subject to availability and prior-night bookings.',
     category: 'Early Check-in',
     currency: 'IDR',
     youtubeLinks: [],
@@ -453,7 +453,7 @@ export const mockUpsellServices: UpsellService[] = [
     taxPercent: 11,
     servicePercent: 0,
     items: [
-      { id: 'itm-007a', name: 'Early Check-in', description: 'Check in from 10:00 AM. Subject to prior-night booking availability.', price: 450000 },
+      { id: 'itm-007a', name: 'Early Check-in', description: 'Check in from 10:00. Subject to prior-night booking availability.', price: 450000 },
     ],
     assignedListings: BALI_LISTINGS,
     availability: 'by_request',

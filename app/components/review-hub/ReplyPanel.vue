@@ -57,7 +57,7 @@ const groundingInfo = computed(() => {
 })
 
 function formatDate(date: string) {
-  return format(new Date(date), 'MMM d, yyyy h:mm a')
+  return format(new Date(date), 'd MMM yyyy, HH:mm')
 }
 
 async function handleGenerate() {

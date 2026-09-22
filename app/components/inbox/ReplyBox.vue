@@ -53,7 +53,7 @@ const showTranslateIndicator = computed(() => autoTranslate.value && !!guestLang
 const rewrites = [
   'Thanks for reaching out! I\'d be happy to help with that. Let me look into it and get back to you shortly.',
   'Thank you for your message! We appreciate you letting us know. I\'ll take care of this right away.',
-  'Great question! Here\'s what I can tell you — check-in is from 3 PM, and we\'ll have everything ready for your arrival.',
+  'Great question! Here\'s what I can tell you — check-in is from 15:00, and we\'ll have everything ready for your arrival.',
   'We\'re so glad you\'re staying with us! I\'ve noted your request and our team will make sure everything is taken care of.',
   'Thanks for letting us know! We want to make sure your stay is perfect. I\'ll have our team address this immediately.',
 ]
@@ -120,7 +120,7 @@ const dynamicTemplates = [
     id: 'tpl-checkin',
     label: 'Check-in Instructions',
     icon: 'lucide:key',
-    content: `Hi {{guestName}}! Welcome to {{propertyName}}. Check-in is at 3 PM. Our team will greet you at the villa. Here's what you need to know:\n\n• Address: {{propertyAddress}}\n• WiFi: {{wifiName}} / {{wifiPassword}}\n• Parking: Available on-site\n\nLet us know if you need anything!`,
+    content: `Hi {{guestName}}! Welcome to {{propertyName}}. Check-in is at 15:00. Our team will greet you at the villa. Here's what you need to know:\n\n• Address: {{propertyAddress}}\n• WiFi: {{wifiName}} / {{wifiPassword}}\n• Parking: Available on-site\n\nLet us know if you need anything!`,
   },
   {
     id: 'tpl-welcome',
@@ -132,7 +132,7 @@ const dynamicTemplates = [
     id: 'tpl-checkout',
     label: 'Check-out Reminder',
     icon: 'lucide:log-out',
-    content: `Hi {{guestName}}, just a friendly reminder that check-out is at 11 AM tomorrow. Please leave keys on the counter and let us know if you need help with luggage. Safe travels!`,
+    content: `Hi {{guestName}}, just a friendly reminder that check-out is at 11:00 tomorrow. Please leave keys on the counter and let us know if you need help with luggage. Safe travels!`,
   },
   {
     id: 'tpl-maintenance',

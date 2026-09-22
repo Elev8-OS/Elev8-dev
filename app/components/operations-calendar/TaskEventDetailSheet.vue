@@ -99,9 +99,9 @@ const statusMeta = computed(() => {
 })
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-US', {
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: '2-digit',
     month: 'short',
-    day: 'numeric',
     year: 'numeric',
   })
 }
@@ -119,7 +119,7 @@ function timeAgo(iso: string) {
   const days = Math.floor(hours / 24)
   if (days < 30)
     return `${days}d ago`
-  return new Date(iso).toLocaleDateString()
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function close() {

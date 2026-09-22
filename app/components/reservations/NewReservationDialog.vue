@@ -115,7 +115,7 @@ const checkOut = ref('')
 const listingId = ref('')
 const estimatedArrivalTime = ref('')
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 function calendarDateToString(date: any): string {
   if (!date)

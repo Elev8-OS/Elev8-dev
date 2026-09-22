@@ -113,11 +113,11 @@ function pretty(value: unknown): string {
 function formatTime(iso: string | null): string {
   if (!iso)
     return 'never'
-  return new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
 }
 
 function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour12: false })
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 async function handleConnect() {

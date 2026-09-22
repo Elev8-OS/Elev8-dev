@@ -58,9 +58,9 @@ function statusLabel(status: Website['status']) {
 }
 
 function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    month: 'short',
+  return new Date(dateString).toLocaleDateString('en-GB', {
     day: 'numeric',
+    month: 'short',
     year: 'numeric',
   })
 }

@@ -19,19 +19,20 @@ watch(() => props.isCheckoutCleaning, (val) => {
 function formatDateTime(value?: string) {
   if (!value)
     return '—'
-  return new Date(value).toLocaleString('en-US', {
+  return new Date(value).toLocaleString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    hour: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
 }
 
 function formatTime(value?: string) {
   if (!value)
     return ''
-  return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 function durationLabel(feedback: CleaningFeedback) {

@@ -25,8 +25,8 @@ const upcomingBookings = computed(() =>
 const recentReviews = computed(() => props.listing.reviews.slice(0, 2))
 
 function formatDateRange(checkIn: string, checkOut: string) {
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-  return `${new Date(checkIn).toLocaleDateString('en-US', opts)} \u2013 ${new Date(checkOut).toLocaleDateString('en-US', opts)}`
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+  return `${new Date(checkIn).toLocaleDateString('en-GB', opts)} \u2013 ${new Date(checkOut).toLocaleDateString('en-GB', opts)}`
 }
 
 function renderStars(rating: number) {

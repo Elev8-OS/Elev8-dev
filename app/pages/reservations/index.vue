@@ -21,7 +21,7 @@ const {
   filters,
 } = useReservationsModule()
 
-const df = new DateFormatter('en-US', { dateStyle: 'medium' })
+const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
 const createOpen = ref(false)
 const detailReservation = ref<ReservationEntry | null>(null)

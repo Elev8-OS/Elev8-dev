@@ -269,7 +269,7 @@ async function handlePushSelected() {
 }
 
 function downloadSingleInvoice(invoice: string, guest: string) {
-  const content = `Invoice: ${invoice}\nGuest: ${guest}\nGenerated: ${new Date().toLocaleString()}`
+  const content = `Invoice: ${invoice}\nGuest: ${guest}\nGenerated: ${new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })}`
   const blob = new Blob([content], { type: 'text/plain' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

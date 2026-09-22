@@ -146,6 +146,7 @@ export function formatGuestAccessMessage(
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
   const lines = [
     `Hi ${guestName}, your access is ready.`,

@@ -160,9 +160,9 @@ const reschedulePreviewText = computed(() => {
   const origDate = formatDate(cleaningJob.value.scheduledAt)
   const origTime = formatTime(cleaningJob.value.scheduledAt)
   const newTime = rescheduleTime.value || '11:00'
-  const newDate = new Date(`${rescheduleDate.value}T${newTime}:00+08:00`).toLocaleDateString('en-US', {
+  const newDate = new Date(`${rescheduleDate.value}T${newTime}:00+08:00`).toLocaleDateString('en-GB', {
+    day: '2-digit',
     month: 'short',
-    day: 'numeric',
     year: 'numeric',
   })
   return `Rescheduling from ${origDate} (${origTime}) → ${newDate} (${newTime})`
@@ -177,9 +177,9 @@ function saveReschedule() {
   updateJob(cleaningJob.value.id, {
     scheduledAt: newScheduledAt,
   })
-  const formattedDate = new Date(`${rescheduleDate.value}T${time}:00+08:00`).toLocaleDateString('en-US', {
+  const formattedDate = new Date(`${rescheduleDate.value}T${time}:00+08:00`).toLocaleDateString('en-GB', {
+    day: '2-digit',
     month: 'short',
-    day: 'numeric',
     year: 'numeric',
   })
   toast.success(`Cleaning rescheduled to ${formattedDate} at ${time}`)
@@ -233,11 +233,11 @@ function savePriority() {
 }
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function close() {
@@ -317,8 +317,8 @@ const overlappingBooking = computed<Booking | null>(() => {
 const stayInfoLabel = computed(() => {
   const b = overlappingBooking.value
   if (b) {
-    const checkIn = new Date(`${b.checkIn}T00:00:00+08:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    const checkOut = new Date(`${b.checkOut}T00:00:00+08:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const checkIn = new Date(`${b.checkIn}T00:00:00+08:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    const checkOut = new Date(`${b.checkOut}T00:00:00+08:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     return {
       guestName: b.guestName,
       dateRange: `${checkIn} → ${checkOut}`,
@@ -409,7 +409,7 @@ const stayInfoLabel = computed(() => {
               <Icon name="lucide:calendar" class="h-3.5 w-3.5" />
               <span>Checkout :</span>
               <span class="font-semibold text-foreground">
-                {{ new Date(`${overlappingBooking.checkOut}T11:00:00+08:00`).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '') }}
+                {{ new Date(`${overlappingBooking.checkOut}T11:00:00+08:00`).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '') }}
               </span>
             </div>
           </div>

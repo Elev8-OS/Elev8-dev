@@ -22,7 +22,7 @@ function getAccountName(id: string) {
 }
 
 function formatDate(date: string) {
-  return new Date(date).toLocaleString()
+  return new Date(date).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
 }
 
 function statusBannerClass(status: PaymentRequest['status']) {

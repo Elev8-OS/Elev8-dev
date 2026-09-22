@@ -45,7 +45,7 @@ const statusVariantMap: Record<string, 'default' | 'secondary' | 'outline' | 'de
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString()
+  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })
 }
 
 function handleRevoke(id: string) {

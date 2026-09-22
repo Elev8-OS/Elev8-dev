@@ -13,7 +13,7 @@ import { beautifyObjectName, maybeBooleanishToBoolean } from './utils'
 
 defineProps<FieldProps>()
 
-const df = new DateFormatter('en-US', {
+const df = new DateFormatter('en-GB', {
   dateStyle: 'long',
 })
 </script>

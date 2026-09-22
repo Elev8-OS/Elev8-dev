@@ -18,7 +18,7 @@ function buildSeedUpsellAlerts(): Alert[] {
     makeAlert('alert-upsell-seed-001', 'UPSELL_ORDER_REQUESTED', 'WARNING', { orderId: 'ord-006', guestName: 'Cameron Skillcorn', serviceName: 'Airport Transfer (Ngurah Rai)', serviceDate: '2026-05-12', listing_id: null }),
     makeAlert('alert-upsell-seed-002', 'UPSELL_ORDER_REQUESTED', 'WARNING', { orderId: 'ord-007', guestName: 'Amanda Healey', serviceName: 'In-Villa Spa Treatment', serviceDate: '2026-05-12', listing_id: null }),
     makeAlert('alert-upsell-seed-003', 'UPSELL_ORDER_APPROVED', 'INFO', { orderId: 'ord-008', guestName: 'Khasan Alshalabi', serviceName: 'Surf Lesson at Canggu', serviceDate: '2026-05-12', listing_id: null }),
-    makeAlert('alert-upsell-seed-004', 'UPSELL_ORDER_DECLINED', 'WARNING', { orderId: 'ord-010', guestName: 'Reto Wyss', serviceName: 'Late Check-out (until 2pm)', serviceDate: '2026-05-10', listing_id: null }),
+    makeAlert('alert-upsell-seed-004', 'UPSELL_ORDER_DECLINED', 'WARNING', { orderId: 'ord-010', guestName: 'Reto Wyss', serviceName: 'Late Check-out (until 14:00)', serviceDate: '2026-05-10', listing_id: null }),
     makeAlert('alert-upsell-seed-005', 'UPSELL_PAYMENT_RECEIVED', 'INFO', { orderId: 'ord-005', guestName: 'James Alizada', serviceName: 'Vehicle Rental', serviceDate: '2026-05-07', listing_id: null }),
   ]
 }

@@ -148,7 +148,7 @@ function getStaffName(staffId: string): string {
 function formatDate(d?: string) {
   if (!d)
     return '-'
-  return new Date(d).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 const CONDITIONS: { value: ItemCondition, label: string }[] = [

@@ -35,7 +35,7 @@ export function buildReservationMonthGrid(anchor: Date): OwnerReservationDay[] {
     cells.push({
       key: toDateKey(date),
       date,
-      weekday: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      weekday: date.toLocaleDateString('en-GB', { weekday: 'short' }),
       inMonth: date.getMonth() === anchor.getMonth() && date.getFullYear() === anchor.getFullYear(),
       isToday: date.getTime() === today.getTime(),
     })

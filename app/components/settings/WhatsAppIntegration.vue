@@ -58,8 +58,8 @@ const testSending = ref(false)
 const testTemplates = [
   { id: 'welcome', name: 'Welcome Message', icon: 'lucide:hand-heart', body: 'Hi {{guest_name}}, welcome to {{property_name}}! We\'re excited to host you starting {{check_in_date}}. Let us know if you need anything.' },
   { id: 'checkin', name: 'Check-in Instructions', icon: 'lucide:door-open', body: 'Hi {{guest_name}}, your check-in at {{property_name}} is on {{check_in_date}}. Door code will be sent 2 hours before arrival. Safe travels!' },
-  { id: 'checkout', name: 'Check-out Reminder', icon: 'lucide:log-out', body: 'Hi {{guest_name}}, just a reminder that check-out from {{property_name}} is on {{check_out_date}} at 11:00 AM. Hope you had a wonderful stay!' },
-  { id: 'house_rules', name: 'House Rules', icon: 'lucide:scroll-text', body: 'Hi {{guest_name}}, welcome to {{property_name}}! A few quick reminders: no smoking indoors, quiet hours after 10 PM, and please lock the door when heading out. Enjoy your stay!' },
+  { id: 'checkout', name: 'Check-out Reminder', icon: 'lucide:log-out', body: 'Hi {{guest_name}}, just a reminder that check-out from {{property_name}} is on {{check_out_date}} at 11:00. Hope you had a wonderful stay!' },
+  { id: 'house_rules', name: 'House Rules', icon: 'lucide:scroll-text', body: 'Hi {{guest_name}}, welcome to {{property_name}}! A few quick reminders: no smoking indoors, quiet hours after 22:00, and please lock the door when heading out. Enjoy your stay!' },
   { id: 'custom', name: 'Custom Message', icon: 'lucide:message-square', body: '' },
 ]
 
@@ -1013,7 +1013,7 @@ async function handleSubmitTemplate(template: WhatsAppTemplate) {
             <div class="min-h-[80px] rounded-lg border bg-[#ECE5DD] p-3">
               <div class="ml-auto max-w-[85%] rounded-lg rounded-tr-sm bg-[#DCF8C6] p-2.5 text-sm shadow-sm">
                 <p class="whitespace-pre-wrap text-foreground">{{ testRenderedBody || 'Message preview will appear here...' }}</p>
-                <p class="mt-1 text-right text-[10px] text-muted-foreground">{{ new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) }}</p>
+                <p class="mt-1 text-right text-[10px] text-muted-foreground">{{ new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) }}</p>
               </div>
             </div>
           </div>

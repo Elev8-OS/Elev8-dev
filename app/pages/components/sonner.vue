@@ -46,7 +46,7 @@ import { toast } from 'vue-sonner'
             <Button
               variant="outline" @click="() => {
                 toast('Event has been created', {
-                  description: 'Sunday, December 03, 2023 at 9:00 AM',
+                  description: 'Sunday, 03 December 2023 at 09:00',
                   action: {
                     label: 'Undo',
                     onClick: () => console.log('Undo'),

@@ -66,11 +66,11 @@ function formatIDR(val?: number) {
 function formatDate(d?: string) {
   if (!d)
     return '—'
-  return new Date(d).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function formatNextServiceDate(d: Date) {
-  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 const ASSET_STATUS_LABELS: Record<AssetStatus, string> = {

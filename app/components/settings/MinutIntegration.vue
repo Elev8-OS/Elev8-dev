@@ -194,7 +194,7 @@ function clearDeviceMapping(deviceId: string) {
               {{ deviceCount }} device{{ deviceCount !== 1 ? 's' : '' }} in workspace · {{ minut.assignedDeviceCount.value }} mapped
             </p>
             <p v-if="connection?.lastSyncAt" class="mt-1 text-[11px] text-muted-foreground/60">
-              Last synced {{ new Date(connection.lastSyncAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) }}
+              Last synced {{ new Date(connection.lastSyncAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) }}
             </p>
             <div class="mt-3 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" class="h-8 gap-1.5" :disabled="isPinging" @click="handlePing">
@@ -337,7 +337,7 @@ function clearDeviceMapping(deviceId: string) {
                   🔋 {{ device.batteryLevel }}%
                 </p>
                 <p v-if="device.lastEventAt" class="text-[10px] text-muted-foreground/60">
-                  {{ new Date(device.lastEventAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }}
+                  {{ new Date(device.lastEventAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) }}
                 </p>
               </div>
               <div class="flex w-[240px] shrink-0 items-center gap-1.5">

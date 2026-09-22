@@ -122,7 +122,7 @@ async function handleSync() {
               · {{ lockCount }} lock{{ lockCount !== 1 ? 's' : '' }} assigned
             </p>
             <p v-if="connection?.lastSyncAt" class="mt-1 text-[11px] text-muted-foreground/60">
-              Last synced {{ new Date(connection.lastSyncAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) }}
+              Last synced {{ new Date(connection.lastSyncAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) }}
             </p>
             <div class="mt-3 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" class="h-8 gap-1.5" @click="copyWebhookUrl">

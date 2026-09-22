@@ -246,7 +246,7 @@ function toggleAutoTranslate() {
 
 function formatNoteDate(timestamp: string) {
   const date = new Date(timestamp)
-  return format(date, 'EEEE, MMMM d yyyy, h:mm a')
+  return format(date, 'EEEE, d MMMM yyyy, HH:mm')
 }
 
 function formatCallDuration(seconds: number): string {
@@ -258,7 +258,7 @@ function formatCallDuration(seconds: number): string {
 }
 
 function formatCallTime(timestamp: string): string {
-  return format(new Date(timestamp), 'h:mm a')
+  return format(new Date(timestamp), 'HH:mm')
 }
 
 function formatCallDate(timestamp: string): string {
