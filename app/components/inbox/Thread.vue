@@ -3,7 +3,34 @@ import type { PhoneCall } from '~/components/inbox/data/conversations'
 import { differenceInDays, format, isToday, isYesterday } from 'date-fns'
 import { toast } from 'vue-sonner'
 
-const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations } = useInbox()
+const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations, threadSelectionMode, selectedThreadMessageIds, clearThreadSelection } = useInbox()
+const { refsFromGuestMessages, listingIdForName } = useInternalInbox()
+const { openForward, openTask } = useMessageActions()
+
+const selectedThreadMessages = computed(() =>
+  selectedMessages.value.filter(m => selectedThreadMessageIds.value.includes(m.id)),
+)
+
+function selectionRefs() {
+  return refsFromGuestMessages(selectedThreadMessages.value, {
+    guestName: selectedConversation.value?.guestName ?? '',
+    listingName: selectedConversation.value?.listingName ?? '',
+  })
+}
+
+function forwardSelection() {
+  openForward({
+    refs: selectionRefs(),
+    preferListingId: listingIdForName(selectedConversation.value?.listingName),
+  })
+}
+
+function taskFromSelection() {
+  openTask({
+    refs: selectionRefs(),
+    listingName: selectedConversation.value?.listingName,
+  })
+}
 const threeCX = useThreeCX()
 const threeCXCalls = useThreeCxCalls()
 
@@ -535,6 +562,22 @@ function formatCallDate(timestamp: string): string {
             </template>
           </div>
         </ScrollArea>
+
+        <!-- Multi-select: entered from a message's context menu, acted on here. -->
+        <div v-if="threadSelectionMode" class="flex shrink-0 items-center gap-2 border-t bg-muted/40 px-4 py-2">
+          <span class="text-xs font-medium">{{ selectedThreadMessageIds.length }} selected</span>
+          <Button size="sm" variant="outline" class="h-7 text-xs" @click="forwardSelection">
+            <Icon name="lucide:forward" class="size-3.5" />
+            Forward
+          </Button>
+          <Button size="sm" variant="outline" class="h-7 text-xs" @click="taskFromSelection">
+            <Icon name="lucide:list-checks" class="size-3.5" />
+            Create task
+          </Button>
+          <Button size="sm" variant="ghost" class="ml-auto h-7 text-xs" @click="clearThreadSelection">
+            Clear
+          </Button>
+        </div>
 
         <div v-if="showSuggestion && aiSuggestion" class="shrink-0 px-4 py-2">
           <InboxHostbuddySuggestion
