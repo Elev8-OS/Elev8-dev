@@ -11,9 +11,11 @@ import DocumentsSection from '~/components/sections/DocumentsSection.vue'
 import UpsellsSection from '~/components/sections/UpsellsSection.vue'
 import SmartLockSection from '~/components/sections/SmartLockSection.vue'
 import PreArrivalSection from '~/components/sections/PreArrivalSection.vue'
+import DamageProtectionSection from '~/components/sections/DamageProtectionSection.vue'
 import CustomRichSection from '~/components/sections/CustomRichSection.vue'
 
 import PreArrivalForm from '~/components/forms/PreArrivalForm.vue'
+import DamageProtectionForm from '~/components/forms/DamageProtectionForm.vue'
 import SmartLockPanel from '~/components/forms/SmartLockPanel.vue'
 import LanguageSwitcher from '~/components/forms/LanguageSwitcher.vue'
 import BrandHeader from '~/components/BrandHeader.vue'
@@ -99,6 +101,7 @@ const sectionComponentMap: Record<string, any> = {
   upsells: UpsellsSection,
   smart_lock: SmartLockSection,
   pre_arrival: PreArrivalSection,
+  damage_protection: DamageProtectionSection,
   custom_rich: CustomRichSection,
 }
 
@@ -155,6 +158,20 @@ function handleUpsellAdd(serviceId: string) {
               <PreArrivalSection :data="section.data" :listing="data.listing" />
               <div class="rounded-xl border bg-card p-6">
                 <PreArrivalForm :token="token" :fields="section.data?.fields" />
+              </div>
+            </div>
+
+            <!-- Damage protection: heading + the choice form, same shape as pre-arrival -->
+            <div v-else-if="section.type === 'damage_protection'" class="space-y-4">
+              <DamageProtectionSection :data="section.data" />
+              <div class="rounded-xl border bg-card p-6">
+                <DamageProtectionForm
+                  :token="token"
+                  :options="section.data?.options"
+                  :terms-text="section.data?.termsText"
+                  :rail="section.data?.rail"
+                  :long-stay="section.data?.longStay"
+                />
               </div>
             </div>
 

@@ -25,6 +25,7 @@ export type GuideSectionType =
   | 'upsells'
   | 'smart_lock'
   | 'pre_arrival'
+  | 'damage_protection'
   | 'custom_rich'
 
 export interface GuideSection {
@@ -82,6 +83,11 @@ export interface GuideSubmission {
   requests?: string
   upsellsAdded?: { serviceId: string; qty: number }[]
   smartLockViewedAt?: string
+  protectionChoice?: {
+    option: 'waiver' | 'deposit'
+    acceptedAt: string
+    termsVersion: string
+  }
 }
 
 export interface GuideTemplate {

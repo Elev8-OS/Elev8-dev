@@ -8,6 +8,11 @@ export type AlertType
     | 'CLEANING_NOT_DONE_CHECKIN_PASSED'
     | 'STRIPE_DISCONNECTED'
     | 'DEPOSIT_FAILED_AT_CHECKIN'
+    | 'PROTECTION_CHOICE_MISSING'
+    | 'DEPOSIT_REFUND_DUE'
+    | 'DEPOSIT_REFUND_OVERDUE'
+    | 'DEPOSIT_REFUND_FAILED'
+    | 'DAMAGE_CLAIM_RECORDED'
     | 'BOOKING_QUOTA_EMPTY'
     | 'BRIDGE_OFFLINE'
     | 'SMART_LOCK_BATTERY_CRITICAL'
@@ -102,6 +107,11 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   CLEANING_NOT_DONE_CHECKIN_PASSED: 'Cleaning Incomplete - Guest Checking In Now',
   STRIPE_DISCONNECTED: 'Stripe - Payment Connection Lost',
   DEPOSIT_FAILED_AT_CHECKIN: 'Security Deposit - Payment Failed',
+  PROTECTION_CHOICE_MISSING: 'Damage Protection - No Choice Made',
+  DEPOSIT_REFUND_DUE: 'Security Deposit - Refund Due Soon',
+  DEPOSIT_REFUND_OVERDUE: 'Security Deposit - Refund Overdue',
+  DEPOSIT_REFUND_FAILED: 'Security Deposit - Refund Failed',
+  DAMAGE_CLAIM_RECORDED: 'Damage Claim Recorded',
   BOOKING_QUOTA_EMPTY: 'Booking Quota - 0 Remaining',
   BRIDGE_OFFLINE: 'Elev8 Bridge - Offline',
   SMART_LOCK_BATTERY_CRITICAL: 'Smart Lock - Battery Critical',
@@ -181,6 +191,11 @@ export const alertIcons: Record<AlertType, string> = {
   CLEANING_NOT_DONE_CHECKIN_PASSED: 'i-lucide-spray-can',
   STRIPE_DISCONNECTED: 'i-lucide-credit-card',
   DEPOSIT_FAILED_AT_CHECKIN: 'i-lucide-credit-card',
+  PROTECTION_CHOICE_MISSING: 'i-lucide-shield-question',
+  DEPOSIT_REFUND_DUE: 'i-lucide-undo-2',
+  DEPOSIT_REFUND_OVERDUE: 'i-lucide-undo-2',
+  DEPOSIT_REFUND_FAILED: 'i-lucide-undo-2',
+  DAMAGE_CLAIM_RECORDED: 'i-lucide-receipt-text',
   BOOKING_QUOTA_EMPTY: 'i-lucide-ticket',
   BRIDGE_OFFLINE: 'i-lucide-router',
   SMART_LOCK_BATTERY_CRITICAL: 'i-lucide-lock',
@@ -259,7 +274,12 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   CLEANING_NOT_STARTED_IMMINENT: '/tasks',
   CLEANING_NOT_DONE_CHECKIN_PASSED: '/tasks',
   STRIPE_DISCONNECTED: '/settings/account',
-  DEPOSIT_FAILED_AT_CHECKIN: '/inbox',
+  DEPOSIT_FAILED_AT_CHECKIN: '/damage-protection',
+  PROTECTION_CHOICE_MISSING: '/damage-protection',
+  DEPOSIT_REFUND_DUE: '/damage-protection',
+  DEPOSIT_REFUND_OVERDUE: '/damage-protection',
+  DEPOSIT_REFUND_FAILED: '/damage-protection',
+  DAMAGE_CLAIM_RECORDED: '/damage-protection',
   BOOKING_QUOTA_EMPTY: '/',
   BRIDGE_OFFLINE: '/',
   SMART_LOCK_BATTERY_CRITICAL: '/',
@@ -357,6 +377,15 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.pending_payments_count || 0} pending payment(s)`
     case 'DEPOSIT_FAILED_AT_CHECKIN':
       return `${context.guest_name || 'Guest'}, ${context.currency || 'USD'} ${context.deposit_amount || 0}`
+    case 'PROTECTION_CHOICE_MISSING':
+      return `${context.guest_name || 'Guest'}, checks in ${context.check_in || 'soon'}`
+    case 'DEPOSIT_REFUND_DUE':
+    case 'DEPOSIT_REFUND_OVERDUE':
+      return `${context.guest_name || 'Guest'}, ${context.currency || 'USD'} ${context.refundable_amount || 0}`
+    case 'DEPOSIT_REFUND_FAILED':
+      return `${context.guest_name || 'Guest'}, ${context.reason || 'Refund rejected'}`
+    case 'DAMAGE_CLAIM_RECORDED':
+      return `${context.guest_name || 'Guest'}, ${context.currency || 'USD'} ${context.claim_amount || 0}`
     case 'BOOKING_QUOTA_EMPTY':
       return `Auto-refill ${context.auto_refill_failed ? 'failed' : 'attempted'}`
     case 'BRIDGE_OFFLINE':

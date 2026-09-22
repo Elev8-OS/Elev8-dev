@@ -2,6 +2,7 @@ import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { BookingChannel } from '~/components/listings/data/listings'
 import type { ReservationCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import type { FolioItem } from '~/components/reservations/data/folio'
+import { damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
 
 export type {
   CustomCleaningFrequency,
@@ -119,6 +120,95 @@ export interface CityTaxSettlement {
   note?: string
 }
 
+// ---------------------------------------------------------------------------
+// Damage protection: a guest chooses a waiver or a deposit before arrival.
+// See app/components/reservations/data/damage-protection.ts for the rules.
+// ---------------------------------------------------------------------------
+
+export type ProtectionOption = 'waiver' | 'deposit'
+export type WaiverPricing = 'flat' | 'per_night' | 'percent_of_subtotal'
+export type DepositPricing = 'flat' | 'percent_of_subtotal'
+
+export type ProtectionState
+  = | 'awaiting_choice'
+    | 'waiver_active'
+    | 'deposit_pending'
+    | 'deposit_failed'
+    | 'deposit_held'
+    | 'deposit_released'
+    | 'deposit_partial'
+    | 'deposit_forfeited'
+    | 'refund_failed'
+    | 'cancelled_refunded'
+
+export interface ProtectionRefundDestination {
+  method: 'original_payment_method' | 'bank_transfer'
+  accountName?: string
+  accountNumber?: string
+  bankName?: string
+}
+
+/**
+ * One damage incident. Recorded on BOTH paths, which is the point: on a deposit
+ * it drives the deduction, on a waiver it moves no money and records what the
+ * pot paid out. Without the waiver-side record there is no way to tell whether
+ * the fee is priced right, and the fee is the whole commercial bet.
+ */
+export interface ProtectionClaim {
+  id: string
+  label: string
+  /** The full assessed damage. */
+  amount: number
+  /** What the protection absorbed: off the held deposit, or out of the waiver pot. */
+  coveredAmount: number
+  /** amount - coveredAmount. Staff post this to the folio BY HAND, never automatically. */
+  excessAmount: number
+  reason: string
+  /** Photo or document evidence. Mock paths, same shape as GuestDocument.url. */
+  evidenceUrls: string[]
+  recordedBy: string
+  recordedAt: string
+  /** When the guest was told. A deposit cannot be released while this is unset. */
+  guestNotifiedAt?: string
+}
+
+/**
+ * What the guest chose and what happened to the money. Deliberately the ONLY
+ * protection state stored on a reservation: the worklist bucket ('charge due',
+ * 'refund overdue') is derived on every read, so editing a policy re-evaluates
+ * every existing booking instead of leaving a stale flag behind.
+ *
+ * `amount`, `coverageCap`, `termsVersion` and `termsText` are FROZEN at
+ * acceptance. `policyId` is provenance, never a live join.
+ */
+export interface DamageProtection {
+  policyId: string
+  option: ProtectionOption
+  state: ProtectionState
+
+  amount: number
+  currency: string
+  coverageCap?: number
+  termsVersion: string
+  termsText: string
+  acceptedAt: string
+  acceptedVia: 'guest_guide' | 'staff'
+
+  chargeDueAt?: string
+  chargedAt?: string
+  payoutAccountId?: string
+  failureReason?: string
+  failedAttempts?: number
+
+  refundDueAt?: string
+  refundedAt?: string
+  refundedAmount?: number
+  refundDestination?: ProtectionRefundDestination
+  refundFailureReason?: string
+
+  claims?: ProtectionClaim[]
+}
+
 export interface ReservationEntry {
   id: string
   guestId: string
@@ -182,6 +272,8 @@ export interface ReservationEntry {
   folioItems?: FolioItem[]
   /** Set only once staff collect or waive. Absent means "nothing recorded yet". */
   cityTaxSettlement?: CityTaxSettlement
+  /** Undefined = never offered. See data/damage-protection.ts. */
+  damageProtection?: DamageProtection
   /** Recurring cleaning schedule configuration for this reservation */
   cleaningSchedule?: ReservationCleaningSchedule
 }
@@ -1396,6 +1488,10 @@ export const initialReservations: ReservationEntry[] = [
     ],
   },
 ]
+
+// Demo stays that make every damage-protection bucket reachable on first load.
+// Kept in their own module because their dates are relative to today.
+initialReservations.push(...damageProtectionDemoReservations)
 
 export const initialGuests: GuestProfile[] = [
   {
