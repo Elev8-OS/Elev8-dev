@@ -61,6 +61,16 @@ const effectiveReservation = computed<Reservation | undefined>(() => {
   }
 })
 
+const { totalUnread: internalUnread, beginLoad: beginInternalLoad } = useInternalInbox()
+
+// The Internal view fetches its room tree the first time it is opened, not on
+// every inbox mount: a host who never leaves Conversations should not pay for
+// it. `beginLoad` is a no-op after the first run.
+watch(inboxView, (view) => {
+  if (view === 'internal')
+    beginInternalLoad()
+}, { immediate: true })
+
 const isCollapsed = ref(props.defaultCollapsed)
 const debouncedSearch = refDebounced(searchValue, 250)
 
@@ -93,7 +103,13 @@ function openSheet(type: 'integrations' | 'ai') {
   else aiSettingsOpen.value = true
 }
 
-function setInboxView(view: 'conversations' | 'calls') {
+const inboxViews = [
+  { key: 'conversations' as const, label: 'Conversations', icon: 'lucide:message-square' },
+  { key: 'calls' as const, label: 'Calls', icon: 'lucide:phone' },
+  { key: 'internal' as const, label: 'Internal', icon: 'lucide:users' },
+]
+
+function setInboxView(view: 'conversations' | 'calls' | 'internal') {
   inboxView.value = view
 }
 </script>
@@ -121,25 +137,42 @@ function setInboxView(view: 'conversations' | 'calls') {
             <Icon name="lucide:inbox" class="size-5 text-muted-foreground" />
           </template>
           <template v-else>
+            <!-- Only the active view is labelled: three labels do not fit the
+                 filter panel, and an icon-only row says nothing about where
+                 you are. -->
             <div class="flex flex-1 items-center gap-1 min-w-0">
-              <button
-                type="button"
-                class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors shrink-0"
-                :class="inboxView === 'conversations' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
-                @click="setInboxView('conversations')"
-              >
-                <Icon name="lucide:message-square" class="size-3.5" />
-                Conversations
-              </button>
-              <button
-                type="button"
-                class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors shrink-0"
-                :class="inboxView === 'calls' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
-                @click="setInboxView('calls')"
-              >
-                <Icon name="lucide:phone" class="size-3.5" />
-                Calls
-              </button>
+              <template v-for="view of inboxViews" :key="view.key">
+                <button
+                  v-if="inboxView === view.key"
+                  type="button"
+                  class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground"
+                  @click="setInboxView(view.key)"
+                >
+                  <Icon :name="view.icon" class="size-3.5" />
+                  {{ view.label }}
+                </button>
+                <Tooltip v-else :delay-duration="0">
+                  <TooltipTrigger as-child>
+                    <button
+                      type="button"
+                      class="relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                      :aria-label="view.label"
+                      @click="setInboxView(view.key)"
+                    >
+                      <Icon :name="view.icon" class="size-3.5" />
+                      <Badge
+                        v-if="view.key === 'internal' && internalUnread > 0"
+                        class="absolute -right-1 -top-1 h-3.5 min-w-3.5 justify-center px-1 text-[9px]"
+                      >
+                        {{ internalUnread }}
+                      </Badge>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {{ view.label }}
+                  </TooltipContent>
+                </Tooltip>
+              </template>
             </div>
             <div class="shrink-0">
               <Popover v-model:open="settingsPopoverOpen">
@@ -161,7 +194,8 @@ function setInboxView(view: 'conversations' | 'calls') {
           </template>
         </div>
         <Separator />
-        <InboxNav :is-collapsed="isCollapsed" />
+        <InboxInternalNav v-if="inboxView === 'internal'" :is-collapsed="isCollapsed" />
+        <InboxNav v-else :is-collapsed="isCollapsed" />
       </ResizablePanel>
       <ResizableHandle id="inbox-handle-1" with-handle />
       <ResizablePanel
@@ -170,8 +204,9 @@ function setInboxView(view: 'conversations' | 'calls') {
         :min-size="20"
         class="flex flex-col overflow-hidden"
       >
+        <InboxInternalRoomList v-if="inboxView === 'internal'" />
         <InboxList
-          v-if="inboxView === 'conversations'"
+          v-else-if="inboxView === 'conversations'"
           v-model:selected-conversation-id="selectedConversationId"
           :items="filteredConversations"
         />
@@ -184,7 +219,8 @@ function setInboxView(view: 'conversations' | 'calls') {
         :min-size="30"
         class="flex flex-col overflow-hidden"
       >
-        <InboxCallsDetail v-if="inboxView === 'calls'" />
+        <InboxInternalRoomThread v-if="inboxView === 'internal'" />
+        <InboxCallsDetail v-else-if="inboxView === 'calls'" />
         <InboxThread v-else />
       </ResizablePanel>
       <ResizableHandle v-if="!rightPanelCollapsed" id="inbox-handle-3" with-handle />
@@ -195,7 +231,8 @@ function setInboxView(view: 'conversations' | 'calls') {
         :min-size="20"
         collapsible
       >
-        <template v-if="selectedConversation && effectiveReservation">
+        <InboxInternalRoomMembers v-if="inboxView === 'internal'" />
+        <template v-else-if="selectedConversation && effectiveReservation">
           <InboxReservationPanel
             :conversation="selectedConversation"
             :reservation="effectiveReservation"
@@ -236,5 +273,11 @@ function setInboxView(view: 'conversations' | 'calls') {
     <InboxCallScreenPop />
     <!-- Email inbound pop-up -->
     <InboxEmailScreenPop />
+
+    <!-- Message actions, raised from either thread; mounted once so the guest
+         thread and an internal room share one dialog each. -->
+    <InboxForwardDialog />
+    <InboxCreateTaskDialog />
+    <InboxImageViewer />
   </TooltipProvider>
 </template>

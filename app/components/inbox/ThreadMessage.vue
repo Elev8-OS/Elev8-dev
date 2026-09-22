@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { Message } from '~/components/inbox/data/conversations'
 import { differenceInDays, format, formatDistanceToNow, isToday, isYesterday } from 'date-fns'
+import { toast } from 'vue-sonner'
 import { cn } from '~/lib/utils'
 
 interface ThreadMessageProps {
@@ -16,7 +17,55 @@ const senderTypeLabel: Record<string, string> = {
   ai: 'ElevAI',
 }
 
-const { retryMessage, autoTranslate, selectedConversation } = useInbox()
+const {
+  retryMessage,
+  autoTranslate,
+  selectedConversation,
+  selectedThreadMessageIds,
+  threadSelectionMode,
+  selectedMessages: threadMessages,
+  toggleThreadMessageSelection,
+  clearThreadSelection,
+} = useInbox()
+const { refsFromGuestMessages, listingIdForName } = useInternalInbox()
+const { openForward, openTask } = useMessageActions()
+
+const isSelected = computed(() => selectedThreadMessageIds.value.includes(props.message.id))
+
+/**
+ * With a selection running the actions apply to the SELECTION, not to whatever
+ * was right-clicked — the menu labels say so. Same rule as an internal room.
+ */
+const actionTargets = computed(() => {
+  if (threadSelectionMode.value && isSelected.value)
+    return threadMessages.value.filter(m => selectedThreadMessageIds.value.includes(m.id))
+  return [props.message]
+})
+
+const forwardContext = computed(() => ({
+  guestName: selectedConversation.value?.guestName ?? props.message.senderName,
+  listingName: selectedConversation.value?.listingName ?? '',
+}))
+
+function handleForward() {
+  openForward({
+    refs: refsFromGuestMessages(actionTargets.value, forwardContext.value),
+    preferListingId: listingIdForName(selectedConversation.value?.listingName),
+  })
+}
+
+function handleTask() {
+  openTask({
+    refs: refsFromGuestMessages(actionTargets.value, forwardContext.value),
+    listingName: selectedConversation.value?.listingName,
+  })
+}
+
+function handleCopy() {
+  const text = actionTargets.value.map(m => m.content).filter(Boolean).join('\n\n')
+  navigator.clipboard?.writeText(text)
+  toast.success('Copied')
+}
 
 const mockTranslations: Record<string, string> = {
   'Hi! We\'re arriving tomorrow and wanted to confirm the check-in process.': 'Halo! Kami tiba besok dan ingin mengonfirmasi proses check-in.',
@@ -191,8 +240,39 @@ const dateLabel = computed(() => {
 </script>
 
 <template>
-  <div :class="cn('flex gap-2.5', alignClass)">
-    <template v-if="!isSystemMessage">
+  <!-- A system or ElevAI status line is not something to forward, task or
+       select, so it stays outside the context menu. -->
+  <div v-if="isSystemMessage" class="flex justify-center">
+    <div class="text-xs italic text-center max-w-[75%] bg-muted/50 text-muted-foreground rounded-lg px-3 py-2">
+      {{ message.content }}
+    </div>
+  </div>
+
+  <InboxMessageContextMenu
+    v-else
+    kind="guest"
+    :selection-mode="threadSelectionMode"
+    :is-selected="isSelected"
+    :selected-count="selectedThreadMessageIds.length"
+    @forward="handleForward"
+    @task="handleTask"
+    @start-select="toggleThreadMessageSelection(message.id)"
+    @toggle-select="toggleThreadMessageSelection(message.id)"
+    @clear-select="clearThreadSelection"
+    @copy="handleCopy"
+  >
+    <div :class="cn('flex gap-2.5', alignClass)">
+      <button
+        v-if="threadSelectionMode"
+        type="button"
+        class="mt-2 flex size-4 shrink-0 items-center justify-center self-start rounded-[4px] border"
+        :class="isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+        :aria-label="isSelected ? 'Remove from selection' : 'Add to selection'"
+        @click="toggleThreadMessageSelection(message.id)"
+      >
+        <Icon v-if="isSelected" name="lucide:check" class="size-3" />
+      </button>
+
       <Avatar v-if="message.sender === 'guest'" class="size-8 shrink-0 mt-1">
         <AvatarFallback class="text-xs">
           {{ message.senderName.split(' ').map(n => n[0]).join('') }}
@@ -277,12 +357,6 @@ const dateLabel = computed(() => {
           </button>
         </div>
       </div>
-    </template>
-
-    <template v-else>
-      <div class="text-xs italic text-center max-w-[75%] bg-muted/50 text-muted-foreground rounded-lg px-3 py-2">
-        {{ message.content }}
-      </div>
-    </template>
-  </div>
+    </div>
+  </InboxMessageContextMenu>
 </template>

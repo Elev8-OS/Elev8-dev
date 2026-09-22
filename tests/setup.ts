@@ -1,8 +1,15 @@
 import { beforeEach, vi } from 'vitest'
 import { computed, onMounted, reactive, ref, resolveComponent, shallowRef, watch } from 'vue'
 import { useCurrentDashboardUser } from '../app/composables/useCurrentDashboardUser'
+import { useImageViewer } from '../app/composables/useImageViewer'
+import { useInbox } from '../app/composables/useInbox'
+import { useInternalInbox } from '../app/composables/useInternalInbox'
+import { useMessageActions } from '../app/composables/useMessageActions'
 import { useOnboarding } from '../app/composables/useOnboarding'
+import { useRoles } from '../app/composables/useRoles'
+import { useTaskStore } from '../app/composables/useTaskStore'
 import { useUpsellServices } from '../app/composables/useUpsellServices'
+import { useUsers } from '../app/composables/useUsers'
 import { useAssistant } from './utils/useAssistant-global'
 
 globalThis.toast = {
@@ -28,6 +35,15 @@ globalThis.useOnboarding = useOnboarding
 // The folio reads the upsell catalog and the acting staff member as auto-imports.
 globalThis.useUpsellServices = useUpsellServices
 globalThis.useCurrentDashboardUser = useCurrentDashboardUser
+// Internal staff messaging: its components reach the inbox, the room store,
+// the shared message-action dialogs, users, roles and tasks as auto-imports.
+globalThis.useInbox = useInbox
+globalThis.useImageViewer = useImageViewer
+globalThis.useInternalInbox = useInternalInbox
+globalThis.useMessageActions = useMessageActions
+globalThis.useRoles = useRoles
+globalThis.useUsers = useUsers
+globalThis.useTaskStore = useTaskStore
 
 // Lightweight useState shim — keyed on a global Map so multiple composables
 // can share state across calls. Mirrors Nuxt's useState API just enough

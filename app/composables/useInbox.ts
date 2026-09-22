@@ -1,9 +1,9 @@
 import type { Conversation, Message, Note, PhoneCall, Reservation, StayStatus, UnmatchedMessage } from '~/components/inbox/data/conversations'
 import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
 import { conversations as conversationsData, messages as messagesData, phoneCalls as phoneCallsData, reservations, resolveConversationTenantId, staffMembers, unmatchedMessages as unmatchedData } from '~/components/inbox/data/conversations'
-import { useUpsellOrders } from './useUpsellOrders'
-import { useGroScope } from './useGroScope'
 import { useCurrentDashboardUser } from './useCurrentDashboardUser'
+import { useGroScope } from './useGroScope'
+import { useUpsellOrders } from './useUpsellOrders'
 
 export type SortOption = 'newest' | 'oldest' | 'unread'
 
@@ -55,7 +55,19 @@ export function useInbox() {
     { deep: true },
   )
 
-  const inboxView = useState<'conversations' | 'integrations' | 'calls'>('inbox-view', () => 'conversations')
+  const inboxView = useState<'conversations' | 'integrations' | 'calls' | 'internal'>('inbox-view', () => 'conversations')
+  // Multi-select in the guest thread. Selection mode is entered from the
+  // message context menu; it exists so several messages can be forwarded or
+  // turned into one task together.
+  const selectedThreadMessageIds = useState<string[]>('inbox-thread-selected-messages', () => [])
+  // Derived, never its own flag: a mode that can be on with nothing selected
+  // renders a selection bar reading "0 selected".
+  const threadSelectionMode = computed(() => selectedThreadMessageIds.value.length > 0)
+  // A selection belongs to the thread it was made in; switching conversations
+  // must not carry it over into messages the host never picked.
+  watch(selectedConversationId, () => {
+    selectedThreadMessageIds.value = []
+  })
   const showActionNeeded = useState<boolean>('inbox-show-action-needed', () => true)
   const assignedToMeFilter = useState<boolean>('inbox-assigned-to-me-filter', () => false)
   const unreadFilter = useState<boolean>('inbox-unread-filter', () => false)
@@ -713,7 +725,9 @@ export function useInbox() {
     if (convIndex !== -1) {
       conversations.value[convIndex] = {
         ...conversations.value[convIndex],
-        lastMessage: newMessage.content || (mediaUrl ? '📷 Photo' : ''),
+        // No emoji: `ListItem` renders this as plain text, and an emoji there
+        // is an icon at the mercy of the platform font.
+        lastMessage: newMessage.content || (mediaUrl ? 'Photo' : ''),
         lastMessageAt: newMessage.timestamp,
         status: null,
       }
@@ -765,6 +779,16 @@ export function useInbox() {
     if (!conv?.linkedUpsellOrderIds?.length)
       return []
     return orders.value.filter(o => conv.linkedUpsellOrderIds!.includes(o.id))
+  }
+
+  function toggleThreadMessageSelection(id: string) {
+    selectedThreadMessageIds.value = selectedThreadMessageIds.value.includes(id)
+      ? selectedThreadMessageIds.value.filter(m => m !== id)
+      : [...selectedThreadMessageIds.value, id]
+  }
+
+  function clearThreadSelection() {
+    selectedThreadMessageIds.value = []
   }
 
   function linkOrderToConversation(conversationId: string, orderId: string) {
@@ -841,6 +865,10 @@ export function useInbox() {
     getPhoneCalls,
     getLinkedOrders,
     linkOrderToConversation,
+    threadSelectionMode,
+    selectedThreadMessageIds,
+    toggleThreadMessageSelection,
+    clearThreadSelection,
     unmatchedMessages,
     dismissUnmatched,
     matchUnmatched,
