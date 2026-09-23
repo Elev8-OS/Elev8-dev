@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { CityTaxBasisLine } from '~/components/reservations/data/city-tax'
+import type { CityTaxBasisLine, CityTaxGuestRateLine } from '~/components/reservations/data/city-tax'
 import type { CityTaxPaymentMethod, ReservationEntry } from '~/components/reservations/data/reservations'
 import {
   CITY_TAX_METHOD_LABELS,
+  cityTaxGuestCountLabel,
   formatCityTaxTotals,
+  hasMixedGuestRates,
 } from '~/components/reservations/data/city-tax'
 import CityTaxCollectDialog from '~/components/reservations/CityTaxCollectDialog.vue'
 import CityTaxWaiveDialog from '~/components/reservations/CityTaxWaiveDialog.vue'
@@ -35,6 +37,33 @@ const statusMeta = computed(() => {
       return { label: 'Channel collects', class: 'border-muted-foreground/30 bg-muted text-muted-foreground' }
   }
 })
+
+function money(line: CityTaxBasisLine, value: number): string {
+  return `${line.currency} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/**
+ * True when the categories are not all paying the same rate, in which case one
+ * "N guests × RATE" line would misquote the bill and the per-category rows
+ * below are shown instead.
+ */
+function isMixed(line: CityTaxBasisLine): boolean {
+  return hasMixedGuestRates(line)
+}
+
+/** "2 adults × EUR 3.00 = EUR 6.00", one per chargeable category. */
+function categoryLabel(line: CityTaxBasisLine, row: CityTaxGuestRateLine): string {
+  const who = cityTaxGuestCountLabel(row.category, row.guests)
+  return `${who} × ${money(line, row.rate)} = ${money(line, row.amount)}`
+}
+
+/** The multiplier applied to the per-category subtotal, when there is one. */
+function mixedTotalLabel(line: CityTaxBasisLine): string {
+  const perNight = line.guestBreakdown.reduce((sum, row) => sum + row.amount, 0)
+  if (line.logic !== 'per_person_per_night')
+    return `Total ${money(line, line.amount)}`
+  return `${money(line, perNight)} × ${line.chargeableNights} nights = ${money(line, line.amount)}`
+}
 
 /** "2 guests × 4 nights × 3.00 EUR = 24.00 EUR", the working staff get asked for. */
 function basisLabel(line: CityTaxBasisLine): string {
@@ -106,9 +135,23 @@ function waive(reason: string) {
                 <span class="font-medium">{{ line.taxTitle }}</span>
                 <span v-if="line.authorityName" class="text-xs text-muted-foreground">{{ line.authorityName }}</span>
               </div>
-              <p class="mt-0.5 text-xs tabular-nums text-muted-foreground">
+              <!-- One rate for everybody: the single working line reads fine. -->
+              <p v-if="!isMixed(line)" class="mt-0.5 text-xs tabular-nums text-muted-foreground">
                 {{ basisLabel(line) }}
               </p>
+              <!-- Categories priced differently, so each one shows its own working. -->
+              <div v-else class="mt-0.5 flex flex-col gap-0.5" :data-testid="`city-tax-breakdown-${line.taxItemId}`">
+                <p
+                  v-for="row in line.guestBreakdown"
+                  :key="row.category"
+                  class="text-xs tabular-nums text-muted-foreground"
+                >
+                  {{ categoryLabel(line, row) }}
+                </p>
+                <p class="text-xs font-medium tabular-nums text-foreground">
+                  {{ mixedTotalLabel(line) }}
+                </p>
+              </div>
               <p v-if="line.note" class="mt-1 text-xs text-muted-foreground">
                 {{ line.note }}
               </p>

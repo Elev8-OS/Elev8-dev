@@ -51,7 +51,12 @@ const seedFeeTaxItems: ListingFeeTaxItem[] = [
     cityTax: {
       // Nobody collects this for the host, which is the common European case.
       channelPolicy: { Airbnb: 'host', 'Booking.com': 'host', Direct: 'host' },
-      chargeableGuests: { adults: true, children: false, infants: false },
+      // Children pay half and infants are exempt, which is the common European
+      // shape and the reason `guestRates` exists. Infants are still counted as
+      // chargeable: an explicit 0 is an exemption that was applied, not a
+      // category nobody looked at.
+      chargeableGuests: { adults: true, children: true, infants: true },
+      guestRates: { children: 1.5, infants: 0 },
       authorityName: 'Kurverwaltung',
       note: 'Cash at the desk, receipt book behind reception.',
     },

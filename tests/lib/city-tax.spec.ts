@@ -2,13 +2,18 @@ import type { ListingFeeTaxItem } from '~/components/listings/data/listings'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { describe, expect, it } from 'vitest'
 import {
+  chargeableGuestBreakdown,
   chargeableGuestCount,
   chargeableNights,
   cityTaxActivityEvent,
   cityTaxAlertStage,
+  cityTaxGuestCountLabel,
+  cityTaxGuestRateSummary,
+  cityTaxRateForCategory,
   cityTaxTotals,
   collectorFor,
   computeCityTaxLine,
+  hasMixedGuestRates,
   isWithinApplicableRange,
   resolveCityTax,
 } from '~/components/reservations/data/city-tax'
@@ -156,6 +161,195 @@ function reservation(patch: Partial<ReservationEntry> = {}): ReservationEntry {
     ...patch,
   } as ReservationEntry
 }
+
+describe('cityTaxRateForCategory', () => {
+  it('always prices adults at the item rate, whatever the overrides say', () => {
+    expect(cityTaxRateForCategory(3, 'adults', { children: 1.5, infants: 0 })).toBe(3)
+  })
+
+  it('inherits the item rate for a category with no override, so nothing migrates', () => {
+    expect(cityTaxRateForCategory(3, 'children', {})).toBe(3)
+    expect(cityTaxRateForCategory(3, 'infants', undefined)).toBe(3)
+  })
+
+  it('honours an explicit zero as a real exemption, not as unset', () => {
+    expect(cityTaxRateForCategory(3, 'infants', { infants: 0 })).toBe(0)
+  })
+})
+
+describe('chargeableGuestBreakdown', () => {
+  const all = { adults: true, children: true, infants: true }
+
+  it('returns one row per chargeable category, adults first', () => {
+    const rows = chargeableGuestBreakdown(
+      { guestCount: 5, guestAdults: 2, guestChildren: 2, guestInfants: 1 },
+      { channelPolicy: {}, chargeableGuests: all },
+    )
+    expect(rows).toEqual([
+      { category: 'adults', guests: 2 },
+      { category: 'children', guests: 2 },
+      { category: 'infants', guests: 1 },
+    ])
+  })
+
+  it('omits a category the tenant does not charge, rather than zeroing it', () => {
+    const rows = chargeableGuestBreakdown(
+      { guestCount: 5, guestAdults: 2, guestChildren: 2, guestInfants: 1 },
+      { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } },
+    )
+    expect(rows).toEqual([{ category: 'adults', guests: 2 }])
+  })
+
+  it('omits a chargeable category nobody in the party belongs to', () => {
+    const rows = chargeableGuestBreakdown(
+      { guestCount: 2, guestAdults: 2, guestChildren: 0, guestInfants: 0 },
+      { channelPolicy: {}, chargeableGuests: all },
+    )
+    expect(rows).toEqual([{ category: 'adults', guests: 2 }])
+  })
+
+  it('treats a stay with no breakdown as adults, inventing no exemption', () => {
+    expect(chargeableGuestBreakdown({ guestCount: 3 }, { channelPolicy: {}, chargeableGuests: all }))
+      .toEqual([{ category: 'adults', guests: 3 }])
+  })
+
+  it('charges nobody when adults are not chargeable and there is no breakdown', () => {
+    expect(chargeableGuestBreakdown({ guestCount: 3 }, {
+      channelPolicy: {},
+      chargeableGuests: { adults: false, children: true, infants: true },
+    })).toEqual([])
+  })
+})
+
+describe('computeCityTaxLine, per-category rates', () => {
+  const family = reservation({ guestCount: 4, guestAdults: 2, guestChildren: 1, guestInfants: 1 })
+  const config = {
+    channelPolicy: {},
+    chargeableGuests: { adults: true, children: true, infants: true },
+    guestRates: { children: 1.5, infants: 0 },
+  }
+
+  it('prices each category at its own rate, per night', () => {
+    // (2 x 3) + (1 x 1.5) + (1 x 0) = 7.50 a night, over 4 nights.
+    const line = computeCityTaxLine(taxItem({ rate: 3, cityTax: config }), family)
+    expect(line?.amount).toBe(30)
+    expect(line?.guestBreakdown).toEqual([
+      { category: 'adults', guests: 2, rate: 3, amount: 6 },
+      { category: 'children', guests: 1, rate: 1.5, amount: 1.5 },
+      { category: 'infants', guests: 1, rate: 0, amount: 0 },
+    ])
+  })
+
+  it('prices per_person without the nights multiplier', () => {
+    const line = computeCityTaxLine(taxItem({ logic: 'per_person', rate: 3, cityTax: config }), family)
+    expect(line?.amount).toBe(7.5)
+  })
+
+  it('still reports the adult rate and the total head count on the line', () => {
+    const line = computeCityTaxLine(taxItem({ rate: 3, cityTax: config }), family)
+    expect(line?.rate).toBe(3)
+    expect(line?.chargeableGuests).toBe(4)
+  })
+
+  it('prices exactly as before when no override is set', () => {
+    const withOverrides = computeCityTaxLine(taxItem({
+      rate: 3,
+      cityTax: { channelPolicy: {}, chargeableGuests: { adults: true, children: true, infants: true } },
+    }), family)
+    // 4 chargeable heads x EUR 3 x 4 nights, the single-rate answer.
+    expect(withOverrides?.amount).toBe(48)
+  })
+
+  it('leaves the breakdown empty on a logic that does not multiply by guests', () => {
+    const line = computeCityTaxLine(taxItem({ logic: 'per_booking', rate: 15, cityTax: config }), family)
+    expect(line?.guestBreakdown).toEqual([])
+    expect(line?.amount).toBe(15)
+  })
+
+  it('ignores an override for a category the tenant does not charge', () => {
+    const line = computeCityTaxLine(taxItem({
+      rate: 3,
+      cityTax: { ...config, chargeableGuests: { adults: true, children: false, infants: false } },
+    }), family)
+    expect(line?.amount).toBe(24)
+    expect(line?.guestBreakdown).toEqual([{ category: 'adults', guests: 2, rate: 3, amount: 6 }])
+  })
+})
+
+describe('cityTaxGuestCountLabel', () => {
+  it('singularises a count of one', () => {
+    expect(cityTaxGuestCountLabel('children', 1)).toBe('1 child')
+    expect(cityTaxGuestCountLabel('infants', 1)).toBe('1 infant')
+    expect(cityTaxGuestCountLabel('adults', 1)).toBe('1 adult')
+  })
+
+  it('pluralises anything else', () => {
+    expect(cityTaxGuestCountLabel('children', 2)).toBe('2 children')
+    expect(cityTaxGuestCountLabel('adults', 3)).toBe('3 adults')
+  })
+})
+
+describe('hasMixedGuestRates', () => {
+  it('is false when every category pays the adult rate', () => {
+    expect(hasMixedGuestRates({
+      rate: 3,
+      guestBreakdown: [{ category: 'adults', guests: 2, rate: 3, amount: 6 }],
+    })).toBe(false)
+  })
+
+  it('is true when a category pays something else', () => {
+    expect(hasMixedGuestRates({
+      rate: 3,
+      guestBreakdown: [
+        { category: 'adults', guests: 2, rate: 3, amount: 6 },
+        { category: 'children', guests: 1, rate: 1.5, amount: 1.5 },
+      ],
+    })).toBe(true)
+  })
+
+  it('is true for a lone non-adult category, since the headline rate is not what is charged', () => {
+    expect(hasMixedGuestRates({
+      rate: 3,
+      guestBreakdown: [{ category: 'children', guests: 2, rate: 1.5, amount: 3 }],
+    })).toBe(true)
+  })
+
+  it('is false on a logic with no guest breakdown at all', () => {
+    expect(hasMixedGuestRates({ rate: 15, guestBreakdown: [] })).toBe(false)
+  })
+})
+
+describe('cityTaxGuestRateSummary', () => {
+  const config = {
+    channelPolicy: {},
+    chargeableGuests: { adults: true, children: true, infants: true },
+    guestRates: { children: 1.5, infants: 0 },
+  }
+
+  it('names only the categories priced differently', () => {
+    expect(cityTaxGuestRateSummary(taxItem({ rate: 3, currency: 'EUR', cityTax: config })))
+      .toBe('Children EUR 1.5 · Infants free')
+  })
+
+  it('says nothing when every category pays the adult rate', () => {
+    expect(cityTaxGuestRateSummary(taxItem({
+      rate: 3,
+      cityTax: { channelPolicy: {}, chargeableGuests: { adults: true, children: true, infants: true } },
+    }))).toBe('')
+  })
+
+  it('does not advertise a rate for a category the tenant has switched off', () => {
+    expect(cityTaxGuestRateSummary(taxItem({
+      rate: 3,
+      currency: 'EUR',
+      cityTax: { ...config, chargeableGuests: { adults: true, children: false, infants: false } },
+    }))).toBe('')
+  })
+
+  it('says nothing on a logic that does not multiply by guests', () => {
+    expect(cityTaxGuestRateSummary(taxItem({ logic: 'per_booking', rate: 15, cityTax: config }))).toBe('')
+  })
+})
 
 describe('computeCityTaxLine', () => {
   it('prices per person per night off the chargeable counts', () => {

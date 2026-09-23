@@ -728,7 +728,11 @@ export const initialReservations: ReservationEntry[] = [
     checkIn: '2026-07-21',
     checkOut: '2026-07-26',
     nights: 5,
-    guestCount: 2,
+    guestCount: 4,
+    // A family, so the Kurtaxe on this stay prices at three different rates.
+    guestAdults: 2,
+    guestChildren: 1,
+    guestInfants: 1,
     totalPrice: 1280,
     currency: 'EUR',
     priceDetails: {

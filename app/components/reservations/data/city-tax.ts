@@ -4,6 +4,7 @@ import type {
   CityTaxChargeableGuests,
   CityTaxCollector,
   CityTaxConfig,
+  CityTaxGuestRates,
   ListingFeeTaxItem,
   TaxLogic,
 } from '~/components/listings/data/listings'
@@ -54,6 +55,130 @@ export function chargeableGuestCount(guests: CityTaxGuestCounts, config?: CityTa
   return total
 }
 
+export type CityTaxGuestCategory = 'adults' | 'children' | 'infants'
+
+export const CITY_TAX_GUEST_CATEGORIES: CityTaxGuestCategory[] = ['adults', 'children', 'infants']
+
+export const CITY_TAX_GUEST_CATEGORY_LABELS: Record<CityTaxGuestCategory, string> = {
+  adults: 'Adults',
+  children: 'Children',
+  infants: 'Infants',
+}
+
+const CITY_TAX_GUEST_CATEGORY_SINGULAR: Record<CityTaxGuestCategory, string> = {
+  adults: 'adult',
+  children: 'child',
+  infants: 'infant',
+}
+
+/** "1 child", "2 children". A breakdown row is a head count and reads as one. */
+export function cityTaxGuestCountLabel(category: CityTaxGuestCategory, guests: number): string {
+  const word = guests === 1
+    ? CITY_TAX_GUEST_CATEGORY_SINGULAR[category]
+    : CITY_TAX_GUEST_CATEGORY_LABELS[category].toLowerCase()
+  return `${guests} ${word}`
+}
+
+/**
+ * What one guest of this category pays per chargeable unit.
+ *
+ * Adults always pay the item's own rate. A child or infant rate that is not set
+ * inherits it, so an item written before `guestRates` existed prices exactly as
+ * it always did. An explicit `0` is honoured: `??` and not `||`, because a
+ * municipality that exempts infants means zero, not "same as an adult".
+ */
+export function cityTaxRateForCategory(
+  baseRate: number,
+  category: CityTaxGuestCategory,
+  rates?: CityTaxGuestRates,
+): number {
+  if (category === 'adults')
+    return baseRate
+  return rates?.[category] ?? baseRate
+}
+
+export interface CityTaxGuestRateLine {
+  category: CityTaxGuestCategory
+  guests: number
+  rate: number
+  /** `rate * guests`, for ONE night. The nights multiplier is applied to the line, not here. */
+  amount: number
+}
+
+/**
+ * Head counts per chargeable category, in a fixed order so a breakdown always
+ * reads adults, children, infants.
+ *
+ * Categories the tenant does not charge are absent, not zeroed: a zero row for
+ * a category nobody is charging reads as an exemption that was applied, when in
+ * fact the category was never in scope.
+ */
+export function chargeableGuestBreakdown(
+  guests: CityTaxGuestCounts,
+  config?: CityTaxConfig,
+): Array<{ category: CityTaxGuestCategory, guests: number }> {
+  const rules = config?.chargeableGuests ?? DEFAULT_CHARGEABLE_GUESTS
+  const hasBreakdown = guests.guestAdults !== undefined
+    || guests.guestChildren !== undefined
+    || guests.guestInfants !== undefined
+
+  // Same reading as `chargeableGuestCount`: with no breakdown on the stay, the
+  // headcount is all we know, and calling it adults invents no exemption.
+  if (!hasBreakdown) {
+    return rules.adults && guests.guestCount > 0
+      ? [{ category: 'adults', guests: guests.guestCount }]
+      : []
+  }
+
+  const counts: Record<CityTaxGuestCategory, number> = {
+    adults: guests.guestAdults ?? 0,
+    children: guests.guestChildren ?? 0,
+    infants: guests.guestInfants ?? 0,
+  }
+
+  return CITY_TAX_GUEST_CATEGORIES
+    .filter(category => rules[category] && counts[category] > 0)
+    .map(category => ({ category, guests: counts[category] }))
+}
+
+/**
+ * Whether this stay is priced at more than one rate, so the surfaces know when
+ * a single "N guests x RATE" line would be a lie.
+ *
+ * A one-category breakdown still counts as mixed when that category is not
+ * adults: a stay of two children billed at the child rate is not billed at the
+ * item's headline rate, and saying so would misquote the working.
+ */
+export function hasMixedGuestRates(line: Pick<CityTaxBasisLine, 'guestBreakdown' | 'rate'>): boolean {
+  return line.guestBreakdown.some(row => row.rate !== line.rate)
+}
+
+/**
+ * "Children EUR 1.50 · Infants free", or an empty string when every chargeable
+ * category pays the adult rate. Only the categories actually charged are
+ * listed, so a rate left over from a category the tenant has since switched off
+ * is not advertised.
+ */
+export function cityTaxGuestRateSummary(item: ListingFeeTaxItem): string {
+  const config = item.cityTax
+  if (!config)
+    return ''
+  if (item.logic !== 'per_person' && item.logic !== 'per_person_per_night')
+    return ''
+
+  const currency = item.currency ?? ''
+  return CITY_TAX_GUEST_CATEGORIES
+    .filter(category => category !== 'adults' && config.chargeableGuests[category])
+    .flatMap((category) => {
+      const rate = cityTaxRateForCategory(item.rate, category, config.guestRates)
+      if (rate === item.rate)
+        return []
+      const label = CITY_TAX_GUEST_CATEGORY_LABELS[category]
+      return [rate === 0 ? `${label} free` : `${label} ${currency} ${rate}`.trim()]
+    })
+    .join(' · ')
+}
+
 export type CityTaxNightRules = Pick<ListingFeeTaxItem, 'skipNights' | 'maxNights'>
 
 /** Skip first, then cap, then clamp. A 2-night stay with skipNights 7 owes zero, never minus five. */
@@ -83,10 +208,17 @@ export interface CityTaxBasisLine {
   /** The tenant's own note, carried through so the desk can read it on the stay. */
   note?: string
   logic: TaxLogic
+  /** The ADULT rate. Children and infants may pay another, see `guestBreakdown`. */
   rate: number
   chargeableGuests: number
   chargeableNights: number
   rooms: number
+  /**
+   * One row per chargeable guest category, priced at that category's own rate.
+   * Empty on any logic that does not multiply by guests, so a reader never has
+   * to ask whether a per-booking charge had a child rate applied to it.
+   */
+  guestBreakdown: CityTaxGuestRateLine[]
   amount: number
   currency: string
 }
@@ -127,6 +259,19 @@ export function computeCityTaxLine(item: ListingFeeTaxItem, reservation: Reserva
   const nights = chargeableNights(item, reservation.nights)
   const rooms = reservation.rooms?.length ?? 1
 
+  // Priced per category, so a child rate and an infant rate each apply to their
+  // own heads. With no override set, every row carries `item.rate` and the sum
+  // is identical to the old single-rate multiplication.
+  const isPerGuest = item.logic === 'per_person' || item.logic === 'per_person_per_night'
+  const guestBreakdown: CityTaxGuestRateLine[] = isPerGuest
+    ? chargeableGuestBreakdown(reservation, config).map((row) => {
+        const rate = cityTaxRateForCategory(item.rate, row.category, config?.guestRates)
+        return { ...row, rate, amount: roundCityTaxAmount(rate * row.guests) }
+      })
+    : []
+
+  const perGuestNightly = guestBreakdown.reduce((sum, row) => sum + row.amount, 0)
+
   let amount = 0
   switch (item.logic) {
     case 'percent':
@@ -147,10 +292,10 @@ export function computeCityTaxLine(item: ListingFeeTaxItem, reservation: Reserva
       amount = item.rate * rooms * nights
       break
     case 'per_person':
-      amount = item.rate * guests
+      amount = perGuestNightly
       break
     case 'per_person_per_night':
-      amount = item.rate * guests * nights
+      amount = perGuestNightly * nights
       break
   }
 
@@ -164,6 +309,7 @@ export function computeCityTaxLine(item: ListingFeeTaxItem, reservation: Reserva
     chargeableGuests: guests,
     chargeableNights: nights,
     rooms,
+    guestBreakdown,
     // A percentage is a slice of a price already in the reservation's currency.
     // A fixed amount is denominated by the tax item itself.
     currency: item.logic === 'percent' ? reservation.currency : (item.currency ?? reservation.currency),

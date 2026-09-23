@@ -66,6 +66,24 @@ export interface CityTaxChargeableGuests {
 }
 
 /**
+ * What a child or an infant pays, when that differs from the adult rate.
+ *
+ * There is deliberately NO `adults` key: `ListingFeeTaxItem.rate` is the adult
+ * rate, and a second place saying what an adult pays is a second place for it
+ * to be wrong.
+ *
+ * An unset category inherits `ListingFeeTaxItem.rate`, which is exactly what a
+ * tenant got before this field existed, so no seeded item migrates. An explicit
+ * `0` is a real free-of-charge rate and is NOT the same as unset: a municipality
+ * that exempts infants while still counting them is a real policy, and
+ * collapsing the two would silently charge those infants the adult rate.
+ */
+export interface CityTaxGuestRates {
+  children?: number
+  infants?: number
+}
+
+/**
  * Only meaningful when `ListingFeeTaxItem.type === 'city_tax'`.
  */
 export interface CityTaxConfig {
@@ -78,6 +96,12 @@ export interface CityTaxConfig {
   channelPolicy: Partial<Record<BookingChannel, CityTaxCollector>>
   /** Which guest categories count toward a per-person logic. */
   chargeableGuests: CityTaxChargeableGuests
+  /**
+   * Per-category rate overrides. Only read by the guest-multiplying logics
+   * (`per_person`, `per_person_per_night`), the same way `skipNights` and
+   * `maxNights` only bite on a night-multiplying one.
+   */
+  guestRates?: CityTaxGuestRates
   /** Who levies it. Shown to staff at the desk. */
   authorityName?: string
   note?: string
