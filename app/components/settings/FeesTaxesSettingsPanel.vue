@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { BookingChannel, CityTaxCollector, ListingFeeTaxItem, TaxDateRange, TaxSet } from '~/components/listings/data/listings'
+import type { BookingChannel, CityTaxCollector, CityTaxConfig, ListingFeeTaxItem, TaxDateRange, TaxSet } from '~/components/listings/data/listings'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
+import { cityTaxGuestRateSummary } from '~/components/reservations/data/city-tax'
 import { useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 
@@ -69,6 +70,9 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
     parts.push(`skip ${tax.skipNights}`)
   if (tax.maxNights)
     parts.push(`max ${tax.maxNights}`)
+  const guestRates = cityTaxGuestRateSummary(tax)
+  if (guestRates)
+    parts.push(guestRates)
   return parts.join(' · ')
 }
 
@@ -80,6 +84,14 @@ function getListingName(id: string): string {
 const showFeeTaxSheet = ref(false)
 const editingFeeTaxId = ref<string | null>(null)
 const feeTaxDraft = ref<ListingFeeTaxItem>(emptyFeeTaxDraft())
+
+function emptyCityTaxConfig(): CityTaxConfig {
+  return {
+    channelPolicy: {},
+    chargeableGuests: { adults: true, children: false, infants: false },
+    guestRates: {},
+  }
+}
 
 function emptyFeeTaxDraft(): ListingFeeTaxItem {
   return {
@@ -93,10 +105,7 @@ function emptyFeeTaxDraft(): ListingFeeTaxItem {
     skipNights: null,
     maxNights: null,
     applicableDateRanges: [],
-    cityTax: {
-      channelPolicy: {},
-      chargeableGuests: { adults: true, children: false, infants: false },
-    },
+    cityTax: emptyCityTaxConfig(),
   }
 }
 
@@ -121,7 +130,7 @@ function draftCollectorFor(channel: BookingChannel): CityTaxCollector {
 }
 
 function setChannelCollector(channel: BookingChannel, collector: CityTaxCollector) {
-  const config = feeTaxDraft.value.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } }
+  const config = feeTaxDraft.value.cityTax ?? emptyCityTaxConfig()
   feeTaxDraft.value = {
     ...feeTaxDraft.value,
     cityTax: { ...config, channelPolicy: { ...config.channelPolicy, [channel]: collector } },
@@ -129,11 +138,38 @@ function setChannelCollector(channel: BookingChannel, collector: CityTaxCollecto
 }
 
 function setChargeableGuest(key: 'adults' | 'children' | 'infants', value: boolean) {
-  const config = feeTaxDraft.value.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } }
+  const config = feeTaxDraft.value.cityTax ?? emptyCityTaxConfig()
   feeTaxDraft.value = {
     ...feeTaxDraft.value,
     cityTax: { ...config, chargeableGuests: { ...config.chargeableGuests, [key]: value } },
   }
+}
+
+/**
+ * Per-category rates only mean anything where the logic multiplies by guests,
+ * the same rule `skipNights` and `maxNights` follow for nights. Showing a child
+ * rate on a per-booking charge would promise a discount that nothing applies.
+ */
+function chargesPerGuest(): boolean {
+  return feeTaxDraft.value.logic === 'per_person' || feeTaxDraft.value.logic === 'per_person_per_night'
+}
+
+function draftGuestRate(key: 'children' | 'infants'): string {
+  const rate = feeTaxDraft.value.cityTax?.guestRates?.[key]
+  // An explicit 0 is a real free-of-charge rate, so it must render as "0" and
+  // not as the empty box that means "inherit the adult rate".
+  return rate === undefined || rate === null ? '' : String(rate)
+}
+
+function setGuestRate(key: 'children' | 'infants', raw: string | number) {
+  const config = feeTaxDraft.value.cityTax ?? emptyCityTaxConfig()
+  const text = String(raw).trim()
+  const next = { ...config.guestRates }
+  if (text === '')
+    delete next[key]
+  else
+    next[key] = Math.max(0, Number(text) || 0)
+  feeTaxDraft.value = { ...feeTaxDraft.value, cityTax: { ...config, guestRates: next } }
 }
 
 function openAddFeeTax() {
@@ -150,7 +186,9 @@ function openEditFeeTax(id: string) {
   feeTaxDraft.value = {
     ...found,
     applicableDateRanges: found.applicableDateRanges.map(r => ({ ...r })),
-    cityTax: found.cityTax ?? { channelPolicy: {}, chargeableGuests: { adults: true, children: false, infants: false } },
+    cityTax: found.cityTax
+      ? { ...found.cityTax, guestRates: { ...found.cityTax.guestRates } }
+      : emptyCityTaxConfig(),
   }
   showFeeTaxSheet.value = true
 }
@@ -761,21 +799,62 @@ function removeDateRange(index: number) {
             <Separator />
 
             <div class="flex flex-col gap-2">
-              <span class="text-sm font-medium">Chargeable guests</span>
+              <div class="flex flex-col gap-0.5">
+                <span class="text-sm font-medium">Chargeable guests</span>
+                <span v-if="chargesPerGuest()" class="text-xs text-muted-foreground">
+                  Adults pay the rate above. Leave a rate empty to charge that category the same;
+                  enter 0 to exempt it while still counting the guest.
+                </span>
+              </div>
+
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm text-muted-foreground">Adults</span>
+                <div class="flex items-center gap-2">
+                  <span
+                    v-if="chargesPerGuest()"
+                    class="w-28 text-right text-xs tabular-nums text-muted-foreground"
+                  >{{ currencyCode(feeTaxDraft.currency) }} {{ feeTaxDraft.rate }}</span>
+                  <Switch
+                    data-testid="city-tax-charge-adults"
+                    :model-value="feeTaxDraft.cityTax?.chargeableGuests.adults ?? false"
+                    @update:model-value="(v) => setChargeableGuest('adults', Boolean(v))"
+                  />
+                </div>
+              </div>
+
               <div
                 v-for="option in [
-                  { key: 'adults' as const, label: 'Adults' },
                   { key: 'children' as const, label: 'Children' },
                   { key: 'infants' as const, label: 'Infants' },
                 ]"
                 :key="option.key"
-                class="flex items-center justify-between"
+                class="flex items-center justify-between gap-3"
               >
                 <span class="text-sm text-muted-foreground">{{ option.label }}</span>
-                <Switch
-                  :model-value="feeTaxDraft.cityTax?.chargeableGuests[option.key] ?? false"
-                  @update:model-value="(v) => setChargeableGuest(option.key, Boolean(v))"
-                />
+                <div class="flex items-center gap-2">
+                  <div
+                    v-if="chargesPerGuest() && (feeTaxDraft.cityTax?.chargeableGuests[option.key] ?? false)"
+                    class="relative w-28"
+                  >
+                    <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                      {{ currencyCode(feeTaxDraft.currency) }}
+                    </span>
+                    <Input
+                      :data-testid="`city-tax-rate-${option.key}`"
+                      :model-value="draftGuestRate(option.key)"
+                      type="number"
+                      min="0"
+                      class="h-8 pl-11 text-right"
+                      :placeholder="String(feeTaxDraft.rate)"
+                      @update:model-value="(v) => setGuestRate(option.key, v)"
+                    />
+                  </div>
+                  <Switch
+                    :data-testid="`city-tax-charge-${option.key}`"
+                    :model-value="feeTaxDraft.cityTax?.chargeableGuests[option.key] ?? false"
+                    @update:model-value="(v) => setChargeableGuest(option.key, Boolean(v))"
+                  />
+                </div>
               </div>
             </div>
 

@@ -338,6 +338,31 @@ missed. The rate already lived on `ListingFeeTaxItem`; what was missing was the 
 - **`percent` is charged on `priceDetails.subtotal`**, never the grand total: a levy is not
   charged on the cleaning fee. `skipNights` / `maxNights` only bite on a night-multiplying
   logic; a flat `per_booking` charge ignores them.
+- **Children and infants can be priced differently** via `CityTaxConfig.guestRates`
+  (`{ children?, infants? }`). There is deliberately **no `adults` key**:
+  `ListingFeeTaxItem.rate` IS the adult rate, and a second place saying what an adult pays is
+  a second place for it to be wrong.
+  - ⚠️ **An unset category inherits `item.rate`**, which is exactly what a tenant got before
+    the field existed, so no seeded item migrates. ⚠️ **An explicit `0` is a real exemption
+    and is NOT the same as unset** (`??`, never `||`): a municipality that exempts infants
+    while still counting them is a real policy, and collapsing the two charges those infants
+    the adult rate.
+  - ⚠️ **Only the guest-multiplying logics read it** (`per_person`, `per_person_per_night`),
+    the same rule `skipNights` / `maxNights` follow for nights. A child rate on a
+    `per_booking` charge would promise a discount nothing applies, so the settings form hides
+    the inputs there and `cityTaxGuestRateSummary` returns `''`.
+  - `chargeableGuestBreakdown()` returns one row per chargeable category, adults first, and
+    **omits** a category that is not charged or that nobody in the party belongs to. A zero
+    row for a category nobody is charging reads as an exemption that was applied, when the
+    category was never in scope.
+  - `CityTaxBasisLine.guestBreakdown` carries the priced rows (empty on a non-guest logic);
+    `line.rate` stays the **adult** rate and `line.chargeableGuests` the total head count, so
+    nothing that read them before changed meaning. `hasMixedGuestRates(line)` is what decides
+    whether a surface may print the flat "N guests × RATE" working: it is true for a lone
+    non-adult category too, because a party of two children is not billed at the headline
+    rate. `ReservationCityTaxSection` prints one working line per category when it is true.
+  - Seed: `ft-3` Kurtaxe charges all three categories at EUR 3 / 1.50 / 0, and `lex-res-001`
+    carries a 2+1+1 party so the mixed breakdown is reachable on load.
 
 **Alerts:** `CITY_TAX_COLLECTION_UPCOMING` (INFO, **off by default** behind the
 `notifyOnBooking` switch on `/settings/fees-taxes`), `CITY_TAX_COLLECTION_DUE` (WARNING,
@@ -353,16 +378,18 @@ an alert must not decide whether a settled obligation keeps nagging everybody el
 `CityTaxStatusChip.vue` in `ReservationTable.vue`, and the `/city-tax` worklist
 (Overdue / Due today / Upcoming / Settled, per-currency KPIs, bulk collect).
 
-**Tests:** `tests/lib/city-tax.spec.ts` (56), `tests/composables/useCityTax.spec.ts` (28),
-`tests/components/reservations/ReservationCityTax.spec.ts` (11).
+**Tests:** `tests/lib/city-tax.spec.ts` (80), `tests/composables/useCityTax.spec.ts` (28),
+`tests/components/reservations/ReservationCityTax.spec.ts` (13).
 ⚠️ `useFeesTaxes` uses **module-level refs**, which the `useState` shim does not reset, so
 every spec resets `feeTaxItems` / `taxSets` / `assignments` by hand. Composable fixtures
 use dates **relative to today**, because the alert stages read the current day.
 
 **NOT implemented (intentionally out of scope):** remittance reporting to the municipality;
 guest-facing payment (no payment request link, no guide line, no invoice line); any
-accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); per-guest
-exemptions beyond the adults / children / infants categories plus a manual waive; reading
+accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); age bands
+finer than adults / children / infants (a "12 to 17" tier would need its own guest counts on
+`ReservationEntry`, which no channel supplies here); per-guest exemptions beyond those three
+categories plus a manual waive; reading
 from a real channel API; and any background job (alerts come from `emitCityTaxAlerts()`).
 
 ### Damage Protection (`app/components/reservations/data/damage-protection.ts` + `app/composables/useDamageProtection.ts`)

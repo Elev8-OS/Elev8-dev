@@ -107,6 +107,41 @@ describe('ReservationCityTaxSection', () => {
     expect(text).toContain('Stadt Berlin')
   })
 
+  it('keeps the single working line when every guest pays the same rate', () => {
+    const wrapper = mountSection(reservation())
+    expect(wrapper.find('[data-testid="city-tax-breakdown-ft-kurtaxe"]').exists()).toBe(false)
+  })
+
+  it('shows one working line per category when children and infants pay another rate', () => {
+    const fees = useFeesTaxes()
+    fees.feeTaxItems.value = [{
+      ...structuredClone(CITY_TAX),
+      cityTax: {
+        ...structuredClone(CITY_TAX.cityTax!),
+        chargeableGuests: { adults: true, children: true, infants: true },
+        guestRates: { children: 1.5, infants: 0 },
+      },
+    }]
+
+    const wrapper = mountSection(reservation({
+      guestCount: 4,
+      guestAdults: 2,
+      guestChildren: 1,
+      guestInfants: 1,
+    }))
+
+    const text = wrapper.text()
+    expect(wrapper.find('[data-testid="city-tax-breakdown-ft-kurtaxe"]').exists()).toBe(true)
+    expect(text).toContain('2 adults × EUR 3.00 = EUR 6.00')
+    expect(text).toContain('1 child × EUR 1.50 = EUR 1.50')
+    expect(text).toContain('1 infant × EUR 0.00 = EUR 0.00')
+    // (6 + 1.50 + 0) a night over 4 nights, and the headline figure agrees.
+    expect(text).toContain('EUR 7.50 × 4 nights = EUR 30.00')
+    expect(text).toContain('EUR 30.00')
+    // The flat "N guests" line would misquote this bill, so it is withheld.
+    expect(text).not.toContain('4 guests × 4 nights')
+  })
+
   it('offers collect and waive while it is due', () => {
     const wrapper = mountSection(reservation())
     expect(wrapper.find('[data-testid="city-tax-collect"]').exists()).toBe(true)
