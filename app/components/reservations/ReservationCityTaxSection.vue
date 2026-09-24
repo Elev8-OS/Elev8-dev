@@ -3,6 +3,7 @@ import type { CityTaxBasisLine, CityTaxGuestRateLine } from '~/components/reserv
 import type { CityTaxPaymentMethod, ReservationEntry } from '~/components/reservations/data/reservations'
 import {
   CITY_TAX_METHOD_LABELS,
+  cityTaxAgeBandLabel,
   cityTaxGuestCountLabel,
   formatCityTaxTotals,
   hasMixedGuestRates,
@@ -51,10 +52,16 @@ function isMixed(line: CityTaxBasisLine): boolean {
   return hasMixedGuestRates(line)
 }
 
-/** "2 adults × EUR 3.00 = EUR 6.00", one per chargeable category. */
+/**
+ * "2 adults (12 and over) × EUR 3.00 = EUR 6.00", one per chargeable category.
+ *
+ * The band is named on the row because the question the desk actually gets is
+ * "my daughter is 11, why is she on here", and the answer has to be to hand.
+ */
 function categoryLabel(line: CityTaxBasisLine, row: CityTaxGuestRateLine): string {
   const who = cityTaxGuestCountLabel(row.category, row.guests)
-  return `${who} × ${money(line, row.rate)} = ${money(line, row.amount)}`
+  const band = cityTaxAgeBandLabel(row.category, line.ageBands)
+  return `${who} (${band}) × ${money(line, row.rate)} = ${money(line, row.amount)}`
 }
 
 /** The multiplier applied to the per-category subtotal, when there is one. */

@@ -3,7 +3,13 @@ import type { BookingChannel, CityTaxCollector, CityTaxConfig, ListingFeeTaxItem
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
-import { cityTaxGuestRateSummary } from '~/components/reservations/data/city-tax'
+import {
+  ageBandsError,
+  cityTaxAgeBandLabel,
+  cityTaxGuestRateSummary,
+  DEFAULT_CITY_TAX_AGE_BANDS,
+  resolveAgeBands,
+} from '~/components/reservations/data/city-tax'
 import { useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 
@@ -90,6 +96,7 @@ function emptyCityTaxConfig(): CityTaxConfig {
     channelPolicy: {},
     chargeableGuests: { adults: true, children: false, infants: false },
     guestRates: {},
+    ageBands: { ...DEFAULT_CITY_TAX_AGE_BANDS },
   }
 }
 
@@ -161,6 +168,30 @@ function draftGuestRate(key: 'children' | 'infants'): string {
   return rate === undefined || rate === null ? '' : String(rate)
 }
 
+const draftAgeBands = computed(() => resolveAgeBands(feeTaxDraft.value.cityTax))
+
+/**
+ * Blocks the save rather than silently correcting the numbers. A tenant who
+ * typed 12 and 2 the wrong way round meant something, and guessing which way
+ * round would put a rate against a band they never chose.
+ */
+const draftAgeBandsError = computed(() =>
+  isCityTax() ? ageBandsError(draftAgeBands.value) : null)
+
+function bandLabel(category: 'adults' | 'children' | 'infants'): string {
+  return cityTaxAgeBandLabel(category, draftAgeBands.value)
+}
+
+function setAgeBand(key: 'infantUnder' | 'childUnder', raw: string | number) {
+  const config = feeTaxDraft.value.cityTax ?? emptyCityTaxConfig()
+  const text = String(raw).trim()
+  const bands = resolveAgeBands(config)
+  // An empty box restores that bound's default, never 0: 0 is the real setting
+  // that says this tenant recognises no infant band at all.
+  const next = text === '' ? DEFAULT_CITY_TAX_AGE_BANDS[key] : Math.trunc(Number(text) || 0)
+  feeTaxDraft.value = { ...feeTaxDraft.value, cityTax: { ...config, ageBands: { ...bands, [key]: next } } }
+}
+
 function setGuestRate(key: 'children' | 'infants', raw: string | number) {
   const config = feeTaxDraft.value.cityTax ?? emptyCityTaxConfig()
   const text = String(raw).trim()
@@ -187,7 +218,11 @@ function openEditFeeTax(id: string) {
     ...found,
     applicableDateRanges: found.applicableDateRanges.map(r => ({ ...r })),
     cityTax: found.cityTax
-      ? { ...found.cityTax, guestRates: { ...found.cityTax.guestRates } }
+      ? {
+          ...found.cityTax,
+          guestRates: { ...found.cityTax.guestRates },
+          ageBands: { ...resolveAgeBands(found.cityTax) },
+        }
       : emptyCityTaxConfig(),
   }
   showFeeTaxSheet.value = true
@@ -196,6 +231,10 @@ function openEditFeeTax(id: string) {
 function saveFeeTax() {
   if (!feeTaxDraft.value.title.trim())
     return
+  if (draftAgeBandsError.value) {
+    toast.error(draftAgeBandsError.value)
+    return
+  }
   const item: ListingFeeTaxItem = {
     ...feeTaxDraft.value,
     id: editingFeeTaxId.value || `ft-${Date.now()}`,
@@ -800,6 +839,53 @@ function removeDateRange(index: number) {
 
             <div class="flex flex-col gap-2">
               <div class="flex flex-col gap-0.5">
+                <span class="text-sm font-medium">Age bands</span>
+                <span class="text-xs text-muted-foreground">
+                  Which ages this authority counts as a child and an infant. Both are upper
+                  limits, so "under 12" means a guest turning 12 is charged as an adult.
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div class="flex flex-col gap-1.5">
+                  <Label class="text-xs text-muted-foreground">Infants are under</Label>
+                  <Input
+                    data-testid="city-tax-age-infant"
+                    :model-value="draftAgeBands.infantUnder"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="h-8"
+                    @update:model-value="(v) => setAgeBand('infantUnder', v)"
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <Label class="text-xs text-muted-foreground">Children are under</Label>
+                  <Input
+                    data-testid="city-tax-age-child"
+                    :model-value="draftAgeBands.childUnder"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="h-8"
+                    @update:model-value="(v) => setAgeBand('childUnder', v)"
+                  />
+                </div>
+              </div>
+
+              <p
+                v-if="draftAgeBandsError"
+                data-testid="city-tax-age-error"
+                class="text-xs text-destructive"
+              >
+                {{ draftAgeBandsError }}
+              </p>
+            </div>
+
+            <Separator />
+
+            <div class="flex flex-col gap-2">
+              <div class="flex flex-col gap-0.5">
                 <span class="text-sm font-medium">Chargeable guests</span>
                 <span v-if="chargesPerGuest()" class="text-xs text-muted-foreground">
                   Adults pay the rate above. Leave a rate empty to charge that category the same;
@@ -808,7 +894,10 @@ function removeDateRange(index: number) {
               </div>
 
               <div class="flex items-center justify-between gap-3">
-                <span class="text-sm text-muted-foreground">Adults</span>
+                <span class="flex flex-col">
+                  <span class="text-sm text-muted-foreground">Adults</span>
+                  <span class="text-xs tabular-nums text-muted-foreground/70">{{ bandLabel('adults') }}</span>
+                </span>
                 <div class="flex items-center gap-2">
                   <span
                     v-if="chargesPerGuest()"
@@ -830,7 +919,10 @@ function removeDateRange(index: number) {
                 :key="option.key"
                 class="flex items-center justify-between gap-3"
               >
-                <span class="text-sm text-muted-foreground">{{ option.label }}</span>
+                <span class="flex flex-col">
+                  <span class="text-sm text-muted-foreground">{{ option.label }}</span>
+                  <span class="text-xs tabular-nums text-muted-foreground/70">{{ bandLabel(option.key) }}</span>
+                </span>
                 <div class="flex items-center gap-2">
                   <div
                     v-if="chargesPerGuest() && (feeTaxDraft.cityTax?.chargeableGuests[option.key] ?? false)"

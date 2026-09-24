@@ -84,6 +84,27 @@ export interface CityTaxGuestRates {
 }
 
 /**
+ * Where the line between an infant, a child and an adult falls, in years.
+ *
+ * Both bounds are EXCLUSIVE upper bounds, because that is how a municipality
+ * writes the rule ("Kinder unter 12 Jahren", "children under 12"). An infant is
+ * under `infantUnder`, a child is under `childUnder` but not an infant, and
+ * anybody at or above `childUnder` is an adult. `infantUnder: 0` is a real
+ * setting: it means the tenant recognises no infant band at all.
+ *
+ * ⚠️ These bounds do NOT reclassify a booking. `ReservationEntry` carries head
+ * COUNTS (`guestAdults` / `guestChildren` / `guestInfants`), never ages, and no
+ * channel here supplies an age. They state the policy, label every surface, and
+ * are what `classifyGuestAge` reads when an age is known at the desk.
+ */
+export interface CityTaxAgeBands {
+  /** A guest under this age is an infant. */
+  infantUnder: number
+  /** A guest under this age, and not an infant, is a child. */
+  childUnder: number
+}
+
+/**
  * Only meaningful when `ListingFeeTaxItem.type === 'city_tax'`.
  */
 export interface CityTaxConfig {
@@ -102,6 +123,11 @@ export interface CityTaxConfig {
    * `maxNights` only bite on a night-multiplying one.
    */
   guestRates?: CityTaxGuestRates
+  /**
+   * Which ages count as a child and an infant. Unset falls back to
+   * `DEFAULT_CITY_TAX_AGE_BANDS`, so no seeded item migrates.
+   */
+  ageBands?: CityTaxAgeBands
   /** Who levies it. Shown to staff at the desk. */
   authorityName?: string
   note?: string

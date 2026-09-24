@@ -2,19 +2,24 @@ import type { ListingFeeTaxItem } from '~/components/listings/data/listings'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { describe, expect, it } from 'vitest'
 import {
+  ageBandsError,
   chargeableGuestBreakdown,
   chargeableGuestCount,
   chargeableNights,
   cityTaxActivityEvent,
+  cityTaxAgeBandLabel,
   cityTaxAlertStage,
   cityTaxGuestCountLabel,
   cityTaxGuestRateSummary,
   cityTaxRateForCategory,
   cityTaxTotals,
+  classifyGuestAge,
   collectorFor,
   computeCityTaxLine,
+  DEFAULT_CITY_TAX_AGE_BANDS,
   hasMixedGuestRates,
   isWithinApplicableRange,
+  resolveAgeBands,
   resolveCityTax,
 } from '~/components/reservations/data/city-tax'
 
@@ -161,6 +166,92 @@ function reservation(patch: Partial<ReservationEntry> = {}): ReservationEntry {
     ...patch,
   } as ReservationEntry
 }
+
+describe('age bands', () => {
+  const bands = { infantUnder: 6, childUnder: 16 }
+
+  it('defaults to under 2 and under 12 when nothing is configured', () => {
+    expect(resolveAgeBands(undefined)).toEqual({ infantUnder: 2, childUnder: 12 })
+    expect(resolveAgeBands({
+      channelPolicy: {},
+      chargeableGuests: { adults: true, children: false, infants: false },
+    })).toEqual(DEFAULT_CITY_TAX_AGE_BANDS)
+  })
+
+  it('classifies against exclusive upper bounds', () => {
+    expect(classifyGuestAge(5, bands)).toBe('infants')
+    // The boundary itself belongs to the band above it: "under 6" excludes 6.
+    expect(classifyGuestAge(6, bands)).toBe('children')
+    expect(classifyGuestAge(15, bands)).toBe('children')
+    expect(classifyGuestAge(16, bands)).toBe('adults')
+  })
+
+  it('reads a newborn as an infant and a negative age as one too', () => {
+    expect(classifyGuestAge(0, bands)).toBe('infants')
+    expect(classifyGuestAge(-1, bands)).toBe('infants')
+  })
+
+  it('recognises no infants at all when the infant bound is zero', () => {
+    const noInfants = { infantUnder: 0, childUnder: 12 }
+    expect(classifyGuestAge(0, noInfants)).toBe('children')
+    expect(cityTaxAgeBandLabel('infants', noInfants)).toBe('Not recognised')
+    // "0-11" would invite the question of where the infants went.
+    expect(cityTaxAgeBandLabel('children', noInfants)).toBe('under 12')
+  })
+
+  it('labels each band the way a guest would say it', () => {
+    expect(cityTaxAgeBandLabel('infants', bands)).toBe('under 6')
+    expect(cityTaxAgeBandLabel('children', bands)).toBe('6-15')
+    expect(cityTaxAgeBandLabel('adults', bands)).toBe('16 and over')
+  })
+
+  it('falls back to the defaults when no bands are passed', () => {
+    expect(cityTaxAgeBandLabel('children')).toBe('2-11')
+    expect(classifyGuestAge(1)).toBe('infants')
+  })
+
+  it('refuses a child bound that leaves the child band unreachable', () => {
+    expect(ageBandsError({ infantUnder: 12, childUnder: 12 })).toContain('above the infant age')
+    expect(ageBandsError({ infantUnder: 12, childUnder: 2 })).toContain('above the infant age')
+  })
+
+  it('refuses fractional and negative ages', () => {
+    expect(ageBandsError({ infantUnder: 1.5, childUnder: 12 })).toContain('whole years')
+    expect(ageBandsError({ infantUnder: -1, childUnder: 12 })).toContain('negative')
+  })
+
+  it('accepts a valid pair, including one with no infant band', () => {
+    expect(ageBandsError(bands)).toBeNull()
+    expect(ageBandsError({ infantUnder: 0, childUnder: 12 })).toBeNull()
+  })
+
+  it('carries the resolved bands onto a priced line', () => {
+    const configured = computeCityTaxLine(taxItem({
+      rate: 3,
+      cityTax: {
+        channelPolicy: {},
+        chargeableGuests: { adults: true, children: true, infants: false },
+        ageBands: bands,
+      },
+    }), reservation())
+    expect(configured?.ageBands).toEqual(bands)
+
+    // Never optional on the line, so a surface can print it without re-reading
+    // the config.
+    expect(computeCityTaxLine(taxItem({ rate: 3 }), reservation())?.ageBands)
+      .toEqual(DEFAULT_CITY_TAX_AGE_BANDS)
+  })
+
+  it('does not change what anybody is charged', () => {
+    const base = { channelPolicy: {}, chargeableGuests: { adults: true, children: true, infants: true } }
+    const family = reservation({ guestCount: 4, guestAdults: 2, guestChildren: 1, guestInfants: 1 })
+    // The stay carries head counts, not ages, so moving the bands cannot move a
+    // guest between categories and cannot move the total.
+    const wide = computeCityTaxLine(taxItem({ rate: 3, cityTax: { ...base, ageBands: bands } }), family)
+    const narrow = computeCityTaxLine(taxItem({ rate: 3, cityTax: { ...base, ageBands: { infantUnder: 1, childUnder: 3 } } }), family)
+    expect(wide?.amount).toBe(narrow?.amount)
+  })
+})
 
 describe('cityTaxRateForCategory', () => {
   it('always prices adults at the item rate, whatever the overrides say', () => {
