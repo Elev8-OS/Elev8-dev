@@ -363,6 +363,29 @@ missed. The rate already lived on `ListingFeeTaxItem`; what was missing was the 
     rate. `ReservationCityTaxSection` prints one working line per category when it is true.
   - Seed: `ft-3` Kurtaxe charges all three categories at EUR 3 / 1.50 / 0, and `lex-res-001`
     carries a 2+1+1 party so the mixed breakdown is reachable on load.
+- **Where the categories begin and end** is `CityTaxConfig.ageBands?: CityTaxAgeBands`
+  (`{ infantUnder, childUnder }`), falling back to `DEFAULT_CITY_TAX_AGE_BANDS` (2 / 12) so no
+  seeded item migrates.
+  - ⚠️ **Both are EXCLUSIVE upper bounds**, because that is how the rule is written ("children
+    under 12"). A guest turning 12 is an adult. `infantUnder: 0` is a real setting meaning the
+    tenant recognises no infant band, and `cityTaxAgeBandLabel` then reads the child row as
+    "under 12" rather than "0-11", which would invite the question of where the infants went.
+  - ⚠️ **The bands classify nobody today, and this is not an oversight.** `ReservationEntry`
+    carries head COUNTS (`guestAdults` / `guestChildren` / `guestInfants`), never ages, and no
+    channel here supplies one, so moving a band cannot move a guest between categories or move
+    a total. A test asserts exactly that. They state the policy, label every surface, and
+    `classifyGuestAge(age, bands)` makes the rule executable for the desk and for whenever ages
+    do arrive. Do not wire it into `computeCityTaxLine`: there is nothing there to classify.
+  - ⚠️ **`ageBandsError` blocks the save rather than reordering the numbers.** A `childUnder`
+    at or below `infantUnder` leaves the child band unreachable, so the child rate beside it
+    would price nobody; a tenant who typed the two the wrong way round meant something, and
+    guessing which way would put a rate against a band they never chose.
+  - `CityTaxBasisLine.ageBands` is **resolved and never optional**, copied off the item the same
+    way `authorityName` and `note` are, so a surface prints the band without re-reading the
+    config. `ReservationCityTaxSection` names it on each breakdown row ("1 child (2-11) × EUR
+    1.50"), because the question the desk gets is "my daughter is 11, why is she on here".
+  - Seed: `ft-3` draws its lines at **6 and 16**, not the 2 / 12 default, so the surfaces are
+    demonstrably reading the configured bands rather than the fallback.
 
 **Alerts:** `CITY_TAX_COLLECTION_UPCOMING` (INFO, **off by default** behind the
 `notifyOnBooking` switch on `/settings/fees-taxes`), `CITY_TAX_COLLECTION_DUE` (WARNING,
@@ -378,18 +401,21 @@ an alert must not decide whether a settled obligation keeps nagging everybody el
 `CityTaxStatusChip.vue` in `ReservationTable.vue`, and the `/city-tax` worklist
 (Overdue / Due today / Upcoming / Settled, per-currency KPIs, bulk collect).
 
-**Tests:** `tests/lib/city-tax.spec.ts` (80), `tests/composables/useCityTax.spec.ts` (28),
-`tests/components/reservations/ReservationCityTax.spec.ts` (13).
+**Tests:** `tests/lib/city-tax.spec.ts` (91), `tests/composables/useCityTax.spec.ts` (28),
+`tests/components/reservations/ReservationCityTax.spec.ts` (14).
+⚠️ `FeesTaxesSettingsPanel.vue` has **no spec at all**, so the age-band inputs and the save gate
+are covered only through `ageBandsError` in the pure module.
 ⚠️ `useFeesTaxes` uses **module-level refs**, which the `useState` shim does not reset, so
 every spec resets `feeTaxItems` / `taxSets` / `assignments` by hand. Composable fixtures
 use dates **relative to today**, because the alert stages read the current day.
 
 **NOT implemented (intentionally out of scope):** remittance reporting to the municipality;
 guest-facing payment (no payment request link, no guide line, no invoice line); any
-accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); age bands
-finer than adults / children / infants (a "12 to 17" tier would need its own guest counts on
-`ReservationEntry`, which no channel supplies here); per-guest exemptions beyond those three
-categories plus a manual waive; reading
+accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); a FOURTH age band
+(a "12 to 17" tier would need its own guest counts on `ReservationEntry`, which no channel
+supplies here — the three bands' boundaries are configurable, their number is not); classifying
+a real guest by age (no age reaches a reservation, see the ⚠️ above); per-guest exemptions beyond
+those three categories plus a manual waive; reading
 from a real channel API; and any background job (alerts come from `emitCityTaxAlerts()`).
 
 ### Damage Protection (`app/components/reservations/data/damage-protection.ts` + `app/composables/useDamageProtection.ts`)

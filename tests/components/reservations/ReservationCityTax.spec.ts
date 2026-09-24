@@ -132,14 +132,41 @@ describe('ReservationCityTaxSection', () => {
 
     const text = wrapper.text()
     expect(wrapper.find('[data-testid="city-tax-breakdown-ft-kurtaxe"]').exists()).toBe(true)
-    expect(text).toContain('2 adults × EUR 3.00 = EUR 6.00')
-    expect(text).toContain('1 child × EUR 1.50 = EUR 1.50')
-    expect(text).toContain('1 infant × EUR 0.00 = EUR 0.00')
+    // Each row names its band: the desk gets asked "my daughter is 11, why is
+    // she on here", and the answer has to be on the row.
+    expect(text).toContain('2 adults (12 and over) × EUR 3.00 = EUR 6.00')
+    expect(text).toContain('1 child (2-11) × EUR 1.50 = EUR 1.50')
+    expect(text).toContain('1 infant (under 2) × EUR 0.00 = EUR 0.00')
     // (6 + 1.50 + 0) a night over 4 nights, and the headline figure agrees.
     expect(text).toContain('EUR 7.50 × 4 nights = EUR 30.00')
     expect(text).toContain('EUR 30.00')
     // The flat "N guests" line would misquote this bill, so it is withheld.
     expect(text).not.toContain('4 guests × 4 nights')
+  })
+
+  it('prints the authority own age bands, not the defaults', () => {
+    const fees = useFeesTaxes()
+    fees.feeTaxItems.value = [{
+      ...structuredClone(CITY_TAX),
+      cityTax: {
+        ...structuredClone(CITY_TAX.cityTax!),
+        chargeableGuests: { adults: true, children: true, infants: true },
+        guestRates: { children: 1.5, infants: 0 },
+        ageBands: { infantUnder: 6, childUnder: 16 },
+      },
+    }]
+
+    const text = mountSection(reservation({
+      guestCount: 4,
+      guestAdults: 2,
+      guestChildren: 1,
+      guestInfants: 1,
+    })).text()
+
+    expect(text).toContain('2 adults (16 and over)')
+    expect(text).toContain('1 child (6-15)')
+    expect(text).toContain('1 infant (under 6)')
+    expect(text).not.toContain('under 2')
   })
 
   it('offers collect and waive while it is due', () => {

@@ -1,6 +1,7 @@
 import type { ActivityEvent, ActivityEventColor } from '~/components/inbox/data/conversations'
 import type {
   BookingChannel,
+  CityTaxAgeBands,
   CityTaxChargeableGuests,
   CityTaxCollector,
   CityTaxConfig,
@@ -77,6 +78,77 @@ export function cityTaxGuestCountLabel(category: CityTaxGuestCategory, guests: n
     ? CITY_TAX_GUEST_CATEGORY_SINGULAR[category]
     : CITY_TAX_GUEST_CATEGORY_LABELS[category].toLowerCase()
   return `${guests} ${word}`
+}
+
+/**
+ * Under 2 is an infant, under 12 a child. The most common European shape, and
+ * what every item written before `ageBands` existed is treated as.
+ */
+export const DEFAULT_CITY_TAX_AGE_BANDS: CityTaxAgeBands = {
+  infantUnder: 2,
+  childUnder: 12,
+}
+
+export function resolveAgeBands(config?: CityTaxConfig): CityTaxAgeBands {
+  return config?.ageBands ?? DEFAULT_CITY_TAX_AGE_BANDS
+}
+
+/**
+ * Which category a guest of a known age falls into.
+ *
+ * ⚠️ Nothing in the pricing path calls this, and that is not an oversight: a
+ * reservation carries head counts, never ages. It exists so the rule the tenant
+ * typed is executable and testable rather than decorative, and so the desk can
+ * settle "my daughter is 11" against the same numbers the settings screen
+ * shows. A negative age is read as an infant rather than rejected, since the
+ * only thing below the infant bound is an infant.
+ */
+export function classifyGuestAge(age: number, bands: CityTaxAgeBands = DEFAULT_CITY_TAX_AGE_BANDS): CityTaxGuestCategory {
+  if (age < bands.infantUnder)
+    return 'infants'
+  if (age < bands.childUnder)
+    return 'children'
+  return 'adults'
+}
+
+/**
+ * "under 2", "2-11", "12 and over" — the band in the words a guest would use.
+ *
+ * With no infant band (`infantUnder: 0`) the child row reads "under 12" rather
+ * than "0-11", because a range starting at zero invites the question of where
+ * the infants went.
+ */
+export function cityTaxAgeBandLabel(
+  category: CityTaxGuestCategory,
+  bands: CityTaxAgeBands = DEFAULT_CITY_TAX_AGE_BANDS,
+): string {
+  if (category === 'infants')
+    return bands.infantUnder <= 0 ? 'Not recognised' : `under ${bands.infantUnder}`
+  if (category === 'children') {
+    return bands.infantUnder <= 0
+      ? `under ${bands.childUnder}`
+      : `${bands.infantUnder}-${bands.childUnder - 1}`
+  }
+  return `${bands.childUnder} and over`
+}
+
+/**
+ * The reason these bands cannot be saved, or `null`.
+ *
+ * A child band that ends at or below where the infant band ends leaves the
+ * child category unreachable: every guest would be an infant or an adult, and
+ * the child rate beside it would price nobody. Whole years only, because that
+ * is how every one of these rules is written.
+ */
+export function ageBandsError(bands: CityTaxAgeBands): string | null {
+  const { infantUnder, childUnder } = bands
+  if (!Number.isInteger(infantUnder) || !Number.isInteger(childUnder))
+    return 'Ages must be whole years.'
+  if (infantUnder < 0 || childUnder < 0)
+    return 'Ages cannot be negative.'
+  if (childUnder <= infantUnder)
+    return 'The child age must be above the infant age, otherwise no guest is ever a child.'
+  return null
 }
 
 /**
@@ -219,6 +291,12 @@ export interface CityTaxBasisLine {
    * to ask whether a per-booking charge had a child rate applied to it.
    */
   guestBreakdown: CityTaxGuestRateLine[]
+  /**
+   * Resolved, never optional, so any surface can print "children: 2-11" without
+   * re-reading the config. Copied off the item the same way `authorityName` and
+   * `note` are.
+   */
+  ageBands: CityTaxAgeBands
   amount: number
   currency: string
 }
@@ -310,6 +388,7 @@ export function computeCityTaxLine(item: ListingFeeTaxItem, reservation: Reserva
     chargeableNights: nights,
     rooms,
     guestBreakdown,
+    ageBands: resolveAgeBands(config),
     // A percentage is a slice of a price already in the reservation's currency.
     // A fixed amount is denominated by the tax item itself.
     currency: item.logic === 'percent' ? reservation.currency : (item.currency ?? reservation.currency),

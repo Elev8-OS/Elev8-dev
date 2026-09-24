@@ -57,6 +57,9 @@ const seedFeeTaxItems: ListingFeeTaxItem[] = [
       // category nobody looked at.
       chargeableGuests: { adults: true, children: true, infants: true },
       guestRates: { children: 1.5, infants: 0 },
+      // This authority draws the lines at 6 and 16 rather than the 2 / 12
+      // default, which is the whole reason the bands are configurable.
+      ageBands: { infantUnder: 6, childUnder: 16 },
       authorityName: 'Kurverwaltung',
       note: 'Cash at the desk, receipt book behind reception.',
     },
