@@ -157,7 +157,7 @@ export const payoutAccounts = ref<PayoutAccount[]>([
     liveMode: true,
     connectedAt: '2026-06-03',
     currency: 'USD',
-    listingIds: ['lst-1', 'lst-2'],
+    listingIds: ['lst-1', 'lst-2', 'lst-18'],
     notes: 'Primary global card gateway.',
     publicKey: 'pk_live_91f4...c8a2',
     secretKey: 'sk_live_91f4...ab91',

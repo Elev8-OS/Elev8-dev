@@ -1,3 +1,4 @@
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
@@ -6,6 +7,7 @@ import Button from '~/components/ui/button/Button.vue'
 import Popover from '~/components/ui/popover/Popover.vue'
 import PopoverContent from '~/components/ui/popover/PopoverContent.vue'
 import PopoverTrigger from '~/components/ui/popover/PopoverTrigger.vue'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 describe('cleaningJobForm in create operation', () => {
   it('allows assigning housekeeping staff and renders summary without error', async () => {
@@ -142,5 +144,57 @@ describe('cleaningJobForm in create operation', () => {
     expect(visibleNames.some(n => n?.includes('Komang Juliantara'))).toBe(false)
 
     wrapper.unmount()
+  })
+})
+
+describe('cleaningJobForm linked stay', () => {
+  function mountAt(scheduledAt: string, modelValue: Record<string, unknown> | null = null) {
+    return mount(CleaningJobForm, {
+      props: { mode: modelValue ? 'edit' : 'create', defaultListingId: 'lst-1', defaultScheduledAt: scheduledAt, modelValue },
+      global: {
+        components: { Button, Popover, PopoverContent, PopoverTrigger },
+        stubs: {
+          Icon: true,
+          Switch: true,
+          Select: true,
+          SelectTrigger: true,
+          SelectValue: true,
+          SelectContent: true,
+          SelectItem: true,
+          ScrollArea: { template: '<div><slot /></div>' },
+        },
+      },
+    })
+  }
+
+  function seedStays() {
+    useReservationsModule().reservations.value = [
+      { id: 'res-a', listingId: 'lst-1', listingName: 'Villa', guestName: 'Anna Schmidt', checkIn: '2026-11-01', checkOut: '2026-11-05', status: 'verified' } as ReservationEntry,
+    ]
+  }
+
+  it('says which stay a new cleaning will be linked to', async () => {
+    seedStays()
+    const wrapper = mountAt('2026-11-03T11:00')
+    await nextTick()
+    expect(wrapper.find('[data-testid="cleaning-linked-stay"]').text()).toBe('Linked to Anna Schmidt\'s stay, 1 Nov to 5 Nov')
+  })
+
+  it('says a cleaning on a date with no stay is created without a reservation', async () => {
+    seedStays()
+    const wrapper = mountAt('2026-11-20T11:00')
+    await nextTick()
+    expect(wrapper.find('[data-testid="cleaning-linked-stay"]').text()).toContain('No stay on this date')
+  })
+
+  it('keeps an existing link when the job is edited without moving', async () => {
+    seedStays()
+    const wrapper = mountAt('2026-11-20T11:00', {
+      listingId: 'lst-1',
+      scheduledAt: '2026-11-20T11:00:00+08:00',
+      reservationId: 'res-a',
+    })
+    await nextTick()
+    expect(wrapper.find('[data-testid="cleaning-linked-stay"]').text()).toContain('Anna Schmidt')
   })
 })

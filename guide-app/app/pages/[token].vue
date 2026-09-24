@@ -169,7 +169,6 @@ function handleUpsellAdd(serviceId: string) {
                   :token="token"
                   :options="section.data?.options"
                   :terms-text="section.data?.termsText"
-                  :rail="section.data?.rail"
                   :long-stay="section.data?.longStay"
                 />
               </div>

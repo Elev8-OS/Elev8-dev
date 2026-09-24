@@ -1,22 +1,18 @@
+import type { ProtectionChoiceBody } from '../../../../utils/protection-choice'
 import type { GuideSubmission } from '~/components/guest-guides/data/types'
 import { generateId } from '~/utils/guest-guide-token'
 import { findLinkByToken, saveSubmission } from '../../../../utils/guest-guide-store'
+import { validateProtectionChoice } from '../../../../utils/protection-choice'
 
 /**
  * The token identifies the reservation. The body NEVER names one, so a public
  * endpoint cannot be talked into writing another booking's record. Same access
  * model as `saveForCurrentOwner` in useOwnerPayoutDetails.
+ *
+ * A deposit arrives as a card the guest already saved with Stripe (a
+ * PaymentMethod id plus the last four digits) and the guest's consent to a
+ * charge after check-out. Raw card data is refused outright.
  */
-interface ProtectionChoiceBody {
-  option?: 'waiver' | 'deposit'
-  termsVersion?: string
-  refundDestination?: {
-    accountName?: string
-    accountNumber?: string
-    bankName?: string
-  }
-}
-
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token')
   if (!token)
@@ -26,29 +22,15 @@ export default defineEventHandler(async (event) => {
   if (!link)
     throw createError({ statusCode: 404, statusMessage: 'Guide not found' })
 
-  const body = await readBody<ProtectionChoiceBody>(event)
-  if (body?.option !== 'waiver' && body?.option !== 'deposit')
-    throw createError({ statusCode: 400, statusMessage: 'Pick a waiver or a deposit' })
-
-  // A deposit on a rail that cannot reverse to source needs bank details, and
-  // the guest is asked for them here rather than after they have flown home.
-  if (body.option === 'deposit' && body.refundDestination) {
-    const { accountName, accountNumber, bankName } = body.refundDestination
-    const partial = [accountName, accountNumber, bankName].some(v => v?.trim())
-    const complete = [accountName, accountNumber, bankName].every(v => v?.trim())
-    if (partial && !complete)
-      throw createError({ statusCode: 400, statusMessage: 'Give the account name, number and bank' })
-  }
+  const verdict = validateProtectionChoice(await readBody<ProtectionChoiceBody>(event))
+  if (!verdict.ok)
+    throw createError({ statusCode: 400, statusMessage: verdict.message })
 
   const submission: GuideSubmission = {
     id: generateId('gsub'),
     linkId: link.id,
     submittedAt: new Date().toISOString(),
-    protectionChoice: {
-      option: body.option,
-      acceptedAt: new Date().toISOString(),
-      termsVersion: body.termsVersion ?? 'v1',
-    },
+    protectionChoice: verdict.choice,
   }
 
   saveSubmission(submission)

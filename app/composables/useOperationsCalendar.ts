@@ -2,12 +2,15 @@ import type { Task } from '@/components/tasks/data/schema'
 import type { CalendarEvent, CalendarEventType, CalendarListing, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
 import { useTaskStore } from '@/composables/useTaskStore'
 import { buildAllEvents, eventsForDay, getCalendarListings, getWeekDays, groupEventsByListingAndDay } from '~/components/operations-calendar/data/operations-calendar'
-import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 export function useOperationsCalendar() {
   const { tasks } = useTaskStore()
   const { jobs: cleaningJobs, updateJob: updateCleaningJob, resolveListingName } = useCleaningJobs()
+  // Stays made on the Reservations page live here, not in `listing.bookings`.
+  const { reservations } = useReservationsModule()
 
   const weekAnchor = ref(new Date())
 
@@ -17,7 +20,7 @@ export function useOperationsCalendar() {
     eventTypes: [],
   })
 
-  const calendarListings = computed(() => getCalendarListings())
+  const calendarListings = computed(() => getCalendarListings(reservations.value))
 
   function buildTaskEvents(listings: CalendarListing[], allTasks: Task[]): CalendarEvent[] {
     const listingByName = new Map(listings.map(l => [l.name, l]))
@@ -57,7 +60,7 @@ export function useOperationsCalendar() {
   }
 
   const events = computed<CalendarEvent[]>(() => {
-    const allEvents = [...buildAllEvents(cleaningJobs.value)]
+    const allEvents = [...buildAllEvents(cleaningJobs.value, reservations.value)]
     allEvents.push(...buildTaskEvents(calendarListings.value, tasks.value))
     return allEvents
   })

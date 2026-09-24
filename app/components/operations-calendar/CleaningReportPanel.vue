@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import type { CleaningChecklistItem, CleaningFeedback } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningFeedback } from '~/components/cleaning/data/cleaning-jobs'
+import { checklistItemError, CLEANING_CHECKLIST_STATUS_LABELS, problemsMissingPhotos } from '~/components/cleaning/data/cleaning-jobs'
+import ImageViewer from '~/components/inbox/ImageViewer.vue'
 
 const props = defineProps<{
   feedback: CleaningFeedback | null | undefined
@@ -39,7 +41,8 @@ function durationLabel(feedback: CleaningFeedback) {
   if (feedback.startedAt && feedback.confirmedAt) {
     const ms = new Date(feedback.confirmedAt).getTime() - new Date(feedback.startedAt).getTime()
     const mins = Math.round(ms / 60000)
-    if (mins < 60) return `${mins} MINUTES`
+    if (mins < 60)
+      return `${mins} MINUTES`
     const h = Math.floor(mins / 60)
     const m = mins % 60
     return m ? `${h}H ${m}M` : `${h} HOUR${h > 1 ? 'S' : ''}`
@@ -47,11 +50,27 @@ function durationLabel(feedback: CleaningFeedback) {
   return `${feedback.cleaningDurationMinutes} MINUTES`
 }
 
+/** The panel's own viewer instance: a problem photo opens full size, zoomable. */
+const VIEWER_SCOPE = 'cleaning-report'
+const viewer = useImageViewer(VIEWER_SCOPE)
+
+/** Photos that failed to load, so each one falls back to a stated placeholder. */
+const brokenPhotos = ref<Set<string>>(new Set())
+function markBroken(url: string) {
+  brokenPhotos.value = new Set([...brokenPhotos.value, url])
+}
+
+const problemCount = computed(() =>
+  (props.feedback?.checklist ?? []).flatMap(g => g.items).filter(i => i.status === 'problem').length,
+)
+const unphotographed = computed(() => problemsMissingPhotos(props.feedback).length)
+
 const openGroups = ref<Set<string>>(new Set())
 
 function toggleGroup(id: string) {
   const next = new Set(openGroups.value)
-  if (next.has(id)) next.delete(id)
+  if (next.has(id))
+    next.delete(id)
   else next.add(id)
   openGroups.value = next
 }
@@ -127,6 +146,11 @@ onMounted(() => {
       <!-- CLEANINGS — custom accordion -->
       <TabsContent value="cleanings" class="m-0 py-4">
         <div v-if="feedback.checklist?.length" class="space-y-3">
+          <p v-if="problemCount" class="flex items-center gap-1.5 text-xs font-medium text-destructive" data-testid="checklist-problem-count">
+            <Icon name="lucide:alert-triangle" class="size-3.5 shrink-0" />
+            {{ problemCount }} {{ problemCount === 1 ? 'problem' : 'problems' }} reported
+            <span v-if="unphotographed">, {{ unphotographed }} without the required photo</span>
+          </p>
           <div
             v-for="group in feedback.checklist"
             :key="group.id"
@@ -151,22 +175,61 @@ onMounted(() => {
                 v-for="item in group.items"
                 :key="item.id"
                 class="rounded-md border bg-card p-3"
+                :class="item.status === 'problem' ? 'border-destructive/50' : ''"
                 :data-testid="`checklist-item-${item.id}`"
                 :data-status="item.status"
               >
                 <p class="text-sm leading-snug">
                   {{ item.label }}
                 </p>
-                <p v-if="item.notes" class="mt-1 text-xs italic text-muted-foreground">
+                <p
+                  v-if="item.notes"
+                  class="mt-1 text-xs italic"
+                  :class="item.status === 'problem' ? 'text-destructive' : 'text-muted-foreground'"
+                >
                   {{ item.notes }}
+                </p>
+                <div v-if="item.status === 'problem' && item.photoUrls?.length" class="mt-2 flex flex-wrap gap-2">
+                  <template v-for="url in item.photoUrls" :key="url">
+                    <button
+                      v-if="!brokenPhotos.has(url)"
+                      type="button"
+                      class="block cursor-zoom-in overflow-hidden rounded-md border transition-opacity hover:opacity-80"
+                      :aria-label="`View photo full size: ${item.notes || item.label}`"
+                      data-testid="checklist-problem-photo-open"
+                      @click="viewer.openImage({ url, caption: item.notes || item.label, senderName: item.completedBy, timestamp: item.completedAt })"
+                    >
+                      <img
+                        :src="url"
+                        :alt="item.notes || item.label"
+                        class="size-20 object-cover"
+                        data-testid="checklist-problem-photo"
+                        @error="markBroken(url)"
+                      >
+                    </button>
+                    <span
+                      v-else
+                      class="flex size-20 items-center justify-center rounded-md border bg-muted text-center text-[10px] text-muted-foreground"
+                    >
+                      Photo unavailable
+                    </span>
+                  </template>
+                </div>
+                <p
+                  v-if="checklistItemError(item)"
+                  class="mt-2 flex items-center gap-1.5 text-xs text-destructive"
+                  data-testid="checklist-problem-no-photo"
+                >
+                  <Icon name="lucide:camera-off" class="size-3.5 shrink-0" />
+                  No photo attached. A problem must carry one.
                 </p>
                 <div class="mt-2 flex items-center gap-2 text-xs">
                   <span
                     v-if="item.status"
-                    class="inline-flex h-5 items-center rounded-full px-2 text-[10px] font-bold"
-                    :class="item.status === 'ok' ? 'bg-emerald-500/15 text-emerald-700' : item.status === 'issue' ? 'bg-amber-500/15 text-amber-700' : 'bg-muted text-muted-foreground'"
+                    class="inline-flex h-5 items-center rounded-full px-2 text-[10px] font-bold uppercase"
+                    :class="item.status === 'problem' ? 'bg-destructive/15 text-destructive' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'"
                   >
-                    {{ item.status === 'ok' ? 'OK' : item.status === 'issue' ? 'ISSUE' : 'N/A' }}
+                    {{ CLEANING_CHECKLIST_STATUS_LABELS[item.status] ?? item.status }}
                   </span>
                   <span v-if="item.completedBy" class="text-muted-foreground italic">
                     By <span class="font-medium not-italic text-foreground">{{ item.completedBy }}</span><span v-if="item.completedAt">, {{ formatTime(item.completedAt) }}</span>
@@ -231,5 +294,6 @@ onMounted(() => {
         </div>
       </TabsContent>
     </Tabs>
+    <ImageViewer :scope="VIEWER_SCOPE" />
   </template>
 </template>

@@ -87,6 +87,19 @@ export interface GuideSubmission {
     option: 'waiver' | 'deposit'
     acceptedAt: string
     termsVersion: string
+    /**
+     * Deposit: the card the guest saved, as Stripe returns it. A reference and
+     * what a receipt may print, never the number (`protection-choice.ts`).
+     */
+    card?: {
+      paymentMethodId: string
+      brand: string
+      last4: string
+      expMonth: number
+      expYear: number
+    }
+    /** Deposit: the guest agreed to a charge after check-out. Always true when `card` is set. */
+    chargeConsent?: boolean
   }
 }
 

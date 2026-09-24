@@ -105,13 +105,14 @@ export function useNotifications() {
     createAlert(type, severity, context)
   }
   function createProtectionAlert(
-    type: 'PROTECTION_CHOICE_MISSING' | 'DEPOSIT_FAILED_AT_CHECKIN' | 'DEPOSIT_REFUND_DUE' | 'DEPOSIT_REFUND_OVERDUE' | 'DEPOSIT_REFUND_FAILED' | 'DAMAGE_CLAIM_RECORDED',
+    type: 'PROTECTION_CHOICE_MISSING' | 'DEPOSIT_FAILED_AT_CHECKIN' | 'DEPOSIT_DECISION_DUE' | 'DEPOSIT_DECISION_OVERDUE' | 'DEPOSIT_CHARGE_FAILED' | 'DAMAGE_CLAIM_RECORDED'
+      | 'PARTNER_CLAIM_SUBMISSION_FAILED' | 'PARTNER_CLAIM_INFO_REQUESTED' | 'PARTNER_CLAIM_REJECTED' | 'PARTNER_CLAIM_PAYOUT_OVERDUE',
     context: Record<string, any>,
   ) {
     let severity: AlertSeverity = 'INFO'
-    if (type === 'DEPOSIT_FAILED_AT_CHECKIN' || type === 'DEPOSIT_REFUND_OVERDUE' || type === 'DEPOSIT_REFUND_FAILED')
+    if (type === 'DEPOSIT_FAILED_AT_CHECKIN' || type === 'DEPOSIT_DECISION_OVERDUE' || type === 'DEPOSIT_CHARGE_FAILED' || type === 'PARTNER_CLAIM_PAYOUT_OVERDUE')
       severity = 'CRITICAL'
-    else if (type === 'PROTECTION_CHOICE_MISSING' || type === 'DEPOSIT_REFUND_DUE')
+    else if (type === 'PROTECTION_CHOICE_MISSING' || type === 'DEPOSIT_DECISION_DUE' || type.startsWith('PARTNER_CLAIM_'))
       severity = 'WARNING'
     createAlert(type, severity, context)
   }

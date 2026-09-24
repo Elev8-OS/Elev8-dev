@@ -129,28 +129,44 @@ export type ProtectionOption = 'waiver' | 'deposit'
 export type WaiverPricing = 'flat' | 'per_night' | 'percent_of_subtotal'
 export type DepositPricing = 'flat' | 'percent_of_subtotal'
 
+/**
+ * The deposit is a CARD SAVED WITH STRIPE, charged only if there is damage.
+ * Nothing is charged at booking and nothing is held: an authorization hold
+ * lapses in about seven days, which a stay plus its cleaning report outlasts,
+ * while a saved card lasts until it expires.
+ */
 export type ProtectionState
   = | 'awaiting_choice'
     | 'waiver_active'
-    | 'deposit_pending'
-    | 'deposit_failed'
-    | 'deposit_held'
+    /** Deposit chosen, card saved, nothing charged. */
+    | 'card_on_file'
+    /** Closed after the stay with nothing charged. The card is no longer on file. */
     | 'deposit_released'
-    | 'deposit_partial'
-    | 'deposit_forfeited'
-    | 'refund_failed'
-    | 'cancelled_refunded'
+    /** The covered claims were charged to the saved card. */
+    | 'deposit_charged'
+    /** The off-session charge was declined. The claims still stand. */
+    | 'charge_failed'
+    /** The stay was cancelled: a waiver fee is refunded, a saved card released. */
+    | 'cancelled'
 
-export interface ProtectionRefundDestination {
-  method: 'original_payment_method' | 'bank_transfer'
-  accountName?: string
-  accountNumber?: string
-  bankName?: string
+/**
+ * A card saved with Stripe (a SetupIntent on a Customer) for a later,
+ * off-session charge. ⚠️ Only the gateway's reference and what a receipt may
+ * print: never the card number, the CVC or anything else Stripe keeps for us.
+ */
+export interface SavedCard {
+  provider: 'stripe'
+  paymentMethodId: string
+  brand: string
+  last4: string
+  expMonth: number
+  expYear: number
+  savedAt: string
 }
 
 /**
  * One damage incident. Recorded on BOTH paths, which is the point: on a deposit
- * it drives the deduction, on a waiver it moves no money and records what the
+ * it is what the saved card is charged for, on a waiver it moves no money and records what the
  * pot paid out. Without the waiver-side record there is no way to tell whether
  * the fee is priced right, and the fee is the whole commercial bet.
  */
@@ -159,23 +175,122 @@ export interface ProtectionClaim {
   label: string
   /** The full assessed damage. */
   amount: number
-  /** What the protection absorbed: off the held deposit, or out of the waiver pot. */
+  /** What the protection absorbed: charged to the saved card, or out of the waiver pot. */
   coveredAmount: number
   /** amount - coveredAmount. Staff post this to the folio BY HAND, never automatically. */
   excessAmount: number
   reason: string
   /** Photo or document evidence. Mock paths, same shape as GuestDocument.url. */
   evidenceUrls: string[]
+  /**
+   * The cleaning report finding this claim was raised from, when it was. Counts
+   * as evidence on its own, so a claim needs this OR at least one upload.
+   */
+  cleaningReport?: ClaimCleaningReport
   recordedBy: string
   recordedAt: string
-  /** When the guest was told. A deposit cannot be released while this is unset. */
+  /** When the guest was told. A deposit cannot be charged or closed while this is unset. */
   guestNotifiedAt?: string
+  /**
+   * Waiver only: the claim the property manager files with its insurance
+   * partner under the master policy, for the part above the deductible. The
+   * guest never sees it: to them this is still a waiver.
+   */
+  partnerClaim?: PartnerClaim
+}
+
+/**
+ * Where an insurance claim is with the partner. `paid` means the partner says
+ * it sent the money; `received` means staff saw it land in the account. They
+ * are separate on purpose: "paid" is the partner's word, "received" is ours.
+ */
+export type PartnerClaimStatus
+  = | 'submitting'
+    | 'submission_failed'
+    | 'submitted'
+    | 'under_review'
+    | 'info_requested'
+    | 'approved'
+    | 'partially_approved'
+    | 'rejected'
+    | 'payout_scheduled'
+    | 'paid'
+    | 'received'
+    | 'withdrawn'
+
+export interface PartnerClaimEvent {
+  /** Idempotency key: a webhook delivered twice is applied once. */
+  id: string
+  at: string
+  status: PartnerClaimStatus | 'info_sent'
+  source: 'api' | 'webhook' | 'staff'
+  note?: string
+}
+
+/**
+ * An insurance claim with the partner. Everything the partner was asked for is
+ * FROZEN at submission (`claimedAmount`, `deductible`, `policyNumber`), so a
+ * later contract change cannot rewrite what was filed.
+ */
+export interface PartnerClaim {
+  partnerId: string
+  partnerName: string
+  policyNumber: string
+  currency: string
+  /** The waiver-covered amount minus the deductible, capped per claim. What was asked for. */
+  claimedAmount: number
+  deductible: number
+  status: PartnerClaimStatus
+  /** The partner's own reference, returned by their API on submission. */
+  partnerClaimRef?: string
+  submittedAt?: string
+  submissionError?: string
+  infoRequest?: string
+  approvedAmount?: number
+  rejectionReason?: string
+  payoutScheduledFor?: string
+  paidAmount?: number
+  paidAt?: string
+  payoutReference?: string
+  /**
+   * The tenant's Stripe payout account the partner pays into, frozen at
+   * submission (`stripePayoutAccountFor`), so moving a listing to another
+   * account later cannot redirect money already on its way.
+   */
+  payoutAccountId: string
+  payoutAccountName: string
+  /** What actually landed in the account, confirmed by staff. May differ from `paidAmount`. */
+  receivedAmount?: number
+  receivedAt?: string
+  events: PartnerClaimEvent[]
+}
+
+/**
+ * A cleaning report finding, FROZEN at claim time. `cleaningJobId` and
+ * `findingId` are provenance, never a live join: the housekeeper's report can
+ * be edited later, and what the guest was told must not change with it. Same
+ * rule as a folio catalog pick.
+ */
+export interface ClaimCleaningReport {
+  cleaningJobId: string
+  /** `<jobId>:problem:<checklistItemId>`. Guards against claiming one finding twice. */
+  findingId: string
+  /** What the housekeeper wrote about the problem. */
+  finding: string
+  /** The checklist line the problem was raised on. */
+  checklistItem: string
+  /** The housekeeper's photos, frozen with the finding. At least one: the checklist requires it. */
+  photoUrls: string[]
+  /** "Check-out cleaning", "Mid-stay cleaning". */
+  cleaningLabel: string
+  reportedBy: string
+  reportedAt: string
 }
 
 /**
  * What the guest chose and what happened to the money. Deliberately the ONLY
- * protection state stored on a reservation: the worklist bucket ('charge due',
- * 'refund overdue') is derived on every read, so editing a policy re-evaluates
+ * protection state stored on a reservation: the worklist bucket ('decision
+ * due', 'overdue') is derived on every read, so editing a policy re-evaluates
  * every existing booking instead of leaving a stale flag behind.
  *
  * `amount`, `coverageCap`, `termsVersion` and `termsText` are FROZEN at
@@ -186,6 +301,7 @@ export interface DamageProtection {
   option: ProtectionOption
   state: ProtectionState
 
+  /** The waiver fee, or on a deposit the most the saved card may be charged. */
   amount: number
   currency: string
   coverageCap?: number
@@ -194,17 +310,25 @@ export interface DamageProtection {
   acceptedAt: string
   acceptedVia: 'guest_guide' | 'staff'
 
-  chargeDueAt?: string
-  chargedAt?: string
+  /** Deposit: the card the guest saved. Required in every deposit state. */
+  card?: SavedCard
+  /**
+   * Deposit: the exact words the guest agreed to for a charge after they have
+   * left, FROZEN at acceptance. It is what answers a chargeback.
+   */
+  chargeMandate?: string
   payoutAccountId?: string
-  failureReason?: string
-  failedAttempts?: number
+  /** Deposit: when the decision (charge or close) is due, a set number of days after check-out. */
+  settleDueAt?: string
+  chargedAt?: string
+  chargedAmount?: number
+  chargeFailureReason?: string
+  chargeAttempts?: number
+  releasedAt?: string
 
-  refundDueAt?: string
+  /** Waiver on a cancelled stay: the fee returned. A deposit never refunds, it never charged upfront. */
   refundedAt?: string
   refundedAmount?: number
-  refundDestination?: ProtectionRefundDestination
-  refundFailureReason?: string
 
   claims?: ProtectionClaim[]
 }
@@ -434,6 +558,22 @@ export const reservationStatusLabels: Record<ReservationStatus, string> = {
   cancelled: 'Cancelled',
   blocked: 'Blocked',
   owner_request: 'Owner Request',
+}
+
+/**
+ * The colour of each reservation status. The single map for it: the status
+ * badge on the Reservations page and the stay bars on the Operations Calendar
+ * both read it, so a status is the same colour wherever a stay is drawn.
+ */
+export const reservationStatusClasses: Record<ReservationStatus, string> = {
+  unverified: 'bg-muted text-muted-foreground border-border',
+  verified: 'bg-green-500/10 text-green-700 border-green-500/30',
+  checked_in: 'bg-orange-500/10 text-orange-700 border-orange-500/30',
+  checked_out: 'bg-blue-500/10 text-blue-700 border-blue-500/30',
+  cancelled: 'bg-muted text-muted-foreground border-border line-through',
+  blocked: 'bg-black/80 text-white border-black/80',
+  inquiry: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+  owner_request: 'border-dashed bg-violet-500/10 text-violet-700 border-violet-500/40',
 }
 
 export const initialReservations: ReservationEntry[] = [

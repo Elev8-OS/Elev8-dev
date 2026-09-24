@@ -1,5 +1,7 @@
-import type { DamageProtection, ReservationEntry } from '~/components/reservations/data/reservations'
+import type { DamageProtection, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { listingSlots } from '~/components/reservations/data/damage-protection'
+import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -9,8 +11,24 @@ vi.mock('vue-sonner', () => ({ toast: toastMock }))
 
 const sendMessageMock = vi.hoisted(() => vi.fn())
 const conversationsRef = vi.hoisted(() => ({ value: [] as any[] }))
+// The real `ensureConversationForReservation` is covered in its own spec; this
+// stand-in keeps its contract: the reservation's thread, else a new email one,
+// else null when the guest has no email address.
 vi.mock('~/composables/useInbox', () => ({
-  useInbox: () => ({ conversations: conversationsRef, sendMessage: sendMessageMock }),
+  useInbox: () => ({
+    conversations: conversationsRef,
+    sendMessage: sendMessageMock,
+    ensureConversationForReservation: (stay: { id: string, guestEmail?: string }) => {
+      const found = conversationsRef.value.find(c => c.reservationId === stay.id)
+      if (found)
+        return found.id
+      if (!stay.guestEmail)
+        return null
+      const created = { id: `conv-res-${stay.id}`, reservationId: stay.id, otaSource: 'Email' }
+      conversationsRef.value = [...conversationsRef.value, created]
+      return created.id
+    },
+  }),
 }))
 
 /** The 1.5s gateway mock costs real seconds otherwise. Fake timers BEFORE the call. */
@@ -23,7 +41,7 @@ async function settle<T>(run: () => Promise<T>): Promise<T> {
   return result
 }
 
-/** Relative to today: every charge and refund stage reads the current day. */
+/** Relative to today: the decision deadline reads the current day. */
 function isoDaysFromNow(days: number): string {
   const d = new Date()
   d.setDate(d.getDate() + days)
@@ -65,8 +83,32 @@ function protectionOf(id = 'res-dp-1'): DamageProtection {
   return found
 }
 
+const CARD: SavedCard = {
+  provider: 'stripe',
+  paymentMethodId: 'pm_mock_4242',
+  brand: 'visa',
+  last4: '4242',
+  expMonth: 12,
+  expYear: 2028,
+  savedAt: '2026-09-01T00:00:00.000Z',
+}
+
 const ACCEPT_WAIVER = { option: 'waiver' as const, termsAccepted: true }
-const ACCEPT_DEPOSIT = { option: 'deposit' as const, termsAccepted: true }
+const ACCEPT_DEPOSIT = { option: 'deposit' as const, termsAccepted: true, card: CARD, chargeConsent: true }
+
+const CARD_INPUT = {
+  number: '4242 4242 4242 4242',
+  expiry: `12/${String((new Date().getFullYear() + 2) % 100).padStart(2, '0')}`,
+  cvc: '123',
+}
+
+function reservationOf(id = 'res-dp-1'): ReservationEntry {
+  return useReservationsModule().reservations.value.find(r => r.id === id)!
+}
+
+function withConversation() {
+  conversationsRef.value = [{ id: 'conv-dp', reservationId: 'res-dp-1', otaSource: 'Direct' }]
+}
 
 beforeEach(() => {
   const module = useReservationsModule()
@@ -99,10 +141,12 @@ describe('policy lookup', () => {
   })
 })
 
-describe('isOfferedFor', () => {
-  it('offers a Direct guest stay on an assigned listing', () => {
+describe('isOfferedFor and optionsFor', () => {
+  it('offers a Direct guest stay on an assigned listing, waiver first', () => {
     seedReservation()
-    expect(useDamageProtection().isOfferedFor('res-dp-1')).toBe(true)
+    const dp = useDamageProtection()
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+    expect(dp.optionsFor('res-dp-1').map(o => [o.option, o.isDefault])).toEqual([['waiver', true], ['deposit', false]])
   })
 
   it('never offers an owner stay, a block or a cancellation', () => {
@@ -116,6 +160,23 @@ describe('isOfferedFor', () => {
   it('stays silent on an unset channel', () => {
     seedReservation({ channel: 'Airbnb' })
     expect(useDamageProtection().isOfferedFor('res-dp-1')).toBe(false)
+  })
+
+  it('offers the waiver only where a card cannot be saved, and nothing when the deposit was all there was', () => {
+    const saved = payoutAccounts.value
+    // Take lst-1 and lst-2 off Stripe: no card can be saved there any more.
+    payoutAccounts.value = saved.map(a => ({ ...a, listingIds: a.listingIds.filter(id => id !== 'lst-1' && id !== 'lst-2') }))
+    try {
+      const dp = useDamageProtection()
+      seedReservation()
+      expect(dp.railForListing('lst-1')).toBe('non_card')
+      expect(dp.optionsFor('res-dp-1').map(o => o.option)).toEqual(['waiver'])
+      seedReservation({ id: 'res-dp-2', listingId: 'lst-2' })
+      expect(dp.isOfferedFor('res-dp-2')).toBe(false)
+    }
+    finally {
+      payoutAccounts.value = saved
+    }
   })
 })
 
@@ -138,12 +199,99 @@ describe('assignBand', () => {
   })
 })
 
+function listingSlotsOf(dp: ReturnType<typeof useDamageProtection>, listingId: string) {
+  return listingSlots(dp.assignments.value, listingId)
+}
+
+describe('setListingSlot', () => {
+  it('sets, changes and clears one slot without touching the other', () => {
+    const dp = useDamageProtection()
+    expect(dp.setListingSlot('lst-2', 'short', 'dp-standard')).toEqual({ ok: true })
+    const bands = () => dp.assignments.value.filter(a => a.listingId === 'lst-2').map(a => [a.policyId, a.minNights, a.maxNights])
+    expect(bands()).toEqual([['dp-long-stay', 28, null], ['dp-standard', 1, 27]])
+    dp.setListingSlot('lst-2', 'short', null)
+    expect(bands()).toEqual([['dp-long-stay', 28, null]])
+  })
+
+  it('uses one policy for both slots without one removal taking both', () => {
+    const dp = useDamageProtection()
+    dp.setListingSlot('lst-2', 'short', 'dp-long-stay')
+    dp.setListingSlot('lst-2', 'short', null)
+    expect(dp.assignments.value.filter(a => a.listingId === 'lst-2').map(a => a.minNights)).toEqual([28])
+  })
+
+  it('refuses a policy in another currency and leaves the listing as it was', () => {
+    const dp = useDamageProtection()
+    const before = [...dp.assignments.value]
+    // lst-3 settles IDR; every seeded policy is USD.
+    expect(dp.setListingSlot('lst-3', 'short', 'dp-standard')).toEqual({ ok: false, reason: 'currency_mismatch' })
+    expect(dp.assignments.value).toEqual(before)
+  })
+
+  it('sets many listings at once and reports the ones it skipped, and why', () => {
+    const dp = useDamageProtection()
+    dp.assignBand('lst-6', 'dp-standard', 1, 7)
+    const { applied, skipped } = dp.setSlotsForListings(['lst-2', 'lst-3', 'lst-6', 'lst-18'], { short: 'dp-standard' })
+    expect(applied).toEqual(['lst-2', 'lst-18'])
+    expect(skipped).toEqual([
+      { listingId: 'lst-3', reason: 'currency_mismatch' },
+      { listingId: 'lst-6', reason: 'custom_ranges' },
+    ])
+    expect(listingSlotsOf(dp, 'lst-18')).toEqual({ short: 'dp-standard', long: 'dp-long-stay', custom: false })
+  })
+
+  it('leaves a slot marked undefined untouched and clears one marked null', () => {
+    const dp = useDamageProtection()
+    dp.setSlotsForListings(['lst-1'], { long: null })
+    expect(listingSlotsOf(dp, 'lst-1')).toEqual({ short: 'dp-standard', long: null, custom: false })
+  })
+
+  it('never leaves a listing half-changed when one of its two slots is refused', () => {
+    const dp = useDamageProtection()
+    const before = [...dp.assignments.value]
+    // Clearing short would succeed, the USD long-stay policy on an IDR listing cannot.
+    const { applied, skipped } = dp.setSlotsForListings(['lst-3'], { short: null, long: 'dp-long-stay' })
+    expect(applied).toEqual([])
+    expect(skipped).toEqual([{ listingId: 'lst-3', reason: 'currency_mismatch' }])
+    expect(dp.assignments.value).toEqual(before)
+  })
+
+  it('clears custom night ranges on request', () => {
+    const dp = useDamageProtection()
+    dp.resetListingBands('lst-1')
+    expect(dp.assignments.value.some(a => a.listingId === 'lst-1')).toBe(false)
+  })
+})
+
 describe('deletePolicy', () => {
   it('refuses while assigned and succeeds once unassigned', () => {
     const dp = useDamageProtection()
     expect(dp.deletePolicy('dp-standard')).toEqual({ ok: false, reason: 'policy_assigned' })
     dp.removeBand('lst-1', 'dp-standard')
     expect(dp.deletePolicy('dp-standard')).toEqual({ ok: true })
+  })
+})
+
+describe('saveCard', () => {
+  it('keeps a reference and the last four digits, never the number or the code', async () => {
+    const result = await settle(() => useDamageProtection().saveCard(CARD_INPUT))
+    expect(result.ok).toBe(true)
+    if (!result.ok)
+      return
+    expect(result.card).toMatchObject({ provider: 'stripe', brand: 'visa', last4: '4242' })
+    expect(result.card.paymentMethodId).toMatch(/^pm_/)
+    expect(JSON.stringify(result.card)).not.toContain('42424242')
+    expect(JSON.stringify(result.card)).not.toContain('"123"')
+  })
+
+  it('refuses a card that fails its own checks, without calling the gateway', async () => {
+    const result = await useDamageProtection().saveCard({ ...CARD_INPUT, number: '4242 4242 4242 4241' })
+    expect(result).toEqual({ ok: false, reason: 'Check the card number.' })
+  })
+
+  it('reports a decline from the gateway', async () => {
+    const result = await settle(() => useDamageProtection().saveCard(CARD_INPUT, true))
+    expect(result.ok).toBe(false)
   })
 })
 
@@ -162,13 +310,42 @@ describe('recordChoice', () => {
     expect(frozen.termsText).not.toBe('Rewritten')
   })
 
-  it('lands a waiver active with no charge or refund dates', () => {
+  it('lands a waiver active, with no card and no deadline', () => {
     seedReservation()
     useDamageProtection().recordChoice('res-dp-1', ACCEPT_WAIVER)
     const p = protectionOf()
     expect(p.state).toBe('waiver_active')
-    expect(p.chargeDueAt).toBeUndefined()
-    expect(p.refundDueAt).toBeUndefined()
+    expect(p.card).toBeUndefined()
+    expect(p.settleDueAt).toBeUndefined()
+  })
+
+  it('keeps a deposit\'s card on file, charges nothing, and freezes the consent the guest gave', () => {
+    seedReservation()
+    useDamageProtection().recordChoice('res-dp-1', ACCEPT_DEPOSIT)
+    const p = protectionOf()
+    expect(p.state).toBe('card_on_file')
+    expect(p.amount).toBe(500)
+    expect(p.card).toEqual(CARD)
+    expect(p.chargeMandate).toContain('up to USD 500.00')
+    expect(p.payoutAccountId).toBe('pay-1')
+    expect(p.chargedAt).toBeUndefined()
+    // Seven days after check-out.
+    expect(new Date(p.settleDueAt!).getDate()).toBe(new Date(`${isoDaysFromNow(17)}T00:00:00`).getDate())
+  })
+
+  it('refuses a deposit without a saved card or without consent to a later charge', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    expect(dp.recordChoice('res-dp-1', { ...ACCEPT_DEPOSIT, card: undefined })).toEqual({ ok: false, reason: 'invalid_choice' })
+    expect(dp.recordChoice('res-dp-1', { ...ACCEPT_DEPOSIT, chargeConsent: false })).toEqual({ ok: false, reason: 'invalid_choice' })
+  })
+
+  it('stores a copy of the card, not the caller\'s object', () => {
+    seedReservation()
+    const card = { ...CARD }
+    useDamageProtection().recordChoice('res-dp-1', { ...ACCEPT_DEPOSIT, card })
+    card.last4 = '0000'
+    expect(protectionOf().card!.last4).toBe('4242')
   })
 
   it('refuses when not offered and when terms are unaccepted', () => {
@@ -182,69 +359,27 @@ describe('recordChoice', () => {
   it('writes exactly one activity event', () => {
     seedReservation()
     useDamageProtection().recordChoice('res-dp-1', ACCEPT_WAIVER)
-    const reservation = useReservationsModule().reservations.value.find(r => r.id === 'res-dp-1')!
+    const reservation = reservationOf()
     expect(reservation.activity).toHaveLength(1)
     expect(reservation.activity[0]!.title).toBe('Damage protection chosen')
   })
 })
 
-describe('chargeDeposit', () => {
-  it('moves a pending deposit to held and stamps chargedAt', async () => {
-    seedReservation()
-    const dp = useDamageProtection()
-    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
-    await settle(() => dp.chargeDeposit('res-dp-1'))
-    const p = protectionOf()
-    expect(p.state).toBe('deposit_held')
-    expect(p.chargedAt).toBeTruthy()
-    expect(p.payoutAccountId).toBe('pay-1')
-  })
-
-  it('records a decline, raises the alert, and clears the reason on retry', async () => {
-    seedReservation()
-    const dp = useDamageProtection()
-    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
-    await settle(() => dp.chargeDeposit('res-dp-1', true))
-
-    expect(protectionOf().state).toBe('deposit_failed')
-    expect(protectionOf().failedAttempts).toBe(1)
-    expect(useNotifications().alerts.value.some(a => a.type === 'DEPOSIT_FAILED_AT_CHECKIN')).toBe(true)
-
-    await settle(() => dp.retryCharge('res-dp-1'))
-    expect(protectionOf().state).toBe('deposit_held')
-    expect(protectionOf().failureReason).toBeUndefined()
-  })
-
-  it('charges once when called twice concurrently', async () => {
-    seedReservation()
-    const dp = useDamageProtection()
-    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
-    await settle(async () => {
-      await Promise.all([dp.chargeDeposit('res-dp-1'), dp.chargeDeposit('res-dp-1')])
-    })
-    const reservation = useReservationsModule().reservations.value.find(r => r.id === 'res-dp-1')!
-    expect(reservation.activity.filter(e => e.title === 'Deposit charged')).toHaveLength(1)
-  })
-
-  it('never charges a cancelled stay', async () => {
-    seedReservation()
-    const dp = useDamageProtection()
-    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
-    useReservationsModule().updateReservation('res-dp-1', { status: 'cancelled' })
-    await settle(() => dp.chargeDeposit('res-dp-1'))
-    expect(protectionOf().state).toBe('deposit_pending')
-  })
-})
-
-async function heldDeposit() {
+function cardOnFile() {
   seedReservation()
   const dp = useDamageProtection()
   dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
-  await settle(() => dp.chargeDeposit('res-dp-1'))
   return dp
 }
 
 const CLAIM = { label: 'Broken lamp', amount: 80, reason: 'Found at checkout', evidenceUrls: ['/mock/lamp.jpg'] }
+
+async function notifiedClaim(dp: ReturnType<typeof useDamageProtection>, draft = CLAIM) {
+  withConversation()
+  dp.recordClaim('res-dp-1', draft)
+  const claims = protectionOf().claims!
+  await dp.notifyGuestOfClaim('res-dp-1', claims[claims.length - 1]!.id)
+}
 
 describe('recordClaim', () => {
   it('records a claim on the waiver path, moves no money, and grows the pot', () => {
@@ -260,56 +395,117 @@ describe('recordClaim', () => {
     expect(dp.waiverPotTotals.value.paidOut).toEqual([{ currency: 'USD', amount: 300 }])
   })
 
-  it('splits a claim beyond the cover and posts nothing to the folio', async () => {
-    const dp = await heldDeposit()
+  it('splits a claim beyond what the card may be charged, and posts nothing to the folio', () => {
+    const dp = cardOnFile()
     dp.recordClaim('res-dp-1', { ...CLAIM, amount: 800 })
     const claim = protectionOf().claims![0]!
     expect(claim.coveredAmount).toBe(500)
     expect(claim.excessAmount).toBe(300)
-    const reservation = useReservationsModule().reservations.value.find(r => r.id === 'res-dp-1')!
-    expect(reservation.folioItems ?? []).toHaveLength(0)
+    expect(reservationOf().folioItems ?? []).toHaveLength(0)
   })
 
-  it('refuses an invalid claim and a cancelled stay', async () => {
-    const dp = await heldDeposit()
+  it('refuses an invalid claim and a cancelled stay', () => {
+    const dp = cardOnFile()
     expect(dp.recordClaim('res-dp-1', { ...CLAIM, evidenceUrls: [] })).toEqual({ ok: false, reason: 'invalid_claim' })
     useReservationsModule().updateReservation('res-dp-1', { status: 'cancelled' })
     expect(dp.recordClaim('res-dp-1', CLAIM)).toEqual({ ok: false, reason: 'stay_cancelled' })
   })
 })
 
-describe('notifyGuestOfClaim and the release gate', () => {
-  it('refuses release while a claim is unnotified', async () => {
-    const dp = await heldDeposit()
-    dp.recordClaim('res-dp-1', CLAIM)
-    await expect(dp.releaseDeposit('res-dp-1')).resolves.toEqual({ ok: false, reason: 'claim_not_notified' })
+const CLEANING_REPORT = {
+  cleaningJobId: 'cln-x',
+  findingId: 'cln-x:problem:b-1',
+  finding: 'Cracked shower screen',
+  checklistItem: 'Clean shower',
+  photoUrls: ['/p/screen.jpg'],
+  cleaningLabel: 'Check-out cleaning',
+  reportedBy: 'Made Surya',
+  reportedAt: '2026-09-20T05:30:00.000Z',
+}
+
+describe('recordClaim from a cleaning report', () => {
+  it('accepts the cleaning report as the only evidence', () => {
+    const dp = cardOnFile()
+    expect(dp.recordClaim('res-dp-1', { ...CLAIM, evidenceUrls: [], cleaningReport: CLEANING_REPORT })).toEqual({ ok: true })
+    expect(protectionOf().claims![0]!.cleaningReport).toEqual(CLEANING_REPORT)
   })
 
-  it('leaves the stamp unset when the reservation has no conversation', async () => {
-    const dp = await heldDeposit()
-    dp.recordClaim('res-dp-1', CLAIM)
-    const claimId = protectionOf().claims![0]!.id
-    await expect(dp.notifyGuestOfClaim('res-dp-1', claimId)).resolves.toEqual({ ok: false, reason: 'no_conversation' })
-    expect(protectionOf().claims![0]!.guestNotifiedAt).toBeUndefined()
+  it('stores a copy, so a later edit to the caller object cannot rewrite the claim', () => {
+    const dp = cardOnFile()
+    const report = { ...CLEANING_REPORT }
+    dp.recordClaim('res-dp-1', { ...CLAIM, cleaningReport: report })
+    report.finding = 'Edited afterwards'
+    expect(protectionOf().claims![0]!.cleaningReport!.finding).toBe('Cracked shower screen')
   })
 
-  it('stamps the claim once the guest is messaged, then allows release', async () => {
-    const dp = await heldDeposit()
-    conversationsRef.value = [{ id: 'conv-dp', reservationId: 'res-dp-1', otaSource: 'Direct' }]
+  it('refuses a second claim on the same finding, but not on a different one', () => {
+    const dp = cardOnFile()
+    dp.recordClaim('res-dp-1', { ...CLAIM, cleaningReport: CLEANING_REPORT })
+    expect(dp.recordClaim('res-dp-1', { ...CLAIM, cleaningReport: CLEANING_REPORT }))
+      .toEqual({ ok: false, reason: 'finding_already_claimed' })
+    expect(dp.recordClaim('res-dp-1', { ...CLAIM, cleaningReport: { ...CLEANING_REPORT, findingId: 'cln-x:problem:b-2' } }))
+      .toEqual({ ok: true })
+    // A manual claim never collides with a cleaning finding.
+    expect(dp.recordClaim('res-dp-1', CLAIM)).toEqual({ ok: true })
+    expect(protectionOf().claims).toHaveLength(3)
+  })
+
+  it('names the cleaning report as evidence in the guest notice', async () => {
+    const dp = cardOnFile()
+    withConversation()
+    dp.recordClaim('res-dp-1', { ...CLAIM, cleaningReport: CLEANING_REPORT })
+    await dp.notifyGuestOfClaim('res-dp-1', protectionOf().claims![0]!.id)
+    const body = sendMessageMock.mock.calls[0]![1] as string
+    expect(body).toMatch(/Evidence: check-out cleaning report of \d{1,2} Sept? 2026 with 1 photo, 1 file\./)
+  })
+})
+
+describe('notifyGuestOfClaim and the settle gate', () => {
+  it('tells the guest which saved card will be charged, and how much', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp)
+    const body = sendMessageMock.mock.calls[0]![1] as string
+    expect(body).toContain('USD 80.00 will be charged to the card you saved (Visa •••• 4242, expires 12/28).')
+  })
+
+  it('refuses to charge while a claim is unnotified', async () => {
+    const dp = cardOnFile()
+    dp.recordClaim('res-dp-1', CLAIM)
+    await expect(dp.settleDeposit('res-dp-1')).resolves.toEqual({ ok: false, reason: 'claim_not_notified' })
+    expect(protectionOf().state).toBe('card_on_file')
+  })
+
+  it('reaches a guest with no conversation by email, rather than leaving them untold', async () => {
+    const dp = cardOnFile()
     dp.recordClaim('res-dp-1', CLAIM)
     const claimId = protectionOf().claims![0]!.id
-
     await expect(dp.notifyGuestOfClaim('res-dp-1', claimId)).resolves.toEqual({ ok: true })
-    expect(sendMessageMock).toHaveBeenCalledTimes(1)
+    expect(sendMessageMock).toHaveBeenCalledWith('conv-res-res-dp-1', expect.stringContaining('Broken lamp'), 'Email')
     expect(protectionOf().claims![0]!.guestNotifiedAt).toBeTruthy()
-    await expect(dp.releaseDeposit('res-dp-1')).resolves.toEqual({ ok: true })
+  })
+
+  it('leaves the stamp unset when the guest has no conversation and no email address', async () => {
+    seedReservation({ guestEmail: '' })
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
+    dp.recordClaim('res-dp-1', CLAIM)
+    const claimId = protectionOf().claims![0]!.id
+    await expect(dp.notifyGuestOfClaim('res-dp-1', claimId)).resolves.toEqual({ ok: false, reason: 'no_contact' })
+    expect(protectionOf().claims![0]!.guestNotifiedAt).toBeUndefined()
+    expect(sendMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('uses the reservation\'s own thread when it has one', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp)
+    expect(sendMessageMock).toHaveBeenCalledWith('conv-dp', expect.any(String), 'Direct')
   })
 })
 
 describe('removeClaim', () => {
   it('succeeds before notification and refuses after it', async () => {
-    const dp = await heldDeposit()
-    conversationsRef.value = [{ id: 'conv-dp', reservationId: 'res-dp-1', otaSource: 'Direct' }]
+    const dp = cardOnFile()
+    withConversation()
     dp.recordClaim('res-dp-1', CLAIM)
     const first = protectionOf().claims![0]!.id
     expect(dp.removeClaim('res-dp-1', first)).toEqual({ ok: true })
@@ -321,75 +517,96 @@ describe('removeClaim', () => {
   })
 })
 
-describe('releaseDeposit', () => {
-  it('picks the settled state off the arithmetic', async () => {
-    const dp = await heldDeposit()
-    await dp.releaseDeposit('res-dp-1')
-    expect(protectionOf().state).toBe('deposit_released')
-    expect(protectionOf().refundedAmount).toBe(500)
-  })
-
-  it('lands partial and forfeited from the claim totals', async () => {
-    conversationsRef.value = [{ id: 'conv-dp', reservationId: 'res-dp-1', otaSource: 'Direct' }]
-    let dp = await heldDeposit()
-    dp.recordClaim('res-dp-1', CLAIM)
-    await dp.notifyGuestOfClaim('res-dp-1', protectionOf().claims![0]!.id)
-    await dp.releaseDeposit('res-dp-1')
-    expect(protectionOf().state).toBe('deposit_partial')
-    expect(protectionOf().refundedAmount).toBe(420)
-
-    useReservationsModule().reservations.value = []
-    dp = await heldDeposit()
-    dp.recordClaim('res-dp-1', { ...CLAIM, amount: 500 })
-    await dp.notifyGuestOfClaim('res-dp-1', protectionOf().claims![0]!.id)
-    await dp.releaseDeposit('res-dp-1')
-    expect(protectionOf().state).toBe('deposit_forfeited')
-    expect(protectionOf().refundedAmount).toBe(0)
-  })
-
-  it('records a failed refund without marking it settled', async () => {
-    const dp = await heldDeposit()
-    await expect(dp.releaseDeposit('res-dp-1', true)).resolves.toEqual({ ok: false, reason: 'refund_failed' })
+describe('settleDeposit', () => {
+  it('closes a deposit with no claims without charging anything', async () => {
+    const dp = cardOnFile()
+    await expect(dp.settleDeposit('res-dp-1')).resolves.toEqual({ ok: true })
     const p = protectionOf()
-    expect(p.state).toBe('refund_failed')
-    expect(p.refundFailureReason).toBeTruthy()
-    expect(p.refundedAt).toBeUndefined()
-    expect(useNotifications().alerts.value.some(a => a.type === 'DEPOSIT_REFUND_FAILED')).toBe(true)
-
-    await expect(dp.retryRefund('res-dp-1')).resolves.toEqual({ ok: true })
-    expect(protectionOf().state).toBe('deposit_released')
+    expect(p.state).toBe('deposit_released')
+    expect(p.releasedAt).toBeTruthy()
+    expect(p.chargedAt).toBeUndefined()
+    expect(reservationOf().activity.some(e => e.title === 'Saved card charged')).toBe(false)
   })
 
-  it('resolves a live refund alert directly', async () => {
-    const dp = await heldDeposit()
-    useNotifications().createProtectionAlert('DEPOSIT_REFUND_OVERDUE', { reservation_id: 'res-dp-1' })
-    await dp.releaseDeposit('res-dp-1')
-    const alert = useNotifications().alerts.value.find(a => a.type === 'DEPOSIT_REFUND_OVERDUE')!
-    expect(alert.status).toBe('RESOLVED')
+  it('charges the covered claims to the saved card, once, for the total', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp)
+    await notifiedClaim(dp, { ...CLAIM, label: 'Scratched table', amount: 120 })
+    await expect(settle(() => dp.settleDeposit('res-dp-1'))).resolves.toEqual({ ok: true })
+    const p = protectionOf()
+    expect(p.state).toBe('deposit_charged')
+    expect(p.chargedAmount).toBe(200)
+    expect(p.chargedAt).toBeTruthy()
+    expect(reservationOf().activity.filter(e => e.title === 'Saved card charged')).toHaveLength(1)
+  })
+
+  it('never charges more than the guest agreed to, and leaves the excess to the folio', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp, { ...CLAIM, amount: 800 })
+    await settle(() => dp.settleDeposit('res-dp-1'))
+    expect(protectionOf().chargedAmount).toBe(500)
+    expect(reservationOf().folioItems ?? []).toHaveLength(0)
+  })
+
+  it('records a declined charge, raises the alert, and charges on retry', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp)
+    await expect(settle(() => dp.settleDeposit('res-dp-1', true))).resolves.toEqual({ ok: false, reason: 'charge_declined' })
+    expect(protectionOf().state).toBe('charge_failed')
+    expect(protectionOf().chargeAttempts).toBe(1)
+    expect(useNotifications().alerts.value.some(a => a.type === 'DEPOSIT_CHARGE_FAILED')).toBe(true)
+
+    await settle(() => dp.retryCharge('res-dp-1'))
+    expect(protectionOf().state).toBe('deposit_charged')
+    expect(protectionOf().chargeFailureReason).toBeUndefined()
+    expect(protectionOf().chargeAttempts).toBe(2)
+    expect(useNotifications().alerts.value.find(a => a.type === 'DEPOSIT_CHARGE_FAILED')!.status).toBe('RESOLVED')
+  })
+
+  it('charges once when called twice concurrently', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp)
+    await settle(async () => {
+      await Promise.all([dp.settleDeposit('res-dp-1'), dp.settleDeposit('res-dp-1')])
+    })
+    expect(reservationOf().activity.filter(e => e.title === 'Saved card charged')).toHaveLength(1)
+  })
+
+  it('resolves the live decision alerts directly', async () => {
+    const dp = cardOnFile()
+    useNotifications().createProtectionAlert('DEPOSIT_DECISION_OVERDUE', { reservation_id: 'res-dp-1' })
+    await dp.settleDeposit('res-dp-1')
+    expect(useNotifications().alerts.value.find(a => a.type === 'DEPOSIT_DECISION_OVERDUE')!.status).toBe('RESOLVED')
   })
 })
 
 describe('undoSettlement', () => {
-  it('restores deposit_held and keeps the claims', async () => {
-    conversationsRef.value = [{ id: 'conv-dp', reservationId: 'res-dp-1', otaSource: 'Direct' }]
-    const dp = await heldDeposit()
-    dp.recordClaim('res-dp-1', CLAIM)
-    await dp.notifyGuestOfClaim('res-dp-1', protectionOf().claims![0]!.id)
-    await dp.releaseDeposit('res-dp-1')
+  it('reopens a deposit closed without a charge and keeps the claims', async () => {
+    const dp = cardOnFile()
+    await dp.settleDeposit('res-dp-1')
+    expect(dp.undoSettlement('res-dp-1')).toEqual({ ok: true })
+    expect(protectionOf().state).toBe('card_on_file')
+    expect(protectionOf().releasedAt).toBeUndefined()
+  })
 
-    dp.undoSettlement('res-dp-1')
-    expect(protectionOf().state).toBe('deposit_held')
-    expect(protectionOf().refundedAt).toBeUndefined()
-    expect(protectionOf().claims).toHaveLength(1)
+  it('refuses to undo a charge: money moved, and returning it is a refund', async () => {
+    const dp = cardOnFile()
+    await notifiedClaim(dp)
+    await settle(() => dp.settleDeposit('res-dp-1'))
+    expect(dp.undoSettlement('res-dp-1')).toEqual({ ok: false, reason: 'charge_cannot_be_undone' })
+    expect(protectionOf().state).toBe('deposit_charged')
   })
 })
 
 describe('cancelProtection', () => {
-  it('returns a held deposit in full', async () => {
-    const dp = await heldDeposit()
+  it('releases a saved card and charges nothing', () => {
+    const dp = cardOnFile()
     expect(dp.cancelProtection('res-dp-1')).toEqual({ ok: true })
-    expect(protectionOf().state).toBe('cancelled_refunded')
-    expect(protectionOf().refundedAmount).toBe(500)
+    const p = protectionOf()
+    expect(p.state).toBe('cancelled')
+    expect(p.releasedAt).toBeTruthy()
+    expect(p.refundedAmount).toBeUndefined()
+    expect(p.chargedAt).toBeUndefined()
   })
 
   it('returns a waiver fee in full', () => {
@@ -400,8 +617,8 @@ describe('cancelProtection', () => {
     expect(protectionOf().refundedAmount).toBe(39)
   })
 
-  it('refuses while a claim exists', async () => {
-    const dp = await heldDeposit()
+  it('refuses while a claim exists', () => {
+    const dp = cardOnFile()
     dp.recordClaim('res-dp-1', CLAIM)
     expect(dp.cancelProtection('res-dp-1')).toEqual({ ok: false, reason: 'claims_recorded' })
   })
@@ -442,10 +659,36 @@ describe('the worklist', () => {
     expect(ids).not.toContain('res-c')
   })
 
-  it('puts a cancelled stay holding money into refund due immediately', async () => {
-    const dp = await heldDeposit()
+  it('leaves a saved card on file until check-out, then asks for a decision', () => {
+    const dp = cardOnFile()
+    expect(dp.onFile.value.map(r => r.reservation.id)).toEqual(['res-dp-1'])
+    useReservationsModule().updateReservation('res-dp-1', { checkIn: isoDaysFromNow(-5), checkOut: isoDaysFromNow(-1), status: 'checked_out' })
+    expect(dp.decisionDue.value.map(r => r.reservation.id)).toEqual(['res-dp-1'])
+  })
+
+  it('flags a decision overdue past the promised date', () => {
+    const dp = cardOnFile()
+    useReservationsModule().updateReservation('res-dp-1', {
+      checkIn: isoDaysFromNow(-20),
+      checkOut: isoDaysFromNow(-14),
+      status: 'checked_out',
+      damageProtection: { ...protectionOf(), settleDueAt: new Date(Date.now() - 86400000).toISOString() },
+    })
+    expect(dp.decisionOverdue.value.map(r => r.reservation.id)).toEqual(['res-dp-1'])
+  })
+
+  it('asks for a cancelled stay\'s card to be released straight away', () => {
+    const dp = cardOnFile()
     useReservationsModule().updateReservation('res-dp-1', { status: 'cancelled' })
-    expect(dp.refundDue.value.map(r => r.reservation.id)).toContain('res-dp-1')
+    expect(dp.decisionDue.value.map(r => r.reservation.id)).toContain('res-dp-1')
+  })
+
+  it('sums the cover on saved cards and the claims to charge, per currency', () => {
+    const dp = cardOnFile()
+    dp.recordClaim('res-dp-1', CLAIM)
+    useReservationsModule().updateReservation('res-dp-1', { checkIn: isoDaysFromNow(-5), checkOut: isoDaysFromNow(-1), status: 'checked_out' })
+    expect(dp.coverOnFileTotals.value).toEqual([{ currency: 'USD', amount: 420 }])
+    expect(dp.chargeableTotals.value).toEqual([{ currency: 'USD', amount: 80 }])
   })
 
   it('reports waiver fees collected and claims paid as two figures, never netted', () => {
@@ -482,6 +725,21 @@ describe('emitProtectionAlerts', () => {
     expect(fired).toHaveLength(1)
   })
 
+  it('asks for a decision after check-out, once, and escalates when it is overdue', () => {
+    const dp = cardOnFile()
+    useReservationsModule().updateReservation('res-dp-1', { checkIn: isoDaysFromNow(-5), checkOut: isoDaysFromNow(-1), status: 'checked_out' })
+    dp.emitProtectionAlerts()
+    dp.emitProtectionAlerts()
+    expect(useNotifications().alerts.value.filter(a => a.type === 'DEPOSIT_DECISION_DUE')).toHaveLength(1)
+
+    useReservationsModule().updateReservation('res-dp-1', {
+      damageProtection: { ...protectionOf(), settleDueAt: new Date(Date.now() - 86400000).toISOString() },
+    })
+    dp.emitProtectionAlerts()
+    const overdue = useNotifications().alerts.value.find(a => a.type === 'DEPOSIT_DECISION_OVERDUE')!
+    expect(overdue.severity).toBe('CRITICAL')
+  })
+
   it('never chases a cancelled stay for a missing choice', () => {
     seedReservation({ checkIn: isoDaysFromNow(0), status: 'cancelled' })
     useDamageProtection().emitProtectionAlerts()
@@ -490,15 +748,14 @@ describe('emitProtectionAlerts', () => {
 })
 
 describe('what it must never touch', () => {
-  it('leaves priceDetails and folioItems alone across a full cycle', async () => {
-    conversationsRef.value = [{ id: 'conv-dp', reservationId: 'res-dp-1', otaSource: 'Direct' }]
+  it('leaves priceDetails and folioItems alone across a full cycle, charge included', async () => {
     const before = seedReservation().priceDetails
-    const dp = await heldDeposit()
-    dp.recordClaim('res-dp-1', CLAIM)
-    await dp.notifyGuestOfClaim('res-dp-1', protectionOf().claims![0]!.id)
-    await dp.releaseDeposit('res-dp-1')
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
+    await notifiedClaim(dp)
+    await settle(() => dp.settleDeposit('res-dp-1'))
 
-    const reservation = useReservationsModule().reservations.value.find(r => r.id === 'res-dp-1')!
+    const reservation = reservationOf()
     expect(reservation.priceDetails).toEqual(before)
     expect(reservation.folioItems ?? []).toHaveLength(0)
   })

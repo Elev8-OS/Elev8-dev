@@ -179,6 +179,77 @@ export function useInbox() {
     selectedConversationId.value = newId
   }
 
+  /**
+   * The conversation a message about a reservation goes to: the one already
+   * threaded to it, or, when there is none, a new EMAIL conversation opened on
+   * the guest's address. A direct booking frequently has no inbox thread at
+   * all, and a guest who must be told something (a damage claim, before their
+   * card is charged) cannot be left unreachable just because nobody has written
+   * to them yet. Null only when there is no thread AND no email address:
+   * then there is genuinely no way to reach the guest, and the caller says so.
+   */
+  function ensureConversationForReservation(stay: {
+    id: string
+    guestName: string
+    guestEmail?: string
+    listingName: string
+    checkIn: string
+    checkOut: string
+  }): string | null {
+    const existing = conversations.value.find(c => c.reservationId === stay.id)
+    if (existing)
+      return existing.id
+    const email = stay.guestEmail?.trim()
+    if (!email)
+      return null
+
+    const today = new Date()
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const stayStatus = stay.checkOut <= todayKey ? 'past' : stay.checkIn <= todayKey ? 'current' : 'future'
+    const id = `conv-res-${stay.id}`
+    const conversation: Conversation = {
+      id,
+      guestName: stay.guestName,
+      guestInitials: stay.guestName.split(' ').map(part => part[0] ?? '').join('').slice(0, 2).toUpperCase(),
+      listingName: stay.listingName,
+      propertyName: stay.listingName,
+      otaSource: 'Email',
+      reservationId: stay.id,
+      guestEmail: email,
+      status: null,
+      lastMessage: '',
+      lastMessageAt: new Date().toISOString(),
+      unreadCount: 0,
+      isAssignedToMe: false,
+      tags: [],
+      labels: [],
+      sentiment: 'neutral',
+      sentimentNote: '',
+      stayStatus,
+      checkIn: stay.checkIn,
+      checkOut: stay.checkOut,
+    }
+    conversations.value = [conversation, ...conversations.value]
+    messages.value = { ...messages.value, [id]: [] }
+    return id
+  }
+
+  /**
+   * Point the inbox at a reservation's conversation, opening an email one first
+   * when it has none (`ensureConversationForReservation`). Returns whether a
+   * conversation was created, so the caller can say so; null when the guest has
+   * no thread and no email address and there is nothing to open.
+   */
+  function openForReservation(stay: Parameters<typeof ensureConversationForReservation>[0]): { conversationId: string, created: boolean } | null {
+    const existed = conversations.value.some(c => c.reservationId === stay.id)
+    const conversationId = ensureConversationForReservation(stay)
+    if (!conversationId)
+      return null
+    selectedConversationId.value = conversationId
+    inboxView.value = 'conversations'
+    return { conversationId, created: !existed }
+  }
+
   // ── Inbound email (mirrors the 3CX inbound-call pipeline) ──────────────
   function findConversationByEmail(email: string): string | undefined {
     const clean = email.trim().toLowerCase()
@@ -800,6 +871,8 @@ export function useInbox() {
   }
 
   return {
+    ensureConversationForReservation,
+    openForReservation,
     selectedConversationId,
     inboxView,
     showActionNeeded,

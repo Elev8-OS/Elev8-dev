@@ -1,16 +1,38 @@
 import type { CleaningFilters, CleaningJob, CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
 import { cleanerOptions, cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
+import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
 import { listings } from '~/components/listings/data/listings'
+import { allStays } from '~/components/operations-calendar/data/calendar-stays'
 import { useNotifications } from '~/composables/useNotifications'
+// useReservationsModule imports this module too. The cycle is safe because
+// neither calls the other at module load, only inside functions.
+import { useReservationsModule } from '~/composables/useReservationsModule'
+
+/**
+ * The stay a cleaning belongs to, by where and when it happens. Null when none.
+ * Read from BOTH stay sources (`calendar-stays.ts`), the same union the
+ * calendar draws, so a cleaning never links to a stay the calendar does not
+ * show, nor fails to link to one it does.
+ */
+function stayIdFor(job: Pick<CleaningJob, 'listingId' | 'unitId' | 'scheduledAt'>): string | null {
+  const stays = allStays(listings.value, useReservationsModule().reservations.value)
+  return resolveStayForCleaning(job, stays)?.id ?? null
+}
+
+function linkSeed(seed: CleaningJob[]): CleaningJob[] {
+  return seed.map(job => (job.reservationId ? job : { ...job, reservationId: stayIdFor(job) }))
+}
 
 export function useCleaningJobs() {
-  const jobs = useState<CleaningJob[]>('cleaning-jobs', () => cleaningJobs.value)
+  // Seeded jobs with no stay recorded are linked on load, by the same rule a
+  // new job is: a seed that says null means "not recorded", not "none".
+  const jobs = useState<CleaningJob[]>('cleaning-jobs', () => linkSeed(cleaningJobs.value))
 
   const syncedJobs = computed(() => jobs.value)
 
   function refreshFromSeed() {
     if (!jobs.value.length) {
-      jobs.value = [...cleaningJobs.value]
+      jobs.value = linkSeed(cleaningJobs.value)
     }
   }
 
@@ -61,17 +83,46 @@ export function useCleaningJobs() {
     return released
   }
 
+  /**
+   * Every new cleaning is linked to the stay it belongs to, whoever creates it
+   * (the calendar, a listing's maintenance tab, an owner stay). A caller that
+   * already knows the stay (a reservation's own schedule) passes it and is
+   * trusted. A date with no stay creates the job unlinked.
+   */
   function createJob(input: CleaningJobInput) {
     const job: CleaningJob = {
       ...input,
+      reservationId: input.reservationId || stayIdFor(input),
       id: `cln-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     }
     jobs.value = [...jobs.value, job]
     return job
   }
 
+  /**
+   * Moving a cleaning keeps its link honest:
+   * - to another listing or room: relinked from scratch, possibly to nothing,
+   *   since the old stay was somewhere else entirely;
+   * - to another date: relinked when a stay fits the new date, and otherwise
+   *   left as it was, so a turnover clean pushed to the next morning still
+   *   belongs to the guest who left.
+   * A patch that names `reservationId` itself is taken as given.
+   */
   function updateJob(id: string, patch: Partial<CleaningJob>) {
-    jobs.value = jobs.value.map(job => (job.id === id ? { ...job, ...patch } : job))
+    jobs.value = jobs.value.map((job) => {
+      if (job.id !== id)
+        return job
+      const next = { ...job, ...patch }
+      if ('reservationId' in patch)
+        return next
+      const movedPlace = next.listingId !== job.listingId || (next.unitId ?? null) !== (job.unitId ?? null)
+      const movedDate = next.scheduledAt !== job.scheduledAt
+      if (movedPlace)
+        return { ...next, reservationId: stayIdFor(next) }
+      if (movedDate)
+        return { ...next, reservationId: stayIdFor(next) ?? job.reservationId ?? null }
+      return next
+    })
   }
 
   function deleteJob(id: string) {

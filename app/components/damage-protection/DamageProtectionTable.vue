@@ -6,12 +6,17 @@ import { formatProtectionAmount } from '~/components/reservations/data/damage-pr
 const props = defineProps<{
   rows: ProtectionRow[]
   emptyLabel: string
-  /** Selection is only offered where a bulk release makes sense. */
+  /** Selection is only offered where a bulk close makes sense. */
   selectable?: boolean
   canEdit?: boolean
 }>()
 
 const emit = defineEmits<{ open: [ProtectionRow] }>()
+
+function cardLabel(row: ProtectionRow): string {
+  const card = row.protection?.card
+  return card ? `•••• ${card.last4}` : '—'
+}
 
 const selected = defineModel<string[]>('selected', { default: () => [] })
 
@@ -44,11 +49,7 @@ function money(row: ProtectionRow, amount: number): string {
 }
 
 function failureLabel(row: ProtectionRow): string {
-  if (row.protection?.state === 'refund_failed')
-    return 'Refund failed'
-  if (row.protection?.state === 'deposit_failed')
-    return 'Charge failed'
-  return ''
+  return row.protection?.state === 'charge_failed' ? (row.protection.chargeFailureReason ?? 'Declined') : ''
 }
 </script>
 
@@ -81,10 +82,10 @@ function failureLabel(row: ProtectionRow): string {
               Amount
             </th>
             <th class="px-4 py-3 text-right font-medium">
-              Deducted
+              Claims to charge
             </th>
-            <th class="px-4 py-3 text-right font-medium">
-              Refundable
+            <th class="px-4 py-3 text-left font-medium">
+              Card
             </th>
             <th class="px-4 py-3 text-left font-medium">
               Status
@@ -133,10 +134,10 @@ function failureLabel(row: ProtectionRow): string {
               {{ row.protection ? money(row, row.protection.amount) : '—' }}
             </td>
             <td class="px-4 py-3 text-right tabular-nums">
-              {{ row.deducted ? money(row, row.deducted) : '—' }}
+              {{ row.chargeable ? money(row, row.chargeable) : '—' }}
             </td>
-            <td class="px-4 py-3 text-right tabular-nums">
-              {{ row.protection?.option === 'deposit' ? money(row, row.refundable) : '—' }}
+            <td class="px-4 py-3 tabular-nums">
+              {{ cardLabel(row) }}
             </td>
             <td class="px-4 py-3">
               <div class="flex flex-wrap items-center gap-1.5">
