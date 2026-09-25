@@ -148,7 +148,23 @@ describe('buildClaimEvidencePdf', () => {
     expect(text()).toContain('Cracked shower screen')
     expect(text()).toContain('Glass split from the bottom corner.')
     expect(text()).toContain('USD 180.00')
-    expect(text()).toContain('Charged to card')
+  })
+
+  it('says plainly that a claim on a card still on file has not been charged yet', () => {
+    build()
+    expect(text()).toContain('Covered by the deposit')
+    expect(text()).toContain('USD 180.00. Not charged yet.')
+    expect(text()).toContain('Not charged yet. The card is on file and nothing has been taken from it.')
+    expect(text()).not.toContain('Charged to card')
+  })
+
+  it('says nothing was charged when the deposit was closed or the stay cancelled', () => {
+    build({ protection: { state: 'deposit_released', releasedAt: '2026-09-25T02:00:00.000Z' } })
+    expect(text()).toMatch(/Nothing charged\. The deposit was closed without a charge on 25 Sept? 2026/)
+    expect(text()).toContain('USD 180.00. Not charged.')
+    pdf.state.texts = []
+    build({ protection: { state: 'cancelled' } })
+    expect(text()).toContain('Nothing charged. The card was released when the stay was cancelled.')
   })
 
   it('says when the guest was told, and says so plainly when they were not', () => {
@@ -168,9 +184,10 @@ describe('buildClaimEvidencePdf', () => {
   it('states a charge that went through, and one that was declined', () => {
     build({ protection: { state: 'deposit_charged', chargedAmount: 180, chargedAt: '2026-09-25T02:00:00.000Z' } })
     expect(text()).toMatch(/USD 180\.00 on 25 Sept? 2026/)
+    expect(text()).toContain('Charged to card')
     pdf.state.texts = []
     build({ protection: { state: 'charge_failed', chargeFailureReason: 'Card declined by issuer' } })
-    expect(text()).toContain('Declined: Card declined by issuer')
+    expect(text()).toContain('Not charged. The charge was declined: Card declined by issuer')
   })
 
   it('labels a waiver claim as paid by the waiver, with the cover', () => {

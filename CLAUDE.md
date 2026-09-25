@@ -820,6 +820,11 @@ notified (stated in amber when they were not), the protection chosen with the sa
 its last four digits, the frozen terms and the **quoted charge consent**, the cleaning report,
 the attached files, and the photos **embedded**, two a row, capped at 70mm tall. The letterhead
 is `useInvoiceTemplates().getTemplateForListing`, like the other documents.
+- ⚠️ **The file always says whether the card was charged.** "Charged to card" appears only once
+  the deposit is `deposit_charged`. Until then the claim reads "Covered by the deposit ... Not
+  charged yet." and the protection block states the card's position in every state (on file and
+  not charged yet, declined, closed without a charge, released with a cancelled stay). A missing
+  line must never be what tells a dispute reader that nothing was taken.
 - ⚠️ **A photo that cannot be embedded is listed, never dropped** ("Not embedded ... could not
   be loaded into this file: <url>"). `loadEvidencePhotos` fetches each one to a data URL first;
   jsPDF takes PNG and JPEG only, so anything else, a 404, or a refused `addImage` lands in that
@@ -876,7 +881,7 @@ computed at module load; a fixed fixture rots into a stay that already ended.
 `tests/components/reservations/ReservationDamageProtection.spec.ts` (20),
 `tests/components/reservations/ProtectionChoiceDialog.spec.ts` (5),
 `tests/composables/useInbox-reservation-conversation.spec.ts` (8),
-`tests/lib/claim-evidence-pdf.spec.ts` (16),
+`tests/lib/claim-evidence-pdf.spec.ts` (18),
 `tests/lib/partner-claims.spec.ts` (21),
 `tests/lib/damage-protection-settings.spec.ts` (15),
 `tests/components/settings/DamageProtectionSettings.spec.ts` (26),
