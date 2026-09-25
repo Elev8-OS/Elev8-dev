@@ -70,17 +70,18 @@ const initials = computed(() =>
 )
 
 const stayStatusConfig: Record<StayStatus, { label: string, class: string }> = {
-  inquiry: { label: 'Inquiry', class: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
-  current: { label: 'Current Stay', class: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
-  future: { label: 'Upcoming', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  past: { label: 'Checked Out', class: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
+  inquiry: { label: 'Inquiry', class: 'bg-[#F6BB13]/15 text-[#F6BB13]' },
+  current: { label: 'Current Stay', class: 'bg-[#EA590B]/15 text-[#EA590B]' },
+  future: { label: 'Upcoming', class: 'bg-[#21C55E]/15 text-[#21C55E]' },
+  past: { label: 'Checked Out', class: 'bg-[#3B82F6]/15 text-[#3B82F6]' },
+  cancelled: { label: 'Cancelled', class: 'bg-muted text-muted-foreground' },
   unmatched: { label: 'Unmatched', class: 'bg-background text-muted-foreground border' },
 }
 
 const verificationConfig: Record<GuestVerification, { label: string, icon: string, class: string }> = {
   unverified: { label: 'Unverified', icon: 'lucide:circle-dot', class: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
   verified: { label: 'Verified', icon: 'lucide:shield-check', class: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' },
-  check_in: { label: 'Checked In', icon: 'lucide:log-in', class: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
+  check_in: { label: 'Checked In', icon: 'lucide:log-in', class: 'bg-[#EA590B]/15 text-[#EA590B]' },
   check_out: { label: 'Checked Out', icon: 'lucide:log-out', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
 }
 
