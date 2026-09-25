@@ -26,10 +26,11 @@ const statusLabelMap: Record<string, string> = {
 }
 
 const stayStatusConfig: Record<StayStatus, { label: string, class: string }> = {
-  inquiry: { label: 'Inquiry', class: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' },
-  current: { label: 'Current', class: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' },
-  future: { label: 'Future', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  past: { label: 'Past', class: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
+  inquiry: { label: 'Inquiry', class: 'bg-[#F6BB13]/15 text-[#F6BB13]' },
+  current: { label: 'Current', class: 'bg-[#EA590B]/15 text-[#EA590B]' },
+  future: { label: 'Future', class: 'bg-[#21C55E]/15 text-[#21C55E]' },
+  past: { label: 'Past', class: 'bg-[#3B82F6]/15 text-[#3B82F6]' },
+  cancelled: { label: 'Cancelled', class: 'bg-muted text-muted-foreground' },
   unmatched: { label: 'Unmatched', class: 'bg-background text-muted-foreground border' },
 }
 
@@ -93,7 +94,7 @@ const stayDateLabel = computed(() => {
               {{ conversation.unreadCount }}
             </Badge>
           </div>
-          <div class="flex items-center gap-1.5">
+          <div class="flex min-w-0 items-center gap-1.5">
             <Tooltip v-if="conversation.cleaningStatus && conversation.listingName !== 'Unknown'" :delay-duration="0">
               <TooltipTrigger as-child>
                 <span
@@ -109,10 +110,11 @@ const stayDateLabel = computed(() => {
                 <span v-if="conversation.cleaningStatus === 'cleaning_finished'" class="text-muted-foreground"> · Click to mark</span>
               </TooltipContent>
             </Tooltip>
-            <span class="text-xs text-muted-foreground truncate">{{ conversation.listingName }}</span>
+            <span class="min-w-0 truncate text-xs text-muted-foreground" :title="conversation.listingName">{{ conversation.listingName }}</span>
             <span
               v-if="gro.isGro.value"
-              class="inline-flex shrink-0 items-center rounded bg-muted px-1 py-0.5 text-[9px] font-medium text-muted-foreground"
+              class="max-w-24 shrink-0 truncate rounded bg-muted px-1 py-0.5 text-[9px] font-medium text-muted-foreground"
+              :title="tenantName"
             >
               {{ tenantName }}
             </span>

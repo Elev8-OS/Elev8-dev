@@ -6,7 +6,7 @@ export type MessageSender = 'guest' | 'host' | 'system' | 'ai'
 export type ActionSeverity = 'warning' | 'urgent' | 'info'
 export type ActivityEventColor = 'gold' | 'green' | 'blue' | 'gray'
 
-export type StayStatus = 'inquiry' | 'current' | 'future' | 'past' | 'unmatched'
+export type StayStatus = 'inquiry' | 'current' | 'future' | 'past' | 'cancelled' | 'unmatched'
 export type GuestVerification = 'unverified' | 'verified' | 'check_in' | 'check_out'
 export type CleaningStatus = 'need_cleaning' | 'in_progress' | 'cleaning_finished'
 
