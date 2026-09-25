@@ -39,7 +39,7 @@
     "pnpm": ">=9"
   },
   "scripts": {
-    "build": "nuxt build",
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
