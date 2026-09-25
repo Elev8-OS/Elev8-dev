@@ -10,12 +10,11 @@ import {
   partnerBucket,
   partnerEligibility,
   payoutDueAt,
-  stripePayoutAccountFor,
 } from '~/components/reservations/data/partner-claims'
-import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useTernActivation } from '~/composables/useTernActivation'
 
 /** The mock partner API round trip. Long enough for the spinner to be seen. */
 const PARTNER_API_MOCK_MS = 1500
@@ -54,12 +53,13 @@ function eventId(prefix: string): string {
 /**
  * Insurance claims under the property manager's master policy: filing the
  * part of a waiver claim above the deductible with the partner, following it
- * through the partner's review, and confirming the payout landed in the
- * tenant's Stripe payout account.
+ * through the partner's review, and confirming the payout landed in the bank
+ * account the tenant registered when it activated the damage waiver.
  *
  * ⚠️ Elev8 integrates with the partner once, for every tenant, so there is
- * nothing here for a tenant to configure: no partner state, no API key, no
- * connect step. `partner` is the platform's contract, read-only.
+ * nothing here for a tenant to configure: no partner state, no API key.
+ * `partner` is the platform's contract, read-only. The tenant's side, its card
+ * and its bank account, lives in `useTernActivation`.
  *
  * The partner API is MOCKED: `submitToPartner` is a timer, and the partner's
  * replies arrive through `receivePartnerEvent`, the path a real webhook would
@@ -76,9 +76,15 @@ export function usePartnerClaims() {
   /** The platform's contract with the partner. The same for every tenant, never edited here. */
   const partner = computed<CoverPartner>(() => elev8CoverPartner)
 
-  /** The tenant's Stripe payout account a claim on this listing would be paid into. */
-  function payoutAccountFor(listingId: string) {
-    return stripePayoutAccountFor(listingId, payoutAccounts.value, partner.value.currency)
+  const tern = useTernActivation()
+
+  /**
+   * The bank account Tern pays a claim into, by transfer. One per tenant for
+   * now, so the listing does not change it; the argument stays so a per-listing
+   * account (still to be confirmed with Tern) needs no change at the call sites.
+   */
+  function payoutAccountFor(_listingId: string) {
+    return tern.payoutTarget.value
   }
 
   // ---------------------------------------------------------------- reads
@@ -150,9 +156,9 @@ export function usePartnerClaims() {
     const account = existing
       ? { id: existing.payoutAccountId, accountName: existing.payoutAccountName }
       : payoutAccountFor(found.reservation.listingId)
-    // With no Stripe payout account the partner would have nowhere to pay.
+    // Without an active service there is no bank account for the partner to pay into.
     if (!account)
-      return { ok: false, reason: 'no_stripe_payout_account' }
+      return { ok: false, reason: 'waiver_not_activated' }
 
     // A retry keeps the original filing, and the amounts and account it froze.
     const base = existing ?? newPartnerClaim(partner.value, eligibility.claimable, account)

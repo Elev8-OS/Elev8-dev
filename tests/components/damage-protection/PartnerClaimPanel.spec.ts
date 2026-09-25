@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PartnerClaimPanel from '~/components/damage-protection/PartnerClaimPanel.vue'
 import { elev8CoverPartner } from '~/components/reservations/data/damage-protection-seed'
 import { newPartnerClaim } from '~/components/reservations/data/partner-claims'
-import { payoutAccounts } from '~/components/settings/data/payouts'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Textarea } from '~/components/ui/textarea'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useTernActivation } from '~/composables/useTernActivation'
 
 vi.mock('vue-sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
@@ -45,7 +45,7 @@ function claim(patch: Partial<ProtectionClaim> = {}): ProtectionClaim {
 
 function filed(patch: Partial<PartnerClaim>): PartnerClaim {
   return {
-    ...newPartnerClaim(elev8CoverPartner, 220, { id: 'pay-1', accountName: 'Stripe Bali Main' }),
+    ...newPartnerClaim(elev8CoverPartner, 220, { id: 'tern_org_demo_0001', accountName: 'Bank Central Asia (BCA) •••• 3456' }),
     status: 'submitted',
     partnerClaimRef: 'PC-1',
     events: [],
@@ -75,7 +75,7 @@ describe('partnerClaimPanel', () => {
     const wrapper = mountPanel(claim())
     expect(wrapper.find('[data-testid="partner-claim-eligible"]').text()).toContain('less the USD 100.00 deductible')
     expect(wrapper.find('[data-testid="partner-claim-eligible"]').text()).toContain('USD 220.00 can be claimed')
-    expect(wrapper.find('[data-testid="partner-claim-destination"]').text()).toBe('Paid into your Stripe payout account Stripe Bali Main.')
+    expect(wrapper.find('[data-testid="partner-claim-destination"]').text()).toBe('Paid by bank transfer into Bank Central Asia (BCA) •••• 3456.')
     expect(wrapper.findAll('button').some(b => b.text() === 'Submit to partner')).toBe(true)
   })
 
@@ -85,18 +85,12 @@ describe('partnerClaimPanel', () => {
     expect(wrapper.findAll('button').some(b => b.text() === 'Submit to partner')).toBe(false)
   })
 
-  it('disables submitting when the tenant has no Stripe payout account, and says where to fix it', () => {
-    const saved = payoutAccounts.value
-    payoutAccounts.value = saved.filter(a => a.provider !== 'stripe')
-    try {
-      const wrapper = mountPanel(claim())
-      const submit = wrapper.findAll('button').find(b => b.text() === 'Submit to partner')!
-      expect(submit.attributes('disabled')).toBeDefined()
-      expect(wrapper.find('[data-testid="partner-claim-no-account"]').text()).toContain('Settings, Payouts')
-    }
-    finally {
-      payoutAccounts.value = saved
-    }
+  it('disables submitting while the waiver is not activated, and says where to fix it', () => {
+    useTernActivation().replayActivation()
+    const wrapper = mountPanel(claim())
+    const submit = wrapper.findAll('button').find(b => b.text() === 'Submit to partner')!
+    expect(submit.attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="partner-claim-no-account"]').text()).toContain('Settings, Damage protection')
   })
 
   it('shows a filed claim\'s status, amounts, reference and timeline', () => {
@@ -124,7 +118,7 @@ describe('partnerClaimPanel', () => {
     const wrapper = mountPanel(claim({ partnerClaim: filed({ status: 'paid', approvedAmount: 220, paidAmount: 220, payoutReference: 'TRF-1' }) }))
     const box = wrapper.find('[data-testid="partner-claim-confirm"]')
     expect(box.text()).toContain('TRF-1')
-    expect(box.text()).toContain('Stripe payout account Stripe Bali Main')
+    expect(box.text()).toContain('by bank transfer to Bank Central Asia (BCA) •••• 3456')
     expect((box.find('input').element as HTMLInputElement).value).toBe('220')
   })
 

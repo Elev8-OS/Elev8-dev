@@ -133,9 +133,9 @@ function filed(claimedAmount: number, events: [number, PartnerClaimEvent['status
     currency: 'USD',
     claimedAmount,
     deductible: elev8CoverPartner.deductiblePerClaim,
-    // lst-1 settles into the tenant's Stripe account pay-1.
-    payoutAccountId: 'pay-1',
-    payoutAccountName: 'Stripe Bali Main',
+    // The bank account the demo tenant registered at activation (`seedTernActivation`).
+    payoutAccountId: 'tern_org_demo_0001',
+    payoutAccountName: 'Bank Central Asia (BCA) •••• 3456',
     status: 'submitted',
     events: events.map(([offset, status, source, note], i) => ({
       id: `evt-demo-${claimedAmount}-${i}`,
@@ -181,6 +181,9 @@ function waiverStay(id: string, guestName: string, checkIn: number, checkOut: nu
       state: 'waiver_active',
       amount: 39,
       coverageCap: 2000,
+      paidBy: 'guest',
+      tier: 'bronze',
+      elev8Fee: 9,
       termsText: seedProtectionPolicies.find(p => p.id === 'dp-standard')!.termsText,
       acceptedAt: iso(checkIn - 5),
       claims,
@@ -369,6 +372,9 @@ export const damageProtectionDemoReservations: ReservationEntry[] = [
       state: 'waiver_active',
       amount: 249,
       coverageCap: 5000,
+      paidBy: 'guest',
+      tier: 'silver',
+      elev8Fee: 15,
       termsVersion: 'v1-long',
       acceptedAt: iso(-32),
       claims: [{

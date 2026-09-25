@@ -12,7 +12,9 @@ import {
   claimCoverage,
   claimEvidenceSummary,
   depositAmount,
+  elev8FeeFor,
   formatSavedCard,
+  hostCoverProtection,
   isChoiceValid,
   isClaimValid,
   isGuestStay,
@@ -28,8 +30,10 @@ import {
   settleDueAt,
   settleOutcome,
   waiverAmount,
+  waiverCover,
   waiverPotTotal,
 } from '~/components/reservations/data/damage-protection'
+import { recommendedTier, TERN_PRODUCTS, ternPriceFor, tierTooSmall } from '~/components/reservations/data/tern-products'
 
 // Dates are relative to today on purpose: the decision deadline is evaluated
 // against the current day, so a fixed fixture rots.
@@ -59,7 +63,7 @@ function policy(patch: Partial<DamageProtectionPolicy> = {}): DamageProtectionPo
     name: 'Standard',
     currency: 'USD',
     offers: ['waiver', 'deposit'],
-    waiver: { pricing: 'flat', rate: 39, coverageCap: 2000, exclusions: ['Intentional damage'] },
+    waiver: { tier: 'bronze', guestPrice: 39 },
     deposit: { pricing: 'flat', rate: 500, settleWithinDays: 7 },
     channelPolicy: { Direct: 'offer' },
     termsVersion: 'v1',
@@ -116,13 +120,17 @@ function claim(patch: Partial<ProtectionClaim> = {}): ProtectionClaim {
 }
 
 describe('protectionOffered', () => {
-  it('falls back to skip for an unset channel', () => {
-    expect(protectionOffered(policy(), 'Airbnb')).toBe(false)
+  it('covers every channel once the waiver is on, whatever the channel switches say', () => {
+    const skipsEverything = policy({ channelPolicy: { Direct: 'skip', Airbnb: 'skip' } })
+    for (const channel of ['Direct', 'Airbnb', 'Booking.com'] as const)
+      expect(protectionOffered(skipsEverything, channel), channel).toBe(true)
   })
 
-  it('offers only where the policy says offer', () => {
-    expect(protectionOffered(policy(), 'Direct')).toBe(true)
-    expect(protectionOffered(policy({ channelPolicy: { Direct: 'skip' } }), 'Direct')).toBe(false)
+  it('lets a deposit-only policy pick its channels, falling back to skip', () => {
+    const depositOnly = policy({ offers: ['deposit'], channelPolicy: { Direct: 'offer', Airbnb: 'skip' } })
+    expect(protectionOffered(depositOnly, 'Direct')).toBe(true)
+    expect(protectionOffered(depositOnly, 'Airbnb')).toBe(false)
+    expect(protectionOffered(depositOnly, 'Booking.com')).toBe(false)
   })
 
   it('never offers without a policy or without options', () => {
@@ -145,15 +153,26 @@ describe('isGuestStay', () => {
 })
 
 describe('pricing', () => {
-  it('prices a flat waiver and a flat deposit', () => {
-    expect(waiverAmount(policy(), stay())).toBe(39)
+  it('charges the guest the tenant\'s own per-stay price, and a flat deposit', () => {
+    expect(waiverAmount(policy())).toBe(39)
     expect(depositAmount(policy(), stay())).toBe(500)
   })
 
-  it('prices per night and handles a zero-night stay', () => {
-    const p = policy({ waiver: { pricing: 'per_night', rate: 8, coverageCap: 2000, exclusions: [] } })
-    expect(waiverAmount(p, stay({ nights: 5 }))).toBe(40)
-    expect(waiverAmount(p, stay({ nights: 0 }))).toBe(0)
+  it('charges the guest nothing where the host pays', () => {
+    expect(waiverAmount(policy(), 'host')).toBe(0)
+  })
+
+  it('reads the cover and the Elev8 fee off the Tern tier, never off the policy', () => {
+    const bronze = ternPriceFor('bronze', 'USD')!
+    expect(waiverCover(policy())).toEqual(bronze)
+    expect(elev8FeeFor(policy())).toBe(bronze.perStayFee)
+    expect(waiverCover(policy({ waiver: { tier: 'gold', guestPrice: 39 } }))?.coverageCap)
+      .toBe(ternPriceFor('gold', 'USD')!.coverageCap)
+  })
+
+  it('has no cover in a currency Tern does not price, rather than converting', () => {
+    expect(waiverCover(policy({ currency: 'IDR' }))).toBeNull()
+    expect(elev8FeeFor(policy({ currency: 'IDR' }))).toBeNull()
   })
 
   it('reads percent from the subtotal, never the grand total', () => {
@@ -167,19 +186,62 @@ describe('pricing', () => {
     expect(depositAmount(p, stay({ priceDetails: undefined }))).toBe(0)
   })
 
-  it('caps a per-night waiver on a long stay', () => {
-    const p = policy({ waiver: { pricing: 'per_night', rate: 39, maxAmount: 249, coverageCap: 5000, exclusions: [] } })
-    expect(waiverAmount(p, stay({ nights: 90 }))).toBe(249)
-  })
-
   it('caps a percent deposit', () => {
     const p = policy({ deposit: { pricing: 'percent_of_subtotal', rate: 20, maxAmount: 750, settleWithinDays: 7 } })
     expect(depositAmount(p, stay({ priceDetails: { ...stay().priceDetails!, subtotal: 9000 } }))).toBe(750)
   })
 
-  it('leaves an uncapped figure alone', () => {
-    const p = policy({ waiver: { pricing: 'per_night', rate: 10, coverageCap: 2000, exclusions: [] } })
-    expect(waiverAmount(p, stay({ nights: 90 }))).toBe(900)
+  it('keeps the waiver price the same for any stay length', () => {
+    expect(buildOptions(policy(), stay({ nights: 90 }), 'card')[0]!.amount).toBe(39)
+  })
+})
+
+describe('tern products', () => {
+  it('sizes the tier to the property by guest count', () => {
+    expect(recommendedTier(2)).toBe('bronze')
+    expect(recommendedTier(4)).toBe('bronze')
+    expect(recommendedTier(6)).toBe('silver')
+    expect(recommendedTier(9)).toBe('gold')
+    expect(recommendedTier(40)).toBe('gold')
+  })
+
+  it('flags a tier smaller than the property calls for, never a bigger one', () => {
+    expect(tierTooSmall('bronze', 6)).toBe(true)
+    expect(tierTooSmall('silver', 6)).toBe(false)
+    expect(tierTooSmall('gold', 2)).toBe(false)
+  })
+
+  it('names wear and tear among the exclusions of every tier', () => {
+    for (const product of TERN_PRODUCTS)
+      expect(product.exclusions.some(e => /wear and tear/i.test(e)), product.tier).toBe(true)
+  })
+})
+
+describe('hostCoverProtection', () => {
+  it('covers the stay without charging the guest, freezing the tier and the Elev8 fee', () => {
+    const cover = hostCoverProtection(policy({ waiver: { tier: 'silver', guestPrice: 39 } }))!
+    const silver = ternPriceFor('silver', 'USD')!
+    expect(cover).toMatchObject({
+      option: 'waiver',
+      state: 'waiver_active',
+      amount: 0,
+      paidBy: 'host',
+      tier: 'silver',
+      coverageCap: silver.coverageCap,
+      elev8Fee: silver.perStayFee,
+      acceptedVia: 'host_cover',
+    })
+  })
+
+  it('writes nothing for a deposit-only policy or a currency Tern does not price', () => {
+    expect(hostCoverProtection(policy({ offers: ['deposit'] }))).toBeNull()
+    expect(hostCoverProtection(policy({ currency: 'IDR' }))).toBeNull()
+  })
+
+  it('owes nothing back when a host-paid stay is cancelled', () => {
+    const cover = hostCoverProtection(policy())!
+    expect(resolveBucket(cover, { status: 'cancelled', checkOut: isoDay(10) })).toBe('settled')
+    expect(resolveBucket({ ...cover, paidBy: 'guest', amount: 39 }, { status: 'cancelled', checkOut: isoDay(10) })).toBe('refund_due')
   })
 })
 
@@ -244,8 +306,8 @@ describe('buildOptions', () => {
 
   it('gives the waiver a cap and exclusions, and the deposit its settle window', () => {
     const [waiver, deposit] = buildOptions(policy(), stay(), 'card')
-    expect(waiver!.coverageCap).toBe(2000)
-    expect(waiver!.exclusions).toEqual(['Intentional damage'])
+    expect(waiver!.coverageCap).toBe(ternPriceFor('bronze', 'USD')!.coverageCap)
+    expect(waiver!.exclusions).toEqual(TERN_PRODUCTS[0]!.exclusions)
     expect(waiver!.settleWithinDays).toBeUndefined()
     expect(deposit!.coverageCap).toBeUndefined()
     expect(deposit!.settleWithinDays).toBe(7)

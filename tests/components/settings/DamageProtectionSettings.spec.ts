@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
+import { formatProtectionAmount, policyFromTemplate } from '~/components/reservations/data/damage-protection'
 import DamageProtectionPolicySheet from '~/components/settings/DamageProtectionPolicySheet.vue'
 import DamageProtectionSettingsPanel from '~/components/settings/DamageProtectionSettingsPanel.vue'
 import { Badge } from '~/components/ui/badge'
@@ -10,6 +10,7 @@ import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Textarea } from '~/components/ui/textarea'
 import { useDamageProtection } from '~/composables/useDamageProtection'
+import { useTernActivation } from '~/composables/useTernActivation'
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock('vue-sonner', () => ({ toast }))
@@ -34,7 +35,7 @@ const STUBS = {
   SelectContent: passthrough,
   SelectItem: { props: ['value', 'disabled'], template: '<div :data-disabled="disabled"><slot /></div>' },
   // A checkbox standing in for reka-ui, driven through model-value.
-  Switch: { props: ['modelValue', 'id'], emits: ['update:modelValue'], template: '<input type="checkbox" :id="id" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)">' },
+  Switch: { props: ['modelValue', 'id', 'disabled'], emits: ['update:modelValue'], template: '<input type="checkbox" :id="id" :checked="modelValue" :disabled="disabled" @change="$emit(\'update:modelValue\', $event.target.checked)">' },
 }
 const COMPONENTS = { Badge, Button, Input, Label, Textarea }
 
@@ -52,7 +53,8 @@ describe('damage protection settings: policies', () => {
     const cards = mountPanel().findAll('[data-testid="policy-card"]')
     const standard = cards.find(c => c.text().includes('Standard stay'))!
     // Built with the same formatter: ICU groups thousands with a typographic apostrophe.
-    expect(standard.text()).toContain(`Waiver: USD 39.00 per stay, covers up to ${formatProtectionAmount(2000, 'USD')}`)
+    expect(standard.text()).toContain(`Waiver: Tern Bronze, covers up to ${formatProtectionAmount(2000, 'USD')}. Guest pays USD 39.00, Elev8 charges you USD 9.00 per stay`)
+    expect(standard.text()).toContain('All channels')
     expect(standard.text()).toContain('Deposit: Card on file, charged up to USD 500.00 only for damage, decided within 7 days')
     expect(standard.find('[data-testid="policy-usage"]').text()).toBe('Used on 1 listing for short stays')
     const longStay = cards.find(c => c.text().includes('Long stay'))!
@@ -65,7 +67,7 @@ describe('damage protection settings: policies', () => {
   })
 
   it('says the insurance comes from Elev8, with nothing to configure', () => {
-    expect(mountPanel().text()).toContain('insured by Demo Cover Partner through Elev8')
+    expect(mountPanel().text()).toContain('provided by Tern through Elev8')
   })
 
   it('opens the editor for a new policy', async () => {
@@ -83,13 +85,37 @@ describe('damage protection settings: listings', () => {
     const villa = rows.find(r => r.text().includes('5BR Pool the R Villa Luwa'))!
     expect(villa.find('[data-testid="slot-short"]').element.parentElement!.getAttribute('data-value')).toBe('dp-standard')
     expect(villa.find('[data-testid="slot-long"]').element.parentElement!.getAttribute('data-value')).toBe('dp-long-stay')
+    expect(villa.find('[data-testid="listing-mode"]').element.parentElement!.getAttribute('data-value')).toBe('guest_paid')
     const unset = rows.find(r => r.text().includes('Nomad Mansion Pool'))!
-    expect(unset.find('[data-testid="slot-short"]').element.parentElement!.getAttribute('data-value')).toBe('none')
+    expect(unset.find('[data-testid="listing-mode"]').element.parentElement!.getAttribute('data-value')).toBe('off')
+    expect(unset.find('[data-testid="slot-short"]').exists()).toBe(false)
+    expect(unset.text()).toContain('Not protected')
   })
 
   it('greys out a policy in another currency than the listing\'s payouts', () => {
+    const dp = useDamageProtection()
+    dp.savePolicy({ ...policyFromTemplate('deposit_only', 'IDR'), id: 'dp-idr' })
+    dp.setListingMode('lst-3', 'guest_paid')
     const row = mountPanel().findAll('[data-testid="listing-row"]').find(r => r.text().includes('The R Pererenan'))!
     expect(row.text()).toContain('(USD, payouts are IDR)')
+  })
+
+  it('switches a listing to host-paid from its row, and blocks a deposit-only policy there', async () => {
+    const wrapper = mountPanel()
+    // lst-2 is "Apartments Pool", a prefix of its sibling rooms' names: match it exactly.
+    const row = () => wrapper.findAll('[data-testid="listing-row"]').find(r => r.find('p.font-medium').text() === 'Apartments Pool')!
+    const select = row().findAllComponents({ name: 'SelectStub' }).find(c => c.find('[data-testid="listing-mode"]').exists())!
+    select.vm.$emit('update:modelValue', 'host_paid')
+    await nextTick()
+    expect(useDamageProtection().listingMode('lst-2')).toBe('host_paid')
+    expect(row().text()).toContain('Guests are not asked. Elev8 charges you per stay.')
+    expect(row().text()).toContain('(no waiver for you to pay for)')
+  })
+
+  it('flags a Tern tier too small for the property', () => {
+    // lst-1 sleeps 10 and its short-stay policy is Bronze, sized for up to 4.
+    const villa = mountPanel().findAll('[data-testid="listing-row"]').find(r => r.text().includes('5BR Pool the R Villa Luwa'))!
+    expect(villa.find('[data-testid="listing-undersized"]').text()).toContain('Gold is recommended')
   })
 
   it('offers to switch a listing with custom night ranges to the two standard slots', () => {
@@ -132,7 +158,7 @@ describe('damage protection settings: assigning many listings at once', () => {
   it('narrows to listings not set up yet', async () => {
     const wrapper = mountPanel()
     const all = wrapper.findAll('[data-testid="listing-row"]').length
-    await choose(wrapper, 'listings-status', 'unset')
+    await choose(wrapper, 'listings-status', 'off')
     const rows = wrapper.findAll('[data-testid="listing-row"]')
     expect(rows.length).toBeLessThan(all)
     expect(rows.some(r => r.text().includes('5BR Pool the R Villa Luwa'))).toBe(false)
@@ -161,7 +187,19 @@ describe('damage protection settings: assigning many listings at once', () => {
     const wrapper = mountPanel()
     await wrapper.findAll('[data-testid="row-select"]')[0]!.trigger('click')
     await wrapper.find('[data-testid="bulk-apply"]').trigger('click')
-    expect(toast.error).toHaveBeenCalledWith('Choose a policy for short stays, long stays, or both.')
+    expect(toast.error).toHaveBeenCalledWith('Choose who pays, a policy for short stays, long stays, or any of them.')
+  })
+
+  it('sets who pays on every ticked listing at once', async () => {
+    const wrapper = mountPanel()
+    const tick = (name: string) => wrapper.findAll('[data-testid="listing-row"]').find(r => r.text().includes(name))!.find('[data-testid="row-select"]').trigger('click')
+    await tick('5BR Pool the R Villa Luwa')
+    await tick('Apartments Pool - Room 3')
+    await choose(wrapper, 'bulk-mode', 'host_paid')
+    await wrapper.find('[data-testid="bulk-apply"]').trigger('click')
+    expect(useDamageProtection().listingMode('lst-1')).toBe('host_paid')
+    expect(useDamageProtection().listingMode('lst-18')).toBe('host_paid')
+    expect(toast.success).toHaveBeenCalledWith('Applied to 2 listings')
   })
 })
 
@@ -175,11 +213,73 @@ describe('the policy editor', () => {
     return wrapper.setProps({ open: true }).then(() => wrapper)
   }
 
+  it('starts a new policy from a template, complete and ready to assign', async () => {
+    const wrapper = await mountSheet(null)
+    expect(wrapper.findAll('[data-testid="policy-template"]').map(t => t.text()))
+      .toEqual([expect.stringContaining('Standard short-term'), expect.stringContaining('Standard long-term'), expect.stringContaining('Deposit only')])
+    await wrapper.findAll('[data-testid="policy-template"]')[1]!.trigger('click')
+    expect((wrapper.find('#policy-name').element as HTMLInputElement).value).toBe('Standard long-term')
+    await wrapper.find('[data-testid="policy-save"]').trigger('click')
+    const created = useDamageProtection().policies.value.at(-1)!
+    expect(created).toMatchObject({ templateId: 'standard_long', offers: ['waiver'], waiver: { tier: 'silver', guestPrice: 249 } })
+  })
+
+  it('cannot switch the waiver on before the damage waiver is activated', async () => {
+    useTernActivation().replayActivation()
+    const wrapper = await mountSheet(null)
+    // A new policy starts deposit-only, and the waiver templates are locked.
+    expect(useDamageProtection().policies.value).toHaveLength(3)
+    expect((wrapper.find('#policy-name').element as HTMLInputElement).value).toBe('Deposit only')
+    const templates = wrapper.findAll('[data-testid="policy-template"]')
+    expect(templates.map(t => t.attributes('disabled') !== undefined)).toEqual([true, true, false])
+    expect(wrapper.find('#policy-offer-waiver').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="policy-waiver-locked"]').text()).toContain('Activate the damage waiver first')
+    // Clicking a locked template changes nothing.
+    await templates[0]!.trigger('click')
+    expect((wrapper.find('#policy-name').element as HTMLInputElement).value).toBe('Deposit only')
+    await wrapper.find('[data-testid="policy-save"]').trigger('click')
+    expect(useDamageProtection().policies.value.at(-1)).toMatchObject({ templateId: 'deposit_only', offers: ['deposit'] })
+  })
+
+  it('still edits a policy that already offers the waiver, marked paused', async () => {
+    useTernActivation().replayActivation()
+    const wrapper = await mountSheet('dp-standard')
+    expect(wrapper.find('#policy-offer-waiver').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).toContain('Paused until the damage waiver is activated')
+    await wrapper.find('#policy-guest-price').setValue(45)
+    await wrapper.find('[data-testid="policy-save"]').trigger('click')
+    expect(useDamageProtection().policies.value.find(p => p.id === 'dp-standard')!.waiver.guestPrice).toBe(45)
+  })
+
   it('lists what is missing on a new policy instead of saving it', async () => {
     const wrapper = await mountSheet(null)
+    await wrapper.find('#policy-guest-price').setValue(0)
     await wrapper.find('[data-testid="policy-save"]').trigger('click')
-    expect(wrapper.find('[data-testid="policy-errors"]').text()).toContain('Set the waiver fee.')
+    expect(wrapper.find('[data-testid="policy-errors"]').text()).toContain('Set what you charge the guest for the waiver.')
     expect(useDamageProtection().policies.value).toHaveLength(3)
+  })
+
+  it('offers the cover as Tern tiers with no amount to type, and shows what Elev8 charges', async () => {
+    const wrapper = await mountSheet('dp-standard')
+    expect(wrapper.find('#policy-waiver-cap').exists()).toBe(false)
+    expect(wrapper.find('#policy-exclusion').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="policy-exclusions"]').text()).toContain('Normal wear and tear')
+    expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('Elev8 charges you USD 9.00 per covered stay')
+    expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('You keep USD 30.00')
+    await wrapper.find('[data-testid="policy-tier-gold"]').trigger('click')
+    expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('USD 25.00')
+    await wrapper.find('[data-testid="policy-save"]').trigger('click')
+    expect(useDamageProtection().policies.value.find(p => p.id === 'dp-standard')!.waiver.tier).toBe('gold')
+  })
+
+  it('locks the channels to all while the waiver is on, and frees them for a deposit-only policy', async () => {
+    const wrapper = await mountSheet('dp-standard')
+    const airbnb = () => wrapper.find('#policy-channel-Airbnb').element as HTMLInputElement
+    expect(airbnb().checked).toBe(true)
+    expect(wrapper.find('[data-testid="policy-channels-note"]').text()).toContain('runs on every channel')
+    await wrapper.find('#policy-offer-waiver').setValue(false)
+    expect(airbnb().checked).toBe(false)
+    expect(wrapper.find('[data-testid="policy-channels-note"]').text()).toContain('only on the channels you turn on')
   })
 
   it('hides an option\'s fields when it is turned off', async () => {
@@ -191,21 +291,21 @@ describe('the policy editor', () => {
 
   it('edits a draft: nothing changes until Save, and changed terms get a new version', async () => {
     const wrapper = await mountSheet('dp-standard')
-    await wrapper.find('#policy-waiver-rate').setValue(45)
+    await wrapper.find('#policy-guest-price').setValue(45)
     await wrapper.find('#policy-terms').setValue('New wording')
-    expect(useDamageProtection().policies.value.find(p => p.id === 'dp-standard')!.waiver.rate).toBe(39)
+    expect(useDamageProtection().policies.value.find(p => p.id === 'dp-standard')!.waiver.guestPrice).toBe(39)
     expect(wrapper.find('[data-testid="policy-terms-version"]').text()).toContain('Saving will create terms version v2')
 
     await wrapper.find('[data-testid="policy-save"]').trigger('click')
     const saved = useDamageProtection().policies.value.find(p => p.id === 'dp-standard')!
-    expect(saved.waiver.rate).toBe(45)
+    expect(saved.waiver.guestPrice).toBe(45)
     expect(saved.termsText).toBe('New wording')
     expect(saved.termsVersion).toBe('v2')
   })
 
   it('keeps the version when the terms are unchanged', async () => {
     const wrapper = await mountSheet('dp-standard')
-    await wrapper.find('#policy-waiver-cap').setValue(2500)
+    await wrapper.find('#policy-guest-price').setValue(49)
     await wrapper.find('[data-testid="policy-save"]').trigger('click')
     expect(useDamageProtection().policies.value.find(p => p.id === 'dp-standard')!.termsVersion).toBe('v1')
   })

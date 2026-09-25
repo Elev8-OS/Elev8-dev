@@ -1,49 +1,111 @@
 <script setup lang="ts">
-import type { DamageProtectionPolicy, ProtectionCurrency } from '~/components/reservations/data/damage-protection'
-import type { DepositPricing, WaiverPricing } from '~/components/reservations/data/reservations'
+import type { DamageProtectionPolicy, PolicyTemplateId, ProtectionCurrency } from '~/components/reservations/data/damage-protection'
+import type { DepositPricing } from '~/components/reservations/data/reservations'
+import type { TernTier } from '~/components/reservations/data/tern-products'
 import { toast } from 'vue-sonner'
 import ProtectionOptionCards from '~/components/damage-protection/ProtectionOptionCards.vue'
-import { buildOptions, bumpTermsVersion, newPolicyDraft, policyErrors } from '~/components/reservations/data/damage-protection'
+import {
+  buildOptions,
+  bumpTermsVersion,
+  channelsSelectable,
+  formatProtectionAmount,
+  newPolicyDraft,
+  POLICY_TEMPLATES,
+  policyErrors,
+  policyFromTemplate,
+  waiverCover,
+  waiverExclusions,
+} from '~/components/reservations/data/damage-protection'
+import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 
 /**
- * Edit one damage protection policy, or create one. Works on a DRAFT: nothing
- * reaches the policy until Save, and Cancel throws the draft away. Bookings
- * that already accepted a policy keep what they agreed to either way.
+ * Edit one damage protection policy, or create one from a template. Works on a
+ * DRAFT: nothing reaches the policy until Save, and Cancel throws the draft
+ * away. Bookings that already accepted a policy keep what they agreed to.
+ *
+ * ⚠️ The tenant never types a cover amount or an exclusion: those come from the
+ * Tern tier. The one waiver number here is what the tenant charges the guest,
+ * shown beside the fixed fee Elev8 charges them per stay.
  */
-const props = defineProps<{
+// ⚠️ `guestPaid` defaults to TRUE explicitly: Vue turns an absent boolean prop
+// into false, which would silently stop asking a new policy for a guest price.
+const props = withDefaults(defineProps<{
   /** The policy to edit; null creates a new one. */
   policy: DamageProtectionPolicy | null
-  /** Whether any listing uses this policy for long stays: those need ceilings and a wear and tear exclusion. */
+  /** Whether any listing uses this policy for long stays: those need a ceiling on a percent deposit. */
   usedForLongStays?: boolean
-}>()
+  /** False when every listing using it is host-paid: no guest price is charged there. */
+  guestPaid?: boolean
+}>(), { usedForLongStays: false, guestPaid: true })
 
 const open = defineModel<boolean>('open', { required: true })
 
 const dp = useDamageProtection()
 
 const draft = ref<DamageProtectionPolicy>(newPolicyDraft('USD'))
-const newExclusion = ref('')
+const saveRefusal = ref('')
 const showErrors = ref(false)
 
 const isNew = computed(() => props.policy === null)
 
+/**
+ * ⚠️ The waiver cannot be switched ON before the damage waiver is activated:
+ * a waiver policy made then could only ever sit paused. A policy that already
+ * offers it can still be edited (and switched off and on again); it stays
+ * paused. `savePolicy` refuses the same thing, this is the screen saying so.
+ */
+const waiverLocked = computed(() =>
+  !dp.waiverServiceActive.value && !props.policy?.offers.includes('waiver'))
+
+function freshDraft(): DamageProtectionPolicy {
+  // Before activation the only template that can be saved is Deposit only.
+  return waiverLocked.value ? policyFromTemplate('deposit_only', 'USD') : newPolicyDraft('USD')
+}
+
 watch(open, (isOpen) => {
   if (!isOpen)
     return
-  draft.value = props.policy ? JSON.parse(JSON.stringify(props.policy)) : newPolicyDraft('USD')
-  newExclusion.value = ''
+  draft.value = props.policy ? JSON.parse(JSON.stringify(props.policy)) : freshDraft()
   showErrors.value = false
+  saveRefusal.value = ''
 })
+
+/** New policies start from a template; picking another replaces the draft, keeping the currency. */
+function templateLocked(templateId: PolicyTemplateId): boolean {
+  return waiverLocked.value && Boolean(POLICY_TEMPLATES.find(t => t.id === templateId)?.offers.includes('waiver'))
+}
+
+function applyTemplate(templateId: PolicyTemplateId) {
+  if (templateLocked(templateId))
+    return
+  draft.value = { ...policyFromTemplate(templateId, draft.value.currency), id: draft.value.id }
+}
+
+function setCurrency(currency: unknown) {
+  if (typeof currency !== 'string')
+    return
+  const guestPrice = draft.value.templateId
+    ? POLICY_TEMPLATES.find(t => t.id === draft.value.templateId)?.guestPrice[currency as ProtectionCurrency] ?? 0
+    : draft.value.waiver.guestPrice
+  draft.value = { ...draft.value, currency: currency as ProtectionCurrency, waiver: { ...draft.value.waiver, guestPrice } }
+}
+
+function setTier(tier: TernTier) {
+  if (!ternPriceFor(tier, draft.value.currency))
+    return
+  draft.value = { ...draft.value, waiver: { ...draft.value.waiver, tier } }
+}
+
+const cover = computed(() => waiverCover(draft.value))
+const exclusions = computed(() => waiverExclusions(draft.value))
+/** What the tenant keeps per guest-paid stay. Same currency by construction: Tern prices each currency itself. */
+const margin = computed(() => cover.value ? draft.value.waiver.guestPrice - cover.value.perStayFee : null)
+const channelsLocked = computed(() => !channelsSelectable(draft.value))
 
 const CHANNELS = ['Direct', 'Airbnb', 'Booking.com'] as const
 const CURRENCIES: ProtectionCurrency[] = ['USD', 'IDR', 'EUR', 'CHF']
 
-const WAIVER_PRICING: { value: WaiverPricing, label: string }[] = [
-  { value: 'flat', label: 'Per stay' },
-  { value: 'per_night', label: 'Per night' },
-  { value: 'percent_of_subtotal', label: '% of the stay' },
-]
 const DEPOSIT_PRICING: { value: DepositPricing, label: string }[] = [
   { value: 'flat', label: 'Fixed amount' },
   { value: 'percent_of_subtotal', label: '% of the stay' },
@@ -54,6 +116,8 @@ function offers(option: 'waiver' | 'deposit'): boolean {
 }
 
 function setOffer(option: 'waiver' | 'deposit', on: boolean) {
+  if (option === 'waiver' && on && waiverLocked.value)
+    return
   const next = new Set(draft.value.offers)
   if (on)
     next.add(option)
@@ -67,22 +131,13 @@ function setChannel(channel: typeof CHANNELS[number], on: boolean) {
   draft.value = { ...draft.value, channelPolicy: { ...draft.value.channelPolicy, [channel]: on ? 'offer' : 'skip' } }
 }
 
-function addExclusion() {
-  const text = newExclusion.value.trim()
-  if (!text || draft.value.waiver.exclusions.includes(text))
-    return
-  draft.value.waiver.exclusions = [...draft.value.waiver.exclusions, text]
-  newExclusion.value = ''
-}
-
-function removeExclusion(text: string) {
-  draft.value.waiver.exclusions = draft.value.waiver.exclusions.filter(e => e !== text)
-}
-
 const termsChanged = computed(() => !isNew.value && draft.value.termsText !== props.policy?.termsText)
 const nextVersion = computed(() => bumpTermsVersion(draft.value.termsVersion))
 
-const errors = computed(() => policyErrors(draft.value, Boolean(props.usedForLongStays)))
+const errors = computed(() => policyErrors(draft.value, {
+  longStay: props.usedForLongStays,
+  guestPaid: props.guestPaid,
+}))
 
 /** The same builder the guest screen uses, for a sample 5-night stay on a Stripe listing. */
 const preview = computed(() => buildOptions(draft.value, { nights: 5, priceDetails: { subtotal: 1000 } }, 'card'))
@@ -96,16 +151,19 @@ function save() {
     // Changed wording is a new version, so the bookings that accepted the old
     // words stay distinguishable. Nobody has to remember to bump it.
     termsVersion: termsChanged.value ? nextVersion.value : draft.value.termsVersion,
-    waiver: {
-      ...draft.value.waiver,
-      maxAmount: draft.value.waiver.pricing === 'flat' ? undefined : draft.value.waiver.maxAmount,
-    },
     deposit: {
       ...draft.value.deposit,
       maxAmount: draft.value.deposit.pricing === 'flat' ? undefined : draft.value.deposit.maxAmount,
     },
   }
-  dp.savePolicy(toSave)
+  const result = dp.savePolicy(toSave)
+  if (!result.ok) {
+    saveRefusal.value = result.reason === 'waiver_not_activated'
+      ? 'Activate the damage waiver first, at the top of the Damage protection page, to offer it in a policy.'
+      : `Could not save the policy (${result.reason.replace(/_/g, ' ')})`
+    return
+  }
+  saveRefusal.value = ''
   toast.success(isNew.value ? 'Policy created. Assign it to listings in the Listings tab.' : 'Policy saved')
   open.value = false
 }
@@ -131,7 +189,7 @@ function save() {
             </div>
             <div class="flex flex-col gap-1.5">
               <Label>Currency</Label>
-              <Select v-if="isNew" v-model="draft.currency">
+              <Select v-if="isNew" :model-value="draft.currency" @update:model-value="setCurrency">
                 <SelectTrigger data-testid="policy-currency">
                   <SelectValue />
                 </SelectTrigger>
@@ -147,6 +205,35 @@ function save() {
             </div>
           </div>
 
+          <!-- Templates: a complete policy to start from, so a tenant assigns rather than builds -->
+          <section v-if="isNew" class="flex flex-col gap-2" data-testid="policy-templates">
+            <p class="text-sm font-medium">
+              Start from a template
+            </p>
+            <div class="grid gap-2 sm:grid-cols-3">
+              <button
+                v-for="template in POLICY_TEMPLATES"
+                :key="template.id"
+                type="button"
+                class="flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors"
+                :class="[
+                  draft.templateId === template.id ? 'border-primary ring-1 ring-primary' : '',
+                  templateLocked(template.id) ? 'cursor-not-allowed opacity-50' : 'hover:border-primary/60',
+                ]"
+                :aria-pressed="draft.templateId === template.id"
+                :disabled="templateLocked(template.id)"
+                data-testid="policy-template"
+                @click="applyTemplate(template.id)"
+              >
+                <span class="text-sm font-medium">{{ template.name }}</span>
+                <span class="text-xs text-muted-foreground">{{ template.summary }}</span>
+                <span v-if="templateLocked(template.id)" class="text-xs text-amber-700 dark:text-amber-400">
+                  Needs the damage waiver activated
+                </span>
+              </button>
+            </div>
+          </section>
+
           <!-- What guests can choose -->
           <section class="flex flex-col gap-3">
             <p class="text-sm font-medium">
@@ -161,77 +248,98 @@ function save() {
                     Damage waiver
                   </p>
                   <p class="text-xs text-muted-foreground">
-                    The guest pays a fee and is not charged for accidental damage, up to the cover.
+                    Accidental damage is covered up to the Tern cover. Applies to every booking, on every channel.
                   </p>
                 </div>
                 <Switch
                   id="policy-offer-waiver"
                   aria-label="Offer the damage waiver"
                   :model-value="offers('waiver')"
+                  :disabled="waiverLocked"
                   @update:model-value="(v) => setOffer('waiver', v)"
                 />
               </div>
+              <p v-if="waiverLocked" class="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400" data-testid="policy-waiver-locked">
+                <Icon name="lucide:lock" class="mt-0.5 size-3 shrink-0" />
+                Activate the damage waiver first, at the top of the Damage protection page. Until then a policy can offer
+                the deposit only.
+              </p>
+              <p
+                v-else-if="!dp.waiverServiceActive.value && offers('waiver')"
+                class="text-xs text-amber-700 dark:text-amber-400"
+              >
+                Paused until the damage waiver is activated. Guests are not asked in the meantime.
+              </p>
               <template v-if="offers('waiver')">
-                <div class="grid gap-3 sm:grid-cols-3">
-                  <div class="flex flex-col gap-1.5">
-                    <Label>Fee is charged</Label>
-                    <Select v-model="draft.waiver.pricing">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem v-for="p in WAIVER_PRICING" :key="p.value" :value="p.value">
-                          {{ p.label }}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="policy-waiver-rate">
-                      {{ draft.waiver.pricing === 'percent_of_subtotal' ? 'Fee (%)' : `Fee (${draft.currency})` }}
-                    </Label>
-                    <Input id="policy-waiver-rate" v-model.number="draft.waiver.rate" type="number" min="0" />
-                  </div>
-                  <div class="flex flex-col gap-1.5">
-                    <Label for="policy-waiver-cap">Covers up to ({{ draft.currency }})</Label>
-                    <Input id="policy-waiver-cap" v-model.number="draft.waiver.coverageCap" type="number" min="0" />
-                  </div>
-                </div>
-                <div v-if="draft.waiver.pricing !== 'flat'" class="flex flex-col gap-1.5 sm:max-w-[33%]">
-                  <Label for="policy-waiver-max">Highest fee ({{ draft.currency }})</Label>
-                  <Input id="policy-waiver-max" v-model.number="draft.waiver.maxAmount" type="number" min="0" placeholder="No limit" />
-                </div>
+                <!-- The cover is a Tern product. The tenant picks a tier and never types an amount. -->
                 <div class="flex flex-col gap-1.5">
-                  <Label for="policy-exclusion">Not covered</Label>
-                  <ul v-if="draft.waiver.exclusions.length" class="flex flex-col gap-1">
-                    <li
-                      v-for="exclusion in draft.waiver.exclusions"
-                      :key="exclusion"
-                      class="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1 text-sm"
+                  <p class="text-sm">
+                    Cover, provided by Tern through Elev8
+                  </p>
+                  <div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Tern cover">
+                    <button
+                      v-for="product in TERN_PRODUCTS"
+                      :key="product.tier"
+                      type="button"
+                      role="radio"
+                      class="flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors"
+                      :class="[
+                        draft.waiver.tier === product.tier ? 'border-primary ring-1 ring-primary' : '',
+                        ternPriceFor(product.tier, draft.currency) ? 'hover:border-primary/60' : 'cursor-not-allowed opacity-50',
+                      ]"
+                      :aria-checked="draft.waiver.tier === product.tier"
+                      :disabled="!ternPriceFor(product.tier, draft.currency)"
+                      :data-testid="`policy-tier-${product.tier}`"
+                      @click="setTier(product.tier)"
                     >
-                      <span>{{ exclusion }}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="size-6 shrink-0 hover:text-destructive"
-                        :aria-label="`Remove ${exclusion}`"
-                        @click="removeExclusion(exclusion)"
-                      >
-                        <Icon name="lucide:x" class="size-3.5" />
-                      </Button>
+                      <span class="text-sm font-medium">{{ product.name }}</span>
+                      <span class="text-xs text-muted-foreground">{{ ternSizeLabel(product) }}</span>
+                      <template v-if="ternPriceFor(product.tier, draft.currency)">
+                        <span class="mt-1 text-sm tabular-nums">
+                          Covers {{ formatProtectionAmount(ternPriceFor(product.tier, draft.currency)!.coverageCap, draft.currency) }}
+                        </span>
+                        <span class="text-xs text-muted-foreground tabular-nums">
+                          Elev8 charges {{ formatProtectionAmount(ternPriceFor(product.tier, draft.currency)!.perStayFee, draft.currency) }} per stay
+                        </span>
+                      </template>
+                      <span v-else class="mt-1 text-xs text-muted-foreground">Not available in {{ draft.currency }} yet</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="flex flex-col gap-1.5">
+                    <Label for="policy-guest-price">You charge the guest, per stay ({{ draft.currency }})</Label>
+                    <Input id="policy-guest-price" v-model.number="draft.waiver.guestPrice" type="number" min="0" />
+                  </div>
+                  <div v-if="cover" class="flex flex-col justify-end gap-0.5 text-sm" data-testid="policy-fee-readout">
+                    <p class="tabular-nums">
+                      Elev8 charges you {{ formatProtectionAmount(cover.perStayFee, draft.currency) }} per covered stay
+                    </p>
+                    <p
+                      v-if="margin !== null && draft.waiver.guestPrice > 0"
+                      class="text-xs tabular-nums"
+                      :class="margin < 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+                    >
+                      {{ margin < 0
+                        ? `You would collect ${formatProtectionAmount(-margin, draft.currency)} less per stay than Elev8 charges you.`
+                        : `You keep ${formatProtectionAmount(margin, draft.currency)} per guest-paid stay.` }}
+                    </p>
+                  </div>
+                </div>
+                <p class="text-xs text-muted-foreground">
+                  On a listing where you pay for the cover, the guest is not asked and pays nothing. Elev8 charges you the same fee per stay.
+                </p>
+
+                <div class="flex flex-col gap-1.5">
+                  <p class="text-sm">
+                    Not covered <span class="text-xs text-muted-foreground">(set by Tern)</span>
+                  </p>
+                  <ul class="flex flex-col gap-1 text-xs text-muted-foreground" data-testid="policy-exclusions">
+                    <li v-for="exclusion in exclusions" :key="exclusion">
+                      {{ exclusion }}
                     </li>
                   </ul>
-                  <div class="flex gap-2">
-                    <Input
-                      id="policy-exclusion"
-                      v-model="newExclusion"
-                      placeholder="For example: damage caused by pets"
-                      @keydown.enter.prevent="addExclusion"
-                    />
-                    <Button variant="outline" @click="addExclusion">
-                      Add
-                    </Button>
-                  </div>
                 </div>
               </template>
             </div>
@@ -295,15 +403,22 @@ function save() {
               <div v-for="channel in CHANNELS" :key="channel" class="flex items-center gap-2">
                 <Switch
                   :id="`policy-channel-${channel}`"
-                  :model-value="draft.channelPolicy[channel] === 'offer'"
+                  :model-value="channelsLocked || draft.channelPolicy[channel] === 'offer'"
+                  :disabled="channelsLocked"
                   @update:model-value="(v) => setChannel(channel, v)"
                 />
                 <Label :for="`policy-channel-${channel}`" class="text-sm font-normal">{{ channel }}</Label>
               </div>
             </div>
-            <p class="text-xs text-muted-foreground">
-              Guests are only asked on the channels you turn on. Airbnb and Booking.com run their own damage programmes,
-              so they are usually left off.
+            <p class="text-xs text-muted-foreground" data-testid="policy-channels-note">
+              <template v-if="channelsLocked">
+                The waiver covers every booking, so it runs on every channel, and so does the deposit beside it.
+                Owner stays are never included.
+              </template>
+              <template v-else>
+                A deposit-only policy asks guests only on the channels you turn on. Airbnb and Booking.com run their own
+                damage programmes, so they are usually left off.
+              </template>
             </p>
           </section>
 
@@ -338,6 +453,9 @@ function save() {
       </div>
 
       <div class="flex flex-col gap-3 border-t px-6 py-4">
+        <p v-if="saveRefusal" class="text-sm text-destructive" data-testid="policy-save-refused">
+          {{ saveRefusal }}
+        </p>
         <ul v-if="showErrors && errors.length" class="flex flex-col gap-1 text-sm text-destructive" data-testid="policy-errors">
           <li v-for="error in errors" :key="error">
             {{ error }}

@@ -261,9 +261,12 @@ export function buildClaimEvidencePdf(input: ClaimEvidencePdfInput, opts: { down
   )
 
   // --- The protection the guest chose -------------------------------------
-  section('Protection the guest chose')
+  const hostPaid = protection.paidBy === 'host'
+  section(hostPaid ? 'Protection on the stay' : 'Protection the guest chose')
   if (protection.option === 'waiver') {
-    row('Option', `Damage waiver, fee ${money(protection.amount, currency)}`)
+    row('Option', hostPaid
+      ? 'Damage waiver, paid for by the host. The guest was not asked to pay'
+      : `Damage waiver, fee ${money(protection.amount, currency)}`)
     row('Cover', money(protection.coverageCap ?? 0, currency))
   }
   else {
@@ -275,7 +278,10 @@ export function buildClaimEvidencePdf(input: ClaimEvidencePdfInput, opts: { down
     else if (protection.state === 'charge_failed')
       row('Charge', `Declined: ${protection.chargeFailureReason ?? 'by the issuer'}`, 'warn')
   }
-  row('Accepted', `${dateTime(protection.acceptedAt)}, ${protection.acceptedVia === 'guest_guide' ? 'in the guest guide' : 'recorded by staff'}`)
+  const via = protection.acceptedVia === 'guest_guide'
+    ? 'in the guest guide'
+    : protection.acceptedVia === 'host_cover' ? 'covered automatically by the host' : 'recorded by staff'
+  row(hostPaid ? 'Covered' : 'Accepted', `${dateTime(protection.acceptedAt)}, ${via}`)
   row('Terms', `Version ${protection.termsVersion}`)
   row('Terms text', protection.termsText)
   if (protection.chargeMandate)

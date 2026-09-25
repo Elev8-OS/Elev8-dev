@@ -1,6 +1,6 @@
 import type { DamageProtectionAssignment } from '~/components/reservations/data/damage-protection'
 import { describe, expect, it } from 'vitest'
-import { bumpTermsVersion, listingSlots, newPolicyDraft, policyErrors } from '~/components/reservations/data/damage-protection'
+import { bumpTermsVersion, listingSlots, newPolicyDraft, POLICY_TEMPLATES, policyErrors, policyFromTemplate } from '~/components/reservations/data/damage-protection'
 
 function band(listingId: string, policyId: string, minNights: number, maxNights: number | null): DamageProtectionAssignment {
   return { listingId, policyId, minNights, maxNights }
@@ -29,42 +29,65 @@ describe('bumpTermsVersion', () => {
 })
 
 describe('policyErrors', () => {
-  const valid = () => ({
-    ...newPolicyDraft('USD'),
-    name: 'Standard',
-    waiver: { pricing: 'flat' as const, rate: 39, coverageCap: 2000, exclusions: [] },
-    termsText: 'Terms',
+  const valid = () => ({ ...newPolicyDraft('USD'), name: 'Standard' })
+
+  it('accepts a policy started from the standard template as it stands', () => {
+    expect(policyErrors(valid())).toEqual([])
   })
 
-  it('accepts a complete waiver policy', () => {
-    expect(policyErrors(valid(), false)).toEqual([])
+  it('never asks for a cover amount, only for what the guest is charged', () => {
+    const errors = policyErrors({ ...valid(), waiver: { tier: 'bronze', guestPrice: 0 } })
+    expect(errors).toEqual(['Set what you charge the guest for the waiver.'])
   })
 
-  it('starts a new policy waiver only and Direct only, and says what is missing', () => {
-    const errors = policyErrors(newPolicyDraft('USD'), false)
-    expect(errors).toContain('Set the waiver fee.')
-    expect(errors).toContain('Set how much the waiver covers.')
-    expect(errors).toContain('Write the terms the guest accepts.')
-    expect(errors).not.toContain('Turn on at least one booking channel, or no guest is ever asked.')
+  it('needs no guest price where only host-paid listings use the policy', () => {
+    expect(policyErrors({ ...valid(), waiver: { tier: 'bronze', guestPrice: 0 } }, { guestPaid: false })).toEqual([])
   })
 
-  it('needs at least one option and at least one channel', () => {
-    expect(policyErrors({ ...valid(), offers: [] }, false)).toContain('Offer at least one option: the waiver, the deposit, or both.')
-    expect(policyErrors({ ...valid(), channelPolicy: { Direct: 'skip' } }, false))
+  it('refuses a waiver in a currency Tern does not price, rather than converting', () => {
+    expect(policyErrors({ ...valid(), currency: 'IDR' })).toContain('The Bronze cover is not available in IDR yet.')
+  })
+
+  it('needs at least one option', () => {
+    expect(policyErrors({ ...valid(), offers: [] })).toContain('Offer at least one option: the waiver, the deposit, or both.')
+  })
+
+  it('ignores the channel switches while the waiver is on: it covers every channel', () => {
+    expect(policyErrors({ ...valid(), channelPolicy: { Direct: 'skip' } })).toEqual([])
+  })
+
+  it('needs a channel on a deposit-only policy', () => {
+    const depositOnly = policyFromTemplate('deposit_only', 'USD')
+    expect(policyErrors(depositOnly)).toEqual([])
+    expect(policyErrors({ ...depositOnly, channelPolicy: { Direct: 'skip' } }))
       .toContain('Turn on at least one booking channel, or no guest is ever asked.')
   })
 
   it('needs a deposit limit and decision window when the deposit is offered', () => {
-    const errors = policyErrors({ ...valid(), offers: ['waiver', 'deposit'], deposit: { pricing: 'flat', rate: 0, settleWithinDays: 0 } }, false)
+    const errors = policyErrors({ ...valid(), offers: ['waiver', 'deposit'], deposit: { pricing: 'flat', rate: 0, settleWithinDays: 0 } })
     expect(errors).toContain('Set the most the guest\'s card may be charged.')
     expect(errors).toContain('Set how many days after check-out you decide on the deposit.')
   })
 
-  it('asks more of a policy used for long stays: a ceiling and wear and tear named', () => {
-    const perNight = { ...valid(), waiver: { pricing: 'per_night' as const, rate: 5, coverageCap: 2000, exclusions: [] } }
-    expect(policyErrors(perNight, false)).toEqual([])
-    const errors = policyErrors(perNight, true)
-    expect(errors).toContain('Set a maximum waiver fee: without one, a long stay computes an unbounded fee.')
-    expect(errors.some(e => e.includes('wear and tear'))).toBe(true)
+  it('asks a percent deposit used for long stays for a ceiling', () => {
+    const percent = { ...valid(), deposit: { pricing: 'percent_of_subtotal' as const, rate: 20, settleWithinDays: 7 } }
+    expect(policyErrors(percent)).toEqual([])
+    expect(policyErrors(percent, { longStay: true }))
+      .toContain('Set a maximum deposit: without one, a long stay computes an unbounded amount.')
+  })
+})
+
+describe('policy templates', () => {
+  it('gives every template a complete policy a tenant can assign without editing', () => {
+    for (const template of POLICY_TEMPLATES)
+      expect(policyErrors(policyFromTemplate(template.id, 'USD')), template.id).toEqual([])
+  })
+
+  it('keeps the long-term template waiver only', () => {
+    expect(policyFromTemplate('standard_long', 'USD').offers).toEqual(['waiver'])
+  })
+
+  it('records which template a policy came from', () => {
+    expect(policyFromTemplate('standard_short', 'USD').templateId).toBe('standard_short')
   })
 })

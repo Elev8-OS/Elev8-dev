@@ -2,6 +2,7 @@ import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { BookingChannel } from '~/components/listings/data/listings'
 import type { ReservationCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import type { FolioItem } from '~/components/reservations/data/folio'
+import type { TernTier } from '~/components/reservations/data/tern-products'
 import { damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
 
 export type {
@@ -126,7 +127,11 @@ export interface CityTaxSettlement {
 // ---------------------------------------------------------------------------
 
 export type ProtectionOption = 'waiver' | 'deposit'
-export type WaiverPricing = 'flat' | 'per_night' | 'percent_of_subtotal'
+/**
+ * Who pays for the waiver. 'guest' buys it in the guest guide; 'host' means the
+ * guest is never asked and Elev8 bills the host the Tern per-stay fee.
+ */
+export type ProtectionPayer = 'guest' | 'host'
 export type DepositPricing = 'flat' | 'percent_of_subtotal'
 
 /**
@@ -301,14 +306,27 @@ export interface DamageProtection {
   option: ProtectionOption
   state: ProtectionState
 
-  /** The waiver fee, or on a deposit the most the saved card may be charged. */
+  /**
+   * What the GUEST pays for the waiver (0 where the host pays), or on a deposit
+   * the most the saved card may be charged.
+   */
   amount: number
   currency: string
   coverageCap?: number
+  /** Waiver: who pays for it. Absent means the guest, which is every protection written before this existed. */
+  paidBy?: ProtectionPayer
+  /** Waiver: the Tern tier behind the cover, frozen with it. */
+  tier?: TernTier
+  /**
+   * Waiver: what Elev8 charges the tenant for this stay, FROZEN at acceptance in
+   * `currency`. A later Tern price change cannot rewrite a stay already covered.
+   */
+  elev8Fee?: number
   termsVersion: string
   termsText: string
   acceptedAt: string
-  acceptedVia: 'guest_guide' | 'staff'
+  /** 'host_cover': written automatically on a host-paid listing, nobody accepted anything. */
+  acceptedVia: 'guest_guide' | 'staff' | 'host_cover'
 
   /** Deposit: the card the guest saved. Required in every deposit state. */
   card?: SavedCard

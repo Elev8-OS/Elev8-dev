@@ -5,12 +5,14 @@ import type {
   DepositPricing,
   ProtectionClaim,
   ProtectionOption,
+  ProtectionPayer,
   ProtectionState,
   ReservationEntry,
   ReservationStatus,
   SavedCard,
-  WaiverPricing,
 } from '~/components/reservations/data/reservations'
+import type { TernPrice, TernTier } from '~/components/reservations/data/tern-products'
+import { ternPriceFor, ternProduct } from '~/components/reservations/data/tern-products'
 
 export type ProtectionCurrency = 'USD' | 'IDR' | 'EUR' | 'CHF'
 
@@ -33,13 +35,17 @@ export interface DamageProtectionPolicy {
   name: string
   currency: ProtectionCurrency
   offers: ProtectionOption[]
+  /** The template this policy was started from. Provenance only, never a live join. */
+  templateId?: PolicyTemplateId
+  /**
+   * ⚠️ The tenant never writes the cover. It comes from the Tern tier
+   * (`tern-products.ts`): the cap, the exclusions and the fee Elev8 charges per
+   * stay. The only number the tenant types is what they charge the guest.
+   */
   waiver: {
-    pricing: WaiverPricing
-    rate: number
-    /** Ceiling on a per_night or percent result. Required above 27 nights. */
-    maxAmount?: number
-    coverageCap: number
-    exclusions: string[]
+    tier: TernTier
+    /** What the tenant charges the guest, per stay. Unused on a host-paid listing. */
+    guestPrice: number
   }
   deposit: {
     pricing: DepositPricing
@@ -53,7 +59,11 @@ export interface DamageProtectionPolicy {
      */
     settleWithinDays: number
   }
-  /** Unset channels fall back to 'skip'. See `protectionOffered`. */
+  /**
+   * Deposit-only policies: the channels a guest is asked on; unset falls back
+   * to 'skip'. ⚠️ IGNORED whenever the waiver is offered: a waiver covers every
+   * booking, so it runs on every channel. See `protectionOffered`.
+   */
   channelPolicy: Partial<Record<BookingChannel, 'offer' | 'skip'>>
   termsVersion: string
   termsText: string
@@ -101,12 +111,19 @@ export function isGuestStay(status: ReservationStatus): boolean {
 }
 
 /**
- * Whether the guest is asked at all.
+ * Whether a booking on this channel falls under the policy at all.
  *
- * An unset channel falls back to 'skip', the OPPOSITE of the city tax fallback.
- * Airbnb and Booking.com run their own guest damage programmes, so charging an
- * OTA guest a second time for the same cover is a chargeback and a one-star
- * review. An unconfigured channel must stay silent.
+ * ⚠️ A waiver applies to EVERY booking, whatever the channel: the cover cannot
+ * be switched on for some channels only (owner's decision, 2026-09-25). So a
+ * policy that offers the waiver answers true for Airbnb and Booking.com too,
+ * and the deposit beside it rides along on every channel.
+ *
+ * Only a DEPOSIT-ONLY policy picks its channels, and there an unset channel
+ * falls back to 'skip', the OPPOSITE of the city tax fallback: an unconfigured
+ * channel stays silent rather than asking an OTA guest for a card.
+ *
+ * Status is not decided here: owner stays and blocks are never protected
+ * (`isGuestStay`), whatever this says.
  */
 export function protectionOffered(
   policy: DamageProtectionPolicy | null,
@@ -114,7 +131,24 @@ export function protectionOffered(
 ): boolean {
   if (!policy || policy.offers.length === 0)
     return false
+  if (policy.offers.includes('waiver'))
+    return true
   return (policy.channelPolicy[channel] ?? 'skip') === 'offer'
+}
+
+/** Whether the policy's channel switches mean anything: only without the waiver. */
+export function channelsSelectable(policy: Pick<DamageProtectionPolicy, 'offers'>): boolean {
+  return !policy.offers.includes('waiver')
+}
+
+/** The Tern cover behind a policy's waiver in its currency, or null when Tern does not price it there. */
+export function waiverCover(policy: DamageProtectionPolicy): TernPrice | null {
+  return ternPriceFor(policy.waiver.tier, policy.currency)
+}
+
+/** Tern's exclusions for the policy's tier. The tenant cannot edit them. */
+export function waiverExclusions(policy: DamageProtectionPolicy): string[] {
+  return [...ternProduct(policy.waiver.tier).exclusions]
 }
 
 export function isLongStay(nights: number): boolean {
@@ -170,15 +204,19 @@ function capped(raw: number, maxAmount: number | undefined): number {
   return maxAmount === undefined ? floored : Math.min(floored, maxAmount)
 }
 
-export function waiverAmount(policy: DamageProtectionPolicy, reservation: PricedStay): number {
-  const { pricing, rate, maxAmount } = policy.waiver
-  const raw
-    = pricing === 'flat'
-      ? rate
-      : pricing === 'per_night'
-        ? rate * Math.max(0, reservation.nights)
-        : subtotalOf(reservation) * (rate / 100)
-  return roundProtectionAmount(capped(raw, maxAmount), policy.currency)
+/**
+ * What the guest pays for the waiver: the tenant's own per-stay price, the
+ * same for every stay length. Zero where the host pays.
+ */
+export function waiverAmount(policy: DamageProtectionPolicy, payer: ProtectionPayer = 'guest'): number {
+  if (payer === 'host')
+    return 0
+  return roundProtectionAmount(Math.max(0, policy.waiver.guestPrice), policy.currency)
+}
+
+/** What Elev8 charges the tenant for one covered stay, or null when Tern has no price here. */
+export function elev8FeeFor(policy: DamageProtectionPolicy): number | null {
+  return waiverCover(policy)?.perStayFee ?? null
 }
 
 export function depositAmount(policy: DamageProtectionPolicy, reservation: PricedStay): number {
@@ -253,10 +291,10 @@ export function buildOptions(
     if (option === 'waiver') {
       return {
         option,
-        amount: waiverAmount(policy, reservation),
+        amount: waiverAmount(policy),
         currency: policy.currency,
-        coverageCap: policy.waiver.coverageCap,
-        exclusions: policy.waiver.exclusions,
+        coverageCap: waiverCover(policy)?.coverageCap ?? 0,
+        exclusions: waiverExclusions(policy),
         isDefault,
       }
     }
@@ -378,8 +416,11 @@ export function resolveBucket(
   // is released straight away rather than kept on file for a stay that is not
   // happening. Neither waits for the check-out date.
   if (stay.status === 'cancelled') {
-    if (protection.state === 'waiver_active')
+    // A host-paid waiver took nothing from the guest, so nothing is owed back.
+    if (protection.state === 'waiver_active' && protection.paidBy !== 'host')
       return 'refund_due'
+    if (protection.state === 'waiver_active')
+      return 'settled'
     if (protection.state === 'card_on_file')
       return 'decision_due'
     return 'settled'
@@ -398,6 +439,42 @@ export function resolveBucket(
   if (protection.settleDueAt && new Date(protection.settleDueAt).getTime() <= now.getTime())
     return 'decision_overdue'
   return 'decision_due'
+}
+
+// ---------------------------------------------------------------------------
+// Host-paid cover: nobody chooses, the stay is simply covered
+// ---------------------------------------------------------------------------
+
+/**
+ * The protection a host-paid listing writes onto a guest stay. The guest is
+ * never asked and pays nothing (`amount: 0`); Elev8 bills the tenant the Tern
+ * per-stay fee, frozen here with the cover so a later price change cannot
+ * rewrite a stay already covered. Null when Tern has no price in the policy's
+ * currency, which `policyErrors` refuses to save in the first place.
+ */
+export function hostCoverProtection(
+  policy: DamageProtectionPolicy,
+  now: Date = new Date(),
+): DamageProtection | null {
+  const cover = waiverCover(policy)
+  if (!cover || !policy.offers.includes('waiver'))
+    return null
+  return {
+    policyId: policy.id,
+    option: 'waiver',
+    state: 'waiver_active',
+    amount: 0,
+    currency: policy.currency,
+    coverageCap: cover.coverageCap,
+    paidBy: 'host',
+    tier: policy.waiver.tier,
+    elev8Fee: cover.perStayFee,
+    termsVersion: policy.termsVersion,
+    termsText: policy.termsText,
+    acceptedAt: now.toISOString(),
+    acceptedVia: 'host_cover',
+    claims: [],
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -608,6 +685,8 @@ export type ProtectionEventKind
     | 'cancelled'
     | 'undone'
     | 'partner_update'
+    | 'host_covered'
+    | 'host_cover_removed'
 
 export function formatProtectionAmount(amount: number, currency: string): string {
   return `${currency} ${amount.toLocaleString('de-CH', {
@@ -627,7 +706,7 @@ export function protectionActivityEvent(
     chosen: {
       title: 'Damage protection chosen',
       description: protection.option === 'waiver'
-        ? `Waiver ${money}`
+        ? `Waiver ${money}, covers up to ${formatProtectionAmount(protection.coverageCap ?? 0, protection.currency)}`
         : `Card saved for up to ${money}${protection.card ? `, ${formatSavedCard(protection.card)}` : ''}`,
       colorDot: 'blue',
     },
@@ -643,6 +722,16 @@ export function protectionActivityEvent(
     },
     undone: { title: 'Closing undone', description: detail ?? '', colorDot: 'gray' },
     partner_update: { title: 'Insurance claim update', description: detail ?? '', colorDot: 'blue' },
+    host_covered: {
+      title: 'Covered by the host',
+      description: `Damage waiver up to ${formatProtectionAmount(protection.coverageCap ?? 0, protection.currency)}, the guest is not asked to pay`,
+      colorDot: 'blue',
+    },
+    host_cover_removed: {
+      title: 'Host cover removed',
+      description: detail ?? 'The listing no longer pays for the cover, so the guest will be asked',
+      colorDot: 'gray',
+    },
   }
   const meta = map[kind]
   return {
@@ -709,43 +798,137 @@ export function bumpTermsVersion(version: string): string {
   return `${version || 'v'}-2`
 }
 
-/** A blank policy for the "New policy" button: waiver only, Direct only, nothing assigned. */
-export function newPolicyDraft(currency: ProtectionCurrency, now: Date = new Date()): DamageProtectionPolicy {
-  const stamp = now.toISOString()
-  return {
-    id: `dp-${now.getTime()}`,
-    name: 'New policy',
-    currency,
+// ---------------------------------------------------------------------------
+// Templates: complete policies a tenant assigns, rather than builds
+// ---------------------------------------------------------------------------
+
+export type PolicyTemplateId = 'standard_short' | 'standard_long' | 'deposit_only'
+
+export interface PolicyTemplate {
+  id: PolicyTemplateId
+  name: string
+  /** One line for the template picker. */
+  summary: string
+  /** The stay-length slot the template is written for. */
+  slot: StaySlot
+  offers: ProtectionOption[]
+  tier: TernTier
+  /** A starting point, per currency. The tenant sets their own. */
+  guestPrice: Partial<Record<ProtectionCurrency, number>>
+  deposit: DamageProtectionPolicy['deposit']
+  channelPolicy: DamageProtectionPolicy['channelPolicy']
+  termsVersion: string
+  termsText: string
+}
+
+const WAIVER_TERMS = 'The damage waiver is a non-refundable fee. It waives your liability for accidental damage up to the stated cover. It is not insurance.'
+const DEPOSIT_TERMS = 'The security deposit keeps your card on file instead: nothing is charged at booking, and after check-out the card may be charged up to the stated amount for damage recorded during your stay, once we have told you what was found and why.'
+
+export const POLICY_TEMPLATES: PolicyTemplate[] = [
+  {
+    id: 'standard_short',
+    name: 'Standard short-term',
+    summary: `Stays under ${LONG_STAY_THRESHOLD_NIGHTS} nights. Damage waiver, with a card deposit as the alternative on Stripe listings.`,
+    slot: 'short',
+    offers: ['waiver', 'deposit'],
+    tier: 'bronze',
+    guestPrice: { USD: 39 },
+    deposit: { pricing: 'flat', rate: 500, settleWithinDays: 7 },
+    channelPolicy: {},
+    termsVersion: 'v1',
+    termsText: `${WAIVER_TERMS} ${DEPOSIT_TERMS}`,
+  },
+  {
+    /**
+     * Waiver ONLY, deliberately. Whether a months-long card on file is a
+     * tenancy deposit rather than a hospitality one is an open legal question
+     * per market (Bali, Germany, Switzerland).
+     */
+    id: 'standard_long',
+    name: 'Standard long-term',
+    summary: `Stays of ${LONG_STAY_THRESHOLD_NIGHTS} nights and over. Damage waiver only.`,
+    slot: 'long',
     offers: ['waiver'],
-    waiver: { pricing: 'flat', rate: 0, coverageCap: 0, exclusions: [] },
+    tier: 'silver',
+    guestPrice: { USD: 249 },
     deposit: { pricing: 'flat', rate: 0, settleWithinDays: 7 },
+    channelPolicy: {},
+    termsVersion: 'v1-long',
+    termsText: `For stays of ${LONG_STAY_THRESHOLD_NIGHTS} nights and over, the damage waiver covers accidental damage up to the stated cover. Normal wear and tear is not accidental damage and is not covered. Claims may be recorded during your stay at each scheduled cleaning, not only at check-out.`,
+  },
+  {
+    id: 'deposit_only',
+    name: 'Deposit only',
+    summary: 'No waiver. A card kept on file, on the channels you choose. Stripe listings only.',
+    slot: 'short',
+    offers: ['deposit'],
+    tier: 'bronze',
+    guestPrice: {},
+    deposit: { pricing: 'flat', rate: 750, settleWithinDays: 7 },
     channelPolicy: { Direct: 'offer' },
     termsVersion: 'v1',
-    termsText: '',
+    termsText: DEPOSIT_TERMS,
+  },
+]
+
+export function policyTemplate(id: PolicyTemplateId): PolicyTemplate {
+  return POLICY_TEMPLATES.find(t => t.id === id) ?? POLICY_TEMPLATES[0]!
+}
+
+/** A complete, ready-to-assign policy from a template, in the tenant's currency. */
+export function policyFromTemplate(
+  templateId: PolicyTemplateId,
+  currency: ProtectionCurrency,
+  now: Date = new Date(),
+  id = `dp-${now.getTime()}`,
+): DamageProtectionPolicy {
+  const template = policyTemplate(templateId)
+  const stamp = now.toISOString()
+  return {
+    id,
+    name: template.name,
+    currency,
+    offers: [...template.offers],
+    templateId: template.id,
+    waiver: { tier: template.tier, guestPrice: template.guestPrice[currency] ?? 0 },
+    deposit: { ...template.deposit },
+    channelPolicy: { ...template.channelPolicy },
+    termsVersion: template.termsVersion,
+    termsText: template.termsText,
     createdAt: stamp,
     updatedAt: stamp,
   }
 }
 
-/**
- * Why a policy cannot be saved as it stands, one plain sentence each. Empty
- * means it can. `longStay` is whether any listing uses it for long stays.
- */
-export function policyErrors(policy: DamageProtectionPolicy, longStay: boolean): string[] {
+/** The "New policy" button: the standard short-term template. */
+export function newPolicyDraft(currency: ProtectionCurrency, now: Date = new Date()): DamageProtectionPolicy {
+  return policyFromTemplate('standard_short', currency, now)
+}
+
+export interface PolicyErrorContext {
+  /** Whether any listing uses the policy for long stays. */
+  longStay?: boolean
+  /**
+   * Whether any guest pays for it. False only when every listing using the
+   * policy is host-paid, where the guest price is never charged and so is not
+   * asked for.
+   */
+  guestPaid?: boolean
+}
+
+/** Why a policy cannot be saved as it stands, one plain sentence each. Empty means it can. */
+export function policyErrors(policy: DamageProtectionPolicy, context: PolicyErrorContext = {}): string[] {
+  const { longStay = false, guestPaid = true } = context
   const errors: string[] = []
   if (!policy.name.trim())
     errors.push('Give the policy a name.')
   if (policy.offers.length === 0)
     errors.push('Offer at least one option: the waiver, the deposit, or both.')
   if (policy.offers.includes('waiver')) {
-    if (!(policy.waiver.rate > 0))
-      errors.push('Set the waiver fee.')
-    if (!(policy.waiver.coverageCap > 0))
-      errors.push('Set how much the waiver covers.')
-    if (policy.waiver.pricing !== 'flat' && policy.waiver.maxAmount === undefined && longStay)
-      errors.push('Set a maximum waiver fee: without one, a long stay computes an unbounded fee.')
-    if (longStay && !policy.waiver.exclusions.some(e => /wear and tear/i.test(e)))
-      errors.push('Name normal wear and tear in what is not covered: over a long stay it is the argument you will actually have.')
+    if (!waiverCover(policy))
+      errors.push(`The ${ternProduct(policy.waiver.tier).name} cover is not available in ${policy.currency} yet.`)
+    if (guestPaid && !(policy.waiver.guestPrice > 0))
+      errors.push('Set what you charge the guest for the waiver.')
   }
   if (policy.offers.includes('deposit')) {
     if (!(policy.deposit.rate > 0))
@@ -755,7 +938,8 @@ export function policyErrors(policy: DamageProtectionPolicy, longStay: boolean):
     if (policy.deposit.pricing !== 'flat' && policy.deposit.maxAmount === undefined && longStay)
       errors.push('Set a maximum deposit: without one, a long stay computes an unbounded amount.')
   }
-  if (!Object.values(policy.channelPolicy).includes('offer'))
+  // With the waiver on, every channel is covered, so there is nothing to pick.
+  if (channelsSelectable(policy) && !Object.values(policy.channelPolicy).includes('offer'))
     errors.push('Turn on at least one booking channel, or no guest is ever asked.')
   if (!policy.termsText.trim())
     errors.push('Write the terms the guest accepts.')

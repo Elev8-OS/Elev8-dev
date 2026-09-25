@@ -94,6 +94,12 @@ const waiverPot = computed(() => ({
   paidOut: totalsLabel(dp.waiverPotTotals.value.paidOut),
 }))
 
+/** What Elev8 charges for covered stays, split by who pays the tenant back for it. */
+const elev8Fees = computed(() => ({
+  guestPaid: totalsLabel(dp.elev8FeeTotals.value.guestPaid),
+  hostPaid: totalsLabel(dp.elev8FeeTotals.value.hostPaid),
+}))
+
 // ---------------------------------------------------------- insurance claims
 
 type PartnerFilter = 'all' | PartnerBucket
@@ -227,6 +233,33 @@ async function bulkClose() {
         </div>
         <p class="mt-2 text-xs text-muted-foreground">
           Shown as two figures on purpose. Netting them hides whether the fee is priced right.
+        </p>
+      </div>
+
+      <div class="rounded-lg border p-4" data-testid="elev8-fees">
+        <p class="text-[11px] tracking-wide text-muted-foreground uppercase">
+          Charged by Elev8 for Tern cover
+        </p>
+        <div class="mt-2 flex flex-wrap gap-8">
+          <div>
+            <p class="text-xs text-muted-foreground">
+              Guest-paid stays
+            </p>
+            <p v-for="value in elev8Fees.guestPaid" :key="value" class="text-lg font-semibold tabular-nums">
+              {{ value }}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">
+              Host-paid stays
+            </p>
+            <p v-for="value in elev8Fees.hostPaid" :key="value" class="text-lg font-semibold tabular-nums">
+              {{ value }}
+            </p>
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-muted-foreground">
+          A fixed fee per covered stay. On a host-paid listing the guest is not asked and you carry it.
         </p>
       </div>
 
