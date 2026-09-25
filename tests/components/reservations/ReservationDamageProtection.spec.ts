@@ -161,9 +161,39 @@ describe('reservationDamageProtectionSection', () => {
     expect(wrapper.text()).toBe('')
   })
 
-  it('renders nothing on a channel the policy skips', () => {
-    const wrapper = mountSection(reservation({ channel: 'Airbnb' }))
+  it('renders nothing on a channel a deposit-only policy skips', () => {
+    // lst-2's short stays are deposit-only, Direct only.
+    const wrapper = mountSection(reservation({ listingId: 'lst-2', channel: 'Airbnb' }))
     expect(wrapper.text()).toBe('')
+  })
+
+  it('asks an OTA guest too where the waiver is on', () => {
+    const wrapper = mountSection(reservation({ channel: 'Airbnb' }))
+    expect(wrapper.text()).toContain('The guest has not chosen yet')
+  })
+
+  it('shows a host-paid cover as paid by the host, with nothing to choose and nothing to refund', () => {
+    const cover = protection({
+      option: 'waiver',
+      state: 'waiver_active',
+      amount: 0,
+      paidBy: 'host',
+      tier: 'bronze',
+      elev8Fee: 9,
+      coverageCap: 2000,
+      acceptedVia: 'host_cover',
+      card: undefined,
+      settleDueAt: undefined,
+    })
+    const wrapper = mountSection(reservation({ damageProtection: cover }))
+    expect(wrapper.find('[data-testid="protection-paid-by"]').text()).toBe('The host')
+    expect(wrapper.text()).toContain('Elev8 charges USD 9.00')
+    expect(wrapper.text()).toContain('the guest is not asked')
+    expect(buttonLabels(wrapper)).not.toContain('Record choice for guest')
+
+    const cancelled = mountSection(reservation({ status: 'cancelled', damageProtection: cover }))
+    expect(cancelled.find('[data-testid="protection-cancelled-stay"]').text()).toContain('nothing to refund')
+    expect(buttonLabels(cancelled)).toContain('Close cover')
   })
 
   it('offers to record the choice when the guest has not answered', () => {

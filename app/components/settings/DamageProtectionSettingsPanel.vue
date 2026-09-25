@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import type { DamageProtectionPolicy, StaySlot } from '~/components/reservations/data/damage-protection'
+import type { ListingProtectionMode } from '~/composables/useDamageProtection'
 import { toast } from 'vue-sonner'
+import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { allTags, listings } from '~/components/listings/data/listings'
-import { formatProtectionAmount, listingSlots, LONG_STAY_THRESHOLD_NIGHTS } from '~/components/reservations/data/damage-protection'
+import {
+  channelsSelectable,
+  formatProtectionAmount,
+  listingSlots,
+  LONG_STAY_THRESHOLD_NIGHTS,
+  waiverCover,
+} from '~/components/reservations/data/damage-protection'
 import { elev8CoverPartner } from '~/components/reservations/data/damage-protection-seed'
+import { recommendedTier, ternProduct, tierTooSmall } from '~/components/reservations/data/tern-products'
 import DamageProtectionPolicySheet from '~/components/settings/DamageProtectionPolicySheet.vue'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 
 /**
- * Damage protection settings, in two plain parts: the policies (what a guest
- * can choose and on what terms) and the listings (which policy each property
- * uses for short and long stays). Editing happens in a side sheet on a draft.
+ * Damage protection settings, in two plain parts: the policies (the Tern cover,
+ * the guest price and the terms) and the listings (whether each property is
+ * protected, who pays, and which policy it uses for short and long stays).
+ * Editing happens in a side sheet on a draft.
  */
 const dp = useDamageProtection()
 
@@ -30,19 +40,24 @@ function openEditor(policy: DamageProtectionPolicy | null) {
 
 function usage(policyId: string) {
   const bands = dp.assignments.value.filter(a => a.policyId === policyId)
+  const listingIds = new Set(bands.map(a => a.listingId))
   return {
     short: bands.filter(a => a.minNights < LONG_STAY_THRESHOLD_NIGHTS).length,
     long: bands.filter(a => a.minNights >= LONG_STAY_THRESHOLD_NIGHTS).length,
-    total: new Set(bands.map(a => a.listingId)).size,
+    total: listingIds.size,
+    /** Used, and only on host-paid listings: the guest price is never charged. */
+    hostOnly: listingIds.size > 0 && [...listingIds].every(id => dp.payerFor(id) === 'host'),
   }
 }
 
 function waiverLine(policy: DamageProtectionPolicy): string {
-  const { pricing, rate, coverageCap } = policy.waiver
-  const fee = pricing === 'percent_of_subtotal'
-    ? `${rate}% of the stay`
-    : `${formatProtectionAmount(rate, policy.currency)} ${pricing === 'per_night' ? 'per night' : 'per stay'}`
-  return `${fee}, covers up to ${formatProtectionAmount(coverageCap, policy.currency)}`
+  const cover = waiverCover(policy)
+  const tier = ternProduct(policy.waiver.tier).name
+  if (!cover)
+    return `Tern ${tier}, not available in ${policy.currency} yet`
+  return `Tern ${tier}, covers up to ${formatProtectionAmount(cover.coverageCap, policy.currency)}. `
+    + `Guest pays ${formatProtectionAmount(policy.waiver.guestPrice, policy.currency)}, `
+    + `Elev8 charges you ${formatProtectionAmount(cover.perStayFee, policy.currency)} per stay`
 }
 
 function depositLine(policy: DamageProtectionPolicy): string {
@@ -51,7 +66,10 @@ function depositLine(policy: DamageProtectionPolicy): string {
   return `Card on file, charged up to ${limit} only for damage, decided within ${settleWithinDays} days`
 }
 
+/** A waiver covers every booking, so its channels are not a choice. */
 function channelsOf(policy: DamageProtectionPolicy): string[] {
+  if (!channelsSelectable(policy))
+    return ['All channels']
   return Object.entries(policy.channelPolicy).filter(([, v]) => v === 'offer').map(([channel]) => channel)
 }
 
@@ -70,7 +88,14 @@ const NONE = 'none'
 const KEEP = 'keep'
 
 const tagFilter = ref<string>('all')
-const statusFilter = ref<'all' | 'unset' | 'set'>('all')
+const statusFilter = ref<'all' | ListingProtectionMode>('all')
+
+const MODE_LABELS: Record<ListingProtectionMode, string> = {
+  off: 'No protection',
+  guest_paid: 'Guest pays',
+  host_paid: 'Host pays',
+}
+const MODES: ListingProtectionMode[] = ['off', 'guest_paid', 'host_paid']
 
 const missingGuide = computed(() => new Set(dp.listingsMissingGuideSection()))
 
@@ -79,23 +104,31 @@ const rows = computed(() => {
   return listings.value
     .filter(l => !term || l.name.toLowerCase().includes(term) || l.location?.toLowerCase().includes(term))
     .filter(l => tagFilter.value === 'all' || l.tags.includes(tagFilter.value))
-    .filter((l) => {
-      if (statusFilter.value === 'all')
-        return true
-      const isSet = dp.assignments.value.some(a => a.listingId === l.id)
-      return statusFilter.value === 'set' ? isSet : !isSet
-    })
+    .filter(l => statusFilter.value === 'all' || dp.listingMode(l.id) === statusFilter.value)
     .map((listing) => {
       const slots = listingSlots(dp.assignments.value, listing.id)
       const account = dp.payoutAccountFor(listing.id)
+      const mode = dp.listingMode(listing.id)
       const assigned = [slots.short, slots.long].filter(Boolean) as string[]
       const offersDeposit = assigned.some(id => dp.policies.value.find(p => p.id === id)?.offers.includes('deposit'))
+      // Sized to the property: a tier smaller than its guest count calls for is flagged.
+      const undersized = assigned
+        .map(id => dp.policies.value.find(p => p.id === id))
+        .filter((p): p is DamageProtectionPolicy => Boolean(p?.offers.includes('waiver')))
+        .filter(p => tierTooSmall(p.waiver.tier, listing.capacity))
       return {
         listing,
         slots,
+        mode,
         currency: account?.currency ?? null,
-        waiverOnly: offersDeposit && dp.railForListing(listing.id) !== 'card',
-        noChoiceScreen: assigned.length > 0 && missingGuide.value.has(listing.id),
+        // The host pays for the waiver, so there is no deposit to lose here.
+        waiverOnly: mode === 'guest_paid' && offersDeposit && dp.railForListing(listing.id) !== 'card',
+        // Its policies carry the waiver, and the waiver is not activated yet.
+        paused: assigned.some(id => dp.pausedUntilActivation(dp.policies.value.find(p => p.id === id) ?? null)),
+        noChoiceScreen: mode === 'guest_paid' && assigned.length > 0 && missingGuide.value.has(listing.id),
+        undersized: undersized.length
+          ? `${ternProduct(undersized[0]!.waiver.tier).name} cover is sized for smaller properties. This one sleeps ${listing.capacity}: ${ternProduct(recommendedTier(listing.capacity)).name} is recommended.`
+          : null,
       }
     })
 })
@@ -109,19 +142,48 @@ function currencyBlocked(policy: DamageProtectionPolicy, currency: string | null
   return currency !== null && policy.currency !== currency
 }
 
+/** Host-paid cover is Tern's: it cannot be chosen before the service is activated. */
+function modeBlocked(mode: ListingProtectionMode): boolean {
+  return mode === 'host_paid' && !dp.waiverServiceActive.value
+}
+
+/** Where the host pays, a deposit-only policy has nothing for them to pay for. */
+function hostBlocked(policy: DamageProtectionPolicy, mode: ListingProtectionMode): boolean {
+  return mode === 'host_paid' && !policy.offers.includes('waiver')
+}
+
+const REFUSALS: Record<string, string> = {
+  currency_mismatch: 'That policy is in another currency than this listing\'s payouts.',
+  host_needs_waiver: 'Where you pay for the cover, the policy needs the waiver. A deposit-only policy has nothing for you to pay for.',
+  no_policy_in_currency: 'There is no policy in this listing\'s payout currency yet. Create one from a template in the Policies tab.',
+  waiver_not_activated: 'Activate the damage waiver first, at the top of this page: host-paid cover is Tern\'s.',
+}
+
+function refusalText(reason: string): string {
+  return REFUSALS[reason] ?? `Could not set the policy (${reason.replace(/_/g, ' ')})`
+}
+
 function setSlot(listingId: string, slot: StaySlot, value: unknown) {
   const policyId = value === NONE || typeof value !== 'string' ? null : value
   const result = dp.setListingSlot(listingId, slot, policyId)
-  if (!result.ok) {
-    toast.error(result.reason === 'currency_mismatch'
-      ? 'That policy is in another currency than this listing\'s payouts.'
-      : `Could not set the policy (${result.reason.replace(/_/g, ' ')})`)
-  }
+  if (!result.ok)
+    toast.error(refusalText(result.reason))
+}
+
+function setMode(listingId: string, value: unknown) {
+  if (typeof value !== 'string')
+    return
+  const result = dp.setListingMode(listingId, value as ListingProtectionMode)
+  if (!result.ok)
+    toast.error(refusalText(result.reason))
+  else if (value === 'host_paid')
+    toast.success('Covered by you: guests on this listing are not asked, and Elev8 charges you per stay.')
 }
 
 // ------------------------------------------------------------ bulk assign
 
 const selected = ref<string[]>([])
+const bulkMode = ref<string>(KEEP)
 const bulkShort = ref<string>(KEEP)
 const bulkLong = ref<string>(KEEP)
 
@@ -154,6 +216,9 @@ const SKIP_REASONS: Record<string, string> = {
   currency_mismatch: 'currency differs from its payouts',
   custom_ranges: 'uses custom night ranges',
   overlapping_band: 'overlaps a custom range',
+  host_needs_waiver: 'host pays, so the policy needs the waiver',
+  no_policy_in_currency: 'no policy in its payout currency',
+  waiver_not_activated: 'the damage waiver is not activated',
 }
 
 function listingNameOf(id: string): string {
@@ -162,11 +227,27 @@ function listingNameOf(id: string): string {
 
 function applyBulk() {
   const change = { short: bulkValue(bulkShort.value), long: bulkValue(bulkLong.value) }
-  if (change.short === undefined && change.long === undefined) {
-    toast.error('Choose a policy for short stays, long stays, or both.')
+  const mode = bulkMode.value === KEEP ? null : bulkMode.value as ListingProtectionMode
+  if (!mode && change.short === undefined && change.long === undefined) {
+    toast.error('Choose who pays, a policy for short stays, long stays, or any of them.')
     return
   }
-  const { applied, skipped } = dp.setSlotsForListings(selected.value, change)
+  // Who pays first, so a policy change below is checked against the new payer.
+  const modeSkipped: { listingId: string, reason: string }[] = []
+  let targets = selected.value
+  if (mode) {
+    for (const listingId of selected.value) {
+      const result = dp.setListingMode(listingId, mode)
+      if (!result.ok)
+        modeSkipped.push({ listingId, reason: result.reason })
+    }
+    targets = mode === 'off' ? [] : selected.value.filter(id => !modeSkipped.some(s => s.listingId === id))
+  }
+  const slotResult = change.short === undefined && change.long === undefined
+    ? { applied: targets, skipped: [] as { listingId: string, reason: string }[] }
+    : dp.setSlotsForListings(targets, change)
+  const applied = mode === 'off' ? selected.value : slotResult.applied
+  const skipped = [...modeSkipped, ...slotResult.skipped]
   if (applied.length)
     toast.success(`Applied to ${applied.length} ${applied.length === 1 ? 'listing' : 'listings'}`)
   if (skipped.length) {
@@ -177,6 +258,7 @@ function applyBulk() {
   }
   // Keep the skipped ones selected, so they can be dealt with next.
   selected.value = skipped.map(s => s.listingId)
+  bulkMode.value = KEEP
   bulkShort.value = KEEP
   bulkLong.value = KEEP
 }
@@ -194,10 +276,12 @@ function resetCustom(listingId: string) {
         Damage protection
       </h2>
       <p class="text-sm text-muted-foreground">
-        Before arrival, each guest picks a damage waiver or leaves a card on file as a deposit.
-        Set up the options here, then choose which properties use them.
+        Choose for each property: no protection, the guest buys the damage waiver in the guest guide, or you pay
+        for it and the guest is not asked. The cover comes from Tern through Elev8. Owner stays are never included.
       </p>
     </div>
+
+    <TernActivationCard />
 
     <Tabs v-model="tab">
       <TabsList>
@@ -214,7 +298,7 @@ function resetCustom(listingId: string) {
       <TabsContent value="policies" class="mt-4 flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <p class="text-sm text-muted-foreground">
-            A policy is what a guest can choose, and at what price.
+            A policy is the Tern cover, what the guest pays for it, and the terms. Start new ones from a template.
           </p>
           <Button size="sm" class="gap-1.5" data-testid="policy-new" @click="openEditor(null)">
             <Icon name="lucide:plus" class="size-4" />
@@ -236,6 +320,14 @@ function resetCustom(listingId: string) {
                 </p>
                 <p class="text-xs text-muted-foreground">
                   {{ policy.currency }} · terms {{ policy.termsVersion }}
+                </p>
+                <p
+                  v-if="dp.pausedUntilActivation(policy)"
+                  class="mt-1 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"
+                  data-testid="policy-paused"
+                >
+                  <Icon name="lucide:pause-circle" class="size-3" />
+                  Paused until the damage waiver is activated
                 </p>
               </div>
               <div class="flex items-center gap-1">
@@ -300,9 +392,9 @@ function resetCustom(listingId: string) {
         <!-- Elev8's own insurance integration: a read-out, nothing to set. -->
         <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Icon name="lucide:info" class="size-3.5 shrink-0" />
-          Waiver claims above {{ formatProtectionAmount(elev8CoverPartner.deductiblePerClaim, elev8CoverPartner.currency) }}
-          are insured by {{ elev8CoverPartner.name }} through Elev8 and paid into your Stripe payout account.
-          Nothing to set up.
+          The waiver cover is provided by {{ elev8CoverPartner.name }} through Elev8. Claims above
+          {{ formatProtectionAmount(elev8CoverPartner.deductiblePerClaim, elev8CoverPartner.currency) }} are insured by
+          {{ elev8CoverPartner.name }} and paid by bank transfer into the account you gave when activating.
         </p>
       </TabsContent>
 
@@ -321,8 +413,8 @@ function resetCustom(listingId: string) {
         </div>
 
         <p class="text-sm text-muted-foreground">
-          Pick a policy for each property, or tick several and set them at once. Stays of
-          {{ LONG_STAY_THRESHOLD_NIGHTS }} nights or more can use a different one.
+          Choose who pays for each property, then the policy it uses, or tick several and set them at once. Stays of
+          {{ LONG_STAY_THRESHOLD_NIGHTS }} nights or more can use a different policy.
         </p>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -341,18 +433,15 @@ function resetCustom(listingId: string) {
             </SelectContent>
           </Select>
           <Select v-model="statusFilter">
-            <SelectTrigger class="w-36" data-testid="listings-status">
+            <SelectTrigger class="w-40" data-testid="listings-status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">
                 All listings
               </SelectItem>
-              <SelectItem value="unset">
-                Not set up
-              </SelectItem>
-              <SelectItem value="set">
-                Set up
+              <SelectItem v-for="mode in MODES" :key="mode" :value="mode">
+                {{ MODE_LABELS[mode] }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -366,6 +455,20 @@ function resetCustom(listingId: string) {
           data-testid="bulk-bar"
         >
           <span class="font-medium">{{ selected.length }} selected</span>
+          <span class="text-muted-foreground">Who pays</span>
+          <Select v-model="bulkMode">
+            <SelectTrigger class="h-8 w-40" data-testid="bulk-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem :value="KEEP">
+                Keep as is
+              </SelectItem>
+              <SelectItem v-for="mode in MODES" :key="mode" :value="mode" :disabled="modeBlocked(mode)">
+                {{ MODE_LABELS[mode] }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <span class="text-muted-foreground">Short stays</span>
           <Select v-model="bulkShort">
             <SelectTrigger class="h-8 w-44" data-testid="bulk-short">
@@ -434,6 +537,9 @@ function resetCustom(listingId: string) {
                     Listing
                   </th>
                   <th class="px-4 py-3 text-left font-medium">
+                    Protection
+                  </th>
+                  <th class="px-4 py-3 text-left font-medium">
                     Stays under {{ LONG_STAY_THRESHOLD_NIGHTS }} nights
                   </th>
                   <th class="px-4 py-3 text-left font-medium">
@@ -474,9 +580,44 @@ function resetCustom(listingId: string) {
                       <Icon name="lucide:alert-triangle" class="size-3" />
                       Not in the guest guide yet
                     </p>
+                    <p
+                      v-if="row.undersized"
+                      class="mt-0.5 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400"
+                      data-testid="listing-undersized"
+                    >
+                      <Icon name="lucide:alert-triangle" class="mt-0.5 size-3 shrink-0" />
+                      {{ row.undersized }}
+                    </p>
                   </td>
 
-                  <td v-if="row.slots.custom" colspan="2" class="px-4 py-3">
+                  <td class="px-4 py-3">
+                    <Select :model-value="row.mode" @update:model-value="(v) => setMode(row.listing.id, v)">
+                      <SelectTrigger class="h-8 w-full min-w-36 text-sm" data-testid="listing-mode">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem v-for="mode in MODES" :key="mode" :value="mode" :disabled="modeBlocked(mode)">
+                          {{ MODE_LABELS[mode] }}
+                          <span v-if="modeBlocked(mode)" class="text-muted-foreground">(activate the waiver first)</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p v-if="row.mode === 'host_paid'" class="mt-1 text-xs text-muted-foreground">
+                      Guests are not asked. Elev8 charges you per stay.
+                    </p>
+                    <p
+                      v-else-if="row.mode === 'guest_paid' && row.paused"
+                      class="mt-1 text-xs text-amber-700 dark:text-amber-400"
+                      data-testid="listing-paused"
+                    >
+                      Guests are not asked yet: the waiver is not activated.
+                    </p>
+                  </td>
+
+                  <td v-if="row.mode === 'off'" colspan="2" class="px-4 py-3 text-xs text-muted-foreground">
+                    Not protected. Damage is handled outside Elev8.
+                  </td>
+                  <td v-else-if="row.slots.custom" colspan="2" class="px-4 py-3">
                     <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       Uses custom night ranges.
                       <Button size="sm" variant="outline" class="h-7 text-xs" @click="resetCustom(row.listing.id)">
@@ -501,11 +642,14 @@ function resetCustom(listingId: string) {
                             v-for="policy in dp.policies.value"
                             :key="policy.id"
                             :value="policy.id"
-                            :disabled="currencyBlocked(policy, row.currency)"
+                            :disabled="currencyBlocked(policy, row.currency) || hostBlocked(policy, row.mode)"
                           >
                             {{ policy.name }}
                             <span v-if="currencyBlocked(policy, row.currency)" class="text-muted-foreground">
                               ({{ policy.currency }}, payouts are {{ row.currency }})
+                            </span>
+                            <span v-else-if="hostBlocked(policy, row.mode)" class="text-muted-foreground">
+                              (no waiver for you to pay for)
                             </span>
                           </SelectItem>
                         </SelectContent>
@@ -524,6 +668,7 @@ function resetCustom(listingId: string) {
       v-model:open="sheetOpen"
       :policy="editing"
       :used-for-long-stays="editing ? usage(editing.id).long > 0 : false"
+      :guest-paid="editing ? !usage(editing.id).hostOnly : true"
     />
   </div>
 </template>

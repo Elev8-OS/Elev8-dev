@@ -9,7 +9,6 @@ import {
   partnerEligibility,
   payoutDueAt,
   payoutShortfall,
-  stripePayoutAccountFor,
 } from '~/components/reservations/data/partner-claims'
 
 const PARTNER: CoverPartner = {
@@ -52,28 +51,6 @@ describe('partnerEligibility', () => {
   it('never files a deposit claim, or one in another currency', () => {
     expect(partnerEligibility({ option: 'deposit', currency: 'USD' }, { coveredAmount: 500 }, PARTNER)).toMatchObject({ eligible: false, reason: 'not_a_waiver' })
     expect(partnerEligibility({ option: 'waiver', currency: 'IDR' }, { coveredAmount: 5_000_000 }, PARTNER)).toMatchObject({ eligible: false, reason: 'currency_mismatch' })
-  })
-})
-
-describe('stripePayoutAccountFor', () => {
-  const accounts = [
-    { id: 'pay-doku', provider: 'doku' as const, status: 'connected' as const, currency: 'USD', listingIds: ['lst-1'], accountName: 'Doku' },
-    { id: 'pay-a', provider: 'stripe' as const, status: 'connected' as const, currency: 'USD', listingIds: ['lst-2'], accountName: 'Stripe A' },
-    { id: 'pay-b', provider: 'stripe' as const, status: 'connected' as const, currency: 'USD', listingIds: ['lst-1'], accountName: 'Stripe B' },
-    { id: 'pay-idr', provider: 'stripe' as const, status: 'connected' as const, currency: 'IDR', listingIds: ['lst-3'], accountName: 'Stripe IDR' },
-  ]
-
-  it('pays into the Stripe account that settles the listing', () => {
-    expect(stripePayoutAccountFor('lst-1', accounts, 'USD')).toEqual({ id: 'pay-b', accountName: 'Stripe B' })
-  })
-
-  it('falls back to another Stripe account in the policy currency, never another gateway or currency', () => {
-    expect(stripePayoutAccountFor('lst-3', accounts, 'USD')).toEqual({ id: 'pay-a', accountName: 'Stripe A' })
-  })
-
-  it('finds nothing without a connected Stripe account in the currency', () => {
-    expect(stripePayoutAccountFor('lst-1', accounts.filter(a => a.provider !== 'stripe'), 'USD')).toBeNull()
-    expect(stripePayoutAccountFor('lst-1', [{ ...accounts[1]!, status: 'needs_setup' as const }], 'USD')).toBeNull()
   })
 })
 

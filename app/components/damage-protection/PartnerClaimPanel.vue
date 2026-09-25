@@ -20,7 +20,7 @@ import { usePartnerClaims } from '~/composables/usePartnerClaims'
  */
 const props = defineProps<{
   reservationId: string
-  /** The stay's listing, which picks the Stripe payout account the partner pays into. */
+  /** The stay's listing. One bank account per tenant today, so it does not change where the partner pays. */
   listingId: string
   protection: DamageProtection
   claim: ProtectionClaim
@@ -33,7 +33,7 @@ const partnerClaim = computed(() => props.claim.partnerClaim)
 const eligibility = computed(() => partnerEligibility(props.protection, props.claim, pc.partner.value))
 const submitting = computed(() => pc.isSubmitting(props.claim.id))
 const status = computed(() => partnerClaim.value?.status)
-/** Where the partner would pay, before filing: the tenant's Stripe payout account. */
+/** Where the partner would pay, before filing: the bank account registered at activation. */
 const payoutAccount = computed(() => pc.payoutAccountFor(props.listingId))
 
 const simulateFailure = ref(false)
@@ -85,8 +85,8 @@ async function submit() {
     toast.success(`Filed with ${pc.partner.value.name}`)
   else if (result.reason === 'submission_failed')
     toast.error('The partner rejected the submission. See the reason and retry.')
-  else if (result.reason === 'no_stripe_payout_account')
-    toast.error('Connect a Stripe payout account first: that is where the partner pays')
+  else if (result.reason === 'waiver_not_activated')
+    toast.error('Activate the damage waiver first: that is where you give Tern the bank account it pays into')
   else
     toast.error(`Could not file the claim (${result.reason})`)
 }
@@ -179,7 +179,7 @@ function simulate(simulation: PartnerSimulation) {
       </p>
 
       <p v-if="eligibility.eligible && payoutAccount" class="text-xs text-muted-foreground" data-testid="partner-claim-destination">
-        Paid into your Stripe payout account {{ payoutAccount.accountName }}.
+        Paid by bank transfer into {{ payoutAccount.accountName }}.
       </p>
 
       <div v-if="eligibility.eligible" class="flex flex-wrap items-center gap-3">
@@ -201,7 +201,7 @@ function simulate(simulation: PartnerSimulation) {
           <Label :for="`partner-fail-${claim.id}`" class="text-xs font-normal text-muted-foreground">Simulate a rejected submission</Label>
         </div>
         <p v-if="!payoutAccount" class="w-full text-xs text-amber-700 dark:text-amber-400" data-testid="partner-claim-no-account">
-          No Stripe payout account is connected, so the partner would have nowhere to pay. Connect one in Settings, Payouts.
+          The damage waiver is not activated, so there is no bank account for the partner to pay into. Activate it in Settings, Damage protection.
         </p>
       </div>
     </template>
@@ -292,8 +292,8 @@ function simulate(simulation: PartnerSimulation) {
 
       <div v-if="status === 'paid'" class="flex flex-col gap-2 rounded-md border p-2" data-testid="partner-claim-confirm">
         <p class="text-xs">
-          The partner sent {{ money(partnerClaim.paidAmount) }} (ref {{ partnerClaim.payoutReference }}) to your
-          Stripe payout account {{ partnerClaim.payoutAccountName }}. Confirm once it shows there.
+          The partner sent {{ money(partnerClaim.paidAmount) }} (ref {{ partnerClaim.payoutReference }}) by bank transfer to
+          {{ partnerClaim.payoutAccountName }}. Confirm once it shows on the account.
         </p>
         <div class="flex flex-wrap items-end gap-2">
           <div class="flex flex-col gap-1">

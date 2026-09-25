@@ -233,6 +233,25 @@ export function buildClaimEvidencePdf(input: ClaimEvidencePdfInput, opts: { down
   doc.text(`Reservation ${reservation.id}`, PAGE_WIDTH - MARGIN, headerTop + 4.5, { align: 'right' })
   y = Math.max(y, headerTop + 9) + 2
 
+  /**
+   * Where the saved card stands, in every state, so the file never leaves a
+   * reader to infer from a missing line that nothing was charged.
+   */
+  function depositCharge(p: typeof protection): { label: string, text: string, tone: 'ink' | 'warn', open: boolean } {
+    switch (p.state) {
+      case 'deposit_charged':
+        return { label: 'Charged', text: `${money(p.chargedAmount ?? 0, currency)} on ${dateTime(p.chargedAt)}`, tone: 'ink', open: false }
+      case 'charge_failed':
+        return { label: 'Charge', text: `Not charged. The charge was declined: ${p.chargeFailureReason ?? 'by the issuer'}`, tone: 'warn', open: true }
+      case 'deposit_released':
+        return { label: 'Charge', text: `Nothing charged. The deposit was closed without a charge on ${dateTime(p.releasedAt)}.`, tone: 'ink', open: false }
+      case 'cancelled':
+        return { label: 'Charge', text: 'Nothing charged. The card was released when the stay was cancelled.', tone: 'ink', open: false }
+      default:
+        return { label: 'Charge', text: 'Not charged yet. The card is on file and nothing has been taken from it.', tone: 'warn', open: true }
+    }
+  }
+
   // --- Guest and stay ------------------------------------------------------
   section('Guest and stay')
   row('Guest', reservation.guestName)
@@ -246,10 +265,15 @@ export function buildClaimEvidencePdf(input: ClaimEvidencePdfInput, opts: { down
   row('Damage', claim.label)
   row('What happened', claim.reason)
   row('Assessed at', money(claim.amount, currency))
-  row(
-    protection.option === 'deposit' ? 'Charged to card' : 'Paid by the waiver',
-    money(claim.coveredAmount, currency),
-  )
+  // ⚠️ "Charged to card" only once the card WAS charged. Until then the
+  // covered amount is what may be charged, and a dispute reader must not take
+  // it for money already taken.
+  if (protection.option !== 'deposit')
+    row('Paid by the waiver', money(claim.coveredAmount, currency))
+  else if (protection.state === 'deposit_charged')
+    row('Charged to card', money(claim.coveredAmount, currency))
+  else
+    row('Covered by the deposit', `${money(claim.coveredAmount, currency)}. ${depositCharge(protection).open ? 'Not charged yet.' : 'Not charged.'}`, 'warn')
   if (claim.excessAmount > 0)
     row('Above the cover', `${money(claim.excessAmount, currency)}, invoiced separately`)
   row('Recorded', `${dateTime(claim.recordedAt)} by ${claim.recordedBy}`)
@@ -261,21 +285,25 @@ export function buildClaimEvidencePdf(input: ClaimEvidencePdfInput, opts: { down
   )
 
   // --- The protection the guest chose -------------------------------------
-  section('Protection the guest chose')
+  const hostPaid = protection.paidBy === 'host'
+  section(hostPaid ? 'Protection on the stay' : 'Protection the guest chose')
   if (protection.option === 'waiver') {
-    row('Option', `Damage waiver, fee ${money(protection.amount, currency)}`)
+    row('Option', hostPaid
+      ? 'Damage waiver, paid for by the host. The guest was not asked to pay'
+      : `Damage waiver, fee ${money(protection.amount, currency)}`)
     row('Cover', money(protection.coverageCap ?? 0, currency))
   }
   else {
     row('Option', `Security deposit: card kept on file, up to ${money(protection.amount, currency)}`)
     if (protection.card)
       row('Card', cardLine(protection))
-    if (protection.state === 'deposit_charged')
-      row('Charged', `${money(protection.chargedAmount ?? 0, currency)} on ${dateTime(protection.chargedAt)}`)
-    else if (protection.state === 'charge_failed')
-      row('Charge', `Declined: ${protection.chargeFailureReason ?? 'by the issuer'}`, 'warn')
+    const charge = depositCharge(protection)
+    row(charge.label, charge.text, charge.tone)
   }
-  row('Accepted', `${dateTime(protection.acceptedAt)}, ${protection.acceptedVia === 'guest_guide' ? 'in the guest guide' : 'recorded by staff'}`)
+  const via = protection.acceptedVia === 'guest_guide'
+    ? 'in the guest guide'
+    : protection.acceptedVia === 'host_cover' ? 'covered automatically by the host' : 'recorded by staff'
+  row(hostPaid ? 'Covered' : 'Accepted', `${dateTime(protection.acceptedAt)}, ${via}`)
   row('Terms', `Version ${protection.termsVersion}`)
   row('Terms text', protection.termsText)
   if (protection.chargeMandate)

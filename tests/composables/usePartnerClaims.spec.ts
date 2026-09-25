@@ -1,10 +1,10 @@
 import type { DamageProtection, ProtectionClaim, ReservationEntry } from '~/components/reservations/data/reservations'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useNotifications } from '~/composables/useNotifications'
 import { usePartnerClaims } from '~/composables/usePartnerClaims'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useTernActivation } from '~/composables/useTernActivation'
 
 vi.mock('vue-sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
@@ -83,8 +83,8 @@ describe('submitToPartner', () => {
     await expect(settle(() => pc.submitToPartner('res-w-1', 'clm-1'))).resolves.toEqual({ ok: true })
     const filed = partnerClaim()!
     expect(filed).toMatchObject({ status: 'submitted', claimedAmount: 220, deductible: 100, policyNumber: 'MP-2026-0001' })
-    // lst-1 settles into the tenant's Stripe account pay-1: that is where the partner pays.
-    expect(filed).toMatchObject({ payoutAccountId: 'pay-1', payoutAccountName: 'Stripe Bali Main' })
+    // Tern pays by bank transfer into the account registered at activation.
+    expect(filed).toMatchObject({ payoutAccountId: 'tern_org_demo_0001', payoutAccountName: 'Bank Central Asia (BCA) •••• 3456' })
     expect(filed.partnerClaimRef).toMatch(/^PC-/)
     expect(filed.events.map(e => [e.status, e.source])).toEqual([['submitting', 'staff'], ['submitted', 'api']])
   })
@@ -105,17 +105,11 @@ describe('submitToPartner', () => {
     await expect(pc.submitToPartner('res-w-1', 'clm-1')).resolves.toEqual({ ok: false, reason: 'not_a_waiver' })
   })
 
-  it('refuses when the tenant has no Stripe payout account for the partner to pay into', async () => {
-    const saved = payoutAccounts.value
-    payoutAccounts.value = saved.filter(a => a.provider !== 'stripe')
-    try {
-      seed()
-      await expect(usePartnerClaims().submitToPartner('res-w-1', 'clm-1')).resolves.toEqual({ ok: false, reason: 'no_stripe_payout_account' })
-      expect(partnerClaim()).toBeUndefined()
-    }
-    finally {
-      payoutAccounts.value = saved
-    }
+  it('refuses while the damage waiver is not activated: there is no bank account to pay into', async () => {
+    useTernActivation().replayActivation()
+    seed()
+    await expect(usePartnerClaims().submitToPartner('res-w-1', 'clm-1')).resolves.toEqual({ ok: false, reason: 'waiver_not_activated' })
+    expect(partnerClaim()).toBeUndefined()
   })
 
   it('refuses to file the same claim twice', async () => {
@@ -137,20 +131,22 @@ describe('submitToPartner', () => {
     expect(partnerClaim()!.events.map(e => e.status)).toEqual(['submitting', 'submission_failed', 'submitting', 'submitted'])
   })
 
-  it('keeps paying the account frozen at filing, even if the listing moves to another one', async () => {
+  it('keeps paying the account frozen at filing, even if the tenant changes its bank account', async () => {
     seed()
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-1', true))
-    const saved = payoutAccounts.value
-    payoutAccounts.value = saved.map(a => ({ ...a, listingIds: a.listingIds.filter(id => id !== 'lst-1') }))
-    try {
-      // The retry reuses the filing, account included.
-      await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
-      expect(partnerClaim()).toMatchObject({ status: 'submitted', payoutAccountId: 'pay-1' })
-    }
-    finally {
-      payoutAccounts.value = saved
-    }
+    // The tenant changes its bank account between the failed filing and the retry.
+    useTernActivation().updatePayoutBank({
+      accountHolder: 'Elevate Schweiz GmbH',
+      bankName: 'Aargauische Kantonalbank',
+      country: 'CH',
+      iban: 'CH93 0076 2011 6238 5295 7',
+      accountNumber: '',
+      bicSwift: '',
+    })
+    // The retry reuses the filing, account included.
+    await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
+    expect(partnerClaim()).toMatchObject({ status: 'submitted', payoutAccountName: 'Bank Central Asia (BCA) •••• 3456' })
   })
 })
 
@@ -261,7 +257,7 @@ describe('the worklist', () => {
 describe('the partner contract', () => {
   it('is Elev8\'s single integration: read-only, with nothing for a tenant to configure', () => {
     const pc = usePartnerClaims()
-    expect(pc.partner.value).toMatchObject({ name: 'Demo Cover Partner', deductiblePerClaim: 100, paymentTermsDays: 14 })
+    expect(pc.partner.value).toMatchObject({ name: 'Tern', deductiblePerClaim: 100, paymentTermsDays: 14 })
     expect(pc).not.toHaveProperty('savePartner')
     expect(pc).not.toHaveProperty('connectPartner')
     expect(pc.partner.value).not.toHaveProperty('payoutAccount')

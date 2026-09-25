@@ -50,6 +50,8 @@ const state = computed(() => protection.value?.state ?? null)
 const isCharging = computed(() => dp.isCharging(props.reservation.id))
 const chargeable = computed(() => protection.value ? chargeableTotal(protection.value) : 0)
 const isCancelledStay = computed(() => props.reservation.status === 'cancelled')
+/** The host pays for the cover: the guest was never asked and pays nothing. */
+const hostPaid = computed(() => protection.value?.paidBy === 'host')
 const checkedOut = computed(() => new Date(`${props.reservation.checkOut}T00:00:00`).getTime() <= Date.now())
 
 /** Renders nothing at all when the channel, the status or the rail skips protection. */
@@ -126,7 +128,9 @@ async function settle() {
 function cancel() {
   const result = dp.cancelProtection(props.reservation.id)
   toast[result.ok ? 'success' : 'error'](result.ok
-    ? (protection.value?.option === 'waiver' ? 'Waiver fee refunded' : 'Saved card released')
+    ? (protection.value?.option !== 'waiver'
+        ? 'Saved card released'
+        : hostPaid.value ? 'Cover closed with the stay' : 'Waiver fee refunded')
     : `Could not cancel (${result.reason})`)
 }
 
@@ -210,10 +214,13 @@ function undo() {
           <div class="grid gap-3 sm:grid-cols-3">
             <div>
               <p class="text-[11px] tracking-wide text-muted-foreground uppercase">
-                {{ protection.option === 'waiver' ? 'Waiver fee' : 'Card may be charged up to' }}
+                {{ protection.option !== 'waiver' ? 'Card may be charged up to' : hostPaid ? 'Paid by' : 'Guest paid' }}
               </p>
-              <p class="text-lg font-semibold tabular-nums">
-                {{ money(protection.amount) }}
+              <p class="text-lg font-semibold" :class="hostPaid ? '' : 'tabular-nums'" data-testid="protection-paid-by">
+                {{ hostPaid ? 'The host' : money(protection.amount) }}
+              </p>
+              <p v-if="protection.option === 'waiver' && protection.elev8Fee !== undefined" class="text-xs text-muted-foreground tabular-nums">
+                Elev8 charges {{ money(protection.elev8Fee) }}
               </p>
             </div>
             <div v-if="protection.option === 'waiver'">
@@ -258,7 +265,11 @@ function undo() {
             </span>
           </p>
 
-          <p class="text-xs text-muted-foreground">
+          <p v-if="protection.acceptedVia === 'host_cover'" class="text-xs text-muted-foreground">
+            Covered automatically {{ when(protection.acceptedAt) }}: this listing pays for the cover, so the guest is not asked.
+            Terms {{ protection.termsVersion }}.
+          </p>
+          <p v-else class="text-xs text-muted-foreground">
             Accepted {{ when(protection.acceptedAt) }}
             {{ protection.acceptedVia === 'guest_guide' ? 'in the guest guide' : 'by staff' }},
             terms {{ protection.termsVersion }}.
@@ -272,13 +283,15 @@ function undo() {
             data-testid="protection-cancelled-stay"
           >
             <p class="text-sm">
-              {{ state === 'waiver_active'
-                ? `The stay was cancelled. The ${money(protection.amount)} waiver fee is owed back.`
-                : 'The stay was cancelled. Release the saved card: nothing can be charged for a stay that did not happen.' }}
+              {{ state !== 'waiver_active'
+                ? 'The stay was cancelled. Release the saved card: nothing can be charged for a stay that did not happen.'
+                : hostPaid
+                  ? 'The stay was cancelled. The guest paid nothing, so there is nothing to refund: close the cover.'
+                  : `The stay was cancelled. The ${money(protection.amount)} waiver fee is owed back.` }}
             </p>
             <div>
               <Button size="sm" :disabled="!dp.canEditProtection.value" @click="cancel">
-                {{ state === 'waiver_active' ? 'Refund waiver fee' : 'Release card' }}
+                {{ state !== 'waiver_active' ? 'Release card' : hostPaid ? 'Close cover' : 'Refund waiver fee' }}
               </Button>
             </div>
           </div>
@@ -496,9 +509,11 @@ function undo() {
                 Cancelled with the stay
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ protection.option === 'waiver'
-                  ? `${money(protection.refundedAmount ?? 0)} waiver fee refunded ${when(protection.refundedAt)}.`
-                  : `Saved card released ${when(protection.releasedAt)}. Nothing was charged.` }}
+                {{ protection.option !== 'waiver'
+                  ? `Saved card released ${when(protection.releasedAt)}. Nothing was charged.`
+                  : hostPaid
+                    ? 'The host paid for the cover, so nothing was refunded.'
+                    : `${money(protection.refundedAmount ?? 0)} waiver fee refunded ${when(protection.refundedAt)}.` }}
               </p>
             </template>
           </div>

@@ -11,7 +11,7 @@ import type {
   SettleRefusal,
   StaySlot,
 } from '~/components/reservations/data/damage-protection'
-import type { DamageProtection, ProtectionClaim, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
+import type { DamageProtection, ProtectionClaim, ProtectionPayer, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
 import {
   assignmentForStay,
@@ -25,6 +25,7 @@ import {
   depositAmount,
   formatProtectionAmount,
   formatSavedCard,
+  hostCoverProtection,
   isChoiceValid,
   isClaimValid,
   isGuestStay,
@@ -39,19 +40,22 @@ import {
   settleOutcome,
   SLOT_RANGES,
   waiverAmount,
+  waiverCover,
   waiverPotTotal,
 } from '~/components/reservations/data/damage-protection'
-import { seedProtectionAssignments, seedProtectionPolicies } from '~/components/reservations/data/damage-protection-seed'
+import { seedProtectionAssignments, seedProtectionPayers, seedProtectionPolicies } from '~/components/reservations/data/damage-protection-seed'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useGuestGuides } from '~/composables/useGuestGuides'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useRoles } from '~/composables/useRoles'
+import { useTernActivation } from '~/composables/useTernActivation'
 
-// v2: the deposit became a saved card, and a v1 policy carries the charge-lead
-// and refund-window fields that no longer exist.
-const STORAGE_KEY = 'elev8-damage-protection-v2'
+// v3: the waiver's cover comes from a Tern tier and the tenant only sets the
+// guest price, so a v2 policy carries pricing, cap and exclusion fields that no
+// longer exist. v2 itself replaced the charge-upfront deposit.
+const STORAGE_KEY = 'elev8-damage-protection-v3'
 
 /** The mock gateway round trip. Long enough for the spinner to be visible. */
 const GATEWAY_MOCK_MS = 1500
@@ -68,6 +72,13 @@ export interface ProtectionRow {
   /** What the waiver pot paid out on this stay. Feeds the pricing read-out. */
   waiverPaid: number
 }
+
+/**
+ * The three things a property can do (owner's decision, 2026-09-25): no
+ * protection, the guest buys the waiver in the guest guide, or the host pays
+ * for it and the guest is never asked.
+ */
+export type ListingProtectionMode = 'off' | 'guest_paid' | 'host_paid'
 
 export interface CurrencyTotal {
   currency: string
@@ -99,6 +110,19 @@ export function useDamageProtection() {
   const actor = computed(() => currentUser.value?.name ?? 'Staff')
 
   /**
+   * ⚠️ The waiver is Tern's cover, so it only runs once the tenant has
+   * activated the service. Until then a policy offering the waiver is paused
+   * whole (its deposit too, rather than quietly becoming deposit-only on
+   * channels nobody picked), a listing cannot be host-paid, and no host cover
+   * is written. Deposit-only policies are not Tern's and keep working.
+   */
+  const tern = useTernActivation()
+  const waiverServiceActive = computed(() => tern.isActive.value)
+  function pausedUntilActivation(policy: DamageProtectionPolicy | null): boolean {
+    return Boolean(policy?.offers.includes('waiver')) && !waiverServiceActive.value
+  }
+
+  /**
    * Module-level view/edit is the only permission primitive this app has, so
    * moving money gets its own module rather than riding on reservations edit.
    * Reading a stay must not imply the right to take money from it.
@@ -119,6 +143,11 @@ export function useDamageProtection() {
     'damage-protection-assignments',
     () => seedProtectionAssignments.map(a => ({ ...a })),
   )
+  /** Per listing. Absent means the guest pays. Only read where the listing has a policy. */
+  const payers = useState<Record<string, ProtectionPayer>>(
+    'damage-protection-payers',
+    () => ({ ...seedProtectionPayers }),
+  )
 
   // Guarded on storage availability rather than `import.meta.client`, which
   // Vitest does not substitute.
@@ -129,6 +158,7 @@ export function useDamageProtection() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         policies: policies.value,
         assignments: assignments.value,
+        payers: payers.value,
       }))
     }
     catch { /* quota or private mode */ }
@@ -137,17 +167,24 @@ export function useDamageProtection() {
   function hydrate() {
     if (typeof localStorage === 'undefined')
       return
+    // First: whether the waiver may run at all decides what the sync below writes.
+    tern.hydrate()
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw)
-        return
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed.policies))
-        policies.value = parsed.policies
-      if (Array.isArray(parsed.assignments))
-        assignments.value = parsed.assignments
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed.policies))
+          policies.value = parsed.policies
+        if (Array.isArray(parsed.assignments))
+          assignments.value = parsed.assignments
+        if (parsed.payers && typeof parsed.payers === 'object')
+          payers.value = parsed.payers
+      }
     }
     catch { /* corrupt payload, keep the seed */ }
+    // No booking-created hook and no scheduler in this app: catching up on
+    // hydrate is what covers a host-paid listing's new stays.
+    syncHostCover()
   }
 
   // ---------------------------------------------------------------- reads
@@ -184,17 +221,44 @@ export function useDamageProtection() {
     return reservationById(id)?.damageProtection ?? null
   }
 
+  function payerFor(listingId: string): ProtectionPayer {
+    return payers.value[listingId] ?? 'guest'
+  }
+
+  /** Off when the listing has no policy at all; otherwise who pays. */
+  function listingMode(listingId: string): ListingProtectionMode {
+    if (!assignments.value.some(a => a.listingId === listingId))
+      return 'off'
+    return payerFor(listingId) === 'host' ? 'host_paid' : 'guest_paid'
+  }
+
+  /**
+   * Whether a booking falls under protection at all, whoever pays. Host-paid
+   * needs a waiver to pay for: a deposit-only policy has nothing the host can
+   * buy on the guest's behalf.
+   */
+  function inScope(reservation: ReservationEntry, policy: DamageProtectionPolicy | null): policy is DamageProtectionPolicy {
+    if (!policy)
+      return false
+    if (payerFor(reservation.listingId) === 'host')
+      return policy.offers.includes('waiver')
+    return protectionOffered(policy, reservation.channel)
+  }
+
+  /** The guest is ASKED to choose. Never on a host-paid listing. */
   function isOfferedFor(id: string): boolean {
     const reservation = reservationById(id)
     if (!reservation)
       return false
     // Status FIRST: an owner stay and a maintenance block are both channel
-    // 'Direct', the one channel a policy is likely to set to 'offer'. Without
-    // this an owner is asked to buy a waiver to stay in their own villa.
+    // 'Direct'. Owners make their own reservations and pay nothing, so an owner
+    // stay is never protected, whatever the policy covers.
     if (!isGuestStay(reservation.status))
       return false
+    if (payerFor(reservation.listingId) === 'host')
+      return false
     const policy = policyFor(reservation.listingId, reservation.nights)
-    if (!policy || !protectionOffered(policy, reservation.channel))
+    if (!policy || !protectionOffered(policy, reservation.channel) || pausedUntilActivation(policy))
       return false
     // A deposit-only policy on a listing that cannot save a card has nothing
     // left to offer, so the guest is not asked at all.
@@ -226,7 +290,26 @@ export function useDamageProtection() {
 
   // ------------------------------------------------------------ policy CRUD
 
-  function savePolicy(policy: DamageProtectionPolicy) {
+  /**
+   * Whether this save would switch the waiver ON: a new policy offering it, or
+   * an existing one that did not. A policy already offering it may still be
+   * edited while the service is not active; it simply stays paused.
+   */
+  function turnsWaiverOn(policy: DamageProtectionPolicy): boolean {
+    if (!policy.offers.includes('waiver'))
+      return false
+    const existing = policies.value.find(p => p.id === policy.id)
+    return !existing?.offers.includes('waiver')
+  }
+
+  /**
+   * ⚠️ Refuses to turn the waiver on before the service is activated
+   * (`waiver_not_activated`): a waiver policy made then could only ever sit
+   * paused, and the activation is where the tenant accepts Tern's terms.
+   */
+  function savePolicy(policy: DamageProtectionPolicy): ProtectionWriteResult {
+    if (turnsWaiverOn(policy) && !waiverServiceActive.value)
+      return { ok: false, reason: 'waiver_not_activated' }
     // Touches `policies` only, never a reservation: the frozen amount, cap and
     // terms on an accepted protection is what a guest agreed to.
     const index = policies.value.findIndex(p => p.id === policy.id)
@@ -235,6 +318,7 @@ export function useDamageProtection() {
       ? [...policies.value, next]
       : policies.value.map(p => p.id === policy.id ? next : p)
     persist()
+    return { ok: true }
   }
 
   function deletePolicy(id: string): ProtectionWriteResult {
@@ -280,16 +364,136 @@ export function useDamageProtection() {
     const range = SLOT_RANGES[slot]
     const isSlot = (a: DamageProtectionAssignment) =>
       a.listingId === listingId && a.minNights === range.minNights && a.maxNights === range.maxNights
+    if (policyId && payerFor(listingId) === 'host'
+      && !policies.value.find(p => p.id === policyId)?.offers.includes('waiver')) {
+      return { ok: false, reason: 'host_needs_waiver' }
+    }
     const previous = assignments.value
     assignments.value = previous.filter(a => !isSlot(a))
     if (!policyId) {
       persist()
+      syncHostCover()
       return { ok: true }
     }
     const result = assignBand(listingId, policyId, range.minNights, range.maxNights)
     if (!result.ok)
       assignments.value = previous
+    else
+      syncHostCover()
     return result
+  }
+
+  /**
+   * The per-listing choice: no protection, guest pays, or host pays.
+   *
+   * - 'off' clears the listing's policies.
+   * - Turning a listing on with no policy yet assigns the standard templates in
+   *   its currency (or failing those, a usable policy in that currency), so a
+   *   tenant only has to pick who pays.
+   * - 'host_paid' refuses a listing whose only policy is deposit-only: the host
+   *   has no waiver to pay for there.
+   */
+  function setListingMode(listingId: string, mode: ListingProtectionMode): ProtectionWriteResult {
+    if (mode === 'off') {
+      assignments.value = assignments.value.filter(a => a.listingId !== listingId)
+      payers.value = Object.fromEntries(Object.entries(payers.value).filter(([id]) => id !== listingId))
+      persist()
+      syncHostCover()
+      return { ok: true }
+    }
+    const payer: ProtectionPayer = mode === 'host_paid' ? 'host' : 'guest'
+    if (payer === 'host' && !waiverServiceActive.value)
+      return { ok: false, reason: 'waiver_not_activated' }
+    const current = assignments.value.filter(a => a.listingId === listingId)
+    if (payer === 'host' && current.length > 0 && current.every(a =>
+      !policies.value.find(p => p.id === a.policyId)?.offers.includes('waiver'))) {
+      return { ok: false, reason: 'host_needs_waiver' }
+    }
+    const previousPayers = payers.value
+    payers.value = { ...payers.value, [listingId]: payer }
+    if (current.length === 0) {
+      const currency = payoutAccountFor(listingId)?.currency ?? 'USD'
+      const usable = (p: DamageProtectionPolicy) =>
+        p.currency === currency && (payer === 'guest' || p.offers.includes('waiver'))
+      const fromTemplate = (templateId: string) =>
+        policies.value.find(p => p.templateId === templateId && usable(p))
+      // The standard templates first; failing those, any policy the listing
+      // can use in its own currency, for short stays. Never another currency.
+      const short = fromTemplate('standard_short') ?? policies.value.find(p => usable(p) && p.templateId !== 'standard_long')
+      const long = fromTemplate('standard_long')
+      if (!short && !long) {
+        payers.value = previousPayers
+        return { ok: false, reason: 'no_policy_in_currency' }
+      }
+      if (short)
+        assignBand(listingId, short.id, SLOT_RANGES.short.minNights, SLOT_RANGES.short.maxNights)
+      if (long)
+        assignBand(listingId, long.id, SLOT_RANGES.long.minNights, SLOT_RANGES.long.maxNights)
+    }
+    else if (payer === 'host') {
+      // A deposit-only slot has nothing the host can pay for: dropped, the
+      // waiver slot beside it stays.
+      assignments.value = assignments.value.filter(a => a.listingId !== listingId
+        || policies.value.find(p => p.id === a.policyId)?.offers.includes('waiver'))
+    }
+    persist()
+    syncHostCover()
+    return { ok: true }
+  }
+
+  /**
+   * Host-paid listings cover their guest stays without asking anyone. Written
+   * as a real protection (`hostCoverProtection`) so a claim, the insurance
+   * partner claim and the Elev8 fee all have a frozen record to hang off.
+   *
+   * - Covers a guest stay that has not checked out and carries no protection
+   *   yet, or only an unanswered `awaiting_choice`. It never covers a stay that
+   *   is over: cover bought after the fact is not cover.
+   * - A guest's own accepted choice (a paid waiver, a saved card) is left
+   *   alone: it is what they agreed to.
+   * - A host cover on a stay that was cancelled is closed, with nothing to
+   *   refund since the guest paid nothing.
+   * - A host cover whose listing is no longer host-paid is removed while the
+   *   stay has not started and no claim hangs off it, so the guest is asked.
+   *
+   * Idempotent: running it twice writes nothing the second time.
+   */
+  function syncHostCover(now: Date = new Date()) {
+    const today = new Date(now)
+    today.setHours(0, 0, 0, 0)
+    const dayOf = (iso: string) => new Date(`${iso}T00:00:00`).getTime()
+    for (const reservation of reservations.value) {
+      const existing = reservation.damageProtection
+      const isHostCover = existing?.paidBy === 'host'
+      const policy = policyFor(reservation.listingId, reservation.nights)
+      const hostPaid = payerFor(reservation.listingId) === 'host' && Boolean(policy?.offers.includes('waiver'))
+
+      if (isHostCover && existing) {
+        const noClaims = (existing.claims ?? []).length === 0
+        if (reservation.status === 'cancelled' && existing.state === 'waiver_active' && noClaims) {
+          const closed: DamageProtection = { ...existing, state: 'cancelled' }
+          commit(reservation, closed, protectionActivityEvent('cancelled', closed, actor.value, 'Stay cancelled, nothing to refund: the host paid for the cover'))
+          continue
+        }
+        if (!hostPaid && noClaims && dayOf(reservation.checkIn) > today.getTime() && existing.state === 'waiver_active') {
+          updateReservation(reservation.id, {
+            damageProtection: undefined,
+            activity: [...reservation.activity, protectionActivityEvent('host_cover_removed', existing, actor.value)],
+          })
+        }
+        continue
+      }
+
+      if (!hostPaid || !policy || !isGuestStay(reservation.status) || !waiverServiceActive.value)
+        continue
+      if (existing && existing.state !== 'awaiting_choice')
+        continue
+      if (dayOf(reservation.checkOut) <= today.getTime())
+        continue
+      const cover = hostCoverProtection(policy, now)
+      if (cover)
+        commit(reservation, cover, protectionActivityEvent('host_covered', cover, actor.value))
+    }
   }
 
   /**
@@ -407,15 +611,18 @@ export function useDamageProtection() {
       return { ok: false, reason: 'invalid_choice' }
 
     const isWaiver = draft.option === 'waiver'
-    const amount = isWaiver ? waiverAmount(policy, reservation) : depositAmount(policy, reservation)
+    const amount = isWaiver ? waiverAmount(policy) : depositAmount(policy, reservation)
+    const cover = isWaiver ? waiverCover(policy) : null
     const protection: DamageProtection = {
       policyId: policy.id,
       option: draft.option,
       state: isWaiver ? 'waiver_active' : 'card_on_file',
-      // FROZEN at acceptance. A later policy edit cannot rewrite these.
+      // FROZEN at acceptance. A later policy edit, or a Tern price change,
+      // cannot rewrite these.
       amount,
       currency: policy.currency,
-      coverageCap: isWaiver ? policy.waiver.coverageCap : undefined,
+      coverageCap: cover?.coverageCap,
+      ...(isWaiver ? { paidBy: 'guest' as const, tier: policy.waiver.tier, elev8Fee: cover?.perStayFee } : {}),
       termsVersion: policy.termsVersion,
       termsText: policy.termsText,
       acceptedAt: new Date().toISOString(),
@@ -549,7 +756,9 @@ export function useDamageProtection() {
       `Assessed at ${formatProtectionAmount(claim.amount, protection.currency)}.`,
       protection.option === 'deposit'
         ? `${formatProtectionAmount(claim.coveredAmount, protection.currency)} will be charged to the card you saved${cardLine}.`
-        : `This is covered by your damage waiver at no cost to you.`,
+        : protection.paidBy === 'host'
+          ? `This is covered by the damage protection included with your stay, at no cost to you.`
+          : `This is covered by your damage waiver at no cost to you.`,
       claim.excessAmount > 0
         ? `${formatProtectionAmount(claim.excessAmount, protection.currency)} is above your cover and will be invoiced separately.`
         : '',
@@ -707,7 +916,8 @@ export function useDamageProtection() {
       return { ok: false, reason: 'claims_recorded' }
 
     const now = new Date().toISOString()
-    const isWaiver = protection.state === 'waiver_active'
+    // A host-paid waiver took nothing from the guest: closed, nothing refunded.
+    const isWaiver = protection.state === 'waiver_active' && protection.paidBy !== 'host'
     const next: DamageProtection = {
       ...protection,
       state: 'cancelled',
@@ -716,7 +926,9 @@ export function useDamageProtection() {
     }
     const detail = isWaiver
       ? `${formatProtectionAmount(protection.amount, protection.currency)} waiver fee refunded`
-      : protection.state === 'card_on_file' ? 'Saved card released, nothing charged' : ''
+      : protection.state === 'card_on_file'
+        ? 'Saved card released, nothing charged'
+        : protection.paidBy === 'host' ? 'Nothing to refund: the host paid for the cover' : ''
     commit(reservation, next, protectionActivityEvent('cancelled', next, actor.value, detail))
     resolveDepositAlerts(reservation.id)
     return { ok: true }
@@ -749,6 +961,9 @@ export function useDamageProtection() {
     const protection = reservation?.damageProtection
     if (!reservation || !protection)
       return
+    // Nobody is asked on a host-paid listing: the cover already follows the stay.
+    if (protection.paidBy === 'host')
+      return
     const before = policyFor(reservation.listingId, previousNights)
     const after = policyFor(reservation.listingId, reservation.nights)
     if (!after || before?.id === after.id)
@@ -772,9 +987,13 @@ export function useDamageProtection() {
         if (reservation.status === 'blocked' || reservation.status === 'owner_request')
           return null
         const policy = policyFor(reservation.listingId, reservation.nights)
-        if (!policy || !protectionOffered(policy, reservation.channel))
-          return null
         const protection = reservation.damageProtection ?? null
+        // A recorded protection keeps its row even if the listing's setup has
+        // changed since: it still has claims, a card or a fee behind it.
+        if (!inScope(reservation, policy) && !(protection && policy))
+          return null
+        if (!policy)
+          return null
         return {
           reservation,
           policy,
@@ -831,8 +1050,24 @@ export function useDamageProtection() {
   const waiverPotTotals = computed(() => {
     const waivers = rows.value.filter(row => row.protection?.option === 'waiver')
     return {
+      // Only guests pay into it; a host-paid cover's amount is 0.
       collected: totalsByCurrency(waivers, row => row.protection?.amount ?? 0),
       paidOut: totalsByCurrency(waivers, row => row.waiverPaid),
+    }
+  })
+
+  /**
+   * What Elev8 charges the tenant for covered stays, per currency: the frozen
+   * Tern per-stay fee on every live or used waiver, guest-paid and host-paid
+   * alike. A cancelled cover is not billed. Its own figure, never netted
+   * against what guests paid.
+   */
+  const elev8FeeTotals = computed(() => {
+    const billed = rows.value.filter(row =>
+      row.protection?.option === 'waiver' && row.protection.state === 'waiver_active')
+    return {
+      guestPaid: totalsByCurrency(billed.filter(row => row.protection?.paidBy !== 'host'), row => row.protection?.elev8Fee ?? 0),
+      hostPaid: totalsByCurrency(billed.filter(row => row.protection?.paidBy === 'host'), row => row.protection?.elev8Fee ?? 0),
     }
   })
 
@@ -844,7 +1079,10 @@ export function useDamageProtection() {
    */
   function listingsMissingGuideSection(): string[] {
     const { guides } = useGuestGuides()
-    const assigned = new Set(assignments.value.map(a => a.listingId))
+    // A host-paid listing asks the guest nothing, so it needs no choice screen.
+    const assigned = new Set(assignments.value
+      .map(a => a.listingId)
+      .filter(listingId => payerFor(listingId) !== 'host'))
     return [...assigned].filter((listingId) => {
       const guide = guides.value.find(
         g => g.status !== 'archived' && g.assignedListingIds.includes(listingId),
@@ -907,9 +1145,14 @@ export function useDamageProtection() {
     canEditProtection,
     policies,
     assignments,
+    payers,
+    waiverServiceActive,
+    pausedUntilActivation,
     hydrate,
     // reads
     policyFor,
+    payerFor,
+    listingMode,
     payoutAccountFor,
     railForListing,
     protectionFor,
@@ -920,10 +1163,13 @@ export function useDamageProtection() {
     listingsMissingGuideSection,
     // policy CRUD
     savePolicy,
+    turnsWaiverOn,
     deletePolicy,
     assignBand,
     removeBand,
     setListingSlot,
+    setListingMode,
+    syncHostCover,
     setSlotsForListings,
     resetListingBands,
     // writers
@@ -952,6 +1198,7 @@ export function useDamageProtection() {
     coverOnFileTotals,
     chargeableTotals,
     waiverPotTotals,
+    elev8FeeTotals,
     markAsRead,
     emitProtectionAlerts,
   }

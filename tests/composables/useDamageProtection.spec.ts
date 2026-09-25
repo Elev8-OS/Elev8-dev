@@ -1,10 +1,11 @@
 import type { DamageProtection, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { listingSlots } from '~/components/reservations/data/damage-protection'
+import { listingSlots, policyFromTemplate } from '~/components/reservations/data/damage-protection'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { useTernActivation } from '~/composables/useTernActivation'
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock('vue-sonner', () => ({ toast: toastMock }))
@@ -157,8 +158,24 @@ describe('isOfferedFor and optionsFor', () => {
     }
   })
 
-  it('stays silent on an unset channel', () => {
+  it('asks an OTA guest too once the waiver is on: the cover cannot skip a channel', () => {
     seedReservation({ channel: 'Airbnb' })
+    const dp = useDamageProtection()
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+    // The deposit rides along on every channel beside the waiver.
+    expect(dp.optionsFor('res-dp-1').map(o => o.option)).toEqual(['waiver', 'deposit'])
+  })
+
+  it('keeps a deposit-only policy silent on a channel it did not pick', () => {
+    // lst-2's short stays are deposit-only, Direct only.
+    seedReservation({ listingId: 'lst-2', channel: 'Airbnb' })
+    expect(useDamageProtection().isOfferedFor('res-dp-1')).toBe(false)
+    seedReservation({ listingId: 'lst-2', channel: 'Direct' })
+    expect(useDamageProtection().isOfferedFor('res-dp-1')).toBe(true)
+  })
+
+  it('never protects an owner stay: owners pay nothing', () => {
+    seedReservation({ status: 'owner_request' })
     expect(useDamageProtection().isOfferedFor('res-dp-1')).toBe(false)
   })
 
@@ -349,7 +366,7 @@ describe('recordChoice', () => {
   })
 
   it('refuses when not offered and when terms are unaccepted', () => {
-    seedReservation({ channel: 'Airbnb' })
+    seedReservation({ listingId: 'lst-2', channel: 'Airbnb' })
     expect(useDamageProtection().recordChoice('res-dp-1', ACCEPT_WAIVER)).toEqual({ ok: false, reason: 'not_offered' })
     seedReservation()
     expect(useDamageProtection().recordChoice('res-dp-1', { option: 'waiver', termsAccepted: false }))
@@ -744,6 +761,175 @@ describe('emitProtectionAlerts', () => {
     seedReservation({ checkIn: isoDaysFromNow(0), status: 'cancelled' })
     useDamageProtection().emitProtectionAlerts()
     expect(useNotifications().alerts.value.some(a => a.type === 'PROTECTION_CHOICE_MISSING')).toBe(false)
+  })
+})
+
+describe('host-paid listings', () => {
+  it('never asks the guest and covers the stay at no cost to them', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    expect(dp.setListingMode('lst-1', 'host_paid')).toEqual({ ok: true })
+    expect(dp.listingMode('lst-1')).toBe('host_paid')
+    expect(dp.isOfferedFor('res-dp-1')).toBe(false)
+    expect(dp.optionsFor('res-dp-1')).toEqual([])
+    expect(protectionOf()).toMatchObject({
+      option: 'waiver',
+      state: 'waiver_active',
+      amount: 0,
+      paidBy: 'host',
+      tier: 'bronze',
+      elev8Fee: 9,
+      coverageCap: 2000,
+      acceptedVia: 'host_cover',
+    })
+    expect(reservationOf().activity.map(a => a.title)).toEqual(['Covered by the host'])
+  })
+
+  it('covers OTA bookings too, but never an owner stay or a stay already over', () => {
+    seedReservation({ id: 'res-ota', channel: 'Booking.com' })
+    seedReservation({ id: 'res-owner', status: 'owner_request' })
+    seedReservation({ id: 'res-past', status: 'checked_out', checkIn: isoDaysFromNow(-10), checkOut: isoDaysFromNow(-5) })
+    useDamageProtection().setListingMode('lst-1', 'host_paid')
+    expect(reservationOf('res-ota').damageProtection?.paidBy).toBe('host')
+    expect(reservationOf('res-owner').damageProtection).toBeUndefined()
+    expect(reservationOf('res-past').damageProtection).toBeUndefined()
+  })
+
+  it('replaces an unanswered choice but leaves a guest\'s accepted choice alone', () => {
+    seedReservation({ id: 'res-asked', damageProtection: {
+      policyId: 'dp-standard',
+      option: 'waiver',
+      state: 'awaiting_choice',
+      amount: 0,
+      currency: 'USD',
+      termsVersion: 'v1',
+      termsText: 'Terms',
+      acceptedAt: new Date().toISOString(),
+      acceptedVia: 'staff',
+    } })
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_WAIVER)
+    dp.setListingMode('lst-1', 'host_paid')
+    expect(reservationOf('res-asked').damageProtection?.paidBy).toBe('host')
+    expect(protectionOf()).toMatchObject({ paidBy: 'guest', amount: 39 })
+  })
+
+  it('writes the cover once, however often it is synced', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.setListingMode('lst-1', 'host_paid')
+    dp.syncHostCover()
+    dp.hydrate()
+    expect(reservationOf().activity).toHaveLength(1)
+  })
+
+  it('removes the cover from a stay that has not started when the listing goes back to guest-paid', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.setListingMode('lst-1', 'host_paid')
+    dp.setListingMode('lst-1', 'guest_paid')
+    expect(reservationOf().damageProtection).toBeUndefined()
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+    expect(reservationOf().activity.map(a => a.title)).toEqual(['Covered by the host', 'Host cover removed'])
+  })
+
+  it('closes a cancelled stay\'s cover with nothing to refund', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.setListingMode('lst-1', 'host_paid')
+    useReservationsModule().updateReservation('res-dp-1', { status: 'cancelled' })
+    dp.syncHostCover()
+    expect(protectionOf().state).toBe('cancelled')
+    expect(protectionOf().refundedAmount).toBeUndefined()
+    expect(dp.bucketFor('res-dp-1')).toBe('settled')
+  })
+
+  it('refuses a deposit-only policy where the host pays, and drops it when switching', () => {
+    const dp = useDamageProtection()
+    // lst-2: deposit-only short stays, waiver long stays.
+    expect(dp.setListingMode('lst-2', 'host_paid')).toEqual({ ok: true })
+    expect(listingSlots(dp.assignments.value, 'lst-2')).toMatchObject({ short: null, long: 'dp-long-stay' })
+    expect(dp.setListingSlot('lst-2', 'short', 'dp-deposit-only')).toEqual({ ok: false, reason: 'host_needs_waiver' })
+    expect(dp.setListingSlot('lst-2', 'short', 'dp-standard')).toEqual({ ok: true })
+  })
+
+  it('turns a listing off, and on again with the standard templates in its currency', () => {
+    const dp = useDamageProtection()
+    expect(dp.setListingMode('lst-18', 'off')).toEqual({ ok: true })
+    expect(dp.listingMode('lst-18')).toBe('off')
+    expect(dp.setListingMode('lst-18', 'guest_paid')).toEqual({ ok: true })
+    expect(listingSlots(dp.assignments.value, 'lst-18')).toMatchObject({ short: 'dp-standard', long: 'dp-long-stay' })
+    // lst-3 is paid out in IDR, and no policy exists in IDR: never a USD one instead.
+    expect(dp.setListingMode('lst-3', 'guest_paid')).toEqual({ ok: false, reason: 'no_policy_in_currency' })
+    expect(dp.listingMode('lst-3')).toBe('off')
+    // An IDR deposit-only policy is usable where the guest pays, never where the host does.
+    dp.savePolicy({ ...policyFromTemplate('deposit_only', 'IDR'), id: 'dp-idr' })
+    expect(dp.setListingMode('lst-3', 'host_paid')).toEqual({ ok: false, reason: 'no_policy_in_currency' })
+    expect(dp.setListingMode('lst-3', 'guest_paid')).toEqual({ ok: true })
+    expect(listingSlots(dp.assignments.value, 'lst-3').short).toBe('dp-idr')
+  })
+
+  it('counts what Elev8 charges per covered stay, split by who pays, and needs no guide section', () => {
+    seedReservation({ id: 'res-guest' })
+    seedReservation({ id: 'res-host', listingId: 'lst-18', nights: 30, checkOut: isoDaysFromNow(35) })
+    const dp = useDamageProtection()
+    dp.recordChoice('res-guest', ACCEPT_WAIVER)
+    dp.setListingMode('lst-18', 'host_paid')
+    expect(dp.elev8FeeTotals.value.guestPaid).toEqual([{ currency: 'USD', amount: 9 }])
+    expect(dp.elev8FeeTotals.value.hostPaid).toEqual([{ currency: 'USD', amount: 15 }])
+    expect(dp.listingsMissingGuideSection()).not.toContain('lst-18')
+  })
+})
+
+describe('before the damage waiver is activated', () => {
+  it('pauses a policy that offers the waiver, deposit included, and keeps deposit-only running', () => {
+    useTernActivation().replayActivation()
+    const dp = useDamageProtection()
+    seedReservation()
+    seedReservation({ id: 'res-deposit', listingId: 'lst-2' })
+    expect(dp.isOfferedFor('res-dp-1')).toBe(false)
+    expect(dp.recordChoice('res-dp-1', ACCEPT_WAIVER)).toEqual({ ok: false, reason: 'not_offered' })
+    expect(dp.isOfferedFor('res-deposit')).toBe(true)
+    expect(dp.pausedUntilActivation(dp.policyFor('lst-1', 5))).toBe(true)
+    expect(dp.pausedUntilActivation(dp.policyFor('lst-2', 5))).toBe(false)
+  })
+
+  it('refuses to turn the waiver on in a policy, but still saves deposit-only and edits to a paused one', () => {
+    useTernActivation().replayActivation()
+    const dp = useDamageProtection()
+    const count = dp.policies.value.length
+    expect(dp.savePolicy({ ...policyFromTemplate('standard_short', 'USD'), id: 'dp-new' })).toEqual({ ok: false, reason: 'waiver_not_activated' })
+    const depositOnly = policyFromTemplate('deposit_only', 'USD')
+    expect(dp.savePolicy({ ...depositOnly, id: 'dp-dep' })).toEqual({ ok: true })
+    // Adding the waiver to that deposit-only policy is turning it on too.
+    expect(dp.savePolicy({ ...depositOnly, id: 'dp-dep', offers: ['waiver', 'deposit'] })).toEqual({ ok: false, reason: 'waiver_not_activated' })
+    // A policy that already offered the waiver can still be edited while it is paused.
+    const standard = dp.policies.value.find(p => p.id === 'dp-standard')!
+    expect(dp.savePolicy({ ...standard, name: 'Renamed' })).toEqual({ ok: true })
+    expect(dp.policies.value).toHaveLength(count + 1)
+  })
+
+  it('refuses host-paid and writes no cover until activation, then covers on the next sync', async () => {
+    const tern = useTernActivation()
+    tern.replayActivation()
+    const dp = useDamageProtection()
+    seedReservation()
+    expect(dp.setListingMode('lst-1', 'host_paid')).toEqual({ ok: false, reason: 'waiver_not_activated' })
+    expect(reservationOf().damageProtection).toBeUndefined()
+
+    vi.useFakeTimers()
+    const pending = tern.activate({
+      termsAccepted: true,
+      bank: { accountHolder: 'PT Elev8 Bali Mandiri', bankName: 'BCA', country: 'ID', iban: '', accountNumber: '7890123456', bicSwift: 'CENAIDJA' },
+    }, 'PT Elev8 Bali Mandiri')
+    await vi.runAllTimersAsync()
+    await pending
+    vi.useRealTimers()
+
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+    expect(dp.setListingMode('lst-1', 'host_paid')).toEqual({ ok: true })
+    expect(protectionOf().paidBy).toBe('host')
   })
 })
 

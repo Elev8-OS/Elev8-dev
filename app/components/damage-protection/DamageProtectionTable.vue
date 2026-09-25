@@ -127,11 +127,14 @@ function failureLabel(row: ProtectionRow): string {
             <td class="px-4 py-3">
               {{ fmtDate(row.reservation.checkOut) }}
             </td>
-            <td class="px-4 py-3 capitalize">
-              {{ row.protection?.option ?? '—' }}
+            <td class="px-4 py-3">
+              <span class="capitalize">{{ row.protection?.option ?? '—' }}</span>
+              <span v-if="row.protection?.paidBy === 'host'" class="ml-1.5 text-xs text-muted-foreground" data-testid="row-host-paid">
+                Host pays
+              </span>
             </td>
             <td class="px-4 py-3 text-right tabular-nums">
-              {{ row.protection ? money(row, row.protection.amount) : '—' }}
+              {{ !row.protection ? '—' : row.protection.paidBy === 'host' ? 'Not charged' : money(row, row.protection.amount) }}
             </td>
             <td class="px-4 py-3 text-right tabular-nums">
               {{ row.chargeable ? money(row, row.chargeable) : '—' }}

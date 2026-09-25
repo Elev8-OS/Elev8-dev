@@ -5,7 +5,6 @@ import type {
   PartnerClaimStatus,
   ProtectionClaim,
 } from '~/components/reservations/data/reservations'
-import type { PayoutAccount } from '~/components/settings/data/payouts'
 import { roundProtectionAmount } from '~/components/reservations/data/damage-protection'
 
 /**
@@ -14,7 +13,8 @@ import { roundProtectionAmount } from '~/components/reservations/data/damage-pro
  * The guest bought a waiver: we gave up the right to charge them for accidental
  * damage. What the waiver pot pays out, the property manager claims back from
  * its insurance partner, for the part above the contract's deductible, and the
- * partner pays into the tenant's own Stripe payout account. The guest is never a party
+ * partner pays by bank transfer into the account the tenant registered when it
+ * activated the damage waiver (`tern-activation.ts`). The guest is never a party
  * to this and never sees it: to them it is a waiver, not insurance, which is
  * also what keeps us out of selling insurance (OJK licensing).
  *
@@ -23,9 +23,9 @@ import { roundProtectionAmount } from '~/components/reservations/data/damage-pro
 
 /**
  * The insurance partner integration. ⚠️ Elev8 integrates with the partner ONCE,
- * for every tenant: there is no per-tenant partner, contract, API key or bank
- * account to configure, and no settings screen for it. The payout lands in the
- * tenant's own Stripe payout account (`stripePayoutAccountFor`).
+ * for every tenant: there is no per-tenant partner, contract or API key. What a
+ * tenant does give is at ACTIVATION (`useTernActivation`): a billing card for
+ * Elev8's per-stay fees and a bank account Tern pays claims into by transfer.
  */
 export interface CoverPartner {
   id: string
@@ -38,23 +38,6 @@ export interface CoverPartner {
   maxPerClaim?: number
   /** How long after approval the partner's contract says the money should arrive. */
   paymentTermsDays: number
-}
-
-/**
- * Where the partner pays a claim: the tenant's connected Stripe payout account
- * in the policy's currency. The one that settles the claim's listing wins;
- * failing that, any other connected Stripe account in that currency. Null when
- * the tenant has none, and then the claim cannot be filed: money with nowhere
- * to land is money nobody will chase.
- */
-export function stripePayoutAccountFor(
-  listingId: string,
-  accounts: Pick<PayoutAccount, 'id' | 'provider' | 'status' | 'currency' | 'listingIds' | 'accountName'>[],
-  currency: string,
-): { id: string, accountName: string } | null {
-  const usable = accounts.filter(a => a.provider === 'stripe' && a.status === 'connected' && a.currency === currency)
-  const account = usable.find(a => a.listingIds.includes(listingId)) ?? usable[0]
-  return account ? { id: account.id, accountName: account.accountName } : null
 }
 
 // ---------------------------------------------------------------------------
