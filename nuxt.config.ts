@@ -6,6 +6,10 @@ export default defineNuxtConfig({
   pages: true,
 
   css: ['~/assets/css/tailwind.css'],
+  // Vite runs on Rolldown (see pnpm.overrides in package.json), which is what
+  // keeps the production build inside Node's default heap. Sourcemaps stay off
+  // so the server bundle does not carry 13 MB of .map files.
+  sourcemap: { server: false, client: false },
   vite: {
     plugins: [tailwindcss()],
   },
