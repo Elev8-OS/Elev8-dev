@@ -1,9 +1,11 @@
-import type { CleaningJob, CleaningJobSource } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningJob, CleaningJobPriority, CleaningJobSource } from '~/components/cleaning/data/cleaning-jobs'
 import type { Booking } from '~/components/listings/data/listings'
-import type { CleaningJobPriority } from '~/components/cleaning/data/cleaning-jobs'
 import type { OwnerStay } from '~/components/owners/data/owner-stays'
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
+import { cleaningDateKey } from '~/components/cleaning/data/cleaning-link'
 import { listings } from '~/components/listings/data/listings'
+import { mergedBookingsFor } from '~/components/operations-calendar/data/calendar-stays'
 import { mockUpsellOrders } from '~/components/upsells/data/upsell-orders'
 
 export type CalendarEventType = 'guest_stay' | 'owner_stay' | 'cleaning' | 'task' | 'upsell'
@@ -103,7 +105,8 @@ export interface CalendarListing {
   bookings: Booking[]
 }
 
-/** Format a `Date` as `YYYY-MM-DD` using the *local* date components.
+/**
+ * Format a `Date` as `YYYY-MM-DD` using the *local* date components.
  *
  * `Date#toISOString` always returns UTC, which is one calendar day behind
  * the user's intent for any time zone east of UTC (e.g. Bali is UTC+8 —
@@ -126,7 +129,13 @@ export function getListingName(listingId: string) {
   return listings.value.find(listing => listing.id === listingId)?.name ?? listingId
 }
 
-export function getCalendarListings(): CalendarListing[] {
+/**
+ * The calendar's listings, each carrying its bookings from BOTH stay sources
+ * (`calendar-stays.ts`). Pass the Reservations module's stays; without them the
+ * calendar shows only `listing.bookings`, which is what hid every stay made on
+ * the Reservations page.
+ */
+export function getCalendarListings(reservations: ReservationEntry[] = []): CalendarListing[] {
   return listings.value.map(listing => ({
     id: listing.id,
     name: listing.name,
@@ -136,7 +145,7 @@ export function getCalendarListings(): CalendarListing[] {
     roomLabel: listing.name,
     isSingleUnit: listing.unitType === 'single',
     tags: listing.tags,
-    bookings: listing.bookings,
+    bookings: mergedBookingsFor(listing.id, listing.bookings, reservations),
   }))
 }
 
@@ -160,6 +169,76 @@ export function getMonthGrid(anchorDate = new Date()) {
       inMonth: month === anchorDate.getMonth(),
     }
   })
+}
+
+/** Each day is two half-day columns in the stay bar row: before 12:00 and after it. */
+export const HALF_DAYS_PER_DAY = 2
+
+export interface StayBarSpan {
+  /** First half-day column the bar covers, 0-based, across the visible days. */
+  startHalf: number
+  /** One past the last half-day column it covers. */
+  endHalf: number
+  /** The stay began before the first visible day, so the bar has no left end. */
+  continuesBefore: boolean
+  /** The stay runs past the last visible day, so the bar has no right end. */
+  continuesAfter: boolean
+}
+
+/**
+ * Where a stay's bar sits in the half-day grid, or null when it misses the days
+ * shown entirely.
+ *
+ * A guest checks in after 12:00 and checks out before it, so a stay starts in
+ * the SECOND half of its check-in day and ends in the FIRST half of its check-out
+ * day. On a turnover day the departing bar stops at midday and the arriving bar
+ * starts there, rather than both filling the whole day and running together.
+ */
+export function stayBarSpan(checkIn: string, checkOut: string, dayKeys: string[]): StayBarSpan | null {
+  const first = dayKeys[0]
+  const last = dayKeys[dayKeys.length - 1]
+  if (!first || !last || checkIn > last || checkOut < first || checkOut <= checkIn)
+    return null
+  const totalHalves = dayKeys.length * HALF_DAYS_PER_DAY
+  const inIndex = dayKeys.indexOf(checkIn)
+  const outIndex = dayKeys.indexOf(checkOut)
+  const continuesBefore = checkIn < first
+  const continuesAfter = checkOut > last
+  const startHalf = continuesBefore || inIndex === -1 ? 0 : inIndex * HALF_DAYS_PER_DAY + 1
+  const endHalf = continuesAfter || outIndex === -1 ? totalHalves : outIndex * HALF_DAYS_PER_DAY + 1
+  if (endHalf <= startHalf)
+    return null
+  return { startHalf, endHalf, continuesBefore, continuesAfter }
+}
+
+/**
+ * Stacks stay bars that overlap into separate lanes, so one never hides
+ * another. A multi-unit listing is one calendar row, and its rooms are booked
+ * at the same time as a matter of course; drawn in one lane, a long stay covers
+ * every shorter stay beside it. Bars that only touch (one guest leaving at
+ * midday, the next arriving then) share a lane.
+ *
+ * Greedy by start, then longest first: each bar takes the first lane whose last
+ * bar has ended. Returns the lane per input index, and how many lanes there are.
+ */
+export function assignStayLanes(spans: Pick<StayBarSpan, 'startHalf' | 'endHalf'>[]): { lanes: number[], laneCount: number } {
+  const order = spans
+    .map((span, index) => ({ span, index }))
+    .sort((a, b) => a.span.startHalf - b.span.startHalf || b.span.endHalf - a.span.endHalf)
+  const laneEnds: number[] = []
+  const lanes: number[] = Array.from({ length: spans.length }, () => 0)
+  for (const { span, index } of order) {
+    let lane = laneEnds.findIndex(end => end <= span.startHalf)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(span.endHalf)
+    }
+    else {
+      laneEnds[lane] = span.endHalf
+    }
+    lanes[index] = lane
+  }
+  return { lanes, laneCount: laneEnds.length }
 }
 
 export function getWeekDays(anchorDate = new Date()) {
@@ -272,9 +351,10 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
   const source = jobs ?? cleaningJobs.value
   return source.map((job) => {
     const listing = listingMap?.get(job.listingId)
-    const fullListing = listings.value.find(l => l.id === job.listingId)
-    const scheduledDate = job.scheduledAt.slice(0, 10)
-    const overlappingBooking = fullListing?.bookings.find(b =>
+    // The merged bookings when the caller built the map, else the listing's own.
+    const bookings = listing?.bookings ?? listings.value.find(l => l.id === job.listingId)?.bookings ?? []
+    const scheduledDate = cleaningDateKey(job.scheduledAt)
+    const overlappingBooking = bookings.find(b =>
       b.status !== 'cancelled'
       && b.status !== 'inquiry'
       && b.checkIn <= scheduledDate
@@ -307,15 +387,12 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
 }
 
 export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>, jobs?: CleaningJob[]): CalendarEvent[] {
-  const existingKeys = new Set((jobs ?? cleaningJobs.value).map(job => `${job.listingId}:${job.scheduledAt.slice(0, 10)}`))
+  const existingKeys = new Set((jobs ?? cleaningJobs.value).map(job => `${job.listingId}:${cleaningDateKey(job.scheduledAt)}`))
   const events: CalendarEvent[] = []
 
-  for (const listing of getCalendarListings()) {
-    const fullListing = listings.value.find(l => l.id === listing.id)
-    if (!fullListing)
-      continue
+  for (const listing of listingMap ? [...listingMap.values()] : getCalendarListings()) {
     const checkOutTime = getDefaultCheckOutTime(listing.id)
-    for (const booking of fullListing.bookings) {
+    for (const booking of listing.bookings) {
       // Skip cancelled / inquiry — no actual checkout, no cleaning
       if (booking.status === 'cancelled' || booking.status === 'inquiry')
         continue
@@ -345,18 +422,17 @@ export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>
   return events
 }
 
-export function buildAllEvents(jobs?: CleaningJob[]): CalendarEvent[] {
-  const calendarListings = getCalendarListings()
+export function buildAllEvents(jobs?: CleaningJob[], reservations: ReservationEntry[] = []): CalendarEvent[] {
+  const calendarListings = getCalendarListings(reservations)
   const listingMap = new Map(calendarListings.map(l => [l.id, l]))
   const events: CalendarEvent[] = []
 
   for (const listing of calendarListings) {
-    const fullListing = listings.value.find(l => l.id === listing.id)
-    if (!fullListing || !fullListing.bookings.length)
+    if (!listing.bookings.length)
       continue
     const checkInTime = getDefaultCheckInTime(listing.id)
     const checkOutTime = getDefaultCheckOutTime(listing.id)
-    for (const booking of fullListing.bookings) {
+    for (const booking of listing.bookings) {
       // Skip cancelled / inquiry — not a real booking, no stay or cleaning
       if (booking.status === 'cancelled' || booking.status === 'inquiry')
         continue

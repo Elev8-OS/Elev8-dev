@@ -3,6 +3,11 @@
  * so the one viewer can be mounted once in `inbox/Layout.vue` instead of once
  * per message, and so a photo inside a forwarded card can open it without
  * reaching back up through its parent.
+ *
+ * `scope` names the viewer instance. The inbox uses the default; any other
+ * surface that mounts its own `<InboxImageViewer :scope>` (the damage claim
+ * dialog, the cleaning report) passes its own name, so a photo opened there
+ * cannot also pop the inbox's viewer when both happen to be mounted.
  */
 
 export interface ViewedImage {
@@ -16,8 +21,8 @@ export interface ViewedImage {
   dims?: string
 }
 
-export function useImageViewer() {
-  const viewedImage = useState<ViewedImage | null>('inbox-viewed-image', () => null)
+export function useImageViewer(scope = 'inbox') {
+  const viewedImage = useState<ViewedImage | null>(`${scope}-viewed-image`, () => null)
 
   const isOpen = computed({
     get: () => viewedImage.value !== null,

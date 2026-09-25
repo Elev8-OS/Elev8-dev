@@ -2,9 +2,12 @@
 import type { CleaningJob, CleaningJobInput, CleaningJobPriority, CleaningJobRecurrence, CleaningJobSource, CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
 import DatePicker from '~/components/base/DatePicker.vue'
 import { cleanerOptions, CLEANING_SOURCE_OPTIONS, cleaningJobSourceLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
 import { listings } from '~/components/listings/data/listings'
+import { allStays } from '~/components/operations-calendar/data/calendar-stays'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = withDefaults(defineProps<{
   modelValue?: Partial<CleaningJob> | null
@@ -78,6 +81,40 @@ const form = reactive<CleaningJobInput>({
   reservationId: props.modelValue?.reservationId ?? null,
   recurrence: props.modelValue?.recurrence ?? null,
 })
+
+const { reservations } = useReservationsModule()
+
+/**
+ * The stay this cleaning will be linked to on save, worked out by the same
+ * rule `useCleaningJobs` applies (`resolveStayForCleaning`), so what the form
+ * says is what gets stored:
+ * - a job that arrived already linked (from a reservation) keeps its stay,
+ *   unless it moves to another listing;
+ * - on a date change the stay on the new date wins, else the old one stands.
+ */
+const linkedStay = computed(() => {
+  if (!form.listingId || !form.scheduledAt)
+    return null
+  // Both stay sources, the same union `useCleaningJobs` links against.
+  const stays = allStays(listings.value, reservations.value)
+  const original = props.modelValue ?? {}
+  const originalStay = original.reservationId
+    ? stays.find(s => s.id === original.reservationId) ?? null
+    : null
+  const resolved = resolveStayForCleaning(
+    { listingId: form.listingId, scheduledAt: form.scheduledAt },
+    stays,
+  )
+  if (original.listingId && original.listingId !== form.listingId)
+    return resolved
+  if (original.scheduledAt && original.scheduledAt !== form.scheduledAt)
+    return resolved ?? originalStay
+  return originalStay ?? resolved
+})
+
+function shortDay(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
 
 const recurrenceEnabled = ref(Boolean(props.modelValue?.recurrence?.enabled))
 const recurrenceFrequency = ref<CleaningJobRecurrence['frequency']>(props.modelValue?.recurrence?.frequency ?? 'weekly')
@@ -332,6 +369,19 @@ function submit() {
     <div class="grid gap-1.5">
       <Label>Date <span class="text-destructive">*</span></Label>
       <DatePicker v-model="cleaningDate" />
+      <p
+        v-if="form.listingId && cleaningDate"
+        class="flex items-center gap-1.5 text-xs text-muted-foreground"
+        data-testid="cleaning-linked-stay"
+      >
+        <Icon :name="linkedStay ? 'lucide:link' : 'lucide:unlink'" class="size-3.5 shrink-0" />
+        <template v-if="linkedStay">
+          Linked to {{ linkedStay.guestName }}'s stay, {{ shortDay(linkedStay.checkIn) }} to {{ shortDay(linkedStay.checkOut) }}
+        </template>
+        <template v-else>
+          No stay on this date. The cleaning is created without a reservation.
+        </template>
+      </p>
     </div>
 
     <div class="grid gap-1.5 rounded-md border p-3">

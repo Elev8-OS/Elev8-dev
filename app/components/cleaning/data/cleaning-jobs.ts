@@ -1,5 +1,6 @@
 import { staffMembers } from '~/components/inbox/data/conversations'
 import { listings } from '~/components/listings/data/listings'
+import { damageProtectionDemoCleaningJobs } from '~/components/reservations/data/damage-protection-demo'
 
 export type CleaningJobStatus = 'draft' | 'scheduled' | 'confirmed' | 'in_progress' | 'done' | 'cancelled' | 'missed'
 export type CleaningJobPriority = 'low' | 'normal' | 'high' | 'urgent'
@@ -39,15 +40,54 @@ export const CLEANING_SOURCE_VARIANTS: Record<CleaningJobSource, 'default' | 'se
 }
 export type CleaningRecurrenceFrequency = 'weekly' | 'monthly'
 
-export type CleaningChecklistItemStatus = 'ok' | 'issue' | 'na'
+/**
+ * A checklist line is OK or a Problem, nothing in between. There is
+ * deliberately no N/A: a line that does not apply to a property belongs off
+ * that property's checklist, and a third answer is where a real problem gets
+ * parked because photographing it was a hassle.
+ */
+export type CleaningChecklistItemStatus = 'ok' | 'problem'
+
+export const CLEANING_CHECKLIST_STATUS_LABELS: Record<CleaningChecklistItemStatus, string> = {
+  ok: 'OK',
+  problem: 'Problem',
+}
 
 export interface CleaningChecklistItem {
   id: string
   label: string
   status: CleaningChecklistItemStatus
   notes?: string
+  /**
+   * ⚠️ REQUIRED, at least one, when `status` is `'problem'`. The photo is what
+   * lets a problem become a damage claim the guest can be shown, and a problem
+   * nobody photographed is one the desk cannot act on. The report is written in
+   * the housekeeping app, outside this repo, which must refuse to submit a
+   * problem without one (`checklistItemError`).
+   */
+  photoUrls?: string[]
   completedBy?: string
   completedAt?: string
+}
+
+/**
+ * Why a checklist line cannot be submitted as it stands, or null. The single
+ * statement of the rule, for whatever writes a report.
+ */
+export function checklistItemError(item: Pick<CleaningChecklistItem, 'status' | 'photoUrls'>): string | null {
+  if (item.status === 'problem' && !(item.photoUrls?.length))
+    return 'A problem needs at least one photo.'
+  return null
+}
+
+/**
+ * Problems in a report that arrived without a photo. Should always be empty;
+ * the report panel flags any that are not rather than trusting the writer.
+ */
+export function problemsMissingPhotos(feedback: Pick<CleaningFeedback, 'checklist'> | null | undefined): CleaningChecklistItem[] {
+  return (feedback?.checklist ?? [])
+    .flatMap(group => group.items)
+    .filter(item => checklistItemError(item) !== null)
 }
 
 export interface CleaningChecklistGroup {
@@ -295,7 +335,7 @@ export const cleaningJobs = ref<CleaningJob[]>([
           items: [
             { id: 'bath-1', label: 'Dusche, Badewanne, Waschbecken reinigen und entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T14:55:00+08:00' },
             { id: 'bath-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-06-22T15:00:00+08:00' },
-            { id: 'bath-3', label: 'Handtücher und Badmatte austauschen', status: 'issue', notes: 'Towels left on bathroom floor — picked up and replaced', completedBy: 'Made Surya', completedAt: '2026-06-22T15:05:00+08:00' },
+            { id: 'bath-3', label: 'Handtücher und Badmatte austauschen', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800'], notes: 'Towels left on bathroom floor — picked up and replaced', completedBy: 'Made Surya', completedAt: '2026-06-22T15:05:00+08:00' },
           ],
         },
         {
@@ -348,7 +388,7 @@ export const cleaningJobs = ref<CleaningJob[]>([
           id: 'kitchen',
           title: 'Küche',
           items: [
-            { id: 'kit-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'issue', notes: 'Dishes piled in the sink — extra effort needed', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:30:00+08:00' },
+            { id: 'kit-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800'], notes: 'Dishes piled in the sink — extra effort needed', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:30:00+08:00' },
             { id: 'kit-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:35:00+08:00' },
             { id: 'kit-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:45:00+08:00' },
             { id: 'kit-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T15:50:00+08:00' },
@@ -359,7 +399,7 @@ export const cleaningJobs = ref<CleaningJob[]>([
           id: 'bath',
           title: 'Badezimmer',
           items: [
-            { id: 'bath-1', label: 'Dusche, Badewanne,Waschbecken reinigen und entkalken', status: 'issue', notes: 'Water on the floor — extra drying required', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:20:00+08:00' },
+            { id: 'bath-1', label: 'Dusche, Badewanne,Waschbecken reinigen und entkalken', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=800'], notes: 'Water on the floor — extra drying required', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:20:00+08:00' },
             { id: 'bath-2', label: 'Toilette reinigen und desinfizieren', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:25:00+08:00' },
             { id: 'bath-3', label: 'Handtücher und Badmatte austauschen', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:30:00+08:00' },
           ],
@@ -368,7 +408,7 @@ export const cleaningJobs = ref<CleaningJob[]>([
           id: 'outdoor',
           title: 'Aussenbereich',
           items: [
-            { id: 'out-1', label: 'Sand im Wohnzimmer aufkehren', status: 'issue', notes: 'Heavy sand throughout living room', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:35:00+08:00' },
+            { id: 'out-1', label: 'Sand im Wohnzimmer aufkehren', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800'], notes: 'Heavy sand throughout living room', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:35:00+08:00' },
             { id: 'out-2', label: 'Pooltücher einsammeln', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-06-22T16:40:00+08:00' },
           ],
         },
@@ -1651,7 +1691,7 @@ export const cleaningJobs = ref<CleaningJob[]>([
             { id: 'k-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T11:50:00+08:00' },
             { id: 'k-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:00:00+08:00' },
             { id: 'k-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:05:00+08:00' },
-            { id: 'k-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'issue', notes: 'Pet hair found in lower drawers — extra cleaning required', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:30:00+08:00' },
+            { id: 'k-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800'], notes: 'Pet hair found in lower drawers — extra cleaning required', completedBy: 'Wayan Adi', completedAt: '2026-08-01T12:30:00+08:00' },
           ],
         },
         {
@@ -1779,11 +1819,11 @@ export const cleaningJobs = ref<CleaningJob[]>([
           id: 'kitchen',
           title: 'Küche',
           items: [
-            { id: 'k-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'issue', notes: 'Strong pet smell in fridge area — deep cleaned', completedBy: 'Made Surya', completedAt: '2026-07-27T12:00:00+08:00' },
+            { id: 'k-1', label: 'Kontrolle Kühlschrank (Lebensmittel entsorgen und reinigen)', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800'], notes: 'Strong pet smell in fridge area — deep cleaned', completedBy: 'Made Surya', completedAt: '2026-07-27T12:00:00+08:00' },
             { id: 'k-2', label: 'Kontrolle Eisfach (Lebensmittel entsorgen und reinigen)', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:05:00+08:00' },
             { id: 'k-3', label: 'Abflusssieb reinigen, kontrollieren ob das Wasser abläuft', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:15:00+08:00' },
             { id: 'k-4', label: 'Wasserhahnsieb kontrollieren ob es regelmässig fliesst, ab und zu entkalken', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T12:20:00+08:00' },
-            { id: 'k-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'issue', notes: 'Pet chew toy in drawer — removed and placed in lost & found', completedBy: 'Made Surya', completedAt: '2026-07-27T12:40:00+08:00' },
+            { id: 'k-5', label: 'Alle Schubladen kontrollieren, Ordnung schaffen, schmutzige Schubladen reinigen, Töpfe kontrollieren, Besteck kontrollieren', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=800'], notes: 'Pet chew toy in drawer — removed and placed in lost & found', completedBy: 'Made Surya', completedAt: '2026-07-27T12:40:00+08:00' },
           ],
         },
         {
@@ -1800,7 +1840,7 @@ export const cleaningJobs = ref<CleaningJob[]>([
           title: 'Aussenbereich',
           items: [
             { id: 'o-1', label: 'Pool auf Sauberkeit prüfen', status: 'ok', completedBy: 'Made Surya', completedAt: '2026-07-27T13:20:00+08:00' },
-            { id: 'o-2', label: 'Garten + Terrasse fegen, Pet Hair entfernen', status: 'issue', notes: 'Heavy pet hair on outdoor furniture', completedBy: 'Made Surya', completedAt: '2026-07-27T13:40:00+08:00' },
+            { id: 'o-2', label: 'Garten + Terrasse fegen, Pet Hair entfernen', status: 'problem', photoUrls: ['https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800'], notes: 'Heavy pet hair on outdoor furniture', completedBy: 'Made Surya', completedAt: '2026-07-27T13:40:00+08:00' },
           ],
         },
       ],
@@ -1813,6 +1853,10 @@ export const cleaningJobs = ref<CleaningJob[]>([
     },
   },
 ])
+
+// Cleaning reports behind the damage-protection demo stays. Kept in that module
+// because their dates, like the stays', are relative to today.
+cleaningJobs.value.push(...damageProtectionDemoCleaningJobs)
 
 export const cleaningJobStatuses: CleaningJobStatus[] = ['draft', 'scheduled', 'confirmed', 'in_progress', 'done', 'cancelled']
 

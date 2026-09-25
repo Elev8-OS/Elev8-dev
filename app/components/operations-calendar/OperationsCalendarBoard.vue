@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import type { CalendarEvent, CalendarListing, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
+import type { ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
-import { getCalendarListings } from '~/components/operations-calendar/data/operations-calendar'
+import { bookingReservationStatus } from '~/components/operations-calendar/data/calendar-stays'
+import { assignStayLanes, getCalendarListings, HALF_DAYS_PER_DAY, stayBarSpan } from '~/components/operations-calendar/data/operations-calendar'
+import { reservationStatusClasses, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 interface WeekDay {
   key: string
@@ -29,9 +33,12 @@ const emit = defineEmits<{
   'goToToday': []
 }>()
 
-const allListings = getCalendarListings()
+// The stay bars read each listing's bookings, which must include the stays
+// made on the Reservations page (`calendar-stays.ts`).
+const { reservations } = useReservationsModule()
+const allListings = computed(() => getCalendarListings(reservations.value))
 const visibleListingIds = computed(() => new Set(props.eventsByListingAndDay.keys()))
-const visibleListings = computed(() => allListings.filter(l => visibleListingIds.value.has(l.id)))
+const visibleListings = computed(() => allListings.value.filter(l => visibleListingIds.value.has(l.id)))
 
 const sortedListings = computed(() => {
   return [...visibleListings.value].sort((a, b) => {
@@ -57,9 +64,22 @@ interface ListingTreeNode {
 interface StayBar {
   id: string
   guestName: string
-  startDayIndex: number
-  endDayIndex: number
-  colorIndex: number
+  /** "19 Sep to 24 Sep", for the tooltip. */
+  dates: string
+  /** The Reservations status, which picks the bar's colour. */
+  status: ReservationStatus
+  startHalf: number
+  endHalf: number
+  continuesBefore: boolean
+  continuesAfter: boolean
+  /** Which stacked lane the bar sits in; overlapping stays never share one. */
+  lane: number
+}
+
+interface StayLayout {
+  bars: StayBar[]
+  /** At least 1, so a row with no stays keeps its (empty) bar lane. */
+  laneCount: number
 }
 
 function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
@@ -152,28 +172,53 @@ const listingTree = computed<ListingTreeNode[]>(() => {
   return tree
 })
 
-function getStayBars(listing: CalendarListing): StayBar[] {
+function stayLayoutFor(listing: CalendarListing): StayLayout {
   const firstDay = props.weekDays[0]
   const lastDay = props.weekDays[props.weekDays.length - 1]
   if (!firstDay || !lastDay)
-    return []
+    return { bars: [], laneCount: 1 }
   const weekStart = firstDay.key
   const weekEnd = lastDay.key
 
-  return listing.bookings
+  const dayKeys = props.weekDays.map(d => d.key)
+  const bars = listing.bookings
+    // A cancellation or an inquiry is nobody in the house, the same rule the
+    // calendar's stay events already apply.
+    .filter(booking => booking.status !== 'cancelled' && booking.status !== 'inquiry')
     .filter(booking => booking.checkIn <= weekEnd && booking.checkOut >= weekStart)
-    .map((booking) => {
-      const checkInIndex = props.weekDays.findIndex(d => d.key === booking.checkIn)
-      const checkOutIndex = props.weekDays.findIndex(d => d.key === booking.checkOut)
-      return {
+    .flatMap((booking) => {
+      const span = stayBarSpan(booking.checkIn, booking.checkOut, dayKeys)
+      if (!span)
+        return []
+      return [{
         id: `stay-bar-${booking.id}`,
         guestName: booking.guestName,
-        startDayIndex: checkInIndex === -1 ? 0 : checkInIndex,
-        endDayIndex: checkOutIndex === -1 ? 6 : checkOutIndex,
-        colorIndex: listing.colorIndex,
-      }
+        dates: `${shortDate(booking.checkIn)} to ${shortDate(booking.checkOut)}`,
+        status: bookingReservationStatus(booking),
+        ...span,
+        lane: 0,
+      }]
     })
+  const { lanes, laneCount } = assignStayLanes(bars)
+  return {
+    bars: bars.map((bar, i) => ({ ...bar, lane: lanes[i] ?? 0 })),
+    laneCount: Math.max(laneCount, 1),
+  }
 }
+
+/** Worked out once per visible row rather than once per template read. */
+const stayLayouts = computed(() => new Map(visibleListings.value.map(l => [l.id, stayLayoutFor(l)])))
+
+function layoutOf(listing?: CalendarListing): StayLayout {
+  return (listing && stayLayouts.value.get(listing.id)) || { bars: [], laneCount: 1 }
+}
+
+function shortDate(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+/** The bar row is laid out in half days; the day cells below span two each. */
+const halfColumns = computed(() => props.weekDays.length * HALF_DAYS_PER_DAY)
 
 const todayKey = new Date().toISOString().slice(0, 10)
 
@@ -204,14 +249,6 @@ const totalEventsLabel = computed(() => {
 function formatWeekRangeHeader(_days: typeof props.weekDays) {
   return weekRangeLabel.value
 }
-
-const listingColors = [
-  'bg-sky-500',
-  'bg-emerald-500',
-  'bg-amber-500',
-  'bg-rose-500',
-  'bg-slate-500',
-]
 
 function weeklyEventCount(listingId: string) {
   const listingMap = props.eventsByListingAndDay.get(listingId)
@@ -402,15 +439,35 @@ function onCellClick(listingId: string, dayKey: string) {
                 </div>
               </div>
 
-              <div class="relative grid flex-1 grid-cols-7 grid-rows-[auto_1fr]">
-                <!-- Stay bars -->
+              <div
+                class="relative grid flex-1"
+                :style="{
+                  gridTemplateColumns: `repeat(${halfColumns}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${layoutOf(node.listing).laneCount}, auto) 1fr`,
+                }"
+              >
+                <!-- Stay bars, in half days: check-in after 12:00, check-out before it.
+                     A bar is only rounded, and only inset, at an end that is really
+                     its check-in or check-out, so consecutive guests meet at midday
+                     with a gap between them while a stay running off the week keeps
+                     a flat edge. -->
                 <template v-if="node.listing">
                   <div
-                    v-for="stay in getStayBars(node.listing)"
+                    v-for="stay in layoutOf(node.listing).bars"
                     :key="stay.id"
-                    class="mx-0.5 mt-1 flex items-center overflow-hidden rounded px-2 text-xs font-semibold text-white"
-                    :class="[listingColors[stay.colorIndex]]"
-                    :style="{ gridColumn: `${stay.startDayIndex + 1} / ${stay.endDayIndex + 2}`, gridRow: '1 / 2' }"
+                    data-testid="stay-bar"
+                    :data-start-half="stay.startHalf"
+                    :data-end-half="stay.endHalf"
+                    :data-lane="stay.lane"
+                    :data-status="stay.status"
+                    class="mt-1 flex h-6 items-center overflow-hidden border px-2 text-xs font-semibold"
+                    :class="[
+                      reservationStatusClasses[stay.status],
+                      stay.continuesBefore ? '' : 'ml-1 rounded-l-md',
+                      stay.continuesAfter ? '' : 'mr-1 rounded-r-md',
+                    ]"
+                    :style="{ gridColumn: `${stay.startHalf + 1} / ${stay.endHalf + 1}`, gridRow: `${stay.lane + 1} / ${stay.lane + 2}` }"
+                    :title="`${stay.guestName}, ${stay.dates}, ${reservationStatusLabels[stay.status]}`"
                   >
                     <span class="truncate">{{ stay.guestName }}</span>
                   </div>
@@ -422,7 +479,10 @@ function onCellClick(listingId: string, dayKey: string) {
                   :key="`${node.id}-${day.key}`"
                   class="group relative min-h-[132px] cursor-pointer border-l bg-background/70 p-2 transition-colors hover:bg-muted/40"
                   :class="day.key === todayKey && 'bg-muted/30'"
-                  :style="{ gridColumn: `${index + 1} / ${index + 2}`, gridRow: '2 / 3' }"
+                  :style="{
+                    gridColumn: `${index * HALF_DAYS_PER_DAY + 1} / ${(index + 1) * HALF_DAYS_PER_DAY + 1}`,
+                    gridRow: `${layoutOf(node.listing).laneCount + 1} / ${layoutOf(node.listing).laneCount + 2}`,
+                  }"
                   @dragover.prevent
                   @drop.prevent="onDrop(node.listing?.id ?? '', day.key)"
                   @click="onCellClick(node.listing?.id ?? '', day.key)"

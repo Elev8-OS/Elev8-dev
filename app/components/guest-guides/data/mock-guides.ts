@@ -8,7 +8,7 @@ export const mockGuestGuides: GuestGuide[] = [
     id: 'gg-mock-001',
     title: 'Bali Villa Welcome Guide',
     description: 'Standard welcome pack for Bali villas',
-    assignedListingIds: ['lst-1', 'lst-2'],
+    assignedListingIds: ['lst-1', 'lst-2', 'lst-18'],
     templateId: 'tpl-bali-villa',
     status: 'active',
     sections: [

@@ -5,10 +5,10 @@ import type {
   DepositPricing,
   ProtectionClaim,
   ProtectionOption,
-  ProtectionRefundDestination,
   ProtectionState,
   ReservationEntry,
   ReservationStatus,
+  SavedCard,
   WaiverPricing,
 } from '~/components/reservations/data/reservations'
 
@@ -21,12 +21,18 @@ export type ProtectionCurrency = 'USD' | 'IDR' | 'EUR' | 'CHF'
  */
 export const LONG_STAY_THRESHOLD_NIGHTS = 28
 
+/**
+ * ⚠️ There is no `defaultOption`. When a policy offers the waiver, the waiver is
+ * ALWAYS listed first and pre-selected (`buildOptions`): a deposit that costs
+ * the guest nothing upfront would otherwise be the obvious pick and empty the
+ * waiver pot, so the deposit is the option a guest has to go out of their way
+ * for. A policy cannot configure that away.
+ */
 export interface DamageProtectionPolicy {
   id: string
   name: string
   currency: ProtectionCurrency
   offers: ProtectionOption[]
-  defaultOption: ProtectionOption
   waiver: {
     pricing: WaiverPricing
     rate: number
@@ -37,11 +43,15 @@ export interface DamageProtectionPolicy {
   }
   deposit: {
     pricing: DepositPricing
+    /** The most the saved card may be charged, not a sum collected upfront. */
     rate: number
     /** Ceiling on a percent result. Without it a 90-night stay is unbounded. */
     maxAmount?: number
-    chargeLeadDays: number
-    refundSlaDays: number
+    /**
+     * Days after check-out by which the deposit is charged or closed. The
+     * guest's card stays on file until then, so it is also a promise to them.
+     */
+    settleWithinDays: number
   }
   /** Unset channels fall back to 'skip'. See `protectionOffered`. */
   channelPolicy: Partial<Record<BookingChannel, 'offer' | 'skip'>>
@@ -192,24 +202,12 @@ function addDays(date: Date, days: number): Date {
   return next
 }
 
-/**
- * Clamped to now: a booking made two days before arrival with a three-day lead
- * must charge immediately, not in the past.
- */
-export function chargeDueAt(
-  reservation: Pick<ReservationEntry, 'checkIn'>,
-  policy: DamageProtectionPolicy,
-  now: Date = new Date(),
-): string {
-  const due = addDays(isoDay(reservation.checkIn), -policy.deposit.chargeLeadDays)
-  return (due.getTime() < now.getTime() ? now : due).toISOString()
-}
-
-export function refundDueAt(
+/** When the deposit must be charged or closed: check-out plus the policy's window. */
+export function settleDueAt(
   reservation: Pick<ReservationEntry, 'checkOut'>,
   policy: DamageProtectionPolicy,
 ): string {
-  return addDays(isoDay(reservation.checkOut), policy.deposit.refundSlaDays).toISOString()
+  return addDays(isoDay(reservation.checkOut), policy.deposit.settleWithinDays).toISOString()
 }
 
 // ---------------------------------------------------------------------------
@@ -223,23 +221,35 @@ export interface ProtectionOptionView {
   /** Waiver only. */
   coverageCap?: number
   exclusions?: string[]
-  /** Deposit only. */
-  chargeDueAt?: string
-  refundSlaDays?: number
+  /** Deposit only: how long after check-out the card stays on file. */
+  settleWithinDays?: number
   isDefault: boolean
 }
 
 /**
+ * Where the deposit can be offered at all. A deposit is a card saved with
+ * Stripe, so only a listing that settles on Stripe ('card') can take one.
+ * QRIS, virtual account and e-wallet cannot be saved and charged later, so a
+ * guest on any other rail is offered the waiver only.
+ */
+export type ProtectionRail = 'card' | 'non_card'
+
+/**
  * The single source the guest screen, the settings preview and the staff dialog
  * all render from, so the three can never disagree on a number.
+ *
+ * ⚠️ The waiver comes first and is the default whenever it is offered. The
+ * deposit is only listed where a card can be saved (`rail === 'card'`).
  */
 export function buildOptions(
   policy: DamageProtectionPolicy,
-  reservation: ReservationEntry,
-  now: Date = new Date(),
+  reservation: PricedStay,
+  rail: ProtectionRail,
 ): ProtectionOptionView[] {
-  return policy.offers.map((option) => {
-    const isDefault = option === policy.defaultOption
+  const available = (['waiver', 'deposit'] as const).filter(option =>
+    policy.offers.includes(option) && (option === 'waiver' || rail === 'card'))
+  return available.map((option, index) => {
+    const isDefault = index === 0
     if (option === 'waiver') {
       return {
         option,
@@ -254,19 +264,28 @@ export function buildOptions(
       option,
       amount: depositAmount(policy, reservation),
       currency: policy.currency,
-      chargeDueAt: chargeDueAt(reservation, policy, now),
-      refundSlaDays: policy.deposit.refundSlaDays,
+      settleWithinDays: policy.deposit.settleWithinDays,
       isDefault,
     }
   })
+}
+
+/**
+ * The exact consent a guest gives for a charge after they have left. Frozen onto
+ * the protection at acceptance (`chargeMandate`), because it is what answers a
+ * chargeback, and it states the limits the guest is relying on: a ceiling, only
+ * for damage, and only after being told.
+ */
+export function chargeMandateText(amount: number, currency: string, settleWithinDays: number): string {
+  return `I authorise the property to keep this card on file and to charge it after check-out, up to ${formatProtectionAmount(amount, currency)}, only for damage recorded during my stay, only after I have been told what was found and why, and no later than ${settleWithinDays} days after check-out.`
 }
 
 // ---------------------------------------------------------------------------
 // Totals. Each figure comes off its own source, never derived from another.
 // ---------------------------------------------------------------------------
 
-/** What came off a held deposit. Zero on the waiver path. */
-export function deductionTotal(protection: DamageProtection): number {
+/** What the saved card is to be charged: the covered part of every claim. Zero on the waiver path. */
+export function chargeableTotal(protection: DamageProtection): number {
   if (protection.option !== 'deposit')
     return 0
   return roundProtectionAmount(
@@ -278,7 +297,7 @@ export function deductionTotal(protection: DamageProtection): number {
 /**
  * What the waiver pot paid out on this stay. Zero on the deposit path. This is
  * the number that says whether the fee is priced right, so it is computed from
- * its own source and never inferred from the deduction total.
+ * its own source and never inferred from the chargeable total.
  */
 export function waiverPotTotal(protection: DamageProtection): number {
   if (protection.option !== 'waiver')
@@ -289,12 +308,12 @@ export function waiverPotTotal(protection: DamageProtection): number {
   )
 }
 
-/** What the guest gets back if the deposit were released right now. Never negative. */
-export function refundableAmount(protection: DamageProtection): number {
+/** How much more the saved card may still be charged. Never negative. */
+export function remainingCover(protection: DamageProtection): number {
   if (protection.option !== 'deposit')
     return 0
   return roundProtectionAmount(
-    Math.max(0, protection.amount - deductionTotal(protection)),
+    Math.max(0, protection.amount - chargeableTotal(protection)),
     protection.currency,
   )
 }
@@ -309,7 +328,7 @@ export function claimCoverage(
   amount: number,
 ): { coveredAmount: number, excessAmount: number } {
   const headroom = protection.option === 'deposit'
-    ? refundableAmount(protection)
+    ? remainingCover(protection)
     : Math.max(0, (protection.coverageCap ?? 0) - waiverPotTotal(protection))
   const covered = roundProtectionAmount(
     Math.min(Math.max(0, amount), headroom),
@@ -328,109 +347,196 @@ export function claimCoverage(
 export type ProtectionBucket
   = | 'not_offered'
     | 'awaiting_choice'
-    | 'charge_due'
+    /** Card saved, stay not over yet. Nothing to do. */
+    | 'on_file'
+    /** Checked out: charge the claims or close it without a charge. */
+    | 'decision_due'
+    /** Past `settleDueAt` and still open. The guest was promised a decision by now. */
+    | 'decision_overdue'
+    /** The charge to the saved card was declined. */
     | 'failed'
-    | 'held'
+    /** A cancelled stay whose waiver fee has not been returned yet. */
     | 'refund_due'
-    | 'refund_overdue'
     | 'settled'
 
 const SETTLED_STATES: ProtectionState[] = [
+  'waiver_active',
   'deposit_released',
-  'deposit_partial',
-  'deposit_forfeited',
-  'cancelled_refunded',
+  'deposit_charged',
+  'cancelled',
 ]
-
-const REFUND_WARNING_MS = 48 * 60 * 60 * 1000
 
 export function resolveBucket(
   protection: DamageProtection | undefined,
-  status: ReservationStatus,
+  stay: Pick<ReservationEntry, 'status' | 'checkOut'>,
   now: Date = new Date(),
 ): ProtectionBucket {
   if (!protection)
     return 'not_offered'
 
-  // A cancelled stay owes the money back NOW, regardless of the check-out date,
-  // and must never sit in a chase bucket keyed to a stay that is not happening.
-  if (status === 'cancelled') {
-    const collected = protection.state === 'deposit_held'
-      || protection.state === 'waiver_active'
-      || protection.state === 'refund_failed'
-    return collected ? 'refund_due' : 'settled'
+  // A cancelled stay admits no claim. A waiver fee is owed back; a saved card
+  // is released straight away rather than kept on file for a stay that is not
+  // happening. Neither waits for the check-out date.
+  if (stay.status === 'cancelled') {
+    if (protection.state === 'waiver_active')
+      return 'refund_due'
+    if (protection.state === 'card_on_file')
+      return 'decision_due'
+    return 'settled'
   }
 
   if (protection.state === 'awaiting_choice')
     return 'awaiting_choice'
-  if (protection.state === 'waiver_active')
-    return 'settled'
-  if (protection.state === 'deposit_failed' || protection.state === 'refund_failed')
+  if (protection.state === 'charge_failed')
     return 'failed'
   if (SETTLED_STATES.includes(protection.state))
     return 'settled'
 
-  if (protection.state === 'deposit_pending') {
-    // Chosen but not yet due reads as upcoming, never as a task.
-    return protection.chargeDueAt && new Date(protection.chargeDueAt) <= now
-      ? 'charge_due'
-      : 'held'
-  }
-
-  // deposit_held
-  if (!protection.refundDueAt)
-    return 'held'
-  const due = new Date(protection.refundDueAt)
-  if (due <= now)
-    return 'refund_overdue'
-  return due.getTime() - now.getTime() <= REFUND_WARNING_MS ? 'refund_due' : 'held'
+  // card_on_file
+  if (isoDay(stay.checkOut).getTime() > now.getTime())
+    return 'on_file'
+  if (protection.settleDueAt && new Date(protection.settleDueAt).getTime() <= now.getTime())
+    return 'decision_overdue'
+  return 'decision_due'
 }
 
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
-export type ProtectionRail = 'card' | 'non_card'
-
 export interface ProtectionChoiceDraft {
   option: ProtectionOption
   termsAccepted: boolean
-  refundDestination?: ProtectionRefundDestination
-}
-
-/**
- * A deposit collected on a non-card rail needs bank details, because QRIS,
- * virtual account and e-wallet payments frequently cannot be reversed to
- * source. Collected on the choice screen, never at checkout.
- */
-export function choiceRequiresBankDetails(
-  draft: Pick<ProtectionChoiceDraft, 'option'>,
-  rail: ProtectionRail,
-): boolean {
-  return draft.option === 'deposit' && rail === 'non_card'
+  /** Deposit: the card already saved with the gateway. */
+  card?: SavedCard
+  /** Deposit: the guest agreed to `chargeMandateText`. */
+  chargeConsent?: boolean
 }
 
 export function isChoiceValid(
   draft: ProtectionChoiceDraft,
   policy: DamageProtectionPolicy,
   rail: ProtectionRail,
+  stay: PricedStay,
 ): boolean {
-  if (!policy.offers.includes(draft.option))
+  if (!buildOptions(policy, stay, rail).some(o => o.option === draft.option))
     return false
   if (!draft.termsAccepted)
     return false
-  if (!choiceRequiresBankDetails(draft, rail))
+  if (draft.option === 'waiver')
     return true
-  const d = draft.refundDestination
-  return Boolean(
-    d?.method === 'bank_transfer'
-    && d.accountName?.trim()
-    && d.accountNumber?.trim()
-    && d.bankName?.trim(),
-  )
+  return Boolean(draft.card?.paymentMethodId && draft.chargeConsent)
 }
 
-export type ClaimDraft = Pick<ProtectionClaim, 'label' | 'amount' | 'reason' | 'evidenceUrls'>
+// ---------------------------------------------------------------------------
+// The card form (mock). In production Stripe Elements owns these fields and
+// hands back a PaymentMethod; the number never reaches this app or its server.
+// ---------------------------------------------------------------------------
+
+export interface CardInput {
+  number: string
+  /** "MM/YY" */
+  expiry: string
+  cvc: string
+}
+
+function digitsOf(value: string): string {
+  return value.replace(/\D/g, '')
+}
+
+/** The Luhn checksum every card number carries. A transposed digit fails it. */
+export function passesLuhn(number: string): boolean {
+  const digits = digitsOf(number)
+  if (digits.length < 12)
+    return false
+  let sum = 0
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i])
+    if (i % 2 === 1) {
+      d *= 2
+      if (d > 9)
+        d -= 9
+    }
+    sum += d
+  }
+  return sum % 10 === 0
+}
+
+export function cardBrand(number: string): string {
+  const digits = digitsOf(number)
+  if (digits.startsWith('4'))
+    return 'visa'
+  if (/^5[1-5]/.test(digits) || /^2[2-7]/.test(digits))
+    return 'mastercard'
+  if (/^3[47]/.test(digits))
+    return 'amex'
+  return 'card'
+}
+
+function parseExpiry(expiry: string): { month: number, year: number } | null {
+  const match = expiry.trim().match(/^(\d{1,2})\s*\/\s*(\d{2}|\d{4})$/)
+  if (!match)
+    return null
+  const month = Number(match[1])
+  const rawYear = Number(match[2])
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear
+  if (month < 1 || month > 12)
+    return null
+  return { month, year }
+}
+
+/** Why the card cannot be saved as typed, or null. */
+export function cardInputError(input: CardInput, now: Date = new Date()): string | null {
+  const digits = digitsOf(input.number)
+  if (digits.length < 12 || digits.length > 19 || !passesLuhn(digits))
+    return 'Check the card number.'
+  const expiry = parseExpiry(input.expiry)
+  if (!expiry)
+    return 'Enter the expiry as MM/YY.'
+  // A card is valid through the last day of its expiry month.
+  const lastValid = new Date(expiry.year, expiry.month, 0, 23, 59, 59)
+  if (lastValid.getTime() < now.getTime())
+    return 'This card has expired.'
+  if (!/^\d{3,4}$/.test(input.cvc.trim()))
+    return 'Enter the 3 or 4 digit security code.'
+  return null
+}
+
+/**
+ * What the gateway hands back for a saved card: a reference plus what may be
+ * printed. ⚠️ Nothing of `input` survives except the last four digits.
+ */
+export function savedCardFrom(input: CardInput, paymentMethodId: string, savedAt: Date = new Date()): SavedCard {
+  const digits = digitsOf(input.number)
+  const expiry = parseExpiry(input.expiry)!
+  return {
+    provider: 'stripe',
+    paymentMethodId,
+    brand: cardBrand(digits),
+    last4: digits.slice(-4),
+    expMonth: expiry.month,
+    expYear: expiry.year,
+    savedAt: savedAt.toISOString(),
+  }
+}
+
+/** "Visa •••• 4242, expires 12/28" */
+export function formatSavedCard(card: SavedCard): string {
+  const brand = card.brand === 'card' ? 'Card' : card.brand.charAt(0).toUpperCase() + card.brand.slice(1)
+  return `${brand} •••• ${card.last4}, expires ${String(card.expMonth).padStart(2, '0')}/${String(card.expYear).slice(-2)}`
+}
+
+export type ClaimDraft = Pick<ProtectionClaim, 'label' | 'amount' | 'reason' | 'evidenceUrls' | 'cleaningReport'>
+
+/**
+ * Evidence is an upload OR a cleaning report finding, either one on its own.
+ * A housekeeper's written report of damage found at turnover is evidence the
+ * guest can be shown; demanding a photo on top of it would push staff to
+ * re-photograph a lamp that has already been thrown away.
+ */
+export function hasClaimEvidence(draft: Pick<ClaimDraft, 'evidenceUrls' | 'cleaningReport'>): boolean {
+  return draft.evidenceUrls.length > 0 || Boolean(draft.cleaningReport)
+}
 
 /**
  * Deliberately does NOT cap the amount at the remaining cover. A claim records
@@ -441,35 +547,51 @@ export type ClaimDraft = Pick<ProtectionClaim, 'label' | 'amount' | 'reason' | '
 export function isClaimValid(draft: ClaimDraft): boolean {
   if (!draft.label.trim() || !draft.reason.trim())
     return false
-  if (draft.evidenceUrls.length === 0)
+  if (!hasClaimEvidence(draft))
     return false
   return draft.amount > 0
 }
 
-export type ReleaseRefusal = 'not_a_deposit' | 'nothing_held' | 'claim_not_notified'
+/**
+ * One line naming what backs a claim, for the claim card and the guest notice.
+ * Empty when there is nothing, which a valid claim never is.
+ */
+export function claimEvidenceSummary(claim: Pick<ProtectionClaim, 'evidenceUrls' | 'cleaningReport'>): string {
+  const parts: string[] = []
+  if (claim.cleaningReport) {
+    const date = new Date(claim.cleaningReport.reportedAt)
+      .toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    const photos = claim.cleaningReport.photoUrls?.length ?? 0
+    const withPhotos = photos > 0 ? ` with ${photos} ${photos === 1 ? 'photo' : 'photos'}` : ''
+    parts.push(`${claim.cleaningReport.cleaningLabel.toLowerCase()} report of ${date}${withPhotos}`)
+  }
+  const files = claim.evidenceUrls.length
+  if (files > 0)
+    parts.push(`${files} ${files === 1 ? 'file' : 'files'}`)
+  return parts.join(', ')
+}
+
+export type SettleRefusal = 'not_a_deposit' | 'nothing_on_file' | 'claim_not_notified'
 
 /**
- * A deduction the guest first learns about from a smaller refund is a
- * chargeback. Money cannot be kept until the guest has been told it is being
- * kept, and why.
+ * A charge the guest first learns about from their card statement is a
+ * chargeback. Nothing is charged, and nothing closed, until the guest has been
+ * told about every claim: closing would also stamp the record as final.
  */
-export function canRelease(
+export function canSettle(
   protection: DamageProtection,
-): { ok: true } | { ok: false, reason: ReleaseRefusal } {
+): { ok: true } | { ok: false, reason: SettleRefusal } {
   if (protection.option !== 'deposit')
     return { ok: false, reason: 'not_a_deposit' }
-  if (protection.state !== 'deposit_held' && protection.state !== 'refund_failed')
-    return { ok: false, reason: 'nothing_held' }
+  if (protection.state !== 'card_on_file' && protection.state !== 'charge_failed')
+    return { ok: false, reason: 'nothing_on_file' }
   const unnotified = (protection.claims ?? []).some(c => !c.guestNotifiedAt)
   return unnotified ? { ok: false, reason: 'claim_not_notified' } : { ok: true }
 }
 
-/** Which settled state a release lands in, read off the arithmetic, never a flag. */
-export function settledStateFor(protection: DamageProtection): ProtectionState {
-  const deducted = deductionTotal(protection)
-  if (deducted === 0)
-    return 'deposit_released'
-  return refundableAmount(protection) === 0 ? 'deposit_forfeited' : 'deposit_partial'
+/** Where settling lands, read off the arithmetic, never a flag. */
+export function settleOutcome(protection: DamageProtection): 'deposit_released' | 'deposit_charged' {
+  return chargeableTotal(protection) === 0 ? 'deposit_released' : 'deposit_charged'
 }
 
 // ---------------------------------------------------------------------------
@@ -478,14 +600,14 @@ export function settledStateFor(protection: DamageProtection): ProtectionState {
 
 export type ProtectionEventKind
   = | 'chosen'
-    | 'charged'
-    | 'charge_failed'
     | 'claimed'
     | 'notified'
+    | 'charged'
+    | 'charge_failed'
     | 'released'
-    | 'refund_failed'
     | 'cancelled'
     | 'undone'
+    | 'partner_update'
 
 export function formatProtectionAmount(amount: number, currency: string): string {
   return `${currency} ${amount.toLocaleString('de-CH', {
@@ -504,17 +626,23 @@ export function protectionActivityEvent(
   const map: Record<ProtectionEventKind, { title: string, description: string, colorDot: ActivityEventColor }> = {
     chosen: {
       title: 'Damage protection chosen',
-      description: `${protection.option === 'waiver' ? 'Waiver' : 'Deposit'} ${money}`,
+      description: protection.option === 'waiver'
+        ? `Waiver ${money}`
+        : `Card saved for up to ${money}${protection.card ? `, ${formatSavedCard(protection.card)}` : ''}`,
       colorDot: 'blue',
     },
-    charged: { title: 'Deposit charged', description: money, colorDot: 'green' },
-    charge_failed: { title: 'Deposit charge failed', description: detail ?? 'Declined', colorDot: 'gold' },
     claimed: { title: 'Damage claim recorded', description: detail ?? '', colorDot: 'gold' },
     notified: { title: 'Guest notified of claim', description: detail ?? '', colorDot: 'blue' },
-    released: { title: 'Deposit released', description: detail ?? '', colorDot: 'green' },
-    refund_failed: { title: 'Refund failed', description: detail ?? 'Rejected', colorDot: 'gold' },
-    cancelled: { title: 'Protection refunded on cancellation', description: money, colorDot: 'green' },
-    undone: { title: 'Settlement undone', description: detail ?? '', colorDot: 'gray' },
+    charged: { title: 'Saved card charged', description: detail ?? '', colorDot: 'green' },
+    charge_failed: { title: 'Card charge declined', description: detail ?? 'Declined', colorDot: 'gold' },
+    released: { title: 'Deposit closed without a charge', description: detail ?? '', colorDot: 'green' },
+    cancelled: {
+      title: 'Protection cancelled with the stay',
+      description: detail ?? '',
+      colorDot: 'green',
+    },
+    undone: { title: 'Closing undone', description: detail ?? '', colorDot: 'gray' },
+    partner_update: { title: 'Insurance claim update', description: detail ?? '', colorDot: 'blue' },
   }
   const meta = map[kind]
   return {
@@ -528,4 +656,108 @@ export function protectionActivityEvent(
     timestamp: new Date().toISOString(),
     colorDot: meta.colorDot,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Settings: the two stay-length slots a listing is set up with
+// ---------------------------------------------------------------------------
+
+/**
+ * The settings page offers every listing two slots, short stays (under
+ * `LONG_STAY_THRESHOLD_NIGHTS`) and long stays (at or over it), instead of
+ * free-form night ranges. The data model still stores bands; a listing whose
+ * bands are anything other than those two ranges is `custom`, shown read-only
+ * until it is reset to the standard slots.
+ */
+export type StaySlot = 'short' | 'long'
+
+export const SLOT_RANGES: Record<StaySlot, { minNights: number, maxNights: number | null }> = {
+  short: { minNights: 1, maxNights: LONG_STAY_THRESHOLD_NIGHTS - 1 },
+  long: { minNights: LONG_STAY_THRESHOLD_NIGHTS, maxNights: null },
+}
+
+export interface ListingSlots {
+  short: string | null
+  long: string | null
+  /** The listing's bands are not the two standard ranges. */
+  custom: boolean
+}
+
+export function listingSlots(assignments: DamageProtectionAssignment[], listingId: string): ListingSlots {
+  const bands = assignments.filter(a => a.listingId === listingId)
+  const isRange = (a: DamageProtectionAssignment, slot: StaySlot) =>
+    a.minNights === SLOT_RANGES[slot].minNights && a.maxNights === SLOT_RANGES[slot].maxNights
+  const short = bands.find(a => isRange(a, 'short'))
+  const long = bands.find(a => isRange(a, 'long'))
+  return {
+    short: short?.policyId ?? null,
+    long: long?.policyId ?? null,
+    custom: bands.some(a => !isRange(a, 'short') && !isRange(a, 'long')),
+  }
+}
+
+/**
+ * The next terms version when the wording changes, so a booking that accepted
+ * the old words stays distinguishable from one that accepted the new ones
+ * without anybody having to remember to bump it. `v1` becomes `v2`; a version
+ * that does not end in a number gets `-2`.
+ */
+export function bumpTermsVersion(version: string): string {
+  const digits = version.match(/\d+$/)?.[0]
+  if (digits)
+    return `${version.slice(0, -digits.length)}${Number(digits) + 1}`
+  return `${version || 'v'}-2`
+}
+
+/** A blank policy for the "New policy" button: waiver only, Direct only, nothing assigned. */
+export function newPolicyDraft(currency: ProtectionCurrency, now: Date = new Date()): DamageProtectionPolicy {
+  const stamp = now.toISOString()
+  return {
+    id: `dp-${now.getTime()}`,
+    name: 'New policy',
+    currency,
+    offers: ['waiver'],
+    waiver: { pricing: 'flat', rate: 0, coverageCap: 0, exclusions: [] },
+    deposit: { pricing: 'flat', rate: 0, settleWithinDays: 7 },
+    channelPolicy: { Direct: 'offer' },
+    termsVersion: 'v1',
+    termsText: '',
+    createdAt: stamp,
+    updatedAt: stamp,
+  }
+}
+
+/**
+ * Why a policy cannot be saved as it stands, one plain sentence each. Empty
+ * means it can. `longStay` is whether any listing uses it for long stays.
+ */
+export function policyErrors(policy: DamageProtectionPolicy, longStay: boolean): string[] {
+  const errors: string[] = []
+  if (!policy.name.trim())
+    errors.push('Give the policy a name.')
+  if (policy.offers.length === 0)
+    errors.push('Offer at least one option: the waiver, the deposit, or both.')
+  if (policy.offers.includes('waiver')) {
+    if (!(policy.waiver.rate > 0))
+      errors.push('Set the waiver fee.')
+    if (!(policy.waiver.coverageCap > 0))
+      errors.push('Set how much the waiver covers.')
+    if (policy.waiver.pricing !== 'flat' && policy.waiver.maxAmount === undefined && longStay)
+      errors.push('Set a maximum waiver fee: without one, a long stay computes an unbounded fee.')
+    if (longStay && !policy.waiver.exclusions.some(e => /wear and tear/i.test(e)))
+      errors.push('Name normal wear and tear in what is not covered: over a long stay it is the argument you will actually have.')
+  }
+  if (policy.offers.includes('deposit')) {
+    if (!(policy.deposit.rate > 0))
+      errors.push('Set the most the guest\'s card may be charged.')
+    if (!(policy.deposit.settleWithinDays >= 1))
+      errors.push('Set how many days after check-out you decide on the deposit.')
+    if (policy.deposit.pricing !== 'flat' && policy.deposit.maxAmount === undefined && longStay)
+      errors.push('Set a maximum deposit: without one, a long stay computes an unbounded amount.')
+  }
+  if (!Object.values(policy.channelPolicy).includes('offer'))
+    errors.push('Turn on at least one booking channel, or no guest is ever asked.')
+  if (!policy.termsText.trim())
+    errors.push('Write the terms the guest accepts.')
+  return errors
 }

@@ -1,25 +1,31 @@
 <script setup lang="ts">
 import type { Booking } from '~/components/listings/data/listings'
 import { blockStatusMeta, bookingStatusMeta, listings } from '~/components/listings/data/listings'
+import { mergedBookingsFor } from '~/components/operations-calendar/data/calendar-stays'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{
   listingId: string
   targetDate?: string
 }>()
 
+const { reservations } = useReservationsModule()
+
 const guestBooking = computed<Booking | null>(() => {
   if (!props.listingId)
     return null
   const listing = listings.value.find(l => l.id === props.listingId)
-  if (!listing?.bookings?.length)
+  // Both stay sources, so the card agrees with the calendar and the cleaning's link.
+  const bookings = mergedBookingsFor(props.listingId, listing?.bookings ?? [], reservations.value)
+  if (!bookings.length)
     return null
   const target = props.targetDate || new Date().toISOString().slice(0, 10)
-  const overlapping = listing.bookings
+  const overlapping = bookings
     .filter(b => b.status !== 'cancelled' && b.checkIn <= target && b.checkOut >= target)
     .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]
   if (overlapping)
     return overlapping
-  const upcoming = listing.bookings
+  const upcoming = bookings
     .filter(b => b.status !== 'cancelled' && b.checkIn > target)
     .sort((a, b) => a.checkIn.localeCompare(b.checkIn))[0]
   return upcoming ?? null
@@ -95,7 +101,9 @@ function formatDate(value: string) {
       >
         {{ formatDate(guestBooking.checkIn) }} → {{ formatDate(guestBooking.checkOut) }}
         · {{ guestBooking.nights }} {{ guestBooking.nights === 1 ? 'night' : 'nights' }}
-        <template v-if="!isBlock">· {{ guestBooking.source }}</template>
+        <template v-if="!isBlock">
+          · {{ guestBooking.source }}
+        </template>
       </p>
       <p
         v-if="isBlock && guestBooking.blockReason"

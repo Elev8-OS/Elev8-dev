@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/comp
 import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useGuestRegistration } from '~/composables/useGuestRegistration'
+import { useInbox } from '~/composables/useInbox'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSmartLock } from '~/composables/useSmartLock'
 import { useUpsellOrders } from '~/composables/useUpsellOrders'
@@ -34,6 +35,29 @@ const emit = defineEmits<{
 }>()
 
 const { reservations, updateReservationStatus } = useReservationsModule()
+const inbox = useInbox()
+
+/**
+ * The reservation's conversation, or an email one on the guest's address when
+ * it has none. Disabled only when there is neither: nobody to write to.
+ */
+const hasConversation = computed(() =>
+  Boolean(props.reservation && inbox.conversations.value.some(c => c.reservationId === props.reservation!.id)))
+const canOpenInbox = computed(() => hasConversation.value || Boolean(props.reservation?.guestEmail?.trim()))
+
+function openInInbox() {
+  if (!props.reservation)
+    return
+  const opened = inbox.openForReservation(props.reservation)
+  if (!opened) {
+    toast.error('This guest has no conversation and no email address yet.')
+    return
+  }
+  if (opened.created)
+    toast.info(`Started an email conversation with ${props.reservation.guestName}`)
+  emit('update:open', false)
+  navigateTo('/inbox')
+}
 const { orders: upsellOrders } = useUpsellOrders()
 
 // Resolve the reservation from live state so status edits reflect immediately
@@ -326,10 +350,41 @@ const guestGuideRoute = computed(() => {
                   </SelectContent>
                 </Select>
 
-                <Button variant="outline" size="sm" class="h-8 gap-1.5 text-xs font-medium" @click="editOpen = true">
-                  <Icon name="lucide:pencil" class="size-3.5" />
-                  <span>Edit reservation</span>
-                </Button>
+                <div class="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <!-- A span keeps the tooltip working while the button is disabled. -->
+                        <span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            class="h-8 gap-1.5 text-xs font-medium"
+                            :disabled="!canOpenInbox"
+                            data-testid="reservation-open-inbox"
+                            @click="openInInbox"
+                          >
+                            <Icon name="lucide:message-square" class="size-3.5" />
+                            <span>Inbox</span>
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>
+                          {{ hasConversation
+                            ? 'Open the conversation with this guest'
+                            : canOpenInbox
+                              ? 'No conversation yet. Starts an email one with the guest'
+                              : 'No conversation and no email address for this guest' }}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Button variant="outline" size="sm" class="h-8 gap-1.5 text-xs font-medium" @click="editOpen = true">
+                    <Icon name="lucide:pencil" class="size-3.5" />
+                    <span>Edit reservation</span>
+                  </Button>
+                </div>
               </div>
 
               <ScrollArea class="h-full min-h-0 flex-1">

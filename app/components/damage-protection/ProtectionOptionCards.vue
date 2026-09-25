@@ -17,12 +17,6 @@ const props = withDefaults(defineProps<{
 
 const selected = defineModel<ProtectionOption | null>({ default: null })
 
-function chargeLabel(iso?: string): string {
-  if (!iso)
-    return ''
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 function pick(option: ProtectionOption) {
   if (props.selectable)
     selected.value = option
@@ -49,10 +43,13 @@ function pick(option: ProtectionOption) {
       <div class="flex items-start justify-between gap-2">
         <div>
           <p class="text-sm font-semibold">
-            {{ view.option === 'waiver' ? 'Damage waiver' : 'Security deposit' }}
+            {{ view.option === 'waiver' ? 'Damage waiver' : 'Security deposit (card on file)' }}
           </p>
           <p class="mt-1 text-2xl font-bold tabular-nums">
             {{ formatProtectionAmount(view.amount, view.currency) }}
+          </p>
+          <p v-if="view.option === 'deposit'" class="text-xs text-muted-foreground">
+            the most your card can be charged
           </p>
         </div>
         <span
@@ -64,16 +61,20 @@ function pick(option: ProtectionOption) {
       </div>
 
       <ul class="flex flex-col gap-1.5 text-sm text-muted-foreground">
+        <!-- The waiver's case is made first and in the guest's terms; the
+             deposit's terms are stated as they are. A deposit that costs
+             nothing upfront would otherwise look like the obvious pick. -->
         <template v-if="view.option === 'waiver'">
           <li>Covers accidental damage up to {{ formatProtectionAmount(view.coverageCap ?? 0, view.currency) }}</li>
-          <li>Non-refundable</li>
-          <li>Pay with any method</li>
-          <li>Confirmed immediately</li>
+          <li>Nothing more to pay after you leave</li>
+          <li>No card kept on file</li>
+          <li>Pay with any method. Non-refundable</li>
         </template>
         <template v-else>
-          <li>Charged {{ chargeLabel(view.chargeDueAt) }}</li>
-          <li>Refunded within {{ view.refundSlaDays }} days of check-out</li>
-          <li>You stay responsible for damage above {{ formatProtectionAmount(view.amount, view.currency) }}</li>
+          <li>A credit card is kept on file. Nothing is charged now</li>
+          <li>After check-out, your card can be charged up to {{ formatProtectionAmount(view.amount, view.currency) }} for damage we find</li>
+          <li>You pay for any damage yourself, up to that amount</li>
+          <li>Your card stays on file until {{ view.settleWithinDays }} days after check-out</li>
           <li v-if="longStay">
             Claims may be recorded during your stay at each scheduled cleaning, not only at check-out
           </li>

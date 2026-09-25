@@ -161,6 +161,12 @@ The logged-in user is **Komang Juliantara** (Guest Relations role), NOT "You" (A
   - `listingSearchText`, `searchValue`, `sortBy`
 - **Actions**: `markAsHandled()`, `markAsUnread()`, `assignTo()`, `getAssignedStaff()`, `toggleListingFilter()`, `clearListingFilters()`, `toggleTagFilter()`, `clearTagFilters()`, `clearAllListingFilters()`, ElevAI toggle functions
 - **Auto-read**: Selecting a conversation sets `unreadCount = 0`
+- **A reservation always has somewhere to write to**: `ensureConversationForReservation(stay)`
+  returns the reservation's thread, or opens an **Email** conversation on the guest's address
+  (`conv-res-<reservationId>`, once); null only with no thread and no email. `openForReservation`
+  does that and selects it (view `conversations`), reporting `created`. Used by the damage claim
+  notice and by the **Inbox** button in the reservation detail sheet's header, which is disabled
+  (with a tooltip saying why) only when the guest has neither.
 - **Key type**: `ConversationStatus = 'action_needed'` (nullable — `null` = no action needed)
 - **Phone**: `getPhoneCalls(conversationId)` returns `PhoneCall[]` for the conversation
 - **Auto-translate**: `autoTranslate` boolean state (default `true`), `mockTranslate(text, lang)` async mock function (500ms delay)
@@ -421,18 +427,38 @@ from a real channel API; and any background job (alerts come from `emitCityTaxAl
 ### Damage Protection (`app/components/reservations/data/damage-protection.ts` + `app/composables/useDamageProtection.ts`)
 
 Something breaks: who pays, and out of what? The guest chooses before arrival between a
-non-refundable **damage waiver** and a refundable **security deposit**.
+non-refundable **damage waiver** and a **security deposit, which is a card kept on file**.
 
-- ⚠️ **The deposit is a REAL charge that is really refunded. Never an authorization hold,
-  never a stored card.** Stripe holds run 7 days (31 with extended auth, IC+ pricing only),
-  Xendit ~7 with a single capture, Doku acquirer-dependent, so a hold cannot span a stay.
-  Worse, a manual-capture card session cannot offer QRIS, virtual account or e-wallet, which
-  is most of this market, so a hold-based deposit silently excludes most guests. Every
-  gateway will happily accept `capture: false`; the feature just stops working.
-- ⚠️ **Card-on-file is a staff-applied risk control, never a guest-facing option.** The
-  moment it reaches the choice screen it becomes the free option and the waiver dies.
-- ⚠️ **It is a waiver, never insurance.** Distributing insurance in Indonesia needs OJK
-  licensing. No type, field or string says `insurance`.
+- ⚠️ **The deposit is a CARD SAVED WITH STRIPE, charged only if there is damage.** Nothing is
+  charged at booking and nothing is held. It replaced a charge-upfront-and-refund deposit
+  (the owner's call, 2026-09-24). **Not an authorization hold**: a hold lapses in about 7 days
+  (Stripe 7, 30 with extended auth on IC+ pricing only; Xendit ~7 with a single capture), which
+  a stay plus its cleaning report outlasts, while a saved card (a SetupIntent on a Customer)
+  lasts until the card expires. The trade-off is stated, not hidden: nothing is guaranteed, and
+  the charge after check-out **can be declined** (`charge_failed`) or disputed.
+- ⚠️ **Only a Stripe listing can take a deposit** (`railForListing === 'card'`). QRIS, virtual
+  account and e-wallet cannot be saved and charged later, so every other rail, including a
+  listing with no payout account, is offered **the waiver only** (`buildOptions` drops the
+  deposit; a deposit-only policy on such a listing offers nothing and is not asked at all).
+- ⚠️ **The deposit is made the less appealing option, on purpose.** A deposit that costs nothing
+  upfront would otherwise be the obvious pick and empty the waiver pot. So the waiver is
+  **always listed first and pre-selected** (there is no `defaultOption` on a policy any more),
+  its card leads with "Nothing more to pay after you leave" and "No card kept on file", and the
+  deposit states plainly that the card can be charged up to the limit after check-out and asks
+  for more: a card **and** an explicit consent tick. Prices were deliberately not touched.
+- ⚠️ **The consent is frozen onto the protection** (`chargeMandate`, from `chargeMandateText`):
+  the ceiling, only for damage, only after the guest is told, and no later than
+  `settleWithinDays` after check-out. It is the record that answers a chargeback.
+- ⚠️ **No card number is ever stored.** `SavedCard` is the gateway reference
+  (`paymentMethodId`), brand, last four and expiry. `saveCard` (mock SetupIntent, 1.5s) drops
+  the input; in production Stripe Elements owns the fields and the number never reaches this
+  app. The guest-guide endpoint **refuses** a body carrying `number`, `cvc` and the like
+  (`server/utils/protection-choice.ts`) rather than ignoring it.
+- ⚠️ **To the guest it is a waiver, never insurance.** Distributing insurance in Indonesia
+  needs OJK licensing, so nothing guest-facing (the choice cards, the guide form, the claim
+  notice, the terms) says `insurance`. The insurance is the **property manager's master policy**
+  with a partner (see *Insurance partner* below): staff-facing screens may call a partner claim
+  an insurance claim, because to the manager it is one.
 - ⚠️ **`channelPolicy` falls back to `'skip'`, the OPPOSITE of the city tax `'host'`
   fallback.** Airbnb and Booking.com run their own damage programmes, so charging an OTA
   guest twice for the same cover is a chargeback. Do not unify the two fallbacks.
@@ -441,70 +467,281 @@ non-refundable **damage waiver** and a refundable **security deposit**.
   to buy a waiver to stay in their own villa.
 - ⚠️ **`amount`, `coverageCap`, `termsVersion` and `termsText` are FROZEN at acceptance.**
   `policyId` is provenance, never a live join. Same rule as a folio catalog pick.
-- ⚠️ **Nothing here writes `priceDetails` or the folio.** A deposit is guest money held, so
+- ⚠️ **Nothing here writes `priceDetails` or the folio.** A damage charge is not revenue, so
   it must never reach `guestPaid`, `payout` or an owner statement; and
   `useReservationFolio.commit()` REPLACES `priceDetails.extras` outright, so a second writer
   of that field is silently wiped by the next posting. Excess damage is posted to the folio
   BY HAND: deciding a guest owes more than they agreed is a judgement call.
 - ⚠️ **No currency conversion, ever.** `assignBand` refuses a policy whose currency differs
   from the listing's payout account, at assignment time rather than at charge time.
-- ⚠️ **`refundDestination` is collected on the CHOICE SCREEN**, not at checkout. QRIS,
-  virtual account and e-wallet payments frequently cannot be reversed to source, and you
-  will not get bank details from a guest who has already flown home. `railForListing`
-  answers `'non_card'` for anything that is not Stripe, including a listing with no payout
-  account, which is the safe side.
+- **States**: `awaiting_choice` → `waiver_active`, or `card_on_file` → `deposit_released`
+  (closed, nothing charged) / `deposit_charged` / `charge_failed` (retryable), plus `cancelled`.
+  Buckets (derived): `on_file` until check-out, then `decision_due`, `decision_overdue` past
+  `settleDueAt`, `failed`, `refund_due` (a cancelled stay's waiver fee), `settled`. The policy's
+  `deposit.settleWithinDays` replaced the old charge-lead and refund-window days; the storage
+  key moved to `elev8-damage-protection-v2` so a v1 policy cannot load with the dead fields.
 
-**A claim is recorded on BOTH paths.** `ProtectionClaim` drives the deduction on a deposit;
+**A claim is recorded on BOTH paths.** `ProtectionClaim` is what the saved card is charged for on a deposit;
 on a waiver it moves no money and records what the pot paid out. `waiverPotTotal` is the
 only signal that says whether the fee is priced right, and the worklist shows fees collected
 against claims paid as **two figures, never netted**. `claimCoverage()` splits an assessed
 amount into covered and excess; `isClaimValid` deliberately does **not** cap the amount,
 because capping at input time would shrink the operator's own record of what a stay cost.
 
-⚠️ **`canRelease` refuses while any claim lacks `guestNotifiedAt`.** A deduction the guest
-first meets as a smaller refund is a chargeback. `notifyGuestOfClaim` reaches the inbox
+⚠️ **`canSettle` refuses while any claim lacks `guestNotifiedAt`.** A charge the guest first
+meets on their card statement is a chargeback, so nothing is charged, and nothing closed, until
+every claim has been told. `settleDeposit` then makes **one** off-session charge for the covered
+total (`chargeableTotal`), never one per claim, or closes without a charge when that total is
+zero. The excess above the limit is still posted to the folio BY HAND. A charged deposit cannot
+be undone here (returning money is a gateway refund this mock does not model); a deposit closed
+without a charge can be reopened. `notifyGuestOfClaim` reaches the inbox
 through a **dynamic** `import('~/composables/useInbox')` (a static import closes a cycle,
-same rule as `useUpsellLockAccess.messageGuest`), and a missing conversation leaves the
-stamp unset so the gate stays shut rather than opening on a notice nobody received.
+same rule as `useUpsellLockAccess.messageGuest`). It sends to the reservation's thread, or,
+when there is none, to a **new email conversation** opened on the guest's address by
+`useInbox.ensureConversationForReservation`: a direct booking often has no inbox thread, and
+refusing there left the claim unnotifiable and the card uncharged forever. Only a guest with
+no thread **and** no email returns `no_contact`, leaving the stamp unset so the gate stays shut
+rather than opening on a notice nobody received. ⚠️ The stamp is written when the message is
+queued, not when `sendMessage`'s mock reports it sent, so a notice that then fails to send
+(the mock fails 10 percent at random) still counts as given; a real integration must stamp on
+delivery.
 
-⚠️ **A cancellation refunds in full on both paths and admits no claim.** No stay happened,
-so no damage did. `resolveBucket` reads `reservation.status`, so a cancelled stay holding
-money is `refund_due` **immediately** regardless of check-out, and a cancelled stay in
-`deposit_pending` is never charged. This deliberately does not reuse the graduated ladder in
-`upsells/data/cancellation-policies.ts`, which prices a service the operator held capacity
-for. A no-show on a non-refundable rate is a folio charge.
+**A claim can be raised from a cleaning report** (`data/claim-cleaning.ts`, framework-free).
+`ProtectionClaimDialog` lists the stay's finished cleaning reports above the manual form; each
+checklist line marked **Problem** is one pickable finding, labelled Problem in red (towels on
+the floor is a problem nobody pays for, a cracked screen is one the guest may; that stays a
+staff call). Picking one fills the label and a reason naming who found it and when, and
+attaches the report, **with the housekeeper's photos**, as evidence. The amount is never
+filled: a housekeeper reports what broke, not what it costs. Manual entry is unchanged.
+- ⚠️ **The report's free-text `CleaningFeedback.damages` list is NOT offered as a finding.** It
+  carries no photo, so a claim raised from it would show the guest a sentence and nothing to
+  look at; it was offered at first and removed on request. It still renders in the report
+  panel's Guest Cleanliness tab. `ClaimCleaningReport` has no `kind` field for the same
+  reason: every finding is a Problem.
+- **Evidence is an upload OR a cleaning report, either one alone** (`hasClaimEvidence`). The
+  guest notice and the claim card both name it via `claimEvidenceSummary`.
+- **The dialog shows the photos, not just a count** (`ClaimPhotoThumb.vue`): a thumbnail inside
+  each finding row, the picked report's photos under Evidence, and a preview of each uploaded
+  image. **Clicking any of them opens it in the dialog's own image viewer, zoomable**, never
+  a new tab. A finding row is a bordered box holding the select button and, beside it, the
+  photo buttons: a photo inside the select button would be a button inside a button, so
+  opening a photo never picks the finding. ⚠️ An upload's preview is a local object URL
+  kept in `previews`, used for display only; `evidenceUrls` still stores the mock path, and the
+  object URL is revoked on remove, on reopen and on unmount. A PDF keeps its file row. The same
+  file picked twice is recorded once. A photo that fails to load reads "Photo unavailable".
+- ⚠️ **`ProtectionClaim.cleaningReport` is a SNAPSHOT** (`ClaimCleaningReport`, photos
+  included in `photoUrls`), copied in `recordClaim`. `cleaningJobId` / `findingId` are provenance, never a live join, so editing
+  the housekeeper's report later cannot change what the guest was told.
+- ⚠️ **Reports are matched on the job's `reservationId`** (`cleaningReportsForReservation`),
+  never re-derived at claim time. The link itself is set automatically, see below.
+- ⚠️ **A cleaning on or before check-in day is never offered**, even though it is linked
+  (`cleaningFollowsStay`): it prepared for this guest's arrival, so what it found was there
+  before they were. This is what makes linking a pre-arrival cleaning to the arriving stay safe.
 
-⚠️ **`refund_failed` exists because a rejected refund that reads as settled is the worst way
-to lose a guest's money.** The worklist would say settled, the guest would say they never
-received it, and nothing in the record would disagree.
+**Every cleaning links itself to the stay it belongs to** (`cleaning/data/cleaning-link.ts`,
+framework-free), resolved against **both** stay sources (`allStays` in
+`operations-calendar/data/calendar-stays.ts`), so a cleaning can link to a `listing.bookings` id
+(`bk-*`) as well as a Reservations-module one; only the latter can ever reach a damage claim.
+`useCleaningJobs.createJob` runs `resolveStayForCleaning` on every create, from
+any surface (the calendar, a listing's maintenance tab); a caller that already knows the stay (a
+reservation's own schedule, an owner stay) passes `reservationId` and is trusted. One stay can own
+any number of cleanings. The rule, same listing, same room when both name one, first step that
+finds anything wins:
+1. a guest **in the house** that day (`checkIn < day < checkOut`): mid-stay and daily cleaning;
+2. a guest **checking out** that day: the turnover clean, which beats a same-day arrival;
+3. a guest **checking in** that day: the pre-arrival preparation.
+- **A date with no stay creates the cleaning unlinked.** That is a normal cleaning, not an error.
+- ⚠️ **A tie links to nothing.** Two stays at the same step (two rooms of a multi-unit listing and
+  a cleaning with no room) is a guess, and a guess can put a bill on the wrong guest.
+- Cancelled stays, maintenance blocks and inquiries never count; an owner stay does.
+- ⚠️ **The day is read in property time** (`cleaningDateKey`, UTC+8), never sliced off the
+  string: a job stored as `...Z` would land on the previous day before 08:00 local.
+- **Moving a cleaning** (`updateJob`): to another listing or room relinks from scratch, possibly to
+  nothing; to another date relinks when a stay fits the new date and otherwise keeps the old link,
+  so a turnover clean pushed to the next morning still belongs to the guest who left. A patch that
+  names `reservationId` is taken as given.
+- Seeded jobs with no stay are linked on load by the same rule (a seed's `null` means "not
+  recorded"). Of the 33 unlinked seeds, 5 fall on a `listing.bookings` stay and link to it; the
+  other 28 fall on no stay and stay unlinked.
+- `CleaningJobForm` previews the link under the date ("Linked to Anna Schmidt's stay, 1 Nov to 5
+  Nov" / "No stay on this date..."), computed with the same rule the save uses.
+- **One finding, one claim.** `recordClaim` refuses `finding_already_claimed`, and the dialog
+  shows an already-claimed finding disabled and marked **Claimed**. A report that flagged
+  nothing still renders ("Flagged nothing."), distinct from "no report linked".
+- ⚠️ **Demo stay names follow the listing ids.** They used to call lst-1 "The R Villa Merapi" and
+  lst-2 "Villa Sanur Retreat"; those are not those listings' names (Merapi is lst-4), so the
+  Reservations page and the Operations Calendar named one stay's property two ways. They now use
+  the listings' own names (`LST_1`, `LST_2`, `LST_18`), and a spec asserts it. The 60-night stay
+  (`res-dp-long-stay`, Hannah Brecht) moved from lst-1, where it overlapped every other demo stay
+  for two months, to **lst-18 "Apartments Pool - Room 3"**: free across its window, same Seminyak
+  Suites property as lst-2, added to the same USD Stripe account (`pay-1`) and guest guide, with
+  its own long-stay band. Demo cleaning times are written `+08:00` (`at()`), never `toISOString()`,
+  because the calendar chip slices the time off the string.
+- Demo: `cln-dp-unnotified` (`damageProtectionDemoCleaningJobs`, appended to the cleaning
+  seed) is the check-out cleaning of `res-dp-unnotified`. Its shower-screen Problem is already
+  on the seeded claim, which carries both the cleaning report (with its photo) and an upload;
+  the torn sofa cover Problem is still pickable.
+
+**Cleaning checklist status is OK or Problem, nothing else** (`CleaningChecklistItemStatus`,
+`CLEANING_CHECKLIST_STATUS_LABELS` in `cleaning/data/cleaning-jobs.ts`). There is deliberately
+no N/A: a line that does not apply belongs off that property's checklist, and a third answer is
+where a real problem gets parked because photographing it was a hassle.
+- ⚠️ **A Problem must carry at least one photo** (`CleaningChecklistItem.photoUrls`). The rule
+  is stated once, in `checklistItemError`. Reports are written in the housekeeping app, which is
+  **not in this repo**, so that app must refuse to submit a Problem without a photo; nothing
+  here writes a cleaning report. The dashboard does not trust the writer either:
+  `CleaningReportPanel` shows each Problem in red with its photos (click to view full size,
+  zoomable, in the panel's own viewer), and flags one that arrived
+  without a photo (`problemsMissingPhotos`) rather than rendering it as if it were complete.
+- A seed test asserts every seeded Problem has a photo. Seed photos are real Unsplash URLs, so
+  they render; a photo that fails to load falls back to a stated "Photo unavailable".
+
+⚠️ **A cancellation admits no claim.** No stay happened, so no damage did. `resolveBucket`
+reads `reservation.status`, so a cancelled stay acts **immediately** regardless of check-out:
+a saved card is `decision_due` (release it, "Release card"), a waiver fee is `refund_due`
+("Refund waiver fee"); `cancelProtection` does either. This deliberately does not reuse the
+graduated ladder in `upsells/data/cancellation-policies.ts`, which prices a service the operator
+held capacity for. A no-show on a non-refundable rate is a folio charge.
+
+⚠️ **`charge_failed` keeps its claims and stays open** (`failed` bucket, `DEPOSIT_CHARGE_FAILED`
+alert, Retry charge). A declined charge that read as settled would lose the money silently.
 
 **Long stays are a different product.** `LONG_STAY_THRESHOLD_NIGHTS = 28`. Bands live on the
 **assignment** (`DamageProtectionAssignment`, non-overlapping per listing), not as price
 tiers, because the exclusions, terms, SLA and offered options all differ across the
 threshold. Every policy lookup therefore takes `nights`. Long-stay bands ship **waiver-only**
-pending a per-market legal answer on whether a months-long held deposit is a tenancy deposit
+pending a per-market legal answer on whether a months-long deposit is a tenancy deposit
 (Bali, Germany, Switzerland differ sharply). Wear and tear must be an explicit exclusion, and
 there is deliberately **no recurring waiver billing**: a renewal failing in month four with a
 guest in the property who believes they are covered is a state nothing else here has.
 Extending across a band boundary re-opens the choice for the added period via
 `reassessOnExtension` and never re-prices the original.
 
+**Settings page** (`/settings/damage-protection`, redesigned for plain use 2026-09-24):
+`DamageProtectionSettingsPanel.vue` has two tabs.
+- **Policies**: a summary card per policy in plain words ("Waiver: USD 39.00 per stay, covers up
+  to ..." / "Deposit: card on file, charged up to ... only for damage, decided within 7 days"),
+  its channels, and where it is used; **Edit**, **New policy**, and delete (disabled while any
+  listing uses it). A read-only line names Elev8's insurance partner; there is nothing to set.
+- **Listings**: one row per listing with two selects, *Stays under 28 nights* and *Stays of 28+
+  nights*, instead of typed night ranges. A policy in another currency than the listing's payouts
+  is disabled in the list. Rows flag "Waiver only here" (a deposit policy on a non-Stripe listing)
+  and "Not in the guest guide yet", with a banner counting the latter.
+  - **Assigning many at once**: tick rows (custom boxes, not reka-ui's `Checkbox`, so the header
+    can show "some"), or **Select all shown**, which takes every row the search, **tag** and
+    **Not set up / Set up** filters leave, so a filter is how a group is picked. The bulk bar sets
+    short and/or long stays ("Keep as is" leaves a slot alone, "No protection" clears it) through
+    `setSlotsForListings`, which applies listing by listing and reports what it skipped and why
+    (currency, custom ranges). ⚠️ A listing whose two slots cannot both apply is rolled back
+    whole, never left half-changed, and the skipped ones stay ticked afterwards.
+  - ⚠️ **The two slots are a view over the same bands** (`SLOT_RANGES`: 1-27 and 28+;
+    `listingSlots` reads them). `setListingSlot` replaces exactly one slot's band and still goes
+    through `assignBand` (currency and overlap checks), rolling back on a refusal. A listing with
+    any other range is `custom`, shown read-only with "Switch to short and long stays"
+    (`resetListingBands`); nothing silently rewrites a custom setup.
+- **Editing** is `DamageProtectionPolicySheet.vue`, a side sheet on a **draft** (Save / Cancel;
+  nothing reaches the policy before Save). Sections: name (currency only chosen for a new
+  policy), *What guests can choose* (waiver and deposit each switched on or off, with pricing,
+  cover, exclusions, card limit and decision days), booking channels, terms, and a live *What
+  guests see* preview from `buildOptions`. `policyErrors` lists what is missing in plain
+  sentences and blocks the save, asking more of a policy used for long stays (a fee ceiling,
+  wear and tear named). ⚠️ **The terms version bumps itself** (`bumpTermsVersion`) when the terms
+  wording changed, so there is no version field to forget. `newPolicyDraft` starts a policy
+  waiver-only on Direct.
+
 **Permissions**: `damage_protection` is its own `PermissionModule`. `dashboardView` opens the
-worklist, **`dashboardEdit` gates recording a claim and releasing a deposit**. Reading a stay
+worklist, **`dashboardEdit` gates charging or closing a deposit and releasing a cancelled
+stay's card**. Reading a stay
 must not imply the right to take money from it.
 
-**Alerts** (all five new ones must stay in `FINANCE_TYPES` or they are invisible in the bell):
-`PROTECTION_CHOICE_MISSING` (WARNING), `DEPOSIT_FAILED_AT_CHECKIN` (CRITICAL, **already
-existed in `alerts.ts` and was emitted by nothing**; this feature is its first emitter and
-only its route changed), `DEPOSIT_REFUND_DUE` (WARNING), `DEPOSIT_REFUND_OVERDUE` and
-`DEPOSIT_REFUND_FAILED` (CRITICAL), `DAMAGE_CLAIM_RECORDED` (INFO, named for the claim
-because it fires on the waiver path too). Releasing resolves live refund alerts **directly**,
-not through `dismiss()`.
+**Alerts** (every one must stay in `FINANCE_TYPES` or it is invisible in the bell):
+`PROTECTION_CHOICE_MISSING` (WARNING), `DEPOSIT_DECISION_DUE` (WARNING, after check-out:
+charge or close), `DEPOSIT_DECISION_OVERDUE` and `DEPOSIT_CHARGE_FAILED` (CRITICAL),
+`DAMAGE_CLAIM_RECORDED` (INFO, named for the claim because it fires on the waiver path too).
+The three `DEPOSIT_REFUND_*` types went with the refund leg. `DEPOSIT_FAILED_AT_CHECKIN`
+stays defined but is emitted by nothing again, as before this feature: nothing is charged at
+check-in any more. Settling, retrying successfully and cancelling resolve the open deposit
+alerts **directly**, not through `dismiss()`.
 
-**Surfaces:** `ReservationDamageProtectionSection.vue` (accordion, right after city tax),
+**Insurance partner (master policy)** (`data/partner-claims.ts` framework-free,
+`usePartnerClaims`, owner's decision 2026-09-24). The property manager is the insured under a
+master policy with an insurance partner. What the waiver pot pays on a claim is claimed back
+from the partner for the part **above the deductible**, and the partner pays into the
+**tenant's Stripe payout account**. The guest is never a party to it.
+- ⚠️ **Elev8 integrates with the partner ONCE, for every tenant.** There is no per-tenant
+  partner, contract, API key, connect step or bank account, and no settings screen for it (one
+  was built and removed on request). `elev8CoverPartner` (`damage-protection-seed.ts`, "Demo
+  Cover Partner", a fictional mock) is a read-only platform constant: policy number, currency,
+  `deductiblePerClaim`, optional `maxPerClaim`, `paymentTermsDays`. The worklist shows it as a
+  read-out tagged "Integrated by Elev8".
+- ⚠️ **The payout lands in the tenant's connected Stripe payout account** in the policy currency
+  (`stripePayoutAccountFor`): the one settling the claim's listing, else another connected Stripe
+  account in that currency. It is frozen on the claim at filing (`payoutAccountId`,
+  `payoutAccountName`), so moving the listing later cannot redirect money on its way. With no
+  such account, submission is refused (`no_stripe_payout_account`) and the panel says so.
+- `partnerEligibility`: waiver-covered amount minus the deductible, capped per claim. At or below
+  the deductible the pot carries it and it is **never filed** (and never listed). A deposit claim
+  or another currency is refused.
+- ⚠️ **`ProtectionClaim.partnerClaim` freezes what was filed** (`claimedAmount`, `deductible`,
+  `policyNumber`, partner name, payout account) at submission.
+- **Statuses** (`PartnerClaimStatus`): `submitting` → `submitted` | `submission_failed` (retry on
+  the same record, or withdraw) → `under_review` → `info_requested` ⇄ (`info_sent`, our answer,
+  back to `under_review`) → `approved` / `partially_approved` / `rejected` → `payout_scheduled` →
+  `paid` → `received`, plus `withdrawn`. ⚠️ `paid` is the partner's word that it sent the money;
+  `received` is staff confirming it **arrived in the Stripe account**, with the amount that
+  actually arrived. `payoutShortfall` flags anything short of the approval.
+- ⚠️ **Every change goes through `applyPartnerEvent`**, staff action and webhook alike: a
+  duplicate event id is refused (`duplicate_event`), an out-of-order one is refused
+  (`illegal_transition`, the `NEXT` table), an approval above the claim or a rejection without a
+  reason is refused. Partial vs full approval is read off the amount, never trusted from the event.
+- ⚠️ **The partner API is mocked.** `submitToPartner` is a 1.5s timer returning a `PC-` reference
+  (or a rejected submission with the switch on); the partner's replies arrive through
+  `receivePartnerEvent`, the path a real webhook would take, and `simulatePartner` plays the
+  partner for the demo ("Simulate partner response" on each filed claim, offering only the
+  replies that can follow the current status).
+- Writes go through `useDamageProtection().patchClaim` (one narrow door: only `partnerClaim`, one
+  activity line "Insurance claim update" per step), so `useDamageProtection` stays the only writer
+  of the protection. `removeClaim` refuses a claim filed with the partner (`filed_with_partner`).
+- **Surfaces**: `PartnerClaimPanel.vue` on every waiver claim card in the reservation section
+  (takes the stay's `listingId` to name the Stripe account); an **Insurance claims** tab on
+  `/damage-protection` (`PartnerClaimTable.vue`, queues To submit / Action needed / With partner /
+  Awaiting payout / Confirm receipt / Closed, and four per-currency figures never netted:
+  claimable not filed, with the partner, approved not received, received); the evidence PDF
+  prints an *Insurance claim* section.
+- **Alerts** (in `FINANCE_TYPES`): `PARTNER_CLAIM_SUBMISSION_FAILED`, `PARTNER_CLAIM_INFO_REQUESTED`,
+  `PARTNER_CLAIM_REJECTED` (WARNING) and `PARTNER_CLAIM_PAYOUT_OVERDUE` (CRITICAL, from
+  `emitPartnerAlerts` once the payment terms since approval have passed). Answering, withdrawing
+  and a payment resolve the matching alert directly, keyed by `claim_id`.
+- Demo: six waiver stays on lst-1 (`res-dp-ins-*`) plus Hannah Brecht's long stay make every queue
+  reachable: to submit, information requested, approved and overdue, paid awaiting confirmation,
+  received USD 15 short, rejected, and one below the deductible.
+
+**Claim evidence PDF** (`app/lib/claim-evidence-pdf.ts`, jsPDF, the invoice / owner-statement
+document family). **Download evidence** on each claim card builds one A4 file for a dispute or a
+chargeback: guest and stay, the claim (reason, assessed, covered, excess), when the guest was
+notified (stated in amber when they were not), the protection chosen with the saved card by
+its last four digits, the frozen terms and the **quoted charge consent**, the cleaning report,
+the attached files, and the photos **embedded**, two a row, capped at 70mm tall. The letterhead
+is `useInvoiceTemplates().getTemplateForListing`, like the other documents.
+- ⚠️ **A photo that cannot be embedded is listed, never dropped** ("Not embedded ... could not
+  be loaded into this file: <url>"). `loadEvidencePhotos` fetches each one to a data URL first;
+  jsPDF takes PNG and JPEG only, so anything else, a 404, or a refused `addImage` lands in that
+  list. The demo's uploaded evidence is mock paths (`/mock/evidence/...`), so it always does;
+  the cleaning photos are Unsplash URLs, which send `access-control-allow-origin: *`.
+- A section heading carries `keepWith`, the room its first item needs, so "Photos" never sits
+  alone at the foot of a page with its photo overleaf.
+- ⚠️ `tests/setup.ts` stubs `fetch` (it returns an empty text body), so a real render in Vitest
+  must hand `loadEvidencePhotos` its own fetcher. The spec replaces jsPDF with a recorder; after
+  changing the geometry, render a real file and look at it (`pdftoppm -png`).
+
+**Surfaces:** `ReservationDamageProtectionSection.vue` (accordion, right after city tax, with
+the same header and `px-3` content padding as the city tax and folio sections: a
+`lucide:shield-check` icon, the title, then the status chip),
 `ProtectionClaimDialog.vue` (shows the covered/excess split live),
 `ProtectionChoiceDialog.vue` (staff recording a choice at the desk, the only resolution for
-`awaiting_choice` since a fee cannot be charged against terms nobody accepted),
+`awaiting_choice` since a fee cannot be charged against terms nobody accepted; a deposit takes
+a mock card form, the consent wording and a "simulate a declined card" switch, and hands the
+card back for the section to save FIRST, so a declined card records nothing),
 `DamageProtectionStatusChip.vue` (shared with `ReservationTable`), the `/damage-protection`
 worklist, `/settings/damage-protection`, and in the guide app
 `sections/DamageProtectionSection.vue` + `forms/DamageProtectionForm.vue` behind
@@ -519,28 +756,55 @@ an enabled `damage_protection` section. `listingsMissingGuideSection()` surfaces
 in settings.
 
 **Seeds:** `damage-protection-seed.ts` (three USD policies against the Stripe account that
-covers lst-1/lst-2) and `damage-protection-demo.ts` (nine stays making every bucket reachable
-on load: awaiting choice, charge due, an unnotified claim blocking release, refund overdue,
-refund failed, a cancelled stay owed its money, a 60-night waiver-only stay with a claim, plus
-an owner stay and a block that render nothing). ⚠️ Its dates are **relative to today**,
+covers lst-1/lst-2/lst-18; lst-18 carries only the long-stay band) and `damage-protection-demo.ts`
+(nine stays making every bucket reachable on load: awaiting choice, a card on file before
+arrival, an unnotified claim blocking the charge, a decision overdue, a declined charge, a
+cancelled stay whose card must be released, a 60-night waiver-only stay with a claim, plus an
+owner stay and a block that render nothing). Every deposit stay carries a `SavedCard` and a
+frozen `chargeMandate`. ⚠️ Its dates are **relative to today**,
 computed at module load; a fixed fixture rots into a stay that already ended.
 
-**Tests:** `tests/lib/damage-protection.spec.ts` (45),
-`tests/composables/useDamageProtection.spec.ts` (41),
-`tests/components/reservations/ReservationDamageProtection.spec.ts` (12).
+**Tests:** `tests/lib/damage-protection.spec.ts` (58),
+`tests/lib/claim-cleaning.spec.ts` (17),
+`tests/lib/cleaning-link.spec.ts` (11),
+`tests/lib/calendar-stays.spec.ts` (10),
+`tests/lib/stay-bar-span.spec.ts` (10),
+`tests/lib/damage-protection-demo.spec.ts` (5),
+`tests/server/utils/protection-choice.spec.ts` (6),
+`tests/components/operations-calendar/OperationsCalendarBoard.spec.ts` (5),
+`tests/composables/useCleaningJobs-link.spec.ts` (8),
+`tests/components/inbox/ImageViewer.spec.ts` (5),
+`tests/lib/cleaning-checklist.spec.ts` (5),
+`tests/composables/useDamageProtection.spec.ts` (64),
+`tests/components/reservations/ReservationDamageProtection.spec.ts` (18),
+`tests/components/reservations/ProtectionChoiceDialog.spec.ts` (5),
+`tests/composables/useInbox-reservation-conversation.spec.ts` (8),
+`tests/lib/claim-evidence-pdf.spec.ts` (16),
+`tests/lib/partner-claims.spec.ts` (21),
+`tests/lib/damage-protection-settings.spec.ts` (8),
+`tests/components/settings/DamageProtectionSettings.spec.ts` (18),
+`tests/composables/usePartnerClaims.spec.ts` (17),
+`tests/components/damage-protection/PartnerClaimPanel.spec.ts` (9),
+`tests/components/reservations/ProtectionClaimDialog.spec.ts` (17),
+`tests/components/operations-calendar/CleaningReportPanel.spec.ts` (6).
 ⚠️ The composable spec clears `reservations.value` in `beforeEach`: the demo seeds exist for
 the UI and would otherwise land in portfolio-wide totals. ⚠️ `settle()` fakes timers **before**
 the call, the only ordering that works against the 1.5s gateway mock. ⚠️ Date assertions
 compare **local** day strings: `toISOString()` shifts a UTC+8 midnight to the previous date.
 
-**NOT implemented (intentionally out of scope):** real gateway calls (charge, retry and
-refund are mocked timers); authorization holds (ruled out, not deferred); card-on-file as a
-guest option; a third-party underwriter (the pot is self-funded); a claims workflow beyond a
-recorded claim (no adjuster, appeal or guest dispute); any accounting push (held deposits are
-a liability whose posting rules are a finance decision); owner payout impact; booking-widget
-collection (`BookingWidgetConfig.depositPct` keeps its unrelated meaning); per-room protection
-on a multi-room booking; early check-out (the refund clock keys off the booked check-out); and
-any background job (alerts come from `emitProtectionAlerts()`).
+**NOT implemented (intentionally out of scope):** real gateway calls (saving a card and the
+off-session charge are mocked timers; no Stripe Elements, SetupIntent, Customer or SCA
+re-authentication flow); authorization holds (ruled out, see above); refunding a charged
+deposit; detaching the saved card at the gateway when a deposit closes (the record says it is
+no longer on file, nothing calls Stripe); a deposit on any non-Stripe gateway; a real insurance partner API
+(submission and webhooks are mocked: no signature check, retry queue, or premium and bordereau
+reporting to the partner); appealing a partner's rejection; a partner claim on a deposit; a
+claims workflow beyond a recorded claim (no adjuster, appeal or guest dispute); any accounting push (a damage charge's posting rules are a finance
+decision); owner payout impact; booking-widget collection (`BookingWidgetConfig.depositPct`
+keeps its unrelated meaning); per-room protection on a multi-room booking; early check-out (the
+decision deadline keys off the booked check-out); and any background job (alerts come from
+`emitProtectionAlerts()`). ⚠️ The guest-guide app has no `vue-tsc`, so
+`guide-app/app/components/forms/DamageProtectionForm.vue` is not typechecked by anything.
 
 ### Owner Statement Corrections (`app/composables/useOwnerStatements.ts` + `useOwnerStatementDetail.ts`)
 
@@ -991,7 +1255,13 @@ delivered, so no seed needs migrating and a read message renders no status line.
   `Uploading photo…` with a photo and `Sending…` without.
 - **Clicking a photo opens it full size** in `InboxImageViewer`, mounted once in
   `inbox/Layout.vue` and driven by `useImageViewer`. State lives in the composable so a
-  photo inside a forwarded card can open it without reaching up through its parent. The
+  photo inside a forwarded card can open it without reaching up through its parent.
+  **Clicking the photo in the viewer zooms in 2.5x on the point clicked** (the frame then
+  scrolls), clicking again fits it back, and each newly opened photo starts fitted.
+  ⚠️ **The viewer is scoped**: `useImageViewer(scope = 'inbox')` and
+  `<InboxImageViewer :scope>`. The inbox uses the default; the damage claim dialog
+  (`damage-claim`) and the cleaning report (`cleaning-report`) each mount their own, so a
+  photo opened in one can never also pop another that happens to be mounted. The
   photo is wrapped in a **button**, not a bare `img` with a handler, so it is reachable by
   keyboard and announces what it does; your own photo is credited to "You".
 - **A photo that cannot load** falls back to a stated `Photo unavailable` placeholder via
@@ -1125,8 +1395,8 @@ room" must scope by listing or count, not match on the name prefix (which also m
   the view toggle badge only.
 - **Direct messages between two people**: every room is a listing plus a role. A one-to-one
   channel would need its own addressing and its own membership rules.
-- **Zooming or panning inside the viewer, and stepping to the next photo in a room**: it
-  shows one photo, fitted.
+- **Pinch or wheel zoom, and stepping to the next photo in a room**: the viewer shows one
+  photo, and a click toggles a single fixed zoom level.
 - **Attachments beyond a single image**: no files, no video, no multiple photos per
   message, and the object URL does not survive a reload (the same mock boundary as the
   guest `ReplyBox`).
@@ -2059,6 +2329,41 @@ Time-based view of guest stays, cleaning jobs, and tasks. Week/day views with hi
   - `CalendarEvent` type with `type: 'guest_stay' | 'cleaning' | 'task'`, `listingId`, scheduled times
   - Build helpers: `buildAllEvents()`, `eventsForDay()`, `getWeekDays()`, `groupEventsByListingAndDay()`
   - Events built from cleaning jobs + tasks (not inbox conversations)
+  - ⚠️ **Stays come from TWO disjoint datasets, merged by `calendar-stays.ts`.** The Reservations
+    module (`useReservationsModule`, 23 stays: the Reservations page, damage protection, city
+    tax, the folio) and `listing.bookings` (71 stays, the listing mock data the calendar was built
+    on) never sync and share no stay, by id or by listing and dates. The calendar used to read
+    only `listing.bookings`, so **no stay made on the Reservations page ever appeared on it**.
+    `getCalendarListings(reservations)` / `buildAllEvents(jobs, reservations)` now merge both via
+    `mergedBookingsFor`; without the argument they return `listing.bookings` alone, as before.
+    Owner stays and maintenance blocks from the Reservations module become `type: 'block'`
+    (`reservationToBooking`), the convention `listing.bookings` already uses.
+  - **Stay bars are drawn in half days** (`stayBarSpan`, `HALF_DAYS_PER_DAY`): the room row's
+    grid is 14 columns a week, a day cell spans two. A guest checks in after 12:00 and out before
+    it, so a bar starts in the SECOND half of its check-in day and ends in the FIRST half of its
+    check-out day; on a turnover day the departing bar stops at midday and the arriving bar starts
+    there. A bar is inset (`ml-1` / `mr-1`) and rounded only at an end that is a real check-in or
+    check-out, which leaves a visible gap between consecutive guests while a stay running off the
+    week keeps a flat edge. Cancelled stays and inquiries draw no bar. The title attribute names
+    the guest, the dates and the status, since a half-day bar truncates the name.
+  - **Overlapping stays stack in lanes** (`assignStayLanes`): a multi-unit listing is one calendar
+    row and its rooms are booked at the same time as a matter of course, so drawn in one lane a
+    long stay hid every shorter stay beside it. Greedy by start, longest first; bars that only
+    meet at midday share a lane. The room grid's rows are `repeat(laneCount, auto) 1fr`, and the
+    day cells sit in the row after the last lane.
+  - **A bar is coloured by its reservation status**, from `reservationStatusClasses` in
+    `reservations/data/reservations.ts`, the same map `ReservationStatusBadge` reads (moved out of
+    the badge so there is one). A calendar block has no status, so `bookingReservationStatus`
+    reads an owner stay back out of `OWNER_STAY_BLOCK_REASON` and treats any other block as
+    `blocked`. The old per-listing `listingColors` is gone.
+  - The same union feeds `GuestInfoCard` (the guest card in the cleaning form), the Board's stay
+    bars, and the cleaning auto-link (`allStays`), so the calendar, the form and a cleaning's
+    `reservationId` can never disagree about who is staying.
+  - **Tech debt:** the real fix is ONE source, moving `listing.bookings` into the Reservations
+    module. It touches the listing Overview and Calendar tabs, the GM dashboard, housekeeping and
+    more, so it is deliberately its own piece of work. Until then, read stays through
+    `calendar-stays.ts`, never from one source alone. `ReservationHousekeepingSection.vue` still
+    reads `listing.bookings` directly (line ~151) and has not been moved over.
 - **State**: `app/composables/useOperationsCalendar.ts`
   - `filters` — `ref<OperationsFilters>` with spread assignment to trigger reactivity
   - Computed: `filteredListings` (search + tag AND filter), `filteredListingIds` (Set), `hasListingFilter`, `filteredEvents` (listing + event type), `eventsByDay`, `eventsByDayAndListing`, `eventsByListingAndDay`
@@ -2819,7 +3124,7 @@ const table = useVueTable({
 
 | Composable | File | Usage | Key Exports |
 |-----------|------|-------|-------------|
-| `useInbox` | `app/composables/useInbox.ts` | Inbox module state | `conversations`, filters, `autoTranslate`, `mockTranslate()`, `markAsHandled()`, `assignTo()`, `toggleListingFilter()`, `clearTagFilters()`, `getPhoneCalls()` |
+| `useInbox` | `app/composables/useInbox.ts` | Inbox module state | `conversations`, filters, `autoTranslate`, `mockTranslate()`, `markAsHandled()`, `assignTo()`, `toggleListingFilter()`, `clearTagFilters()`, `getPhoneCalls()`, `ensureConversationForReservation()`, `openForReservation()` |
 | `useInternalInbox` | `app/composables/useInternalInbox.ts` | Internal staff rooms, one per listing and role | `roomGroups`, `filteredRoomGroups`, `selectedRoom`, `selectedRoomMessages`, `unreadFor()`, `totalUnread`, `selectRoom()`, `sendInternalMessage()`, `forwardToRooms()`, `postTaskNotice()`, `membersOf()`, `isMine()`, `listingIdForName()`, `refsFromGuestMessages()`, `refsFromInternalMessages()`. Rooms are derived from `User.listingIds` + `User.roleId`; there is no room CRUD. |
 | `useMessageActions` | `app/composables/useMessageActions.ts` | The forward and create-task drafts raised by a message's context menu, in either thread | `forwardRequest`, `taskRequest`, `forwardOpen`, `taskOpen`, `openForward()`, `openTask()`, `closeForward()`, `closeTask()`. The dialogs are mounted once in `inbox/Layout.vue`. |
 | `useNotifications` | `app/composables/useNotifications.ts` | Notification Center | `alerts`, `unreadCount`, `filteredAlerts`, `markAsRead()`, `markAllAsRead()`, `dismiss()`, `navigateToAlert()` |
@@ -2850,7 +3155,7 @@ const table = useVueTable({
 | `useTenantBranding` | `app/composables/useTenantBranding.ts` | Tenant logo/favicon/Guest Guide color state | `branding`, `isHydrated`, `lastSyncError`, `resolvedInvoiceLogo`, `faviconHref`, `createDefaultBrandingDraft`, `hydrateBranding()`, `saveBranding()`, `syncGuestGuideBranding()`. Persisted to LocalStorage. |
 | `useReservationFolio` | `app/composables/useReservationFolio.ts` | Staff-posted charges on a stay (minibar, laundry). The only writer of `ReservationEntry.folioItems` | `itemsFor(id)`, `summaryFor(id)`, `canPostTo(id)`, `catalogRowsFor(id)`, `addItem()`, `markPaid()`, `deleteItem()`, `voidItem()`. Never writes to `useUpsellOrders`; keeps `priceDetails.extras`/`guestPaid`/`payout` in step in one `updateReservation` call. |
 | `useCityTax` | `app/composables/useCityTax.ts` | Who collects the tourist levy on a stay, and chasing the host's share | `assessmentFor(id)`, `markCollected()`, `waive()`, `undoSettlement()`, `rows`, `overdue`, `dueToday`, `upcoming`, `settled`, `outstandingTotal`, `collectedTotal`, `notifyOnBooking`, `emitCityTaxAlerts()`. The only writer of `cityTaxSettlement`; never touches `priceDetails` or the folio. |
-| `useDamageProtection` | `app/composables/useDamageProtection.ts` | A guest chooses a waiver or a deposit before arrival. The only writer of `ReservationEntry.damageProtection` | `policyFor(listingId, nights)`, `isOfferedFor`, `optionsFor`, `bucketFor`, `railForListing`, `recordChoice()`, `chargeDeposit()`, `recordClaim()`, `notifyGuestOfClaim()`, `releaseDeposit()`, `cancelProtection()`, `reassessOnExtension()`, `rows`, `waiverPotTotals`, `canEditProtection`, `emitProtectionAlerts()`. Never writes `priceDetails` or the folio. Persisted to LocalStorage. |
+| `useDamageProtection` | `app/composables/useDamageProtection.ts` | A guest chooses a waiver or a deposit (a card saved with Stripe, charged only for damage) before arrival. The only writer of `ReservationEntry.damageProtection` | `policyFor(listingId, nights)`, `isOfferedFor`, `optionsFor`, `bucketFor`, `railForListing`, `saveCard()`, `recordChoice()`, `recordClaim()`, `notifyGuestOfClaim()`, `settleDeposit()`, `retryCharge()`, `cancelProtection()`, `undoSettlement()`, `reassessOnExtension()`, `rows`, `coverOnFileTotals`, `chargeableTotals`, `waiverPotTotals`, `canEditProtection`, `emitProtectionAlerts()`. Never writes `priceDetails` or the folio. Policies persisted to LocalStorage. |
 
 ### State Management Rules
 - **Inbox conversations**: `useState<Conversation[]>()` — reactive, persists per request

@@ -16,20 +16,20 @@ const meta = computed<{ label: string, class: string } | null>(() => {
   switch (props.bucket) {
     case 'awaiting_choice':
       return { label: 'Awaiting choice', class: AMBER }
-    case 'charge_due':
-      return { label: 'Charge due', class: AMBER }
+    case 'on_file':
+      return { label: props.option === 'waiver' ? 'Waiver' : 'Card on file', class: BLUE }
+    case 'decision_due':
+      return { label: 'Charge or close', class: AMBER }
+    case 'decision_overdue':
+      return { label: 'Decision overdue', class: RED }
     case 'failed':
-      return { label: 'Failed', class: RED }
-    case 'held':
-      return { label: props.option === 'waiver' ? 'Waiver' : 'Deposit held', class: BLUE }
+      return { label: 'Charge declined', class: RED }
     case 'refund_due':
-      return { label: 'Refund due', class: AMBER }
-    case 'refund_overdue':
-      return { label: 'Refund overdue', class: RED }
+      return { label: 'Refund waiver fee', class: AMBER }
     case 'settled':
       return props.option === 'waiver'
         ? { label: 'Waiver', class: BLUE }
-        : { label: 'Refunded', class: GREEN }
+        : { label: 'Closed', class: GREEN }
     default:
       // 'not_offered' renders nothing: a skipped channel must not leave a gap.
       return null
