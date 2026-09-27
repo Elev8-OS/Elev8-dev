@@ -2,6 +2,8 @@
 import type { Task } from '@/components/tasks/data/schema'
 import { toast } from 'vue-sonner'
 import { assigneeOptions, priorities, statuses } from '@/components/tasks/data/data'
+import { progressKindFor, timelineSentence } from '@/components/tasks/data/timeline'
+import { useCurrentDashboardUser } from '@/composables/useCurrentDashboardUser'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskStore } from '@/composables/useTaskStore'
 
@@ -15,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const { addStatusUpdate, addImage } = useTaskStore()
+const { currentUser } = useCurrentDashboardUser()
 const { isBlockedOnOwner, startBlockedReason, completeWithReceipt } = useTaskOwnerApproval()
 
 // --- Owner cost approval gate ----------------------------------------------
@@ -159,20 +162,24 @@ function handleProgressUpdate() {
   if (progressNote.value.trim())
     notes.push(progressNote.value.trim())
 
-  // Save uploaded images and add timeline entry
+  // Save uploaded images; they show on the timeline entry itself, so the
+  // note stays what the person typed.
   const savedImages: string[] = []
   if (newImages.value.length > 0) {
     newImages.value.forEach((img) => {
       addImage(props.task!.id, img)
       savedImages.push(img)
     })
-    notes.push(`Uploaded ${newImages.value.length} image${newImages.value.length > 1 ? 's' : ''}`)
     newImages.value = []
   }
 
+  // Reads "<you> is 31% through the task" (or "has completed the task" at
+  // 100%), with the note underneath.
   addStatusUpdate(props.task.id, {
     date: now,
-    note: notes.join(' — ') || undefined,
+    actor: { name: currentUser.value?.name ?? 'Komang Juliantara', kind: 'staff' },
+    kind: progressKindFor(progressValue.value),
+    note: notes.join('\n') || undefined,
     progress: progressValue.value,
     images: savedImages.length > 0 ? savedImages : undefined,
   })
@@ -287,7 +294,7 @@ function formatDate(iso: string): string {
                 <p class="text-xs text-muted-foreground">
                   Due Date
                 </p>
-                <p class="font-medium" :class="task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== 'done' && task.status !== 'canceled' ? 'text-destructive' : ''">
+                <p class="font-medium" :class="task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10) && task.status !== 'completed' ? 'text-destructive' : ''">
                   {{ task.dueDate ? formatDate(task.dueDate) : '—' }}
                 </p>
               </div>
@@ -331,10 +338,10 @@ function formatDate(iso: string): string {
               <span>Linked to <strong>{{ task.linkedInventoryItemName }}</strong></span>
             </div>
 
-            <!-- Description -->
+            <!-- Instructions (stored in `description`) -->
             <div v-if="task.description">
               <h4 class="mb-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Description
+                Instructions
               </h4>
               <p class="text-sm leading-relaxed whitespace-pre-wrap">
                 {{ task.description }}
@@ -368,7 +375,7 @@ function formatDate(iso: string): string {
                   Update Progress
                 </Button>
                 <Button
-                  v-if="task.status !== 'done' && task.status !== 'canceled'"
+                  v-if="task.status !== 'completed'"
                   size="sm"
                   class="text-xs"
                   :disabled="blockedOnOwner"
@@ -485,7 +492,15 @@ function formatDate(iso: string): string {
 
                     <div class="min-w-0 flex-1 space-y-1.5">
                       <div class="flex items-start justify-between gap-3">
-                        <p class="text-sm leading-snug text-muted-foreground">
+                        <!-- "Kadek Mia Pratiwi is 31% through the task": built from
+                             the entry's kind (`timelineSentence`); what they typed
+                             sits underneath. An entry with no kind (a quote, an
+                             owner's decision) keeps its own note as the sentence. -->
+                        <p v-if="timelineSentence(entry, task)" class="text-sm leading-snug text-muted-foreground">
+                          <span class="font-semibold text-foreground">{{ entry.actor?.name ?? 'Someone' }}</span>
+                          {{ timelineSentence(entry, task) }}
+                        </p>
+                        <p v-else class="text-sm leading-snug text-muted-foreground">
                           <span v-if="entry.actor" class="font-semibold text-foreground">{{ entry.actor.name }}</span>
                           <span v-if="entry.actor">&nbsp;</span>{{ entry.note }}
                           <Badge
@@ -500,6 +515,14 @@ function formatDate(iso: string): string {
                           {{ clockTime(entry.date) }}
                         </span>
                       </div>
+
+                      <p
+                        v-if="timelineSentence(entry, task) && entry.note"
+                        class="whitespace-pre-wrap text-sm leading-relaxed text-foreground"
+                        data-testid="timeline-note"
+                      >
+                        {{ entry.note }}
+                      </p>
 
                       <!-- Cost card — the actual amount and the receipt behind it. -->
                       <div v-if="entry.cost" class="rounded-lg border bg-muted/40 p-3">

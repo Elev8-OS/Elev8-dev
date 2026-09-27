@@ -4,9 +4,11 @@ import { useCurrentDashboardUser } from '../app/composables/useCurrentDashboardU
 import { useImageViewer } from '../app/composables/useImageViewer'
 import { useInbox } from '../app/composables/useInbox'
 import { useInternalInbox } from '../app/composables/useInternalInbox'
+import { useInternalNotifications } from '../app/composables/useInternalNotifications'
 import { useMessageActions } from '../app/composables/useMessageActions'
 import { useOnboarding } from '../app/composables/useOnboarding'
 import { useRoles } from '../app/composables/useRoles'
+import { useTaskDetail } from '../app/composables/useTaskDetail'
 import { useTaskStore } from '../app/composables/useTaskStore'
 import { useUpsellServices } from '../app/composables/useUpsellServices'
 import { useUsers } from '../app/composables/useUsers'
@@ -40,10 +42,12 @@ globalThis.useCurrentDashboardUser = useCurrentDashboardUser
 globalThis.useInbox = useInbox
 globalThis.useImageViewer = useImageViewer
 globalThis.useInternalInbox = useInternalInbox
+globalThis.useInternalNotifications = useInternalNotifications
 globalThis.useMessageActions = useMessageActions
 globalThis.useRoles = useRoles
 globalThis.useUsers = useUsers
 globalThis.useTaskStore = useTaskStore
+globalThis.useTaskDetail = useTaskDetail
 
 // Lightweight useState shim — keyed on a global Map so multiple composables
 // can share state across calls. Mirrors Nuxt's useState API just enough
@@ -79,6 +83,10 @@ globalThis.useState = <T>(keyOrInit?: string | (() => T), init?: () => T) => {
 // Reset shared useState store between tests so each test starts with a clean slate.
 beforeEach(() => {
   useStateStore.clear()
+  // Internal messaging's mock colleague replies run on a timer; a spec that
+  // runs every timer would otherwise find a stranger's reply in the room.
+  // Specs that exercise the real-time path turn it back on.
+  useStateStore.set('internal-inbox-simulated-replies', ref(false) as unknown as { value: unknown })
   // Mock fetch so assistant.submit() doesn't hit a real network in tests.
   globalThis.fetch = vi.fn(() =>
     Promise.resolve(new Response('', { status: 200 })),

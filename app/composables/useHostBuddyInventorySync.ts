@@ -53,26 +53,15 @@ export function useHostBuddyInventorySync() {
   function syncOnStatusChange(task: Task, newStatus: string) {
     if (!task.linkedInventoryEntryId)
       return
-    if (newStatus === 'done') {
+    // A task nobody will do is deleted, not cancelled: `syncOnDelete` restores
+    // the item then.
+    if (newStatus === 'completed') {
       updateEntry(task.linkedInventoryEntryId, { condition: 'good' }, 'hostbuddy')
       addEvent({
         entryId: task.linkedInventoryEntryId,
         type: 'task_completed',
         actor: 'hostbuddy',
         details: { taskId: task.id, taskTitle: task.title, to: 'good' },
-      })
-      if (task.linkedInventoryItemId) {
-        updateItemStatus(task.linkedInventoryItemId, 'active', 'hostbuddy', task.title)
-      }
-    }
-    else if (newStatus === 'canceled') {
-      const before = (task.conditionBefore as ItemCondition | undefined) ?? 'good'
-      updateEntry(task.linkedInventoryEntryId, { condition: before }, 'hostbuddy')
-      addEvent({
-        entryId: task.linkedInventoryEntryId,
-        type: 'task_canceled',
-        actor: 'hostbuddy',
-        details: { taskId: task.id, taskTitle: task.title, to: before },
       })
       if (task.linkedInventoryItemId) {
         updateItemStatus(task.linkedInventoryItemId, 'active', 'hostbuddy', task.title)

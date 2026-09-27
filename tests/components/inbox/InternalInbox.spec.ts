@@ -3,9 +3,9 @@
 // what is asserted here is that the room tree, the thread and the forward
 // dialog actually render their data and write it back through the composable.
 
-import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GENERAL_ROOM_KEY, roomIdFor } from '~/components/inbox/data/internal'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { roomIdFor } from '~/components/inbox/data/internal'
 import ForwardDialog from '~/components/inbox/ForwardDialog.vue'
 import ImageViewer from '~/components/inbox/ImageViewer.vue'
 import ForwardedCard from '~/components/inbox/internal/ForwardedCard.vue'
@@ -29,13 +29,14 @@ import { useImageViewer } from '~/composables/useImageViewer'
 import { useInbox } from '~/composables/useInbox'
 import { useInternalInbox } from '~/composables/useInternalInbox'
 import { useMessageActions } from '~/composables/useMessageActions'
+import { selectedTaskRef } from '~/composables/useTaskDetail'
 import { useTaskStore } from '~/composables/useTaskStore'
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock('vue-sonner', () => ({ toast: toastMock }))
 
 const HOUSEKEEPING_LST1 = roomIdFor('lst-1', 'role-housekeeping')
-const GENERAL_LST1 = roomIdFor('lst-1', GENERAL_ROOM_KEY)
+const LISTING_MANAGER_LST1 = roomIdFor('lst-1', 'role-listing-manager')
 
 // The shadcn primitives are registered for real: an unresolved component
 // renders as a bare tag, which makes every value assertion pass vacuously.
@@ -93,11 +94,52 @@ beforeEach(() => {
   useCurrentDashboardUser().setCurrentUserId('user-1')
 })
 
+describe('desktop alert prompt', () => {
+  function stubNotification(permission: NotificationPermission) {
+    const fake = {
+      permission,
+      requestPermission: vi.fn(async () => 'granted' as NotificationPermission),
+    }
+    vi.stubGlobal('Notification', fake)
+    return fake
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('offers to turn desktop alerts on while the browser has not been asked', async () => {
+    const fake = stubNotification('default')
+    const wrapper = mountWith(RoomList)
+    const prompt = wrapper.find('[data-testid="notify-permission-prompt"]')
+    expect(prompt.exists()).toBe(true)
+
+    await prompt.find('button').trigger('click')
+    await flushPromises()
+    expect(fake.requestPermission).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="notify-permission-prompt"]').exists()).toBe(false)
+  })
+
+  it('says so when the browser blocks them, and that toasts still arrive', () => {
+    stubNotification('denied')
+    expect(mountWith(RoomList).text()).toContain('Desktop alerts are blocked')
+  })
+
+  it('stays out of the way once they are allowed', () => {
+    stubNotification('granted')
+    const wrapper = mountWith(RoomList)
+    expect(wrapper.find('[data-testid="notify-permission-prompt"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Desktop alerts are blocked')
+  })
+})
+
 describe('room list', () => {
   it('lists the rooms of the open listing and marks your own', () => {
     const wrapper = mountWith(RoomList)
     expect(wrapper.text()).toContain('Housekeeping')
-    expect(wrapper.text()).toContain('General')
+    expect(wrapper.text()).toContain('Listing Manager')
+    // Every room is a role, as in the mobile app.
+    expect(wrapper.text()).not.toContain('General')
     // Komang is a Guest Experience Manager, so that room is theirs.
     expect(wrapper.text()).toContain('Guest Experience Manager')
     expect(wrapper.text()).toContain('You')
@@ -105,7 +147,7 @@ describe('room list', () => {
 
   it('marks a photo-only room preview with an icon, never an emoji', async () => {
     const internal = useInternalInbox()
-    internal.sendInternalMessage(GENERAL_LST1, '', { mediaUrl: 'blob:tap' })
+    internal.sendInternalMessage(LISTING_MANAGER_LST1, '', { mediaUrl: 'blob:tap' })
     const wrapper = mountWith(RoomList)
 
     const row = wrapper.findAll('button').find(b => b.text().includes('Photo'))!
@@ -135,7 +177,7 @@ describe('room list', () => {
     expect(wrapper.text()).not.toContain('Apartments Pool')
   })
 
-  it('moves the thread and the room panel onto the new listing too', async () => {
+  it('closes the room and turns the side panel into the new listing overview', async () => {
     const internal = useInternalInbox()
     internal.selectRoom(HOUSEKEEPING_LST1)
     const thread = mountWith(RoomThread)
@@ -146,9 +188,9 @@ describe('room list', () => {
     await thread.vm.$nextTick()
     await panel.vm.$nextTick()
 
-    // All three panels agree on the property, instead of the thread and the
-    // room panel still showing the listing you just left.
-    expect(thread.text()).toContain('Merapi')
+    // Picking a listing opens no room, and nothing still shows the listing
+    // you just left.
+    expect(thread.text()).toContain('Select a room')
     expect(thread.text()).not.toContain('Villa Luwa')
     expect(panel.text()).toContain('Merapi')
     expect(panel.text()).not.toContain('Villa Luwa')
@@ -187,26 +229,26 @@ describe('room thread', () => {
   })
 
   it('says out loud that a room is not visible to guests', () => {
-    useInternalInbox().selectRoom(GENERAL_LST1)
+    useInternalInbox().selectRoom(LISTING_MANAGER_LST1)
     expect(mountWith(RoomThread).text()).toContain('Guests never see this')
   })
 
   it('sends the draft into the open room and clears the composer', async () => {
     const internal = useInternalInbox()
-    internal.selectRoom(GENERAL_LST1)
+    internal.selectRoom(LISTING_MANAGER_LST1)
     const wrapper = mountWith(RoomThread)
-    const before = internal.messagesFor(GENERAL_LST1).length
+    const before = internal.messagesFor(LISTING_MANAGER_LST1).length
 
     await wrapper.find('textarea').setValue('Pump service tomorrow.')
     await wrapper.findAll('button').find(b => b.text().includes('Send'))!.trigger('click')
 
-    expect(internal.messagesFor(GENERAL_LST1)).toHaveLength(before + 1)
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)!.content).toBe('Pump service tomorrow.')
+    expect(internal.messagesFor(LISTING_MANAGER_LST1)).toHaveLength(before + 1)
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.content).toBe('Pump service tomorrow.')
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
   })
 
   it('refuses to send an empty draft', () => {
-    useInternalInbox().selectRoom(GENERAL_LST1)
+    useInternalInbox().selectRoom(LISTING_MANAGER_LST1)
     const wrapper = mountWith(RoomThread)
     const send = wrapper.findAll('button').find(b => b.text().includes('Send'))!
     expect(send.attributes('disabled')).toBeDefined()
@@ -239,16 +281,13 @@ describe('room thread', () => {
 
     await wrapper.findAll('button').find(b => b.text().includes('Create task'))!.trigger('click')
     const { taskRequest } = useMessageActions()
-    expect(taskRequest.value).toMatchObject({
-      roomId: HOUSEKEEPING_LST1,
-      assignee: 'housekeeping',
-    })
+    expect(taskRequest.value).toMatchObject({ assignee: 'housekeeping' })
     expect(taskRequest.value?.listingName).toContain('Villa Luwa')
   })
 
   it('attaches a photo, previews it, and can take it back off', async () => {
     const internal = useInternalInbox()
-    internal.selectRoom(GENERAL_LST1)
+    internal.selectRoom(LISTING_MANAGER_LST1)
     const wrapper = mountWith(RoomThread)
 
     expect(wrapper.find('[aria-label="Attach a photo"]').exists()).toBe(true)
@@ -268,9 +307,9 @@ describe('room thread', () => {
 
   it('sends a photo with no caption, and clears the composer after', async () => {
     const internal = useInternalInbox()
-    internal.selectRoom(GENERAL_LST1)
+    internal.selectRoom(LISTING_MANAGER_LST1)
     const wrapper = mountWith(RoomThread)
-    const before = internal.messagesFor(GENERAL_LST1).length
+    const before = internal.messagesFor(LISTING_MANAGER_LST1).length
 
     wrapper.vm.attachedImage = 'blob:leaking-tap'
     wrapper.vm.attachedImageDims = '1280 × 960'
@@ -280,8 +319,8 @@ describe('room thread', () => {
     expect(send.attributes('disabled')).toBeUndefined()
     await send.trigger('click')
 
-    expect(internal.messagesFor(GENERAL_LST1)).toHaveLength(before + 1)
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)).toMatchObject({
+    expect(internal.messagesFor(LISTING_MANAGER_LST1)).toHaveLength(before + 1)
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)).toMatchObject({
       content: '',
       mediaUrl: 'blob:leaking-tap',
       mediaDims: '1280 × 960',
@@ -291,7 +330,7 @@ describe('room thread', () => {
 
   it('drops an attached photo when the room changes', async () => {
     const internal = useInternalInbox()
-    internal.selectRoom(GENERAL_LST1)
+    internal.selectRoom(LISTING_MANAGER_LST1)
     const wrapper = mountWith(RoomThread)
     wrapper.vm.attachedImage = 'blob:leaking-tap'
     await wrapper.vm.$nextTick()
@@ -538,20 +577,11 @@ describe('room message', () => {
     expect(wrapper.text()).not.toContain('1280 × 960')
   })
 
-  it('renders a task notice as a record with no context menu around it', () => {
-    const wrapper = mountWith(RoomMessage, {
-      props: {
-        room,
-        message: message({
-          content: '',
-          systemKind: 'task_created',
-          taskRef: { id: 'TASK-1234', title: 'Fix the AC' },
-        }),
-      },
-    })
-    expect(wrapper.text()).toContain('opened task')
-    expect(wrapper.text()).toContain('TASK-1234')
-    expect(wrapper.findComponent(MessageContextMenu).exists()).toBe(false)
+  it('never renders an "opened a task" line in a room', () => {
+    const internal = useInternalInbox()
+    internal.selectRoom(HOUSEKEEPING_LST1)
+    const wrapper = mountWith(RoomThread)
+    expect(wrapper.text()).not.toContain('opened a task')
   })
 
   it('names the selection checkbox so it is reachable without sight of the tick', async () => {
@@ -686,8 +716,8 @@ describe('room members panel', () => {
   it('shows only the tasks that fall to the room role', () => {
     const { tasks } = useTaskStore()
     tasks.value = [
-      { id: 'T-HK', title: 'Deep clean the villa', status: 'todo', priority: 'high', listing: LISTING, assignee: 'housekeeping', assigneeType: 'role' },
-      { id: 'T-MT', title: 'Fix the AC', status: 'todo', priority: 'high', listing: LISTING, assignee: 'maintenance', assigneeType: 'role' },
+      { id: 'T-HK', title: 'Deep clean the villa', status: 'not started', priority: 'high', listing: LISTING, assignee: 'housekeeping', assigneeType: 'role' },
+      { id: 'T-MT', title: 'Fix the AC', status: 'not started', priority: 'high', listing: LISTING, assignee: 'maintenance', assigneeType: 'role' },
     ]
     useInternalInbox().selectRoom(HOUSEKEEPING_LST1)
     const wrapper = mountWith(RoomMembers)
@@ -696,20 +726,48 @@ describe('room members panel', () => {
     expect(wrapper.text()).toContain('Deep clean the villa')
     expect(wrapper.text()).not.toContain('Fix the AC')
     expect(wrapper.text()).toContain('1 open')
+    // A task card shows its title, never the internal id.
+    expect(wrapper.text()).not.toContain('T-HK')
   })
 
-  it('shows every task at the listing in General, the room everybody is in', () => {
+  it('shows the listing overview when a listing is open and no room is', () => {
     const { tasks } = useTaskStore()
     tasks.value = [
-      { id: 'T-HK', title: 'Deep clean the villa', status: 'todo', priority: 'high', listing: LISTING, assignee: 'housekeeping', assigneeType: 'role' },
-      { id: 'T-MT', title: 'Fix the AC', status: 'todo', priority: 'high', listing: LISTING, assignee: 'maintenance', assigneeType: 'role' },
+      { id: 'T-HK', title: 'Deep clean the villa', status: 'not started', priority: 'high', listing: LISTING, assignee: 'housekeeping', assigneeType: 'role' },
+      { id: 'T-MT', title: 'Fix the AC', status: 'not started', priority: 'high', listing: LISTING, assignee: 'maintenance', assigneeType: 'role' },
+      { id: 'T-ME', title: 'Personal errand', status: 'not started', priority: 'low', listing: LISTING, assignee: 'komang-juliantara', assigneeType: 'person' },
+      { id: 'T-XX', title: 'Other villa job', status: 'not started', priority: 'low', listing: 'Somewhere else', assignee: 'housekeeping', assigneeType: 'role' },
     ]
-    useInternalInbox().selectRoom(GENERAL_LST1)
+    useInternalInbox().selectListing('lst-1')
     const wrapper = mountWith(RoomMembers)
 
+    expect(wrapper.text()).toContain('Listing')
+    expect(wrapper.find('a[href="/listings/lst-1"]').exists()).toBe(true)
+    // Everybody at the listing, across every role room.
+    expect(wrapper.text()).toContain('Komang Juliantara')
+    expect(wrapper.text()).toContain('Made Surya')
+    expect(wrapper.text()).toContain('Ketut Antara')
+    // Every task at the listing, whoever it is assigned to, and only there.
     expect(wrapper.text()).toContain('Tasks at this listing')
     expect(wrapper.text()).toContain('Deep clean the villa')
     expect(wrapper.text()).toContain('Fix the AC')
+    expect(wrapper.text()).toContain('Personal errand')
+    expect(wrapper.text()).not.toContain('Other villa job')
+    expect(wrapper.text()).toContain('3 open')
+  })
+
+  it('lists each member of the listing once, even across rooms', () => {
+    useInternalInbox().selectListing('lst-1')
+    const wrapper = mountWith(RoomMembers)
+    const names = wrapper.findAll('p.truncate.text-xs.font-medium').map(p => p.text())
+    expect(names.length).toBeGreaterThan(2)
+    expect(names.length).toBe(new Set(names).size)
+  })
+
+  it('says so when the listing has no tasks yet', () => {
+    useTaskStore().tasks.value = []
+    useInternalInbox().selectListing('lst-1')
+    expect(mountWith(RoomMembers).text()).toContain('No tasks at this listing yet.')
   })
 
   it('points at the way to raise one when a role has no tasks', () => {
@@ -718,14 +776,20 @@ describe('room members panel', () => {
     expect(mountWith(RoomMembers).text()).toContain('No tasks fall to this role')
   })
 
-  it('opens the tasks page from a task row', () => {
+  it('opens the task detail sheet from a task card, not the tasks page', async () => {
     const { tasks } = useTaskStore()
     tasks.value = [
-      { id: 'T-HK', title: 'Deep clean the villa', status: 'todo', priority: 'high', listing: LISTING, assignee: 'housekeeping', assigneeType: 'role' },
+      { id: 'T-HK', title: 'Deep clean the villa', status: 'not started', priority: 'high', listing: LISTING, assignee: 'housekeeping', assigneeType: 'role' },
     ]
+    // Module-level ref: not reset by the useState clear between tests.
+    selectedTaskRef.value = null
     useInternalInbox().selectRoom(HOUSEKEEPING_LST1)
     const wrapper = mountWith(RoomMembers)
-    expect(wrapper.find('a[href="/tasks"]').exists()).toBe(true)
+    expect(wrapper.find('a[href="/tasks"]').exists()).toBe(false)
+
+    await wrapper.find('button[aria-label="Open task: Deep clean the villa"]').trigger('click')
+    expect(selectedTaskRef.value?.id).toBe('T-HK')
+    selectedTaskRef.value = null
   })
 })
 

@@ -13,6 +13,7 @@ const {
   clearRoomFilters,
   isLoading,
 } = useInternalInbox()
+const { permission: notifyPermission, requestPermission } = useInternalNotifications()
 
 function timeLabel(iso: string | undefined) {
   if (!iso)
@@ -38,6 +39,28 @@ function timeLabel(iso: string | undefined) {
       </div>
     </div>
     <Separator />
+
+    <!-- Asked for from a click, never on load: a browser ignores a permission
+         request no gesture started, and a cold prompt reads as spam. -->
+    <div
+      v-if="!isLoading && notifyPermission === 'default'"
+      class="flex items-center gap-2 border-b px-4 py-2"
+      data-testid="notify-permission-prompt"
+    >
+      <Icon name="lucide:bell-ring" class="size-3.5 shrink-0 text-muted-foreground" />
+      <p class="min-w-0 flex-1 text-xs text-muted-foreground">
+        Get a desktop alert when a colleague writes while this tab is in the background.
+      </p>
+      <Button size="sm" variant="outline" class="h-6 shrink-0 px-2 text-xs" @click="requestPermission">
+        Turn on
+      </Button>
+    </div>
+    <p
+      v-else-if="!isLoading && notifyPermission === 'denied'"
+      class="border-b px-4 py-2 text-xs text-muted-foreground"
+    >
+      Desktop alerts are blocked in your browser settings. You still get a toast inside the dashboard.
+    </p>
 
     <ScrollArea class="min-h-0 flex-1">
       <div class="flex flex-col gap-2 p-4">

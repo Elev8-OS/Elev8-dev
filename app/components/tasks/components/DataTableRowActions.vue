@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Row } from '@tanstack/vue-table'
-import type { Task } from '../data/schema'
+import type { Task, TaskStatus } from '../data/schema'
 import { computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { useTaskStore } from '@/composables/useTaskStore'
@@ -14,16 +14,10 @@ const props = defineProps<DataTableRowActionsProps>()
 const { updateStatus, deleteTask } = useTaskStore()
 const task = computed(() => props.row.original)
 
-function handleStatusChange(status: string) {
+function handleStatusChange(status: TaskStatus) {
   updateStatus(task.value.id, status)
-  if (task.value.linkedInventoryItemName) {
-    if (status === 'done') {
-      toast.success(`HostBuddy updated: ${task.value.linkedInventoryItemName} condition → Good`)
-    }
-    else if (status === 'canceled') {
-      toast.info(`HostBuddy reverted: ${task.value.linkedInventoryItemName} condition restored`)
-    }
-  }
+  if (task.value.linkedInventoryItemName && status === 'completed')
+    toast.success(`HostBuddy updated: ${task.value.linkedInventoryItemName} condition → Good`)
 }
 
 function handleDelete() {
@@ -52,7 +46,7 @@ function handleDelete() {
               v-for="status in statuses"
               :key="status.value"
               :value="status.value"
-              @click="handleStatusChange(status.value)"
+              @click="handleStatusChange(status.value as TaskStatus)"
             >
               {{ status.label }}
             </DropdownMenuRadioItem>

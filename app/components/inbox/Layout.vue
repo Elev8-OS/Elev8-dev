@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { Reservation } from '~/components/inbox/data/conversations'
-import { useMediaQuery } from '@vueuse/core'
+import { useDocumentVisibility, useMediaQuery } from '@vueuse/core'
 import { cn } from '~/lib/utils'
 
 const props = withDefaults(defineProps<InboxLayoutProps>(), {
@@ -61,7 +61,32 @@ const effectiveReservation = computed<Reservation | undefined>(() => {
   }
 })
 
-const { totalUnread: internalUnread, beginLoad: beginInternalLoad } = useInternalInbox()
+const {
+  totalUnread: internalUnread,
+  beginLoad: beginInternalLoad,
+  selectedRoom: internalSelectedRoom,
+  markRoomRead: markInternalRoomRead,
+} = useInternalInbox()
+const { internalViewOpen } = useInternalNotifications()
+
+// Task detail sheet, opened from a task card in the Internal view. Resolved
+// against the live store rather than the snapshot handed to `openTaskDetail`,
+// so an update made in the sheet (status, photo) shows at once.
+const { selectedTask: inboxSelectedTask, closeTaskDetail } = useTaskDetail()
+const { tasks: allTasks } = useTaskStore()
+const inboxDetailTask = computed(() => {
+  const picked = inboxSelectedTask.value
+  if (!picked)
+    return null
+  return allTasks.value.find(t => t.id === picked.id) ?? picked
+})
+const inboxDetailOpen = computed({
+  get: () => inboxSelectedTask.value !== null,
+  set: (open: boolean) => {
+    if (!open)
+      closeTaskDetail()
+  },
+})
 
 // The Internal view fetches its room tree the first time it is opened, not on
 // every inbox mount: a host who never leaves Conversations should not pay for
@@ -69,7 +94,23 @@ const { totalUnread: internalUnread, beginLoad: beginInternalLoad } = useInterna
 watch(inboxView, (view) => {
   if (view === 'internal')
     beginInternalLoad()
+  // Tells the room store whether a colleague's message lands in front of you
+  // (no toast) or needs pushing at you (see `notificationSurfaceFor`).
+  internalViewOpen.value = view === 'internal'
 }, { immediate: true })
+
+onUnmounted(() => {
+  internalViewOpen.value = false
+})
+
+// Coming back to the tab with a room open is reading what arrived while you
+// were away, so its badge clears. Messages that landed while the tab was in
+// the background stayed unread until now.
+const tabVisibility = useDocumentVisibility()
+watch(tabVisibility, (state) => {
+  if (state === 'visible' && inboxView.value === 'internal' && internalSelectedRoom.value)
+    markInternalRoomRead(internalSelectedRoom.value.id)
+})
 
 const isCollapsed = ref(props.defaultCollapsed)
 const debouncedSearch = refDebounced(searchValue, 250)
@@ -278,6 +319,12 @@ function setInboxView(view: 'conversations' | 'calls' | 'internal') {
          thread and an internal room share one dialog each. -->
     <InboxForwardDialog />
     <InboxCreateTaskDialog />
+    <!-- The same task sheet the Tasks page uses, opened from an inbox task card. -->
+    <TasksTaskDetailSheet
+      :task="inboxDetailTask"
+      :open="inboxDetailOpen"
+      @update:open="inboxDetailOpen = $event"
+    />
     <InboxImageViewer />
   </TooltipProvider>
 </template>

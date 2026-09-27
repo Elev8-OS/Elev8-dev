@@ -181,7 +181,7 @@ function handleCreateTask() {
     return
   addTask({
     title: taskInstructions.value.trim(),
-    status: 'todo',
+    status: 'not started',
     priority: taskPriority.value,
     listing: taskListingName.value || (taskListingId.value ? resolveListingName(taskListingId.value) : undefined),
     dueDate: taskDueDate.value,

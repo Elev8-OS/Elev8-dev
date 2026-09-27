@@ -16,16 +16,25 @@ import {
   forwardRefFromInternalMessage,
   INTERNAL_LOAD_MS,
   isRoomMember,
+  notificationCopy,
+  notificationSurfaceFor,
   previewLineFor,
+  replyRefFrom,
   sendLatencyFor,
+  shouldNotifyFor,
   shouldSendFail,
+  simulatedReplyDelay,
+  simulatedReplyText,
   tagsForGroups,
+  tasksForListing,
   tasksForRoom,
   unreadCountFor,
   visibleListingIdsFor,
 } from '~/components/inbox/data/internal'
 import { listings } from '~/components/listings/data/listings'
 import { useCurrentDashboardUser } from './useCurrentDashboardUser'
+import { useInboxView } from './useInbox'
+import { isTabVisible, useInternalNotifications } from './useInternalNotifications'
 import { useRoles } from './useRoles'
 import { useTaskStore } from './useTaskStore'
 import { useUsers } from './useUsers'
@@ -35,6 +44,13 @@ import { useUsers } from './useUsers'
  * `app/components/inbox/data/internal.ts` for why rooms are derived rather
  * than managed.
  */
+/**
+ * Rooms with a simulated reply on the way. Module-level so every caller of
+ * the composable shares it: one colleague answering per room at a time,
+ * however many messages were just forwarded in.
+ */
+const pendingReplyRooms = new Set<string>()
+
 export function useInternalInbox() {
   const { users } = useUsers()
   const { roles } = useRoles()
@@ -69,6 +85,15 @@ export function useInternalInbox() {
   const isLoading = useState<boolean>('internal-inbox-loading', () => false)
   const hasLoaded = useState<boolean>('internal-inbox-has-loaded', () => false)
   const selectedMessageIds = useState<string[]>('internal-inbox-selected-messages', () => [])
+
+  /**
+   * Mock only: whether a colleague answers what you post (see
+   * `scheduleSimulatedReply`). On in the app; `tests/setup.ts` turns it off so
+   * a spec that runs every timer does not find a stranger's reply in the room.
+   */
+  const simulateReplies = useState<boolean>('internal-inbox-simulated-replies', () => true)
+  const inboxView = useInboxView()
+  const { internalViewOpen, show: showNotification } = useInternalNotifications()
 
   const visibleListingIds = computed(() =>
     visibleListingIdsFor(currentUser.value, listings.value),
@@ -221,6 +246,29 @@ export function useInternalInbox() {
       .filter((u): u is User => !!u)
   }
 
+  /**
+   * Everybody staffing the open listing, once each, in room (role) order.
+   * What the side panel shows while a listing is open and no room is.
+   */
+  const listingMembers = computed<User[]>(() => {
+    const seen = new Set<string>()
+    const out: User[] = []
+    for (const room of activeListingRooms.value) {
+      for (const member of membersOf(room)) {
+        if (seen.has(member.id))
+          continue
+        seen.add(member.id)
+        out.push(member)
+      }
+    }
+    return out
+  })
+
+  /** Every task at the open listing, whoever it is assigned to. See `tasksForListing`. */
+  const listingTasks = computed(() =>
+    activeListing.value ? tasksForListing(tasks.value, activeListing.value.listingName) : [],
+  )
+
   function lastMessagePreview(roomId: string): RoomPreview {
     const msgs = messagesFor(roomId)
     return previewLineFor(msgs[msgs.length - 1])
@@ -259,30 +307,16 @@ export function useInternalInbox() {
   /**
    * Opens a listing. Not a toggle: one listing is always open.
    *
-   * The room travels with you: the same ROLE at the new property if it staffs
-   * one, otherwise its General room. Switching from Housekeeping at one villa
-   * almost always means you want Housekeeping at the next, and landing on an
-   * empty "Select a room" every time you change property is a click you should
-   * not have to make.
-   *
-   * ⚠️ Only on an explicit pick. `activeListingId` also moves on its own when
-   * a tag or a search filters the open listing away, and auto-opening there
-   * would mark a room read on every keystroke that changed which listing
-   * survived.
+   * ⚠️ It opens NO room. Picking a property shows its overview in the side
+   * panel (every member and every task at the listing), and a room opens only
+   * when you click one. Clicking the open listing again returns to that
+   * overview. Nothing is marked read, because nothing was opened.
    */
   function selectListing(listingId: string) {
-    if (scopedListingId.value === listingId)
-      return
-    // Read before the scope moves: `selectedRoom` resolves against it.
-    const previousKey = selectedRoom.value?.roomKey
     scopedListingId.value = listingId
-
-    const rooms = roomGroups.value.find(g => g.listingId === listingId)?.rooms ?? []
-    const next = (previousKey && rooms.find(r => r.roomKey === previousKey)) ?? rooms[0]
-    if (next)
-      focusRoom(next.id, { markRead: false })
-    else
-      selectedRoomId.value = undefined
+    selectedRoomId.value = undefined
+    replyDraft.value = null
+    selectedMessageIds.value = []
   }
 
   function appendMessage(roomId: string, message: InternalMessage) {
@@ -370,7 +404,87 @@ export function useInternalInbox() {
       patchMessage(roomId, messageId, { sendStatus: failed ? 'failed' : 'sent' })
       if (failed)
         toast.error('Message failed to send.')
+      else
+        scheduleSimulatedReply(roomId, messageId)
     }, sendLatencyFor(hasPhoto))
+  }
+
+  /**
+   * A colleague's message arriving in real time. The one entry point for
+   * incoming traffic: the mock reply below calls it today, a websocket
+   * handler would call it in production.
+   *
+   * The room is read in place when you are looking at it (tab in front,
+   * Internal view open, that room open). Otherwise it stays unread and the
+   * message is pushed at you: see `notificationSurfaceFor`. ⚠️ Never the bell.
+   */
+  function receiveInternalMessage(message: InternalMessage) {
+    const room = roomById(message.roomId)
+    // A room outside your scope never reaches you.
+    if (!room)
+      return
+    appendMessage(room.id, message)
+
+    const ctx = { tabVisible: isTabVisible(), internalViewOpen: internalViewOpen.value }
+    if (ctx.tabVisible && ctx.internalViewOpen && selectedRoom.value?.id === room.id)
+      markRoomRead(room.id)
+
+    if (!shouldNotifyFor(message, currentUser.value?.id))
+      return
+    showNotification(notificationSurfaceFor(ctx), {
+      ...notificationCopy(message, room, unreadFor(room.id)),
+      tag: `internal-${room.id}`,
+      onOpen: () => openRoomFromNotification(room.id),
+    })
+  }
+
+  /**
+   * "Open" on a toast or a click on a native notification: Inbox > Internal,
+   * that listing, that room, read. Filters are cleared first, since a tag that
+   * hides the listing would otherwise leave you looking at a different one.
+   */
+  function openRoomFromNotification(roomId: string) {
+    const room = roomById(roomId)
+    if (!room)
+      return
+    clearRoomFilters()
+    inboxView.value = 'internal'
+    selectListing(room.listingId)
+    selectRoom(room.id)
+    return navigateTo('/inbox')
+  }
+
+  /**
+   * Mock only: somebody else in the room answers your message a few seconds
+   * after it lands, so the real-time path (live thread, toast, native
+   * notification) can be shown without a backend. Skipped where nobody else
+   * sits in the room, and one reply per room at a time.
+   */
+  function scheduleSimulatedReply(roomId: string, messageId: string) {
+    if (!simulateReplies.value || pendingReplyRooms.has(roomId))
+      return
+    const me = currentUser.value?.id
+    const responders = membersOf(roomById(roomId)).filter(u => u.id !== me)
+    if (responders.length === 0)
+      return
+    const responder = responders[Math.floor(Math.random() * responders.length)]!
+    const original = messagesFor(roomId).find(m => m.id === messageId)
+
+    pendingReplyRooms.add(roomId)
+    setTimeout(() => {
+      pendingReplyRooms.delete(roomId)
+      receiveInternalMessage({
+        id: nextMessageId(),
+        roomId,
+        authorId: responder.id,
+        authorName: responder.name,
+        authorInitials: responder.initials,
+        authorRole: roles.value.find(r => r.id === responder.roleId)?.name ?? '',
+        content: simulatedReplyText(Math.random()),
+        createdAt: new Date().toISOString(),
+        ...(original ? { replyTo: replyRefFrom(original) } : {}),
+      })
+    }, simulatedReplyDelay(Math.random()))
   }
 
   /** Puts a failed message back on the wire, unchanged. */
@@ -408,19 +522,6 @@ export function useInternalInbox() {
     for (const roomId of roomIds)
       sendInternalMessage(roomId, note, { forwarded: refs })
     return roomIds.length
-  }
-
-  function postTaskNotice(roomId: string, task: { id: string, title: string }) {
-    appendMessage(roomId, {
-      id: nextMessageId(),
-      roomId,
-      ...authorFields(),
-      content: '',
-      createdAt: new Date().toISOString(),
-      systemKind: 'task_created',
-      taskRef: task,
-    })
-    markRoomRead(roomId)
   }
 
   // ── Message selection inside a room ────────────────────────────────────
@@ -489,6 +590,8 @@ export function useInternalInbox() {
     selectedRoomMessages,
     selectedMessages,
     roomTasks,
+    listingMembers,
+    listingTasks,
     totalUnread,
     // lookups
     messagesFor,
@@ -508,11 +611,13 @@ export function useInternalInbox() {
     clearTagFilters,
     clearRoomFilters,
     markRoomRead,
+    receiveInternalMessage,
+    openRoomFromNotification,
+    simulateReplies,
     sendInternalMessage,
     retryInternalMessage,
     discardFailedMessage,
     forwardToRooms,
-    postTaskNotice,
     toggleMessageSelection,
     clearMessageSelection,
     refsFromGuestMessages,

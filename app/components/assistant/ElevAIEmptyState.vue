@@ -143,7 +143,7 @@ function handleCreateTask(f: Finding) {
   const today = new Date().toISOString().slice(0, 10)
   const task = addTask({
     title: f.taskTitle,
-    status: 'todo',
+    status: 'not started',
     priority: TASK_PRIORITY[f.type],
     listing: f.listingName,
     assignee: 'komang-juliantara',
@@ -163,31 +163,29 @@ function handleReset() {
   showResolved.value = false
 }
 
-/** Watch linked tasks — when a task reaches a terminal state
- * ('done' / 'canceled'), auto-resolve the finding. One-way sync:
+/** Watch linked tasks — when a task is Completed, auto-resolve the
+ * finding. (A task nobody will do is deleted, not cancelled.) One-way sync:
  * the task is the source of truth for status, the finding just
  * mirrors it. */
 watch(tasks, (current) => {
   for (const f of findings.value) {
     const task = linkedTask(f.id)
     if (!task) continue
-    if (task.status === 'done' || task.status === 'canceled') {
+    if (task.status === 'completed') {
       if (!isChecked(f.id)) setChecked(f.id, true)
     }
   }
 }, { deep: true })
 
 const TASK_STATUS_LABELS: Record<string, { label: string, classes: string }> = {
-  todo: { label: 'To do', classes: 'bg-muted text-muted-foreground' },
+  'not started': { label: 'Not started', classes: 'bg-muted text-muted-foreground' },
   'in progress': { label: 'In progress', classes: 'bg-amber-500/10 text-amber-700' },
-  done: { label: 'Done', classes: 'bg-emerald-500/10 text-emerald-700' },
-  canceled: { label: 'Canceled', classes: 'bg-muted text-muted-foreground line-through' },
-  backlog: { label: 'Backlog', classes: 'bg-muted text-muted-foreground' },
+  'completed': { label: 'Completed', classes: 'bg-emerald-500/10 text-emerald-700' },
 }
 
 function taskStatusDisplay(status: string | undefined) {
-  const key = status ?? 'todo'
-  return TASK_STATUS_LABELS[key] ?? TASK_STATUS_LABELS.todo
+  const key = status ?? 'not started'
+  return TASK_STATUS_LABELS[key] ?? TASK_STATUS_LABELS['not started']
 }
 </script>
 

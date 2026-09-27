@@ -13,6 +13,7 @@ import { listings } from '~/components/listings/data/listings'
 import { useNotifications } from '~/composables/useNotifications'
 import { useOwners } from '~/composables/useOwners'
 import { useTaskStore } from '~/composables/useTaskStore'
+import { useCurrentDashboardUser } from './useCurrentDashboardUser'
 
 export interface TaskReceiptInput {
   fileName: string
@@ -35,7 +36,7 @@ function nowIso(): string {
 }
 
 export function useTaskOwnerApproval() {
-  const { tasks, updateTask, addStatusUpdate } = useTaskStore()
+  const { tasks, updateTask, addStatusUpdate, deleteTask } = useTaskStore()
 
   function fmtIdr(amount: number): string {
     return `IDR ${amount.toLocaleString('id-ID')}`
@@ -104,7 +105,12 @@ export function useTaskOwnerApproval() {
     return { ok: true, task: tasks.value.find(t => t.id === taskId)! }
   }
 
-  /** Owner rejects the cost — the task is cancelled. */
+  /**
+   * Owner rejects the cost: the task is DELETED. There is no Cancelled
+   * status (a task is Not started, In progress or Completed), and work the
+   * owner will not pay for is not work anybody should pick up. The returned
+   * task is the last state it had, decision included, for the caller to show.
+   */
   function ownerReject(taskId: string, note: string): TaskApprovalResult {
     const task = tasks.value.find(t => t.id === taskId)
     if (!task)
@@ -115,20 +121,21 @@ export function useTaskOwnerApproval() {
       return { ok: false, reason: 'already_decided' }
 
     const at = nowIso()
-    updateTask(taskId, {
-      status: 'canceled',
+    const rejectingOwner = task.ownerId ? useOwners().byId(task.ownerId) : undefined
+    const decided: Task = {
+      ...task,
       ownerApprovalStatus: 'rejected',
       ownerApprovalNote: note,
       ownerApprovalDecidedAt: at,
-    })
-    const rejectingOwner = task.ownerId ? useOwners().byId(task.ownerId) : undefined
-    addStatusUpdate(taskId, {
-      date: at,
-      actor: { name: rejectingOwner?.name ?? 'Owner', kind: 'owner' },
-      note: `declined the cost — “${note}”`,
-      progress: task.progress ?? 0,
-    })
-    return { ok: true, task: tasks.value.find(t => t.id === taskId)! }
+      statusUpdates: [...(task.statusUpdates ?? []), {
+        date: at,
+        actor: { name: rejectingOwner?.name ?? 'Owner', kind: 'owner' },
+        note: `declined the cost — “${note}”`,
+        progress: task.progress ?? 0,
+      }],
+    }
+    deleteTask(taskId)
+    return { ok: true, task: decided }
   }
 
   /**
@@ -149,7 +156,7 @@ export function useTaskOwnerApproval() {
 
     const at = nowIso()
     updateTask(taskId, {
-      status: 'done',
+      status: 'completed',
       ...(input
         ? {
             receipt: {
@@ -168,9 +175,11 @@ export function useTaskOwnerApproval() {
     // the reader having to parse it out of a sentence.
     addStatusUpdate(taskId, {
       date: at,
-      actor: { name: 'Komang Juliantara', kind: 'staff' },
+      actor: { name: useCurrentDashboardUser().currentUser.value?.name ?? 'Komang Juliantara', kind: 'staff' },
       icon: input ? 'lucide:receipt' : undefined,
-      note: input ? 'completed the task and uploaded the receipt' : 'completed the task',
+      // Reads "… has completed the task"; the receipt, if any, is the note.
+      kind: 'completed',
+      note: input ? 'Receipt uploaded.' : undefined,
       progress: 100,
       ...(input
         ? {

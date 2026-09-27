@@ -58,9 +58,12 @@ describe('useTaskOwnerApproval', () => {
 
   it('keeps a rejected task blocked, with its own reason', () => {
     const { ownerReject, isBlockedOnOwner, startBlockedReason } = useTaskOwnerApproval()
-    ownerReject('TASK-OWN-002', 'Get another quote.')
+    const result = ownerReject('TASK-OWN-002', 'Get another quote.')
 
-    const rejected = taskById('TASK-OWN-002')!
+    // The task itself is gone; the result carries its last state.
+    if (!result.ok)
+      throw new Error('expected the rejection to succeed')
+    const rejected = result.task
     expect(isBlockedOnOwner(rejected)).toBe(true)
     expect(startBlockedReason(rejected)).toMatch(/rejected this cost/)
   })
@@ -78,17 +81,17 @@ describe('useTaskOwnerApproval', () => {
     expect(task.ownerApprovalDecidedAt).toBeTruthy()
     expect(isBlockedOnOwner(task)).toBe(false)
     // Approving does not start the work by itself.
-    expect(task.status).toBe('todo')
+    expect(task.status).toBe('not started')
   })
 
-  it('cancels the task when the owner rejects the cost', () => {
+  it('deletes the task when the owner rejects the cost (there is no Cancelled status)', () => {
     const { ownerReject } = useTaskOwnerApproval()
     const result = ownerReject('TASK-OWN-002', 'Too expensive.')
 
     expect(result.ok).toBe(true)
-    const task = taskById('TASK-OWN-002')!
-    expect(task.ownerApprovalStatus).toBe('rejected')
-    expect(task.status).toBe('canceled')
+    expect(taskById('TASK-OWN-002')).toBeUndefined()
+    if (result.ok)
+      expect(result.task.ownerApprovalStatus).toBe('rejected')
   })
 
   it('refuses a second decision, and a decision on a task needing none', () => {
@@ -164,7 +167,7 @@ describe('useTaskOwnerApproval', () => {
     expect(result.ok).toBe(true)
 
     const task = taskById('TASK-OWN-002')!
-    expect(task.status).toBe('done')
+    expect(task.status).toBe('completed')
     expect(task.progress).toBe(100)
     expect(task.finalInvoiceAmount).toBe(1_180_000)
     expect(task.receipt?.fileName).toBe('receipt-ac.jpg')
@@ -176,7 +179,7 @@ describe('useTaskOwnerApproval', () => {
     const result = completeWithReceipt('TASK-OWN-004', null)
 
     expect(result.ok).toBe(true)
-    expect(taskById('TASK-OWN-004')!.status).toBe('done')
+    expect(taskById('TASK-OWN-004')!.status).toBe('completed')
   })
 
   // --- Scoping ---------------------------------------------------------------
@@ -229,7 +232,8 @@ describe('useTaskOwnerApproval', () => {
     // Actor and verb are separate fields now — the feed renders them as
     // "<bold name> <grey verb>".
     expect(last.actor).toEqual({ name: 'Komang Juliantara', kind: 'staff' })
-    expect(last.note).toBe('completed the task and uploaded the receipt')
+    expect(last.kind).toBe('completed')
+    expect(last.note).toBe('Receipt uploaded.')
     expect(last.icon).toBe('lucide:receipt')
     // The reported bug: the cost from the receipt never reached the timeline.
     // It is structured data now, so the timeline can render it as a card.
@@ -272,9 +276,11 @@ describe('useTaskOwnerApproval', () => {
 
   it('records a decline in the timeline', () => {
     const { ownerReject } = useTaskOwnerApproval()
-    ownerReject('TASK-OWN-002', 'Get a second quote.')
+    const result = ownerReject('TASK-OWN-002', 'Get a second quote.')
+    if (!result.ok)
+      throw new Error('expected the rejection to succeed')
 
-    const last = (taskById('TASK-OWN-002')!.statusUpdates ?? []).at(-1)!
+    const last = (result.task.statusUpdates ?? []).at(-1)!
     expect(last.actor).toEqual({ name: 'I Putu Antara', kind: 'owner' })
     expect(last.note).toContain('declined the cost')
     expect(last.note).toContain('Get a second quote.')
@@ -286,7 +292,9 @@ describe('useTaskOwnerApproval', () => {
 
     const updates = taskById('TASK-OWN-004')!.statusUpdates ?? []
     const last = updates[updates.length - 1]!
-    expect(last.note).toBe('completed the task')
+    // Reads "… has completed the task", with no note under it.
+    expect(last.kind).toBe('completed')
+    expect(last.note).toBeUndefined()
     expect(last.progress).toBe(100)
     // No receipt means no cost card and no receipt icon.
     expect(last.cost).toBeUndefined()

@@ -78,21 +78,18 @@ const isOverdue = computed(() => {
   if (!task.value?.dueDate)
     return false
   return task.value.dueDate < new Date().toISOString().slice(0, 10)
-    && task.value.status !== 'done'
-    && task.value.status !== 'canceled'
+    && task.value.status !== 'completed'
 })
 
 const statusMeta = computed(() => {
-  const status = task.value?.status ?? 'todo'
+  const status = task.value?.status ?? 'not started'
   switch (status) {
-    case 'todo':
-      return { icon: 'lucide:circle-dot', label: 'To do', color: 'text-muted-foreground' }
-    case 'in_progress':
+    case 'not started':
+      return { icon: 'lucide:circle-dot', label: 'Not started', color: 'text-muted-foreground' }
+    case 'in progress':
       return { icon: 'lucide:loader', label: 'In progress', color: 'text-amber-600' }
-    case 'done':
-      return { icon: 'lucide:circle-check', label: 'Done', color: 'text-green-600' }
-    case 'canceled':
-      return { icon: 'lucide:circle-x', label: 'Canceled', color: 'text-muted-foreground' }
+    case 'completed':
+      return { icon: 'lucide:circle-check', label: 'Completed', color: 'text-green-600' }
     default:
       return { icon: 'lucide:circle-dot', label: status, color: 'text-muted-foreground' }
   }

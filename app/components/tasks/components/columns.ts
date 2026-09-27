@@ -115,7 +115,7 @@ export const columns: ColumnDef<Task>[] = [
       if (!date)
         return h('span', { class: 'text-muted-foreground text-sm' }, '—')
       const today = new Date().toISOString().slice(0, 10)
-      const isOverdue = date < today && row.original.status !== 'done' && row.original.status !== 'canceled'
+      const isOverdue = date < today && row.original.status !== 'completed'
       return h('span', {
         class: isOverdue ? 'text-destructive text-sm font-medium' : 'text-sm',
       }, date)

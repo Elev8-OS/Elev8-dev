@@ -11,6 +11,7 @@ import type {
   MaintenanceRecord,
   MaintenanceRecordInput,
 } from '~/components/owners/data/owner-maintenance'
+import type { TaskStatus } from '~/components/tasks/data/schema'
 import { mockMaintenanceRecords, ownerMaintenanceConfig } from '~/components/owners/data/owner-maintenance'
 import { useNotifications } from '~/composables/useNotifications'
 import { useTaskStore } from '~/composables/useTaskStore'
@@ -69,12 +70,19 @@ export function useOwnerMaintenance() {
   /** Move the mirrored task to `status`, when the record has one. */
   function setMirroredTaskStatus(
     record: Pick<MaintenanceRecord, 'taskId'>,
-    status: string,
+    status: TaskStatus,
   ): void {
     if (!record.taskId)
       return
     const { tasks } = useTaskStore()
     tasks.value = tasks.value.map(t => t.id === record.taskId ? { ...t, status } : t)
+  }
+
+  /** Work the owner will not pay for is removed from the Tasks module. */
+  function deleteMirroredTask(record: Pick<MaintenanceRecord, 'taskId'>): void {
+    if (!record.taskId)
+      return
+    useTaskStore().deleteTask(record.taskId)
   }
 
   function recordIdTaken(id: string): boolean {
@@ -114,7 +122,7 @@ export function useOwnerMaintenance() {
     const { addTask } = useTaskStore()
     const task = addTask({
       title: record.title,
-      status: requiresApproval ? 'todo' : 'in progress',
+      status: requiresApproval ? 'not started' : 'in progress',
       priority: 'high',
       listing: record.listingId,
       description: record.description,
@@ -169,8 +177,11 @@ export function useOwnerMaintenance() {
     }
     records.value = records.value.map(r => r.id === recordId ? updated : r)
     // Keep the mirrored task in step: an approved cost releases the vendor,
-    // a rejected one cancels the work.
-    setMirroredTaskStatus(updated, approve ? 'in progress' : 'canceled')
+    // a rejected one deletes the task (there is no Cancelled task status).
+    if (approve)
+      setMirroredTaskStatus(updated, 'in progress')
+    else
+      deleteMirroredTask(updated)
     return { ok: true, record: updated }
   }
 

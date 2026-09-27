@@ -25,9 +25,7 @@ const {
 const { openForward, openTask } = useMessageActions()
 const { openImage } = useImageViewer()
 const { currentUser } = useCurrentDashboardUser()
-
 const isMine = computed(() => props.message.authorId === currentUser.value?.id)
-const isSystem = computed(() => !!props.message.systemKind)
 const isSelected = computed(() => selectedMessageIds.value.includes(props.message.id))
 const selectionMode = computed(() => selectedMessageIds.value.length > 0)
 
@@ -53,7 +51,6 @@ function handleTask() {
   openTask({
     refs: refsFromInternalMessages(actionTargets.value, props.room),
     listingName: props.room.listingName,
-    roomId: props.room.id,
     assignee: taskAssigneeForRoom(props.room.roomKey),
   })
 }
@@ -119,22 +116,7 @@ const timeLabel = computed(() => {
 </script>
 
 <template>
-  <!-- A task notice is a record, not a message: nothing to reply to, forward or
-       select, so it renders outside the context menu entirely. -->
-  <div v-if="isSystem" class="flex justify-center">
-    <div class="flex items-center gap-1.5 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-      <Icon name="lucide:list-checks" class="size-3.5" />
-      <span class="font-medium text-foreground">{{ message.authorName }}</span>
-      opened task
-      <NuxtLink to="/tasks" class="font-medium text-foreground underline-offset-2 hover:underline">
-        {{ message.taskRef?.id }}
-      </NuxtLink>
-      · {{ message.taskRef?.title }}
-    </div>
-  </div>
-
   <InboxMessageContextMenu
-    v-else
     kind="internal"
     :selection-mode="selectionMode"
     :is-selected="isSelected"
