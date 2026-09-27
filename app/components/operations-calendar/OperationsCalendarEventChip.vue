@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import type { CleaningDisplayStatus, CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
-import { cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { computed } from 'vue'
+import { cleaningDisplayStatus, cleaningDisplayStatusMeta, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { cleaningTypeIcons } from '~/components/operations-calendar/data/operations-calendar'
 import { staffMembers } from '~/components/tasks/data/data'
 
@@ -44,19 +45,23 @@ const timeRange = computed(() => {
   return ''
 })
 
-const cleaningStatusConfig: Record<string, { label: string, class: string, icon: string, spin?: boolean }> = {
-  draft: { label: 'Draft', class: 'bg-muted text-muted-foreground', icon: 'lucide:file-text' },
-  confirmed: { label: 'Confirmed', class: 'bg-sky-100 text-sky-700', icon: 'lucide:check-circle-2' },
-  in_progress: { label: 'In progress', class: 'bg-amber-100 text-amber-700', icon: 'lucide:loader', spin: true },
-  done: { label: 'Completed', class: 'bg-emerald-100 text-emerald-700', icon: 'lucide:check' },
-  cancelled: { label: 'Cancelled', class: 'bg-red-100 text-red-700', icon: 'lucide:ban' },
-  missed: { label: 'Missed', class: 'bg-red-100 text-red-700', icon: 'lucide:x' },
+const cleaningStatusClasses: Record<CleaningDisplayStatus, string> = {
+  not_started: 'bg-muted text-muted-foreground',
+  ongoing: 'bg-amber-100 text-amber-700',
+  completed: 'bg-emerald-100 text-emerald-700',
+  missed: 'bg-red-100 text-red-700',
+  cancelled: 'bg-red-100 text-red-700',
 }
 
-const statusConfig = computed(() => {
+// Not started / Ongoing / Completed / Missed. A cleaning that has not started
+// shows no badge, so the chip stays light; the detail sheet names it.
+const statusBadge = computed(() => {
   if (props.event.type !== 'cleaning' || !props.event.status)
     return null
-  return cleaningStatusConfig[props.event.status] ?? null
+  const key = cleaningDisplayStatus(props.event.status as CleaningJobStatus, props.event.start)
+  if (key === 'not_started')
+    return null
+  return { key, ...cleaningDisplayStatusMeta[key], class: cleaningStatusClasses[key] }
 })
 
 const priorityConfig = computed(() => {
@@ -79,31 +84,6 @@ const cleaningTypeConfig = computed(() => {
 })
 
 const hasPet = computed(() => props.event.type === 'cleaning' && Boolean(props.event.hasPet))
-
-type ChipStateTone = 'done' | 'in_progress' | 'missed' | 'was_missed' | 'cancelled' | null
-
-const stateMeta = computed<{ label: string, icon: string, tone: ChipStateTone } | null>(() => {
-  if (props.event.type !== 'cleaning')
-    return null
-  const status = props.event.status
-  if (status === 'done')
-    return { label: 'Completed', icon: 'lucide:check', tone: 'done' }
-  if (status === 'in_progress')
-    return { label: 'In progress', icon: 'lucide:loader', tone: 'in_progress' }
-  if (status === 'missed')
-    return { label: 'Missed', icon: 'lucide:x', tone: 'missed' }
-  if (status === 'cancelled')
-    return { label: 'Cancelled', icon: 'lucide:ban', tone: 'cancelled' }
-  if (status === 'scheduled' && props.event.start) {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const scheduled = new Date(props.event.start)
-    scheduled.setHours(0, 0, 0, 0)
-    if (scheduled.getTime() < today.getTime())
-      return { label: 'Was missed', icon: 'lucide:x', tone: 'was_missed' }
-  }
-  return null
-})
 
 const assignedStaff = computed(() => {
   const names = props.event.assignedTo ?? []
@@ -156,14 +136,16 @@ const isExtrasauber = computed(() => {
         <span v-else class="h-3.5" />
 
         <Badge
-          v-if="stateMeta || statusConfig"
-          :class="['gap-0.5 border-0 px-1 py-0 text-[9px] font-semibold', (stateMeta ? cleaningStatusConfig[event.status as string]?.class : statusConfig?.class) || '']"
+          v-if="statusBadge"
+          class="gap-0.5 border-0 px-1 py-0 text-[9px] font-semibold"
+          :class="statusBadge.class"
+          :data-display-status="statusBadge.key"
         >
           <Icon
-            :name="(stateMeta?.icon ?? statusConfig?.icon) || 'lucide:circle'"
-            :class="[(stateMeta?.tone === 'in_progress' || event.status === 'in_progress') ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5']"
+            :name="statusBadge.icon"
+            :class="statusBadge.key === 'ongoing' ? 'h-2.5 w-2.5 animate-spin' : 'h-2.5 w-2.5'"
           />
-          {{ stateMeta?.label || statusConfig?.label }}
+          {{ statusBadge.label }}
         </Badge>
       </div>
 
@@ -310,7 +292,7 @@ const isExtrasauber = computed(() => {
         class="flex items-center"
       >
         <Badge
-          :class="['gap-0.5 border-0 px-1.5 py-0 text-[9px] font-semibold', event.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : event.status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground']"
+          class="gap-0.5 border-0 px-1.5 py-0 text-[9px] font-semibold" :class="[event.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : event.status === 'in_progress' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-muted-foreground']"
         >
           {{ event.status === 'not_started' ? 'Pending' : event.status === 'in_progress' ? 'In Progress' : 'Done' }}
         </Badge>
