@@ -14,8 +14,10 @@ import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const router = useRouter()
+const route = useRoute()
 
 const {
+  reservations,
   filteredReservations,
   stats,
   filters,
@@ -31,6 +33,13 @@ function openDetail(r: ReservationEntry) {
   detailReservation.value = r
   detailOpen.value = true
 }
+
+// `?reservation=<id>` opens that booking's detail sheet (linked from the Operations Calendar).
+watch(() => route.query.reservation, (id) => {
+  const match = typeof id === 'string' ? reservations.value.find(r => r.id === id) : undefined
+  if (match)
+    openDetail(match)
+}, { immediate: true })
 
 function openGuest(id: string) {
   router.push(`/reservations/guests/${id}`)

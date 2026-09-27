@@ -58,4 +58,22 @@ Time-based view of guest stays, cleaning jobs, and tasks. Week/day views with hi
   - `OperationsCalendarBoard.vue` — Week/day grid rendering events by listing rows
   - `OperationsCalendarEventChip.vue` — Individual event chip in grid cells
   - `OperationsCalendarCreateDialog.vue` — New cleaning job / task creation
+  - `CalendarEventDetailDialog.vue`: the event sheet. For a cleaning, the header shows the date and
+    `scheduledAt` + `durationMinutes` range, then a guest card for the stay it belongs to (read
+    through `mergedBookingsFor`, so both stay sources count). A check-out cleaning belongs to the
+    departing guest on a turnover day; any other cleaning to the guest in the house, then the
+    arriving one. The card shows the booking status, dates and nights, guests, the listing's
+    check-out time and pets. Only a Reservations-module stay links (chevron) to
+    `/reservations?reservation=<id>`, which opens that booking's detail sheet. The sheet has no
+    Source section and no Mark as done button.
+  - **Cleaning status shown to staff** is one of Not started, Ongoing, Completed, Missed
+    (`cleaningDisplayStatus` in `cleaning/data/cleaning-jobs.ts`; a cancelled job keeps
+    "Cancelled"). Draft, scheduled and confirmed read as Not started until the date passes, then
+    Missed. The sheet and the chip use it; the cleaning form and filters keep the stored statuses.
+    A Not started chip shows no badge.
+  - **Reschedule** edits date, start and end. A job stores no end: the end is `scheduledAt` +
+    `durationMinutes`, and saving writes the new duration. Moving the start keeps the length; an
+    end at or before the start cannot be saved.
+  - ⚠️ A cleaning event's `end` keeps the start's UTC offset (`addMinutesKeepingOffset`). The chip
+    slices the time off the string, so a `toISOString()` end showed a Bali 13:00 as "05:00".
 - **Key fix**: Reka UI `CheckboxRoot` ignores external `:checked` prop changes after initial render. Filter checkboxes use native `<button @click>` for toggle logic + plain `<span>` with reactive Tailwind classes for visual — no Reka UI checkbox component to avoid desync.

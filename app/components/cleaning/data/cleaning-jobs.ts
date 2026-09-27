@@ -191,6 +191,39 @@ export const cleaningJobStatusVariants: Record<CleaningJobStatus, 'outline' | 'd
   missed: 'destructive',
 }
 
+/**
+ * The four states a cleaning shows staff on the Operations Calendar. The stored
+ * status keeps its full vocabulary (the cleaning form and filters still use it);
+ * this collapses it: a cleaning that has not started yet is "Not started", and one
+ * whose date has passed without being started or done is "Missed". A cancelled job
+ * keeps its own state, since it is none of the four.
+ */
+export type CleaningDisplayStatus = 'not_started' | 'ongoing' | 'completed' | 'missed' | 'cancelled'
+
+export const cleaningDisplayStatusMeta: Record<CleaningDisplayStatus, { label: string, icon: string }> = {
+  not_started: { label: 'Not started', icon: 'lucide:circle-dot' },
+  ongoing: { label: 'Ongoing', icon: 'lucide:loader' },
+  completed: { label: 'Completed', icon: 'lucide:check-circle-2' },
+  missed: { label: 'Missed', icon: 'lucide:circle-x' },
+  cancelled: { label: 'Cancelled', icon: 'lucide:ban' },
+}
+
+export function cleaningDisplayStatus(status: CleaningJobStatus, scheduledAt: string, now = new Date()): CleaningDisplayStatus {
+  if (status === 'in_progress')
+    return 'ongoing'
+  if (status === 'done')
+    return 'completed'
+  if (status === 'missed')
+    return 'missed'
+  if (status === 'cancelled')
+    return 'cancelled'
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+  const scheduled = new Date(scheduledAt)
+  scheduled.setHours(0, 0, 0, 0)
+  return scheduled.getTime() < today.getTime() ? 'missed' : 'not_started'
+}
+
 export const cleaningJobPriorityVariants: Record<CleaningJobPriority, 'outline' | 'secondary' | 'default' | 'destructive'> = {
   low: 'outline',
   normal: 'secondary',

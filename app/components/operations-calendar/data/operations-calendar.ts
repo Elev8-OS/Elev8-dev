@@ -347,6 +347,18 @@ export function buildOwnerStayEvents(stays: OwnerStay[]): CalendarEvent[] {
     }))
 }
 
+/**
+ * `iso` plus `minutes`, written in the same UTC offset as `iso`. The chip reads
+ * the time straight off the string, so `toISOString()` (always UTC) turned a
+ * 13:00 finish in Bali into "05:00".
+ */
+export function addMinutesKeepingOffset(iso: string, minutes: number) {
+  const offset = iso.match(/([+-])(\d{2}):(\d{2})$/)
+  const offsetMinutes = offset ? (offset[1] === '-' ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3])) : 0
+  const shifted = new Date(new Date(iso).getTime() + (minutes + offsetMinutes) * 60000)
+  return `${shifted.toISOString().slice(0, 19)}${offset ? offset[0] : 'Z'}`
+}
+
 export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, jobs?: CleaningJob[]) {
   const source = jobs ?? cleaningJobs.value
   return source.map((job) => {
@@ -371,7 +383,7 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
       type: 'cleaning' as CalendarEventType,
       title: `Cleaning${guestSuffix}`,
       start: job.scheduledAt,
-      end: new Date(new Date(job.scheduledAt).getTime() + job.durationMinutes * 60000).toISOString(),
+      end: addMinutesKeepingOffset(job.scheduledAt, job.durationMinutes),
       guestName: overlappingBooking?.guestName ?? job.notes?.match(/guest:\s*([^\n]+)/i)?.[1]?.trim(),
       hasPet: overlappingBooking?.hasPet ?? false,
       cleaningType,

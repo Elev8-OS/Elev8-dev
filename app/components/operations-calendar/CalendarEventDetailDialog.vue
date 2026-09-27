@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import type { Booking } from '~/components/listings/data/listings'
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
+import { NuxtLink } from '#components'
 import { toast } from 'vue-sonner'
 import DatePicker from '~/components/base/DatePicker.vue'
 import TimePicker from '~/components/base/TimePicker.vue'
-import { cleanerOptions, cleaningJobPriorityLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
-import { listings } from '~/components/listings/data/listings'
+import { cleanerOptions, cleaningDisplayStatus, cleaningDisplayStatusMeta, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { bookingStatusMeta, listings } from '~/components/listings/data/listings'
 import CleaningReportPanel from '~/components/operations-calendar/CleaningReportPanel.vue'
-import { cleaningTypeIcons, cleaningTypeVariants } from '~/components/operations-calendar/data/operations-calendar'
+import { mergedBookingsFor } from '~/components/operations-calendar/data/calendar-stays'
+import { cleaningTypeIcons, cleaningTypeVariants, getDefaultCheckOutTime } from '~/components/operations-calendar/data/operations-calendar'
 import StaffMultiSelectDropdown from '~/components/shared/StaffMultiSelectDropdown.vue'
 import { TASK_STATUS_LABELS } from '~/components/tasks/data/schema'
 import { Label } from '~/components/ui/label'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useTaskStore } from '~/composables/useTaskStore'
 
 const props = defineProps<{
@@ -26,6 +29,7 @@ const emit = defineEmits<{
 
 const { jobs: cleaningJobs, updateJob, deleteJob, resolveCleanerNames } = useCleaningJobs()
 const { tasks: taskStore, deleteTask } = useTaskStore()
+const { reservations } = useReservationsModule()
 
 const cleaningJob = computed(() => {
   if (!props.event || props.event.type !== 'cleaning')
@@ -40,10 +44,12 @@ const task = computed(() => {
   return taskStore.value.find(t => t.id === taskId) ?? null
 })
 
-const statusLabel = computed(() => {
+// Not started / Ongoing / Completed / Missed (see `cleaningDisplayStatus`).
+const displayStatus = computed(() => {
   if (!cleaningJob.value)
     return null
-  return cleaningJobStatusLabels[cleaningJob.value.status]
+  const key = cleaningDisplayStatus(cleaningJob.value.status, cleaningJob.value.scheduledAt)
+  return { key, ...cleaningDisplayStatusMeta[key] }
 })
 
 const priorityLabel = computed(() => {
@@ -77,28 +83,23 @@ const isEditable = computed(() => {
   return scheduled.getTime() >= today.getTime()
 })
 
-// Specific reason the dialog is locked — shown on the lock banner
-const lockReason = computed<{ label: string, description: string } | null>(() => {
-  if (!cleaningJob.value || isEditable.value)
+// Specific reason the dialog is locked, shown on the lock banner. `tone` is the
+// display status, or `locked` for a job that is not started but cannot be edited.
+type LockTone = 'ongoing' | 'completed' | 'missed' | 'cancelled' | 'locked'
+const lockDescriptions: Record<LockTone, string> = {
+  ongoing: 'Cleaning is currently underway',
+  completed: 'Cleaning has been completed',
+  missed: 'Cleaning was not done',
+  cancelled: 'Cleaning was cancelled',
+  locked: 'No further changes',
+}
+const lockReason = computed<{ tone: LockTone, label: string, icon: string, description: string } | null>(() => {
+  if (!cleaningJob.value || isEditable.value || !displayStatus.value)
     return null
-  const job = cleaningJob.value
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const scheduled = new Date(job.scheduledAt)
-  scheduled.setHours(0, 0, 0, 0)
-  const isPast = scheduled.getTime() < today.getTime()
-
-  if (job.status === 'in_progress')
-    return { label: 'In progress', description: 'Cleaning is currently underway' }
-  if (job.status === 'done')
-    return { label: 'Done', description: 'Cleaning has been completed' }
-  if (job.status === 'missed')
-    return { label: 'Missed', description: 'Cleaning was not done' }
-  if (job.status === 'cancelled')
-    return { label: 'Cancelled', description: 'Cleaning was cancelled' }
-  if (job.status === 'scheduled' && isPast)
-    return { label: 'Was missed', description: 'Scheduled date has passed without being marked done' }
-  return { label: 'Locked', description: 'No further changes' }
+  const tone: LockTone = displayStatus.value.key === 'not_started' ? 'locked' : displayStatus.value.key
+  const label = tone === 'locked' ? 'Locked' : displayStatus.value.label
+  const icon = tone === 'locked' ? 'lucide:lock' : displayStatus.value.icon
+  return { tone, label, icon, description: lockDescriptions[tone] }
 })
 
 // --- Editable state ---
@@ -110,7 +111,29 @@ const isSavingPriority = ref(false)
 const isRescheduling = ref(false)
 const rescheduleDate = ref<string>('')
 const rescheduleTime = ref<string>('11:00')
+const rescheduleEndTime = ref<string>('13:00')
 const isSavingReschedule = ref(false)
+
+// The latest end the time picker offers (its default `endHour`).
+const LATEST_END_MINUTES = 22 * 60
+
+function timeToMinutes(time: string) {
+  const [h, m] = time.split(':').map(Number)
+  return (h ?? 0) * 60 + (m ?? 0)
+}
+
+function minutesToTime(minutes: number) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+function jobStartTime(scheduledAt: string) {
+  return scheduledAt.includes('T') && scheduledAt.length >= 16 ? scheduledAt.slice(11, 16) : '11:00'
+}
+
+// A job's end is its start plus `durationMinutes`; there is no stored end time.
+function jobEndTime(job: { scheduledAt: string, durationMinutes: number }) {
+  return minutesToTime(Math.min(timeToMinutes(jobStartTime(job.scheduledAt)) + job.durationMinutes, 24 * 60 - 1))
+}
 
 const todayKey = computed(() => {
   const d = new Date()
@@ -125,8 +148,20 @@ function initRescheduleState() {
     return
   const dt = cleaningJob.value.scheduledAt
   rescheduleDate.value = dt.slice(0, 10)
-  rescheduleTime.value = dt.includes('T') && dt.length >= 16 ? dt.slice(11, 16) : '11:00'
+  rescheduleTime.value = jobStartTime(dt)
+  rescheduleEndTime.value = jobEndTime(cleaningJob.value)
 }
+
+// Moving the start keeps the cleaning's length, so the end moves with it.
+function onRescheduleStartChange(time: string) {
+  const duration = timeToMinutes(rescheduleEndTime.value) - timeToMinutes(rescheduleTime.value)
+  rescheduleTime.value = time
+  if (duration > 0)
+    rescheduleEndTime.value = minutesToTime(Math.min(timeToMinutes(time) + duration, LATEST_END_MINUTES))
+}
+
+const rescheduleDurationMinutes = computed(() => timeToMinutes(rescheduleEndTime.value) - timeToMinutes(rescheduleTime.value))
+const isRescheduleEndValid = computed(() => rescheduleDurationMinutes.value > 0)
 
 function startReschedule() {
   initRescheduleState()
@@ -142,15 +177,17 @@ const hasRescheduleChanges = computed(() => {
   if (!cleaningJob.value || !rescheduleDate.value)
     return false
   const origDt = cleaningJob.value.scheduledAt
-  const origDate = origDt.slice(0, 10)
-  const origTime = origDt.includes('T') && origDt.length >= 16 ? origDt.slice(11, 16) : '11:00'
-  return rescheduleDate.value !== origDate || rescheduleTime.value !== origTime
+  return rescheduleDate.value !== origDt.slice(0, 10)
+    || rescheduleTime.value !== jobStartTime(origDt)
+    || rescheduleEndTime.value !== jobEndTime(cleaningJob.value)
 })
 
 const canSaveReschedule = computed(() => {
   if (!rescheduleDate.value)
     return false
   if (rescheduleDate.value < todayKey.value)
+    return false
+  if (!isRescheduleEndValid.value)
     return false
   return hasRescheduleChanges.value
 })
@@ -159,9 +196,10 @@ const reschedulePreviewText = computed(() => {
   if (!cleaningJob.value || !rescheduleDate.value)
     return ''
   const origDate = formatDate(cleaningJob.value.scheduledAt)
-  const origTime = formatTime(cleaningJob.value.scheduledAt)
-  const newTime = rescheduleTime.value || '11:00'
-  const newDate = new Date(`${rescheduleDate.value}T${newTime}:00+08:00`).toLocaleDateString('en-GB', {
+  const origTime = `${jobStartTime(cleaningJob.value.scheduledAt)} – ${jobEndTime(cleaningJob.value)}`
+  const newStart = rescheduleTime.value || '11:00'
+  const newTime = `${newStart} – ${rescheduleEndTime.value}`
+  const newDate = new Date(`${rescheduleDate.value}T${newStart}:00+08:00`).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -177,13 +215,14 @@ function saveReschedule() {
   const newScheduledAt = `${rescheduleDate.value}T${time}:00+08:00`
   updateJob(cleaningJob.value.id, {
     scheduledAt: newScheduledAt,
+    durationMinutes: rescheduleDurationMinutes.value,
   })
   const formattedDate = new Date(`${rescheduleDate.value}T${time}:00+08:00`).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   })
-  toast.success(`Cleaning rescheduled to ${formattedDate} at ${time}`)
+  toast.success(`Cleaning rescheduled to ${formattedDate}, ${time} – ${rescheduleEndTime.value}`)
   isRescheduling.value = false
   isSavingReschedule.value = false
 }
@@ -263,14 +302,6 @@ function handleDelete() {
   }
 }
 
-function toggleCleaningStatus() {
-  if (!cleaningJob.value)
-    return
-  const nextStatus = cleaningJob.value.status === 'done' ? 'scheduled' : 'done'
-  updateJob(cleaningJob.value.id, { status: nextStatus })
-  toast.success(`Marked as ${nextStatus === 'done' ? 'done' : 'scheduled'}`)
-}
-
 const _eventTypeLabel = computed(() => {
   if (!props.event)
     return ''
@@ -297,53 +328,82 @@ const cleaningTypeMeta = computed(() => {
 
 const hasPet = computed(() => props.event?.type === 'cleaning' && Boolean(props.event.hasPet))
 
-// Find the booking that overlaps the cleaning date for the same listing
-// Only "real" bookings count (checked_in / checked_out / verified) —
-// `inquiry` is not yet a booking, so no cleaning should be associated.
+// The stay this cleaning belongs to, from both stay sources (see calendar-stays.ts).
+// Only "real" bookings count: an inquiry is not a booking yet, and a block has no guest.
+// On a turnover day a check-out cleaning belongs to the departing guest, any other
+// cleaning to whoever is in the house that day, then to the guest arriving.
 const overlappingBooking = computed<Booking | null>(() => {
   if (!props.event || props.event.type !== 'cleaning')
     return null
-  const listing = listings.value.find(l => l.id === props.event.listingId)
-  if (!listing?.bookings?.length)
-    return null
+  const listing = listings.value.find(l => l.id === props.event!.listingId)
   const eventDay = (cleaningJob.value?.scheduledAt ?? props.event.start).slice(0, 10)
-  return listing.bookings.find(b =>
-    b.status !== 'cancelled'
-    && b.status !== 'inquiry'
-    && b.checkIn <= eventDay
-    && b.checkOut >= eventDay,
-  ) ?? null
+  const stays = mergedBookingsFor(props.event.listingId, listing?.bookings ?? [], reservations.value)
+    .filter(b => b.type !== 'block' && b.status !== 'cancelled' && b.status !== 'inquiry')
+  const departing = stays.find(b => b.checkOut === eventDay)
+  const inHouse = stays.find(b => b.checkIn <= eventDay && b.checkOut > eventDay)
+  const arriving = stays.find(b => b.checkIn === eventDay)
+  if (props.event.cleaningType === 'check_out')
+    return departing ?? inHouse ?? arriving ?? null
+  return inHouse ?? departing ?? arriving ?? null
 })
+
+const stayStatusMeta = computed(() => {
+  const b = overlappingBooking.value
+  return b ? bookingStatusMeta[b.status] ?? null : null
+})
+
+// Only Reservations-module stays have a detail page to open.
+const stayReservationLink = computed(() => {
+  const id = overlappingBooking.value?.id
+  return id && reservations.value.some(r => r.id === id) ? `/reservations?reservation=${id}` : null
+})
+
+function formatStayDay(value: string) {
+  return new Date(`${value}T00:00:00+08:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
 
 const stayInfoLabel = computed(() => {
   const b = overlappingBooking.value
   if (b) {
-    const checkIn = new Date(`${b.checkIn}T00:00:00+08:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-    const checkOut = new Date(`${b.checkOut}T00:00:00+08:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     return {
       guestName: b.guestName,
-      dateRange: `${checkIn} → ${checkOut}`,
+      initials: b.guestName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+      dateRange: `${formatStayDay(b.checkIn)} → ${formatStayDay(b.checkOut)}`,
       nights: b.nights,
       adults: b.adults ?? 0,
       children: b.children ?? 0,
       infants: b.infants ?? 0,
       pets: b.pets ?? (b.hasPet ? 1 : 0),
-      hasPet: b.hasPet,
+      checkOutTime: getDefaultCheckOutTime(props.event!.listingId),
     }
   }
   if (props.event?.guestName) {
     return {
       guestName: props.event.guestName,
+      initials: props.event.guestName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
       dateRange: '',
       nights: 0,
-      adults: 1,
+      adults: 0,
       children: 0,
       infants: 0,
       pets: props.event.hasPet ? 1 : 0,
-      hasPet: props.event.hasPet,
+      checkOutTime: '',
     }
   }
   return null
+})
+
+// "Oct 11, 2026 · 10:00 – 15:00" under the sheet title.
+const cleaningTimeRange = computed(() => {
+  if (!props.event || props.event.type !== 'cleaning')
+    return null
+  const job = cleaningJob.value
+  const start = job?.scheduledAt ?? props.event.start
+  const day = new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const times = job
+    ? `${jobStartTime(job.scheduledAt)} – ${jobEndTime(job)}`
+    : `${formatTime(start)} – ${formatTime(props.event.end)}`
+  return `${day} · ${times}`
 })
 </script>
 
@@ -359,61 +419,89 @@ const stayInfoLabel = computed(() => {
         <SheetDescription v-if="event?.listingName" class="mt-0.5 text-sm">
           {{ event.listingName }}
         </SheetDescription>
+        <p
+          v-if="cleaningTimeRange"
+          class="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground"
+          data-testid="detail-time-range"
+        >
+          <Icon name="lucide:clock" class="h-4 w-4" />
+          {{ cleaningTimeRange }}
+        </p>
       </SheetHeader>
 
       <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
         <div v-if="event" class="flex flex-col gap-4 p-6">
-          <!-- Guest in stay (cleaning only — shows overlapping booking info) -->
-          <div
+          <!-- Guest in stay (cleaning only): the booking this cleaning belongs to -->
+          <component
+            :is="stayReservationLink ? NuxtLink : 'div'"
             v-if="event.type === 'cleaning' && stayInfoLabel"
-            class="flex flex-col gap-1.5"
+            :to="stayReservationLink ?? undefined"
+            class="flex items-center gap-3 rounded-xl border bg-muted/40 p-4"
+            :class="stayReservationLink && 'transition-colors hover:bg-muted/70'"
             data-testid="guest-in-stay"
           >
-            <div class="flex items-start justify-between gap-3">
-              <p class="text-lg font-bold tracking-tight">
-                {{ stayInfoLabel.guestName }}
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-sm font-semibold">
+              {{ stayInfoLabel.initials }}
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col gap-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="truncate text-base font-semibold">{{ stayInfoLabel.guestName }}</span>
+                <Badge
+                  v-if="stayStatusMeta"
+                  variant="outline"
+                  class="gap-1 rounded-full bg-background text-[11px] font-medium"
+                  data-testid="guest-status-badge"
+                  :data-booking-status="stayStatusMeta.status"
+                >
+                  <Icon :name="stayStatusMeta.icon" class="h-3 w-3" />
+                  {{ stayStatusMeta.label }}
+                </Badge>
+              </div>
+              <p v-if="stayInfoLabel.dateRange" class="text-sm text-muted-foreground">
+                {{ stayInfoLabel.dateRange }} · {{ stayInfoLabel.nights }} {{ stayInfoLabel.nights === 1 ? 'night' : 'nights' }}
               </p>
-              <div
-                v-if="overlappingBooking"
-                class="flex shrink-0 items-center gap-1"
-              >
-                <Icon
-                  name="lucide:star"
-                  class="h-6 w-6 fill-amber-400 text-amber-500"
-                />
-                <span class="text-2xl font-bold tracking-tight">4</span>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span v-if="stayInfoLabel.adults" class="flex items-center gap-1.5">
+                  <Icon name="lucide:user" class="h-3.5 w-3.5" />
+                  <span class="font-semibold text-foreground">{{ stayInfoLabel.adults }}</span>
+                  Adult{{ stayInfoLabel.adults === 1 ? '' : 's' }}
+                </span>
+                <span v-if="stayInfoLabel.children" class="flex items-center gap-1.5">
+                  <Icon name="lucide:users-round" class="h-3.5 w-3.5" />
+                  <span class="font-semibold text-foreground">{{ stayInfoLabel.children }}</span>
+                  Child{{ stayInfoLabel.children === 1 ? '' : 'ren' }}
+                </span>
+                <span v-if="stayInfoLabel.infants" class="flex items-center gap-1.5">
+                  <Icon name="lucide:baby" class="h-3.5 w-3.5" />
+                  <span class="font-semibold text-foreground">{{ stayInfoLabel.infants }}</span>
+                  Infant{{ stayInfoLabel.infants === 1 ? '' : 's' }}
+                </span>
+                <span v-if="stayInfoLabel.checkOutTime" class="flex items-center gap-1.5" data-testid="guest-checkout-time">
+                  <Icon name="lucide:calendar" class="h-3.5 w-3.5" />
+                  Checkout
+                  <span class="font-semibold text-foreground">{{ stayInfoLabel.checkOutTime }}</span>
+                </span>
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              <div class="flex items-center gap-1.5">
-                <Icon name="lucide:user" class="h-3.5 w-3.5" />
-                <span class="font-semibold text-foreground">{{ stayInfoLabel.adults }}</span>
-                <span>Adults</span>
-              </div>
-              <div v-if="stayInfoLabel.children" class="flex items-center gap-1.5">
-                <Icon name="lucide:users-round" class="h-3.5 w-3.5" />
-                <span class="font-semibold text-foreground">{{ stayInfoLabel.children }}</span>
-                <span>Children</span>
-              </div>
-              <div v-if="stayInfoLabel.infants" class="flex items-center gap-1.5">
-                <Icon name="lucide:baby" class="h-3.5 w-3.5" />
-                <span class="font-semibold text-foreground">{{ stayInfoLabel.infants }}</span>
-                <span>Infant{{ stayInfoLabel.infants === 1 ? '' : 's' }}</span>
-              </div>
-              <div v-if="stayInfoLabel.pets" class="flex items-center gap-1.5">
-                <Icon name="lucide:paw-print" class="h-3.5 w-3.5" />
-                <span class="font-semibold text-foreground">{{ stayInfoLabel.pets }}</span>
-                <span>Pet{{ stayInfoLabel.pets === 1 ? '' : 's' }}</span>
-              </div>
+            <div
+              class="flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs"
+              :class="stayInfoLabel.pets ? 'bg-amber-500/10 font-medium text-amber-700' : 'bg-muted text-muted-foreground'"
+              :data-testid="stayInfoLabel.pets ? 'guest-has-pet' : 'guest-no-pet'"
+            >
+              <Icon name="lucide:paw-print" class="h-3.5 w-3.5" />
+              <template v-if="stayInfoLabel.pets">
+                {{ stayInfoLabel.pets }} Pet{{ stayInfoLabel.pets === 1 ? '' : 's' }}
+              </template>
+              <template v-else>
+                No pet
+              </template>
             </div>
-            <div v-if="overlappingBooking" class="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Icon name="lucide:calendar" class="h-3.5 w-3.5" />
-              <span>Checkout :</span>
-              <span class="font-semibold text-foreground">
-                {{ new Date(`${overlappingBooking.checkOut}T11:00:00+08:00`).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '') }}
-              </span>
-            </div>
-          </div>
+            <Icon
+              v-if="stayReservationLink"
+              name="lucide:chevron-right"
+              class="h-4 w-4 shrink-0 text-muted-foreground"
+            />
+          </component>
 
           <!-- Cleaning job details (skipped when done — the report panel below replaces it) -->
           <template v-if="event.type === 'cleaning' && cleaningJob && (cleaningJob.status !== 'done' || !cleaningJob.feedback)">
@@ -422,10 +510,10 @@ const stayInfoLabel = computed(() => {
               v-if="lockReason"
               class="flex items-start gap-3 rounded-lg border p-3 text-sm"
               :class="{
-                'border-emerald-500/40 bg-emerald-500/10 text-emerald-700': lockReason.label === 'Done',
-                'border-amber-500/40 bg-amber-500/10 text-amber-700': lockReason.label === 'In progress',
-                'border-destructive/40 bg-destructive/10 text-destructive': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
-                'border-muted bg-muted/30 text-muted-foreground': lockReason.label === 'Locked',
+                'border-emerald-500/40 bg-emerald-500/10 text-emerald-700': lockReason.tone === 'completed',
+                'border-amber-500/40 bg-amber-500/10 text-amber-700': lockReason.tone === 'ongoing',
+                'border-destructive/40 bg-destructive/10 text-destructive': (lockReason.tone === 'missed' || lockReason.tone === 'cancelled'),
+                'border-muted bg-muted/30 text-muted-foreground': lockReason.tone === 'locked',
               }"
               data-testid="detail-lock-banner"
               :data-lock-reason="lockReason.label"
@@ -433,45 +521,36 @@ const stayInfoLabel = computed(() => {
               <div
                 class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                 :class="{
-                  'bg-emerald-500/20': lockReason.label === 'Done',
-                  'bg-amber-500/20': lockReason.label === 'In progress',
-                  'bg-destructive/20': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
-                  'bg-muted-foreground/20': lockReason.label === 'Locked',
+                  'bg-emerald-500/20': lockReason.tone === 'completed',
+                  'bg-amber-500/20': lockReason.tone === 'ongoing',
+                  'bg-destructive/20': (lockReason.tone === 'missed' || lockReason.tone === 'cancelled'),
+                  'bg-muted-foreground/20': lockReason.tone === 'locked',
                 }"
               >
                 <Icon
-                  :name="
-                    lockReason.label === 'Done' ? 'lucide:check-circle-2'
-                    : lockReason.label === 'In progress' ? 'lucide:loader'
-                      : lockReason.label === 'Missed' || lockReason.label === 'Was missed' ? 'lucide:circle-x'
-                        : lockReason.label === 'Cancelled' ? 'lucide:ban'
-                          : 'lucide:lock'
-                  "
-                  :class="lockReason.label === 'In progress' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'"
+                  :name="lockReason.icon"
+                  :class="lockReason.tone === 'ongoing' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'"
                 />
               </div>
               <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                 <p
                   class="text-sm font-semibold" :class="{
-                    'text-emerald-700 dark:text-emerald-400': lockReason.label === 'Done',
-                    'text-amber-700 dark:text-amber-400': lockReason.label === 'In progress',
-                    'text-destructive': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
+                    'text-emerald-700 dark:text-emerald-400': lockReason.tone === 'completed',
+                    'text-amber-700 dark:text-amber-400': lockReason.tone === 'ongoing',
+                    'text-destructive': (lockReason.tone === 'missed' || lockReason.tone === 'cancelled'),
                   }"
                 >
                   {{ lockReason.label }}
-                  <span v-if="lockReason.label === 'Was missed'" class="text-xs font-normal text-muted-foreground">
-                    · {{ formatDate(cleaningJob.scheduledAt) }}
-                  </span>
-                  <span v-else-if="lockReason.label === 'Done'" class="text-xs font-normal text-muted-foreground">
+                  <span v-if="lockReason.tone === 'missed' || lockReason.tone === 'completed'" class="text-xs font-normal text-muted-foreground">
                     · {{ formatDate(cleaningJob.scheduledAt) }}
                   </span>
                 </p>
                 <p
                   class="text-xs" :class="{
-                    'text-emerald-700/80 dark:text-emerald-400/80': lockReason.label === 'Done',
-                    'text-amber-700/80 dark:text-amber-400/80': lockReason.label === 'In progress',
-                    'text-destructive/80': lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled',
-                    'text-muted-foreground': lockReason.label === 'Locked',
+                    'text-emerald-700/80 dark:text-emerald-400/80': lockReason.tone === 'completed',
+                    'text-amber-700/80 dark:text-amber-400/80': lockReason.tone === 'ongoing',
+                    'text-destructive/80': (lockReason.tone === 'missed' || lockReason.tone === 'cancelled'),
+                    'text-muted-foreground': lockReason.tone === 'locked',
                   }"
                 >
                   {{ lockReason.description }}
@@ -505,12 +584,12 @@ const stayInfoLabel = computed(() => {
                 </Badge>
                 <Badge
                   v-if="!isEditable && lockReason"
-                  :variant="lockReason.label === 'Done' ? 'default' : lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled' ? 'destructive' : 'outline'"
+                  :variant="lockReason.tone === 'completed' ? 'default' : (lockReason.tone === 'missed' || lockReason.tone === 'cancelled') ? 'destructive' : 'outline'"
                   class="gap-1 text-[10px] font-medium"
                   :class="[
-                    lockReason.label === 'Done' ? 'bg-emerald-500/80 text-white' : '',
-                    lockReason.label === 'In progress' ? 'bg-amber-500/80 text-white' : '',
-                    (lockReason.label === 'Missed' || lockReason.label === 'Was missed' || lockReason.label === 'Cancelled')
+                    lockReason.tone === 'completed' ? 'bg-emerald-500/80 text-white' : '',
+                    lockReason.tone === 'ongoing' ? 'bg-amber-500/80 text-white' : '',
+                    (lockReason.tone === 'missed' || lockReason.tone === 'cancelled')
                       ? 'bg-destructive/90 text-white'
                       : 'text-muted-foreground',
                   ]"
@@ -519,13 +598,7 @@ const stayInfoLabel = computed(() => {
                   :title="`${lockReason.label} · ${lockReason.description}`"
                 >
                   <Icon
-                    :name="
-                      lockReason.label === 'Done' ? 'lucide:check-circle-2'
-                      : lockReason.label === 'In progress' ? 'lucide:loader'
-                        : lockReason.label === 'Missed' || lockReason.label === 'Was missed' ? 'lucide:circle-x'
-                          : lockReason.label === 'Cancelled' ? 'lucide:ban'
-                            : 'lucide:lock'
-                    "
+                    :name="lockReason.icon"
                     class="h-3 w-3"
                   />
                   {{ lockReason.label }}
@@ -535,8 +608,14 @@ const stayInfoLabel = computed(() => {
                 <p class="text-xs text-muted-foreground">
                   Status
                 </p>
-                <p class="font-medium">
-                  {{ statusLabel }}
+                <p
+                  v-if="displayStatus"
+                  class="flex items-center gap-1.5 font-medium"
+                  data-testid="detail-status"
+                  :data-display-status="displayStatus.key"
+                >
+                  <Icon :name="displayStatus.icon" class="h-3.5 w-3.5 text-muted-foreground" />
+                  {{ displayStatus.label }}
                 </p>
               </div>
               <div>
@@ -576,7 +655,7 @@ const stayInfoLabel = computed(() => {
                   {{ priorityLabel }}
                 </Badge>
               </div>
-              <div v-if="event.guestName" class="col-span-2">
+              <div v-if="event.guestName && !stayInfoLabel" class="col-span-2">
                 <p class="text-xs text-muted-foreground">
                   Guest in stay
                 </p>
@@ -641,7 +720,7 @@ const stayInfoLabel = computed(() => {
                     <p class="mt-0.5 flex items-center gap-1.5 text-sm font-medium">
                       <Icon name="lucide:calendar-clock" class="h-4 w-4 text-muted-foreground" />
                       <span>{{ formatDate(cleaningJob.scheduledAt) }}</span>
-                      <span class="text-xs text-muted-foreground">at {{ formatTime(cleaningJob.scheduledAt) }}</span>
+                      <span class="text-xs text-muted-foreground">{{ jobStartTime(cleaningJob.scheduledAt) }} – {{ jobEndTime(cleaningJob) }}</span>
                     </p>
                   </div>
                   <Button
@@ -677,25 +756,41 @@ const stayInfoLabel = computed(() => {
                     </button>
                   </div>
 
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div class="flex flex-col gap-1.5">
-                      <Label class="text-xs text-muted-foreground">New Date</Label>
-                      <DatePicker
-                        v-model="rescheduleDate"
-                        :min="todayKey"
-                        placeholder="Select new date"
-                        data-testid="reschedule-date-picker"
-                      />
-                    </div>
+                  <div class="flex flex-col gap-1.5">
+                    <Label class="text-xs text-muted-foreground">New Date</Label>
+                    <DatePicker
+                      v-model="rescheduleDate"
+                      :min="todayKey"
+                      placeholder="Select new date"
+                      data-testid="reschedule-date-picker"
+                    />
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div class="flex flex-col gap-1.5">
                       <Label class="text-xs text-muted-foreground">Start Time</Label>
                       <TimePicker
-                        v-model="rescheduleTime"
+                        :model-value="rescheduleTime"
                         placeholder="Select time"
                         data-testid="reschedule-time-picker"
+                        @update:model-value="onRescheduleStartChange"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <Label class="text-xs text-muted-foreground">End Time</Label>
+                      <TimePicker
+                        v-model="rescheduleEndTime"
+                        placeholder="Select time"
+                        data-testid="reschedule-end-time-picker"
                       />
                     </div>
                   </div>
+                  <p
+                    v-if="!isRescheduleEndValid"
+                    class="text-xs text-destructive"
+                    data-testid="reschedule-end-time-error"
+                  >
+                    End time must be after the start time.
+                  </p>
 
                   <div v-if="reschedulePreviewText" class="text-xs text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5">
                     {{ reschedulePreviewText }}
@@ -797,32 +892,12 @@ const stayInfoLabel = computed(() => {
               </p>
             </div>
           </template>
-
-          <!-- Read-only events (owner stay, upsell) -->
-          <template v-else>
-            <div class="rounded-lg border bg-muted/30 p-3 text-sm">
-              <p class="text-xs text-muted-foreground">
-                Source
-              </p>
-              <p class="font-medium">
-                {{ event.source || '—' }}
-              </p>
-            </div>
-          </template>
         </div>
       </ScrollArea>
 
       <SheetFooter class="shrink-0 border-t px-6 py-4 sm:flex-row sm:justify-end sm:gap-2">
         <Button variant="ghost" @click="close">
           Close
-        </Button>
-        <Button
-          v-if="event?.type === 'cleaning' && cleaningJob"
-          variant="outline"
-          @click="toggleCleaningStatus"
-        >
-          <Icon name="lucide:check-circle" class="mr-2 h-4 w-4" />
-          Mark as {{ cleaningJob.status === 'done' ? 'scheduled' : 'done' }}
         </Button>
         <Button
           v-if="(event?.type === 'cleaning' && cleaningJob) || (event?.type === 'task' && task)"
