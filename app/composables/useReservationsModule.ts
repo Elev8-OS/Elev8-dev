@@ -4,6 +4,7 @@ import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import { generateGuestId, generateReservationId, initialGuests, initialReservations } from '~/components/reservations/data/reservations'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { usePromoRedemption } from '~/composables/usePromoRedemption'
 
 export interface ReservationFilters {
   search: string
@@ -257,6 +258,10 @@ export function useReservationsModule() {
         catch { /* provider may be unavailable during SSR */ }
       }
     }
+    // A cancelled stay gives its promo codes back: free upsell orders are cancelled and
+    // the redemption no longer counts against the code's usage limit.
+    if (status === 'cancelled')
+      usePromoRedemption().releaseForReservation(id)
   }
 
   function updateReservation(id: string, patch: Partial<ReservationEntry>) {

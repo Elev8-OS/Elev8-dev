@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { PromoCode } from './data/promo-codes'
-import { computed } from 'vue'
+import type { UpsellService } from '~/components/upsells/data/upsell-services'
+import { computed, ref, watch } from 'vue'
 import { bookingWidgets } from '~/components/booking-widget/data/widgets'
 import { listings as allListings } from '~/components/listings/data/listings'
-import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { websites as allWebsites } from '~/components/website-builder/data/websites'
 import { usePromoCodes } from '~/composables/usePromoCodes'
+import { usePromoRedemption } from '~/composables/usePromoRedemption'
+import { useUpsellServices } from '~/composables/useUpsellServices'
+import { codeWideRejection } from './data/promo-code-redemption'
 import { formatPromoDiscount, formatPromoLengthOfStay, formatPromoWindow, getChannelRestriction, getPromoCodeStatus, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const props = defineProps<{
@@ -21,6 +24,8 @@ const emit = defineEmits<{
 const open = defineModel<boolean>('open', { default: false })
 
 const { getUsagesByCode } = usePromoCodes()
+const { services: upsellServices } = useUpsellServices()
+const { scopedListings, listingsRejectingCode, grantsAtListing } = usePromoRedemption()
 
 const usages = computed(() => {
   if (!props.promoCode)
@@ -46,9 +51,9 @@ const isFreeUpsell = computed(() => props.promoCode?.discountType === 'free_upse
 const freeUpsellGroups = computed(() => {
   if (!props.promoCode?.freeUpsellItemIds)
     return []
-  const groups: { service: typeof mockUpsellServices[number], items: typeof mockUpsellServices[number]['items'] }[] = []
+  const groups: { service: UpsellService, items: UpsellService['items'] }[] = []
   for (const itemId of props.promoCode.freeUpsellItemIds) {
-    for (const service of mockUpsellServices) {
+    for (const service of upsellServices.value) {
       const item = service.items.find(i => i.id === itemId)
       if (item) {
         let group = groups.find(g => g.service.id === service.id)
@@ -65,6 +70,42 @@ const freeUpsellGroups = computed(() => {
 })
 
 const freeUpsellTotal = computed(() => props.promoCode?.freeUpsellItemIds?.length ?? 0)
+
+// ─── Where the code is rejected, and what a guest at one listing gets ─────────
+// A free-upsell code resolves per listing: each guest gets the picked services offered at
+// their property. Both views read the live upsell catalog, so a service switched off or
+// re-assigned after the code was made shows here.
+const rejectedListings = computed(() => props.promoCode ? listingsRejectingCode(props.promoCode) : [])
+
+const REJECTED_NAMED = 3
+
+const rejectedLabel = computed(() => {
+  const names = rejectedListings.value
+  const shown = names.slice(0, REJECTED_NAMED).join(', ')
+  return names.length > REJECTED_NAMED ? `${shown} and ${names.length - REJECTED_NAMED} more` : shown
+})
+
+const previewListings = computed(() => props.promoCode ? scopedListings(props.promoCode) : [])
+const previewListingId = ref('')
+
+watch(() => props.promoCode?.id, () => {
+  previewListingId.value = ''
+})
+
+/** Rejects every guest right now (inactive, expired, limit reached, booking window closed). */
+const codeWide = computed(() => props.promoCode ? codeWideRejection(props.promoCode) : null)
+
+const previewListing = computed(() => previewListings.value.find(l => l.id === previewListingId.value) ?? null)
+
+const previewGrants = computed(() => {
+  if (!props.promoCode || !previewListing.value)
+    return []
+  return grantsAtListing(props.promoCode, previewListing.value.name)
+})
+
+function formatPrice(amount: number, currency: string): string {
+  return `${currency} ${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+}
 
 const assignedListings = computed(() => {
   if (!props.promoCode?.listingIds || props.promoCode.listingIds.length === 0)
@@ -202,6 +243,17 @@ function onRequestDelete() {
               <p v-else class="text-sm text-muted-foreground italic mt-1">
                 No upsell items selected
               </p>
+              <p
+                v-if="rejectedListings.length > 0"
+                class="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs"
+                role="status"
+              >
+                <Icon name="lucide:triangle-alert" class="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-hidden="true" />
+                <span>
+                  Rejected at {{ rejectedListings.length }} listing{{ rejectedListings.length === 1 ? '' : 's' }}:
+                  {{ rejectedLabel }}. None of this code's upsells is offered there, or they were switched off.
+                </span>
+              </p>
             </div>
             <div class="col-span-2">
               <p class="text-muted-foreground text-xs">
@@ -312,6 +364,69 @@ function onRequestDelete() {
               </p>
             </div>
           </div>
+        </div>
+
+        <div v-if="isFreeUpsell" class="space-y-2" data-testid="promo-listing-preview">
+          <div>
+            <p class="text-sm font-semibold">
+              Preview for listing
+            </p>
+            <p class="text-xs text-muted-foreground">
+              What a guest at this property gets when they enter {{ promoCode.code }}.
+            </p>
+          </div>
+          <Select v-model="previewListingId">
+            <SelectTrigger class="w-full" aria-label="Preview listing">
+              <SelectValue placeholder="Pick a listing" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="listing in previewListings" :key="listing.id" :value="listing.id">
+                <span class="truncate">{{ listing.name }}</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div v-if="previewListing" class="rounded-md border p-3 text-sm">
+            <div v-if="previewGrants.length === 0" class="flex items-start gap-2">
+              <Icon name="lucide:circle-x" class="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
+              <div>
+                <p class="font-medium">
+                  Rejected at this listing
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  None of this code's upsells is offered here. The guest is told the code is not valid for this property.
+                </p>
+              </div>
+            </div>
+            <ul v-else class="space-y-3" aria-label="Free upsells at this listing">
+              <li v-for="grant in previewGrants" :key="grant.serviceId" class="space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="flex items-center gap-1.5 font-medium">
+                    <Icon name="lucide:gift" class="size-3.5 text-primary" aria-hidden="true" />
+                    {{ grant.serviceName }}
+                  </p>
+                  <Badge variant="outline" class="shrink-0 text-[10px] font-normal">
+                    {{ grant.availability === 'by_request' ? 'Team confirms the date' : 'Confirmed on booking' }}
+                  </Badge>
+                </div>
+                <p v-if="grant.choices.length > 1" class="text-xs text-muted-foreground">
+                  Guest picks one:
+                </p>
+                <ul class="space-y-0.5 pl-5">
+                  <li v-for="item in grant.choices" :key="item.id" class="flex items-center justify-between gap-2 text-xs">
+                    <span class="truncate">{{ item.name }}</span>
+                    <span class="shrink-0 tabular-nums text-muted-foreground">{{ formatPrice(item.price, grant.currency) }} value</span>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            One item per service, once per stay. Dates, usage limit and channel are checked when the guest books.
+            <template v-if="codeWide">
+              Right now every guest is rejected: "{{ codeWide.message }}"
+            </template>
+          </p>
         </div>
 
         <div>

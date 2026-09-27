@@ -55,6 +55,7 @@
 6. Linked order appears in ReservationPanel → Upsell tab
 
 #### Key Patterns
+- **Promo-code orders** (`UpsellOrder.promoRedemption`): created by `usePromoRedemption` for free-upsell codes, grand total 0, catalog price frozen in `originalPrice`. `approveOrder` on one goes straight to paid (no payment link). `addOrder` returns the created order. See `promo-codes.md`
 - `availability: 'always'` → auto-confirmed; `'by_request'` → pending confirmation
 - Cancellation: staff cancel = 100% refund; guest cancel depends on policy timing
 - Upsell offers embedded in chat via `UpsellOfferCard` component (not separate notification)

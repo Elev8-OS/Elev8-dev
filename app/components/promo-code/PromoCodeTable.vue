@@ -3,6 +3,7 @@ import type { PromoCode, PromoCodeWindow } from './data/promo-codes'
 import { computed } from 'vue'
 import { Switch } from '~/components/ui/switch'
 import { usePromoCodes } from '~/composables/usePromoCodes'
+import { usePromoRedemption } from '~/composables/usePromoRedemption'
 import { formatPromoDiscount, formatPromoLengthOfStay, formatPromoWindowCompact, getChannelRestriction, getPromoCodeTypeLabel } from './data/promo-codes'
 
 const { codes } = defineProps<{
@@ -18,6 +19,18 @@ const emit = defineEmits<{
 }>()
 
 const { getPromoCodeStatus: status } = usePromoCodes()
+const { listingsRejectingCode } = usePromoRedemption()
+
+/** Free-upsell codes rejected at part of their scope, keyed by code id. */
+const rejectedCounts = computed(() => {
+  const out: Record<string, number> = {}
+  for (const code of codes) {
+    const n = listingsRejectingCode(code).length
+    if (n > 0)
+      out[code.id] = n
+  }
+  return out
+})
 
 function statusBadgeVariant(code: PromoCode) {
   const s = status(code)
@@ -99,8 +112,16 @@ const decoratedCodes = computed(() => codes.map((code) => {
         <TableRow v-for="code in decoratedCodes" :key="code.id">
           <TableCell>
             <div class="min-w-0">
-              <p class="font-mono font-semibold">
+              <p class="flex items-center gap-1.5 font-mono font-semibold">
                 {{ code.code }}
+                <span
+                  v-if="rejectedCounts[code.id]"
+                  class="inline-flex items-center gap-1 font-sans text-xs font-normal text-amber-600"
+                  :title="`No free upsell offered at ${rejectedCounts[code.id]} listing(s) in scope. The code is rejected there.`"
+                >
+                  <Icon name="lucide:triangle-alert" class="size-3.5" aria-hidden="true" />
+                  Rejected at {{ rejectedCounts[code.id] }} listing{{ rejectedCounts[code.id] === 1 ? '' : 's' }}
+                </span>
               </p>
               <p v-if="code.description" class="text-xs text-muted-foreground truncate max-w-[280px]">
                 {{ code.description }}

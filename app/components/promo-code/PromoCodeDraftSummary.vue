@@ -2,8 +2,8 @@
 import type { PromoCodeFormDraft } from './data/promo-code-form'
 import { computed } from 'vue'
 import { listings as allListings } from '~/components/listings/data/listings'
-import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { websites as allWebsites } from '~/components/website-builder/data/websites'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 import { formatDraftDiscount } from './data/promo-code-form'
 import { formatPromoWindow } from './data/promo-codes'
 
@@ -26,9 +26,11 @@ const websiteNames = computed(() =>
     .filter((n): n is string => Boolean(n)),
 )
 
+const { services: upsellServices } = useUpsellServices()
+
 const upsellItemNames = computed(() => {
   const names: string[] = []
-  for (const service of mockUpsellServices) {
+  for (const service of upsellServices.value) {
     for (const item of service.items) {
       if (props.draft.freeUpsellItemIds.includes(item.id))
         names.push(`${service.name} · ${item.name}`)

@@ -19,6 +19,7 @@ import { Label } from '~/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '~/components/ui/radio-group'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { websites as allWebsites } from '~/components/website-builder/data/websites'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 
 const global = {
   components: { Badge, Button, Input, Label, RadioGroup, RadioGroupItem },
@@ -116,8 +117,46 @@ describe('free upsell picker (step 3, filtered by the listing scope)', () => {
       freeUpsellItemIds: [service.items[0]!.id],
     })
 
-    expect(wrapper.text()).toContain('not offered at every listing this code covers')
-    expect(wrapper.text()).toContain('will not be able to redeem it')
+    expect(wrapper.text()).toContain('1 listing gets no free upsell from this code')
+    expect(wrapper.text()).toContain(outside.name)
+    expect(wrapper.text()).toContain('The code will be rejected there')
+  })
+
+  it('does not warn when two regional services cover the scope between them', () => {
+    // Each breakfast reaches only its own region; together they reach both listings.
+    const { wrapper } = mountField(PromoCodeFieldsDiscount, {
+      ...freeUpsell,
+      listingIds: ['lst-1', 'lst-5'],
+      freeUpsellItemIds: ['itm-013a', 'itm-014a'],
+    })
+
+    expect(wrapper.text()).toContain('Offered at 1 of 2 listings')
+    expect(wrapper.text()).not.toContain('get no free upsell')
+    expect(wrapper.text()).not.toContain('gets no free upsell')
+    expect(wrapper.text()).toContain('one item per service, once per stay')
+  })
+
+  it('says the guest picks one when several items of a service are picked', () => {
+    const service = mockUpsellServices.find(s => s.items.length > 1)!
+    const { wrapper } = mountField(PromoCodeFieldsDiscount, {
+      ...freeUpsell,
+      freeUpsellItemIds: service.items.map(i => i.id),
+    })
+
+    expect(wrapper.text()).toContain(`Guests pick one of these ${service.items.length} items`)
+  })
+
+  it('warns when a picked service is switched off in the catalog', () => {
+    const { services } = useUpsellServices()
+    services.value = services.value.map(s => s.id === 'svc-013' ? { ...s, status: 'inactive' as const } : s)
+    const { wrapper } = mountField(PromoCodeFieldsDiscount, {
+      ...freeUpsell,
+      listingIds: ['lst-1'],
+      freeUpsellItemIds: ['itm-013a'],
+    })
+
+    expect(wrapper.text()).toContain('Floating Breakfast (West Coast) is inactive in the upsell catalog')
+    expect(wrapper.text()).toContain('1 listing gets no free upsell from this code')
   })
 
   it('selects a whole service in one click', async () => {

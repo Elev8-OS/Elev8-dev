@@ -4,8 +4,8 @@ import type { PromoCode } from './data/promo-codes'
 import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings as allListings } from '~/components/listings/data/listings'
-import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { usePromoCodes } from '~/composables/usePromoCodes'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 import {
   createDefaultPromoCodeFormDraft,
   firstInvalidPromoCodeStep,
@@ -57,12 +57,14 @@ watch(() => props.promoCode, () => {
     hydrate()
 })
 
+const { services: upsellServices } = useUpsellServices()
+
 const validationContext = computed(() => ({
   isCodeTaken: (code: string) => isCodeTaken(code, props.promoCode?.id),
   scopedListingNames: draft.value.listingIds.length === 0
     ? allListings.value.map(l => l.name)
     : allListings.value.filter(l => draft.value.listingIds.includes(l.id)).map(l => l.name),
-  upsellServices: mockUpsellServices,
+  upsellServices: upsellServices.value,
 }))
 
 function focusActiveStep() {

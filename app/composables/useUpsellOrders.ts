@@ -83,6 +83,11 @@ export function useUpsellOrders() {
   }
 
   function approveOrder(id: string) {
+    // A promo-code order is free: there is no payment link to send, so approval settles it.
+    if (orders.value.find(o => o.id === id)?.promoRedemption) {
+      markPaid(id)
+      return
+    }
     patchOrder(id, (order) => {
       const now = new Date().toISOString()
       return {
@@ -231,15 +236,17 @@ export function useUpsellOrders() {
     }
   }
 
-  function addOrder(data: Omit<UpsellOrder, 'id' | 'createdAt' | 'updatedAt'>) {
+  function addOrder(data: Omit<UpsellOrder, 'id' | 'createdAt' | 'updatedAt'>): UpsellOrder {
     const now = new Date().toISOString()
     const id = `ord-${String(orders.value.length + 1).padStart(3, '0')}`
-    orders.value = [...orders.value, {
+    const order: UpsellOrder = {
       ...data,
       id,
       createdAt: now,
       updatedAt: now,
-    }]
+    }
+    orders.value = [...orders.value, order]
+    return order
   }
 
   function cancelOrder(id: string, reason: string, cancelledBy: 'guest' | 'staff') {

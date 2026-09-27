@@ -147,6 +147,32 @@ export const promoCodes = ref<PromoCode[]>([
     // booking perk, not a widget promotion.
     channelRestriction: { channel: 'website', websiteIds: [] },
   },
+  {
+    // One code for the whole Bali portfolio, two regional breakfast services behind it.
+    // A guest gets the breakfast offered at their villa, never both.
+    id: 'promo-merrychristmas',
+    code: 'MERRYCHRISTMAS',
+    description: 'Free floating breakfast for Christmas stays',
+    discountType: 'free_upsell',
+    value: 0,
+    currency: null,
+    active: true,
+    bookingWindows: [
+      { from: '2026-09-01T00:00:00Z', until: '2026-12-24T00:00:00Z' },
+    ],
+    stayWindows: [
+      { from: '2026-12-20T00:00:00Z', until: '2027-01-05T00:00:00Z' },
+    ],
+    lengthOfStayMin: 2,
+    lengthOfStayMax: null,
+    usageLimit: 100,
+    redemptionCount: 0,
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-01T08:00:00Z',
+    freeUpsellItemIds: ['itm-013a', 'itm-014a'],
+    listingIds: Array.from({ length: 19 }, (_, i) => `lst-${i + 1}`),
+    channelRestriction: { channel: 'widget', websiteIds: [] },
+  },
 ])
 
 export const widgetPromoCodeLinks = ref<WidgetPromoCodeLink[]>([
@@ -199,18 +225,22 @@ function areAllWindowsExpired(windows: PromoCodeWindow[] | undefined, now: Date)
   })
 }
 
-// Back-compat aliases — kept so callers that import the old names still work.
+// Expired = no guest can use the code any more: every booking window has
+// ended (nobody can book with it), OR every stay window has ended (no
+// check-in date is left that it applies to). Either list may be empty,
+// which never expires.
 export function isPromoCodeExpired(code: PromoCode, now: Date = new Date()): boolean {
   return areAllWindowsExpired(code.bookingWindows, now)
-    && areAllWindowsExpired(code.stayWindows, now)
+    || areAllWindowsExpired(code.stayWindows, now)
 }
 
+// Started = a guest can book with the code today, i.e. a booking window is
+// open now (or there is none). ⚠️ Stay windows are deliberately ignored:
+// they limit which CHECK-IN dates qualify, not when the code can be used.
+// Requiring one to be open today made a code bookable now for Christmas
+// stays read "inactive" until 20 December.
 export function isPromoCodeStarted(code: PromoCode, now: Date = new Date()): boolean {
-  // Started = at least one booking window is open AND at least one stay
-  // window is open (either may be empty = no constraint).
-  const bookingOpen = isAnyWindowOpen(code.bookingWindows, now)
-  const stayOpen = isAnyWindowOpen(code.stayWindows, now)
-  return bookingOpen && stayOpen
+  return isAnyWindowOpen(code.bookingWindows, now)
 }
 
 export function getPromoCodeStatus(code: PromoCode, now: Date = new Date()): PromoCodeStatus {
