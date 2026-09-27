@@ -39,9 +39,9 @@ const needsApproval = computed(() =>
 const history = computed(() => {
   const rest = allTasks.value.filter(t => t.ownerApprovalStatus !== 'pending')
   if (filter.value === 'active')
-    return rest.filter(t => t.status !== 'done' && t.status !== 'canceled')
+    return rest.filter(t => t.status !== 'completed')
   if (filter.value === 'completed')
-    return rest.filter(t => t.status === 'done')
+    return rest.filter(t => t.status === 'completed')
   return rest
 })
 
@@ -77,9 +77,7 @@ function fmtDate(iso: string | undefined): string {
 function state(task: Task): { label: string, tone: string } {
   if (task.ownerApprovalStatus === 'rejected')
     return { label: 'You declined', tone: 'bg-muted text-muted-foreground' }
-  if (task.status === 'canceled')
-    return { label: 'Cancelled', tone: 'bg-muted text-muted-foreground' }
-  if (task.status === 'done')
+  if (task.status === 'completed')
     return { label: 'Completed', tone: 'bg-green-500/10 text-green-700 dark:text-green-300' }
   if (task.status === 'in progress')
     return { label: 'In progress', tone: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' }

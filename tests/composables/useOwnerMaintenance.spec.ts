@@ -226,7 +226,7 @@ describe('useOwnerMaintenance', () => {
     expect(task!.ownerVisible).toBe(true)
   })
 
-  it('parks the mirrored task on todo when the cost needs owner approval', () => {
+  it('parks the mirrored task on Not started when the cost needs owner approval', () => {
     const { createRecord, taskForRecord } = useOwnerMaintenance()
     const result = createRecord({
       ownerId: 'own-1',
@@ -240,21 +240,21 @@ describe('useOwnerMaintenance', () => {
     if (!result.ok)
       return
     expect(result.requiresApproval).toBe(true)
-    expect(taskForRecord(result.record)!.status).toBe('todo')
+    expect(taskForRecord(result.record)!.status).toBe('not started')
   })
 
   it('releases the mirrored task when the owner approves the cost', () => {
     const { ownerRespond } = useOwnerMaintenance()
-    expect(mirroredTask('mnt-2')!.status).toBe('todo')
+    expect(mirroredTask('mnt-2')!.status).toBe('not started')
     const result = ownerRespond('mnt-2', true, 'Go ahead.')
     expect(result.ok).toBe(true)
     expect(mirroredTask('mnt-2')!.status).toBe('in progress')
   })
 
-  it('cancels the mirrored task when the owner rejects the cost', () => {
+  it('deletes the mirrored task when the owner rejects the cost (there is no Cancelled status)', () => {
     const { ownerRespond } = useOwnerMaintenance()
     const result = ownerRespond('mnt-2', false, 'Too expensive — get another quote.')
     expect(result.ok).toBe(true)
-    expect(mirroredTask('mnt-2')!.status).toBe('canceled')
+    expect(mirroredTask('mnt-2')).toBeUndefined()
   })
 })

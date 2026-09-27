@@ -7,6 +7,17 @@ import { useUpsellOrders } from './useUpsellOrders'
 
 export type SortOption = 'newest' | 'oldest' | 'unread'
 
+export type InboxView = 'conversations' | 'integrations' | 'calls' | 'internal'
+
+/**
+ * Which inbox view is on screen. Split out of `useInbox` so the internal room
+ * store can switch to its own view (opening a room from a notification)
+ * without pulling in the whole guest inbox.
+ */
+export function useInboxView() {
+  return useState<InboxView>('inbox-view', () => 'conversations')
+}
+
 export function useInbox() {
   const conversations = useState<Conversation[]>('inbox-conversations', () => conversationsData)
 
@@ -55,7 +66,7 @@ export function useInbox() {
     { deep: true },
   )
 
-  const inboxView = useState<'conversations' | 'integrations' | 'calls' | 'internal'>('inbox-view', () => 'conversations')
+  const inboxView = useInboxView()
   // Multi-select in the guest thread. Selection mode is entered from the
   // message context menu; it exists so several messages can be forwarded or
   // turned into one task together.

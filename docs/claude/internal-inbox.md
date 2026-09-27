@@ -7,11 +7,14 @@ handed to "the housekeepers on Villa Merapi" and the answer read back in the sam
 A third inbox view (`inboxView === 'internal'`) alongside Conversations and Calls.
 
 ⚠️ **Rooms are DERIVED, never managed.** `buildRoomsForListing` opens a role room because
-somebody with that role is assigned to that listing, plus one `General` room wherever
-anybody is. Adding a user to a listing opens the room; removing the last one closes it.
+somebody with that role is assigned to that listing. Adding a user to a listing opens the room; removing the last one closes it.
 There is deliberately no room CRUD, no membership screen and no archive: the source of
 truth is `User.listingIds` + `User.roleId`, edited in Users, and a second place to manage
 the same thing is a second place for it to be wrong. An **inactive** user is in no room.
+
+⚠️ **There is no General room, deliberately.** The mobile app has no listing-wide room, and
+the two must agree on which rooms exist, so every room is a role at a listing. Reaching
+everybody at a property means forwarding to several rooms at once. Do not re-add one.
 
 ⚠️ **Visibility and membership are different things, and must stay different.** You **see**
 every room on a listing you are assigned to; you are a **member** only of the room matching
@@ -28,26 +31,27 @@ list is the roles at one property; rooms from four properties interleaved read a
 nothing picked yet means the first listing, and a pick that a tag or a search has since
 filtered away falls back to the first that survived instead of leaving the room list empty
 with a listing selected. The pick itself is remembered, so clearing the filter restores it.
-Clicking the open listing again is a no-op, not a toggle off.
+Clicking the open listing again closes any open room and returns to the listing overview;
+it never toggles the listing off.
 
 ⚠️ **The open ROOM belongs to the open listing, and travels with it.**
 `selectedRoom` resolves within `activeListingRooms` (the open listing's rooms), never
 across the whole portfolio: switching listing used to leave the thread and the Room panel
 showing a room from the property you had just left, so the four panels disagreed about
-where you were. On an explicit `selectListing` the room carries across to the **same role**
-at the new property, falling back to its General room, because switching from Housekeeping
-at one villa almost always means Housekeeping at the next. ⚠️ **Only on an explicit pick**:
-`activeListingId` also moves on its own when a tag or a search filters the open listing
-away, and auto-opening there would mark a room read on every keystroke that changed which
-listing survived, so the thread simply blanks instead. The thread resolves against the
+where you were.
+
+⚠️ **Picking a listing opens NO room.** `selectListing` clears the open room (and the
+draft reply and the selection); the thread reads "Select a room" and the side panel
+becomes the **listing overview**: every member at the listing (`listingMembers`, once
+each, in room order) and every task there whoever it is assigned to (`listingTasks` /
+`tasksForListing`). A room opens only when it is clicked. The same blanking happens when
+a tag or a search moves `activeListingId` on its own. The thread resolves against the
 UNFILTERED rooms of the listing, so searching for another room does not blank the one you
 are reading.
 
-⚠️ **Landing on a room is not reading it.** `focusRoom(id, { markRead })` is what separates
-the two: clicking a room in the list marks it read, being carried into one by a listing
-switch does not, because clearing an unread badge for messages nobody has looked at loses
-the only signal that they are waiting. It is marked read once you click that room, or post
-into it.
+**A room is marked read when you click it, or post into it**, never by picking a listing.
+`focusRoom(id, { markRead: false })` still exists for opening a room without reading it,
+but nothing in the view calls it that way now.
 
 #### Pure module (`app/components/inbox/data/internal.ts`, framework-free)
 Same split as `gm-dashboard.ts` and `promo-code-form.ts`: the composable owns the reactive
@@ -57,7 +61,7 @@ name **or** a room name, tags are ANDed, and a listing left with no rooms is dro
 `tagsForGroups`; `tasksForRoom` / `isTaskOpen`;
 `forwardRefFromGuestMessage` / `forwardRefFromInternalMessage`; `replyRefFrom`;
 `previewLineFor`; `unreadCountFor`; `taskSeedFromRefs`; `taskAssigneeForRoom`.
-Room ids are `room-<listingId>-<roleId|general>` (`roomIdFor`).
+Room ids are `room-<listingId>-<roleId>` (`roomIdFor`).
 
 - **A photo travels with a forward.** `forwardRefFromInternalMessage` copies `mediaUrl`,
   because a maintenance photo is usually the whole reason the message is being handed on.
@@ -83,10 +87,11 @@ Room ids are `room-<listingId>-<roleId|general>` (`roomIdFor`).
   rooms are not empty on a cold load). Key exports: `roomGroups`, `listingCardGroups`,
   `filteredRoomGroups`, `activeListingId`, `activeListing`, `activeRooms`,
   `activeListingRooms`, `availableTags`,
-  `selectedRoom`, `selectedRoomMessages`, `roomTasks`, `unreadFor`, `unreadForListing`,
+  `selectedRoom`, `selectedRoomMessages`, `roomTasks`, `listingMembers`, `listingTasks`,
+  `unreadFor`, `unreadForListing`,
   `totalUnread`, `selectRoom`, `focusRoom`, `selectListing`, `toggleTagFilter`,
   `clearRoomFilters`,
-  `sendInternalMessage`, `forwardToRooms`, `postTaskNotice`, `membersOf`, `isMine`,
+  `sendInternalMessage`, `forwardToRooms`, `membersOf`, `isMine`,
   `refsFromGuestMessages`, `refsFromInternalMessages`, message selection.
   **`forwardToRooms` writes one message PER room**, so a reply in one cannot bleed into
   another. `selectRoom` clears the selection and any draft reply, since both belong to the room
@@ -145,6 +150,53 @@ rest of the app still has emoji icons in places (the sentiment chips, the inbox 
 data, the assistant suggestion chips); they are out of this module's scope but are worth a
 sweep.
 
+#### Real-time messages and notifications (`useInternalNotifications`)
+
+A colleague's message is pushed at you as it arrives. ⚠️ **It never goes to the
+notification bell**: there is no `INTERNAL_MESSAGE_*` alert type, on purpose. A room
+message is a conversation happening now, not an alert to triage later.
+
+- **`receiveInternalMessage(message)`** in `useInternalInbox` is the one entry point for
+  incoming traffic. The mock reply calls it today; a websocket handler would call it in
+  production. A room outside your scope is ignored. It appends the message, reads the room
+  in place when you are looking at it (tab in front, Internal view open, that room open),
+  then asks `notificationSurfaceFor` where it goes:
+
+  | Where you are | Surface |
+  |---|---|
+  | Tab in the background (anywhere in the app) | **native** browser `Notification` |
+  | Dashboard in front, Internal view open | **none**: the thread and badges already move |
+  | Dashboard in front, anywhere else | **toast** (`toast.info` with an **Open** action) |
+
+- **Every room you can SEE notifies**, not only the ones you are a member of
+  (`shouldNotifyFor`): the feature is reading maintenance's answer without being
+  maintenance. Your own messages never do.
+- **One notification per room**: the toast `id` and the native `tag` are
+  `internal-<roomId>`, so a new message replaces the last one from that room, and
+  `notificationCopy` rolls the unread count up ("3 new messages in Housekeeping").
+- **Open** (toast action or a click on the native notification) runs
+  `openRoomFromNotification`: clears the room filters, switches to the Internal view via
+  `useInboxView()` (split out of `useInbox` to avoid pulling in the whole guest inbox),
+  opens that listing and room (read), and `navigateTo('/inbox')`. The native one also
+  focuses the window.
+- ⚠️ **A background tab without permission falls back to a toast.** Sonner holds its timer
+  while the tab is hidden, so it is still there when you come back.
+- **Permission is asked from a click only**: `RoomList.vue` shows a "Turn on" prompt while
+  the browser answers `default`, and a note when it answers `denied`. A browser ignores a
+  request no gesture started. `unsupported` (no Notification API) shows nothing.
+- **Coming back to the tab** with a room open marks it read (`useDocumentVisibility` in
+  `inbox/Layout.vue`); messages that landed while the tab was hidden stayed unread until
+  then. `Layout.vue` also writes `internalViewOpen`, and clears it on unmount.
+- **Mock colleague replies** (`scheduleSimulatedReply`): after your message is delivered,
+  another member of the room answers it (quoting it) 8 to 15 s later, long enough to switch
+  tabs and watch the native notification arrive. One reply per room at a time
+  (`pendingReplyRooms`, module level), none in a room where nobody else sits.
+  ⚠️ **`tests/setup.ts` turns `simulateReplies` off** so a spec that runs every timer never
+  finds a stranger's message; the notification specs turn it back on.
+- ⚠️ **Specs spy on the real `toast`**, not `vi.mock('vue-sonner')`: `tests/setup.ts`
+  imports the room store before a spec's mocks register, so the composables hold the real
+  module (`tests/composables/useInternalNotifications.spec.ts`).
+
 #### The simulated first load
 
 Entering the Internal view runs a mock fetch of the room tree
@@ -174,8 +226,8 @@ Add-Remove from selection / Clear selection · Copy text.
   message while four are ticked is the kind of thing nobody notices until the wrong person
   has been asked to fix the wrong thing.
 - **Reply is withheld while a selection is running**: a quote of four messages is not a reply.
-- A **system line** (a guest-thread system/ElevAI notice, or a room's task notice) renders
-  **outside** the context menu entirely: there is nothing to forward, task or select.
+- A guest-thread **system line** (a system/ElevAI notice) renders **outside** the context
+  menu entirely: there is nothing to forward, task or select. Rooms have no system lines.
 - Guest-thread selection lives in `useInbox` (`selectedThreadMessageIds`), and
   `threadSelectionMode` is **derived from it, never its own flag**: a mode that can be on
   with nothing selected renders a bar reading "0 selected". It is cleared when the
@@ -191,8 +243,8 @@ Add-Remove from selection / Clear selection · Copy text.
   beside it, removable chips for the picked tags, then a card per listing
   (**`internal/ListingCard.vue`**: cover photo, name, role count, member count, unread
   badge). There is deliberately **no All rooms / Your rooms / Unread menu** above it. The
-  member count is the **union** of the rooms, not their sum: most staff sit in two rooms,
-  General plus their role, so summing roughly doubles it. Collapsed, the panel keeps the
+  member count is the **union** of the rooms, not their sum, so nobody is counted twice.
+  The role count equals the room count. Collapsed, the panel keeps the
   photos alone, each still carrying an `aria-label` and `aria-pressed`.
 - **`internal/RoomList.vue`**: a flat list of the open listing's rooms, named in the panel
   header. It carries **no search of its own**, since the nav holds the only one, and no
@@ -211,32 +263,50 @@ Add-Remove from selection / Clear selection · Copy text.
   the posted message is what renders it; it is dropped when the room changes.
   **`internal/RoomMessage.vue`** + **`internal/ForwardedCard.vue`** (a forwarded guest
   message keeps an "Open thread" link back to its conversation).
-  **`internal/RoomMembers.vue`**: the listing link, the members, and **the tasks this room
-  answers for**. ⚠️ `tasksForRoom` matches on `Task.listing`, which stores a listing NAME,
+  **`internal/RoomMembers.vue`** has two modes. With a room open: the listing link, the
+  room's members, and **the tasks this room answers for**. With only a listing open (the
+  state right after picking one): header "Listing", every member at the listing, and
+  **every task at the listing** ("Tasks at this listing"), which is the only place a
+  person-assigned task shows. ⚠️ `tasksForRoom` matches on `Task.listing`, which stores a listing NAME,
   and on the Tasks module's own short `assigneeRoles` vocabulary via `taskAssigneeForRoom`;
   a room whose role has no equivalent there shows nothing rather than borrowing another
-  role's work, and a task assigned to a **person** never lands in a role room. **General is
-  the exception and shows every task at the listing**, because it is the room everybody at
-  the property is in, and a panel that is empty in the room people actually sit in is a
-  panel nobody reads. Open tasks sort first, then soonest due, undated last.
+  role's work, and a task assigned to a **person** never lands in a role room. Open tasks
+  sort first, then soonest due, undated last.
 - **`ForwardDialog.vue`** is **multi-target on purpose**: a broken pump is housekeeping's
   problem and maintenance's at the same time, and asking the host to forward twice is how
   one of the two gets forgotten. It draws from **all** rooms in scope, never from the room
   list's own filters, and puts the source listing first. Checkbox rows are `div @click` +
   a custom visual, never a reka-ui `Checkbox` in a `<label>` (double-toggle).
-- **`CreateTaskDialog.vue`**: writes through `useTaskStore().addTask`. The messages are
-  **copied into the description in full**, not linked: whoever picks the task up was not in
-  the conversation, and a task that says "see the thread" is a task that gets handed back.
-  Started from a room, `postTaskNotice` tells that room, otherwise nobody who asked for the
-  fix learns it became a task.
+- **`CreateTaskDialog.vue`** is a thin wrapper around **`tasks/NewTaskDialog.vue`**, the
+  same New Task form the Tasks page opens (HostBuddy detection, owner approval, images), so
+  there is no second, thinner task form. ⚠️ **The form has no Title and no Description
+  field, only Instructions (required).** Instructions are stored in `Task.description`, and
+  the title is their first line (`taskTitleFromInstructions` in `tasks/data/task-title.ts`).
+  The messages are **copied into Instructions in full**, not linked: whoever picks the task
+  up was not in the conversation. `taskSeedFromRefs` puts each message's **text first** and
+  `(sender, role, 26 Aug 2026, 17:15)` after it (`readableTimestamp`, never raw ISO), so the
+  first line, and so the title, is the problem rather than a name. Photos in the messages
+  prefill the task's images.
+- ⚠️ **Nothing is posted back into the room** when a task is created: there is no
+  "<name> opened a task" line (removed on request). The task shows in the room panel's task
+  list instead. `InternalMessage` has no `systemKind` / `taskRef`, and `TaskRequest` has no
+  `roomId`.
+- **Task cards open the task.** A task row in the room panel calls
+  `useTaskDetail().openTaskDetailById`, and `inbox/Layout.vue` mounts the same
+  `TasksTaskDetailSheet` the Tasks page uses, resolved against the live store so an update
+  made in the sheet shows at once. ⚠️ **A task card never shows the task id**
+  (`TASK-1234`): a task is named by its title.
+- **Task statuses are Not started, In progress and Completed**, nothing else
+  (`TASK_STATUSES` in `tasks/data/schema.ts`, a zod enum). `isTaskOpen` treats only
+  Completed as closed. There is no Cancelled: an owner rejecting the quote deletes the task.
 
 #### Tests
-`tests/lib/internal-inbox.spec.ts` (62: derivation, the inactive-user rule, role ordering,
+`tests/lib/internal-inbox.spec.ts` (69: derivation (no General room), notification surface and copy, the inactive-user rule, role ordering,
 visibility vs. membership, ANDed tags and the listing scope, card photo / role count /
 member count, snapshot labels, unread, task seeding, the assignee mapping and
-`tasksForRoom`), `tests/composables/useInternalInbox.spec.ts` (60: which listing is open
+`tasksForRoom`), `tests/composables/useInternalInbox.spec.ts` (64: which listing is open, picking a listing opens no room, the listing overview
 and its fallbacks, sending, per-room forward messages, the frozen snapshot, unread,
-selection, lookups), `tests/components/inbox/InternalInbox.spec.ts` (85: the nav and its
+selection, lookups), `tests/composables/useInternalNotifications.spec.ts` (17: surface per context, toast vs native vs none, read in place, open from a notification, permission, mock replies), `tests/components/inbox/InternalInbox.spec.ts` (90: the desktop alert prompt, the nav and its
 cards, the room list, thread, the photo composer, the sending / failed / broken-photo
 states with Retry and Discard asserted by their effect, forward dialog, the room panel's
 members and tasks, the context-menu labels, and the guest-thread side).
@@ -254,11 +324,13 @@ room" must scope by listing or count, not match on the name prefix (which also m
 "Housekeeping Manager").
 
 #### NOT implemented (intentionally out of scope)
-- **Real-time delivery**: no websocket, no presence, no typing indicator; state is
-  `useState` and does not survive a reload (deliberately matching `useInbox`, which is also
-  not persisted).
-- **Notifications**: no `INTERNAL_MESSAGE_*` alert type; unread lives in the room list and
-  the view toggle badge only.
+- **A real websocket**: incoming messages are the mock reply only; no presence, no typing
+  indicator. State is `useState` and does not survive a reload (deliberately matching
+  `useInbox`, which is also not persisted).
+- **Web Push**: a native notification needs the dashboard open in some tab. Reaching a
+  closed browser needs a service worker plus a push server.
+- **A "new messages" pill** when scrolled up in the open room: the thread pins to the newest
+  message on every new one.
 - **Direct messages between two people**: every room is a listing plus a role. A one-to-one
   channel would need its own addressing and its own membership rules.
 - **Pinch or wheel zoom, and stepping to the next photo in a room**: the viewer shows one
@@ -281,5 +353,5 @@ room" must scope by listing or count, not match on the name prefix (which also m
 - **Filtering rooms by "mine" or "unread"**: the nav menu that offered those was removed;
   `isMine` survives as the "You" badge on a room row, and unread as the badges on the room
   rows, the listing cards and the view toggle.
-- **Editing a task from the room panel**: the task rows are a read-only view that links to
-  `/tasks`; raising one is the message context menu's job.
+- **Editing a task inline in the room panel**: a task row opens the task detail sheet, where
+  the task is edited; raising one is the message context menu's job.

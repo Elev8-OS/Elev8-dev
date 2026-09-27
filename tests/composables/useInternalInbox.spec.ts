@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GENERAL_ROOM_KEY, INTERNAL_LOAD_MS, roomIdFor, SEND_LATENCY_MS, SEND_LATENCY_WITH_PHOTO_MS } from '~/components/inbox/data/internal'
+import { INTERNAL_LOAD_MS, roomIdFor, SEND_LATENCY_MS, SEND_LATENCY_WITH_PHOTO_MS } from '~/components/inbox/data/internal'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useInternalInbox } from '~/composables/useInternalInbox'
+import { useTaskStore } from '~/composables/useTaskStore'
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock('vue-sonner', () => ({ toast: toastMock }))
 
 const HOUSEKEEPING_LST1 = roomIdFor('lst-1', 'role-housekeeping')
-const GENERAL_LST1 = roomIdFor('lst-1', GENERAL_ROOM_KEY)
+const LISTING_MANAGER_LST1 = roomIdFor('lst-1', 'role-listing-manager')
+const HOUSEKEEPING_MANAGER_LST2 = roomIdFor('lst-2', 'role-housekeeping-manager')
 
 beforeEach(() => {
   // The seeded dashboard user is Komang (Guest Experience Manager on lst-1…4).
@@ -45,8 +47,8 @@ describe('room tree', () => {
 describe('sending', () => {
   it('posts as the current user', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    sendInternalMessage(GENERAL_LST1, 'Pump is being serviced tomorrow.')
-    const last = messagesFor(GENERAL_LST1).at(-1)!
+    sendInternalMessage(LISTING_MANAGER_LST1, 'Pump is being serviced tomorrow.')
+    const last = messagesFor(LISTING_MANAGER_LST1).at(-1)!
     expect(last).toMatchObject({
       authorId: 'user-1',
       authorName: 'Komang Juliantara',
@@ -57,14 +59,14 @@ describe('sending', () => {
 
   it('refuses an empty message with nothing attached', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    const before = messagesFor(GENERAL_LST1).length
-    expect(sendInternalMessage(GENERAL_LST1, '   ')).toBeUndefined()
-    expect(messagesFor(GENERAL_LST1)).toHaveLength(before)
+    const before = messagesFor(LISTING_MANAGER_LST1).length
+    expect(sendInternalMessage(LISTING_MANAGER_LST1, '   ')).toBeUndefined()
+    expect(messagesFor(LISTING_MANAGER_LST1)).toHaveLength(before)
   })
 
   it('accepts a forward with no note, because handing a message over is the common case', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    const sent = sendInternalMessage(GENERAL_LST1, '', {
+    const sent = sendInternalMessage(LISTING_MANAGER_LST1, '', {
       forwarded: [{
         sourceId: 'msg-1',
         sourceKind: 'guest',
@@ -77,17 +79,17 @@ describe('sending', () => {
       }],
     })
     expect(sent).toBeDefined()
-    expect(messagesFor(GENERAL_LST1).at(-1)!.forwarded).toHaveLength(1)
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.forwarded).toHaveLength(1)
   })
 
   it('accepts a photo with no caption, which often says more than one would', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    const sent = sendInternalMessage(GENERAL_LST1, '', {
+    const sent = sendInternalMessage(LISTING_MANAGER_LST1, '', {
       mediaUrl: 'blob:leaking-tap',
       mediaDims: '1280 × 960',
     })
     expect(sent).toBeDefined()
-    expect(messagesFor(GENERAL_LST1).at(-1)).toMatchObject({
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)).toMatchObject({
       content: '',
       mediaUrl: 'blob:leaking-tap',
       mediaDims: '1280 × 960',
@@ -96,8 +98,8 @@ describe('sending', () => {
 
   it('keeps the caption alongside the photo', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    sendInternalMessage(GENERAL_LST1, 'Tap in room 3', { mediaUrl: 'blob:tap' })
-    expect(messagesFor(GENERAL_LST1).at(-1)).toMatchObject({
+    sendInternalMessage(LISTING_MANAGER_LST1, 'Tap in room 3', { mediaUrl: 'blob:tap' })
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)).toMatchObject({
       content: 'Tap in room 3',
       mediaUrl: 'blob:tap',
     })
@@ -105,25 +107,25 @@ describe('sending', () => {
 
   it('still refuses a message with no text, no photo and no forward', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    const before = messagesFor(GENERAL_LST1).length
-    expect(sendInternalMessage(GENERAL_LST1, '  ', { mediaUrl: null })).toBeUndefined()
-    expect(messagesFor(GENERAL_LST1)).toHaveLength(before)
+    const before = messagesFor(LISTING_MANAGER_LST1).length
+    expect(sendInternalMessage(LISTING_MANAGER_LST1, '  ', { mediaUrl: null })).toBeUndefined()
+    expect(messagesFor(LISTING_MANAGER_LST1)).toHaveLength(before)
   })
 
   it('leaves the media fields off a message that has no photo', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    sendInternalMessage(GENERAL_LST1, 'Just text')
-    const last = messagesFor(GENERAL_LST1).at(-1)!
+    sendInternalMessage(LISTING_MANAGER_LST1, 'Just text')
+    const last = messagesFor(LISTING_MANAGER_LST1).at(-1)!
     expect(last.mediaUrl).toBeUndefined()
     expect(last.mediaDims).toBeUndefined()
   })
 
   it('carries a reply quote onto the message', () => {
     const { sendInternalMessage, messagesFor } = useInternalInbox()
-    sendInternalMessage(GENERAL_LST1, 'Agreed.', {
+    sendInternalMessage(LISTING_MANAGER_LST1, 'Agreed.', {
       replyTo: { messageId: 'imsg-seed-3', senderName: 'Made Surya', excerpt: 'Water pump…' },
     })
-    expect(messagesFor(GENERAL_LST1).at(-1)!.replyTo?.senderName).toBe('Made Surya')
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.replyTo?.senderName).toBe('Made Surya')
   })
 })
 
@@ -141,14 +143,14 @@ describe('forwarding', () => {
 
   it('gives each target room its own message, so a reply in one cannot bleed into another', () => {
     const { forwardToRooms, messagesFor } = useInternalInbox()
-    const beforeA = messagesFor(GENERAL_LST1).length
+    const beforeA = messagesFor(LISTING_MANAGER_LST1).length
     const beforeB = messagesFor(HOUSEKEEPING_LST1).length
 
-    expect(forwardToRooms([GENERAL_LST1, HOUSEKEEPING_LST1], refs, 'Please look at this.')).toBe(2)
+    expect(forwardToRooms([LISTING_MANAGER_LST1, HOUSEKEEPING_LST1], refs, 'Please look at this.')).toBe(2)
 
-    expect(messagesFor(GENERAL_LST1)).toHaveLength(beforeA + 1)
+    expect(messagesFor(LISTING_MANAGER_LST1)).toHaveLength(beforeA + 1)
     expect(messagesFor(HOUSEKEEPING_LST1)).toHaveLength(beforeB + 1)
-    expect(messagesFor(GENERAL_LST1).at(-1)!.id)
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.id)
       .not
       .toBe(messagesFor(HOUSEKEEPING_LST1).at(-1)!.id)
   })
@@ -156,15 +158,15 @@ describe('forwarding', () => {
   it('does nothing without a target or without anything to forward', () => {
     const { forwardToRooms } = useInternalInbox()
     expect(forwardToRooms([], refs, '')).toBe(0)
-    expect(forwardToRooms([GENERAL_LST1], [], '')).toBe(0)
+    expect(forwardToRooms([LISTING_MANAGER_LST1], [], '')).toBe(0)
   })
 
   it('freezes the forwarded content rather than reading it back from the source', () => {
     const { forwardToRooms, messagesFor } = useInternalInbox()
     const mutable = [{ ...refs[0]! }]
-    forwardToRooms([GENERAL_LST1], mutable, '')
+    forwardToRooms([LISTING_MANAGER_LST1], mutable, '')
     mutable[0]!.content = 'edited afterwards'
-    expect(messagesFor(GENERAL_LST1).at(-1)!.forwarded![0]!.content)
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.forwarded![0]!.content)
       .toBe('The AC is blowing warm air.')
   })
 })
@@ -185,7 +187,7 @@ describe('unread', () => {
 
   it('does not count your own message, so sending into a quiet room leaves it read', () => {
     const { sendInternalMessage, unreadFor } = useInternalInbox()
-    const quiet = roomIdFor('lst-3', GENERAL_ROOM_KEY)
+    const quiet = roomIdFor('lst-3', 'role-listing-manager')
     expect(unreadFor(quiet)).toBe(0)
     sendInternalMessage(quiet, 'Anyone around?')
     expect(unreadFor(quiet)).toBe(0)
@@ -208,7 +210,7 @@ describe('selection and filters', () => {
     replyDraft.value = { messageId: 'imsg-seed-1', senderName: 'Ni Putu Sari', excerpt: 'Checkout…' }
     expect(selectedMessageIds.value).toHaveLength(1)
 
-    selectRoom(GENERAL_LST1)
+    selectRoom(LISTING_MANAGER_LST1)
     expect(selectedMessageIds.value).toEqual([])
     expect(replyDraft.value).toBeNull()
   })
@@ -239,15 +241,6 @@ describe('selection and filters', () => {
 })
 
 describe('tasks and lookups', () => {
-  it('records a task notice in the room that asked for it', () => {
-    const { postTaskNotice, messagesFor } = useInternalInbox()
-    postTaskNotice(HOUSEKEEPING_LST1, { id: 'TASK-9001', title: 'Fix the AC' })
-    expect(messagesFor(HOUSEKEEPING_LST1).at(-1)).toMatchObject({
-      systemKind: 'task_created',
-      taskRef: { id: 'TASK-9001', title: 'Fix the AC' },
-    })
-  })
-
   it('resolves a conversation listing name to its listing id', () => {
     const { listingIdForName } = useInternalInbox()
     expect(listingIdForName('The R Villa Merapi')).toBe('lst-4')
@@ -344,7 +337,7 @@ describe('the open listing', () => {
 
   it('totals unread across a listing rooms for its card badge', () => {
     const { unreadForListing, selectRoom } = useInternalInbox()
-    // lst-1 is seeded with 3 unread in Housekeeping and 1 in General.
+    // lst-1 is seeded with 3 unread in Housekeeping and 1 in Listing Manager.
     expect(unreadForListing('lst-1')).toBe(4)
     selectRoom(HOUSEKEEPING_LST1)
     expect(unreadForListing('lst-1')).toBe(1)
@@ -375,8 +368,8 @@ describe('the open listing', () => {
     const card = listingCardGroups.value.find(g => g.listingId === 'lst-1')!
     expect(card.listingName).toContain('Villa Luwa')
     expect(card.photo).toBeTruthy()
-    // General is not a role, so it is not counted.
-    expect(card.roleCount).toBe(card.rooms.length - 1)
+    // One room per role: there is no General room to leave out.
+    expect(card.roleCount).toBe(card.rooms.length)
   })
 })
 
@@ -390,11 +383,11 @@ describe('delivery state', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99)
     const { sendInternalMessage, messagesFor } = useInternalInbox()
 
-    sendInternalMessage(GENERAL_LST1, 'Pump service tomorrow.')
-    expect(messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('sending')
+    sendInternalMessage(LISTING_MANAGER_LST1, 'Pump service tomorrow.')
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('sending')
 
     vi.advanceTimersByTime(SEND_LATENCY_MS)
-    expect(messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('sent')
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('sent')
     vi.useRealTimers()
   })
 
@@ -403,13 +396,13 @@ describe('delivery state', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99)
     const { sendInternalMessage, messagesFor } = useInternalInbox()
 
-    sendInternalMessage(GENERAL_LST1, '', { mediaUrl: 'blob:tap' })
+    sendInternalMessage(LISTING_MANAGER_LST1, '', { mediaUrl: 'blob:tap' })
     vi.advanceTimersByTime(SEND_LATENCY_MS)
     // Still uploading at the point a text message would already have landed.
-    expect(messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('sending')
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('sending')
 
     vi.advanceTimersByTime(SEND_LATENCY_WITH_PHOTO_MS - SEND_LATENCY_MS)
-    expect(messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('sent')
+    expect(messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('sent')
     vi.useRealTimers()
   })
 
@@ -417,9 +410,9 @@ describe('delivery state', () => {
     vi.useFakeTimers()
     const { sendInternalMessage, messagesFor } = useInternalInbox()
 
-    sendInternalMessage(GENERAL_LST1, 'This will error')
+    sendInternalMessage(LISTING_MANAGER_LST1, 'This will error')
     vi.advanceTimersByTime(SEND_LATENCY_MS)
-    const failed = messagesFor(GENERAL_LST1).at(-1)!
+    const failed = messagesFor(LISTING_MANAGER_LST1).at(-1)!
     expect(failed.sendStatus).toBe('failed')
     expect(failed.content).toBe('This will error')
     vi.useRealTimers()
@@ -429,18 +422,18 @@ describe('delivery state', () => {
     vi.useFakeTimers()
     const internal = useInternalInbox()
 
-    internal.sendInternalMessage(GENERAL_LST1, 'This will error', { mediaUrl: 'blob:tap' })
+    internal.sendInternalMessage(LISTING_MANAGER_LST1, 'This will error', { mediaUrl: 'blob:tap' })
     vi.advanceTimersByTime(SEND_LATENCY_WITH_PHOTO_MS)
-    const id = internal.messagesFor(GENERAL_LST1).at(-1)!.id
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('failed')
+    const id = internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.id
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('failed')
 
     // The content still forces a failure, so the retry must go back to sending.
-    internal.retryInternalMessage(GENERAL_LST1, id)
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('sending')
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)!.mediaUrl).toBe('blob:tap')
+    internal.retryInternalMessage(LISTING_MANAGER_LST1, id)
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('sending')
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.mediaUrl).toBe('blob:tap')
 
     vi.advanceTimersByTime(SEND_LATENCY_WITH_PHOTO_MS)
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('failed')
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('failed')
     vi.useRealTimers()
   })
 
@@ -449,12 +442,12 @@ describe('delivery state', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.99)
     const internal = useInternalInbox()
 
-    internal.sendInternalMessage(GENERAL_LST1, 'Fine message')
+    internal.sendInternalMessage(LISTING_MANAGER_LST1, 'Fine message')
     vi.advanceTimersByTime(SEND_LATENCY_MS)
-    const id = internal.messagesFor(GENERAL_LST1).at(-1)!.id
+    const id = internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.id
 
-    internal.retryInternalMessage(GENERAL_LST1, id)
-    expect(internal.messagesFor(GENERAL_LST1).at(-1)!.sendStatus).toBe('sent')
+    internal.retryInternalMessage(LISTING_MANAGER_LST1, id)
+    expect(internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.sendStatus).toBe('sent')
     vi.useRealTimers()
   })
 
@@ -462,17 +455,17 @@ describe('delivery state', () => {
     vi.useFakeTimers()
     const internal = useInternalInbox()
 
-    internal.sendInternalMessage(GENERAL_LST1, 'This will error')
+    internal.sendInternalMessage(LISTING_MANAGER_LST1, 'This will error')
     vi.advanceTimersByTime(SEND_LATENCY_MS)
-    const failedId = internal.messagesFor(GENERAL_LST1).at(-1)!.id
-    const count = internal.messagesFor(GENERAL_LST1).length
+    const failedId = internal.messagesFor(LISTING_MANAGER_LST1).at(-1)!.id
+    const count = internal.messagesFor(LISTING_MANAGER_LST1).length
 
     // A delivered message is not discardable.
-    internal.discardFailedMessage(GENERAL_LST1, 'imsg-seed-3')
-    expect(internal.messagesFor(GENERAL_LST1)).toHaveLength(count)
+    internal.discardFailedMessage(LISTING_MANAGER_LST1, 'imsg-seed-3')
+    expect(internal.messagesFor(LISTING_MANAGER_LST1)).toHaveLength(count)
 
-    internal.discardFailedMessage(GENERAL_LST1, failedId)
-    expect(internal.messagesFor(GENERAL_LST1)).toHaveLength(count - 1)
+    internal.discardFailedMessage(LISTING_MANAGER_LST1, failedId)
+    expect(internal.messagesFor(LISTING_MANAGER_LST1)).toHaveLength(count - 1)
     vi.useRealTimers()
   })
 
@@ -482,36 +475,30 @@ describe('delivery state', () => {
   })
 })
 
-describe('the open room follows the open listing', () => {
-  it('carries the same role across to the new listing', () => {
+describe('picking a listing', () => {
+  it('opens no room: the listing is picked, the room is still yours to choose', () => {
     const internal = useInternalInbox()
     internal.selectRoom(HOUSEKEEPING_LST1)
     expect(internal.selectedRoom.value?.roomKey).toBe('role-housekeeping')
 
-    // lst-2 also staffs Housekeeping.
+    // lst-2 also staffs Housekeeping, and it is still not opened for you.
     internal.selectListing('lst-2')
-    expect(internal.selectedRoom.value?.listingId).toBe('lst-2')
-    expect(internal.selectedRoom.value?.roomKey).toBe('role-housekeeping')
+    expect(internal.activeListingId.value).toBe('lst-2')
+    expect(internal.selectedRoom.value).toBeUndefined()
   })
 
-  it('falls back to General when the new listing has no room for that role', () => {
+  it('never opens a General room, because there is none', () => {
     const internal = useInternalInbox()
-    internal.selectRoom(HOUSEKEEPING_LST1)
-
-    // lst-4 has no Housekeeping room.
-    internal.selectListing('lst-4')
-    expect(internal.selectedRoom.value?.listingId).toBe('lst-4')
-    expect(internal.selectedRoom.value?.roomKey).toBe(GENERAL_ROOM_KEY)
+    const keys = internal.roomGroups.value.flatMap(g => g.rooms.map(r => r.roomKey))
+    expect(keys.every(k => k.startsWith('role-'))).toBe(true)
+    expect(internal.roomGroups.value.flatMap(g => g.rooms.map(r => r.name))).not.toContain('General')
   })
 
   it('never leaves the thread showing a room from the listing you just left', () => {
     const internal = useInternalInbox()
     internal.selectRoom(HOUSEKEEPING_LST1)
     internal.selectListing('lst-4')
-    expect(internal.selectedRoom.value?.listingId).not.toBe('lst-1')
-    expect(internal.selectedRoomMessages.value)
-      .not
-      .toEqual(internal.messagesFor(HOUSEKEEPING_LST1))
+    expect(internal.selectedRoomMessages.value).toEqual([])
   })
 
   it('clears the draft reply and the selection on the way across', () => {
@@ -525,65 +512,99 @@ describe('the open room follows the open listing', () => {
     expect(internal.replyDraft.value).toBeNull()
   })
 
-  it('does not mark the room it lands on as read: landing is not reading', () => {
+  it('marks nothing read, because nothing was opened', () => {
     const internal = useInternalInbox()
-    const target = roomIdFor('lst-2', GENERAL_ROOM_KEY)
-    const unreadBefore = internal.unreadFor(target)
+    const unreadBefore = internal.unreadForListing('lst-2')
     expect(unreadBefore).toBeGreaterThan(0)
 
     internal.selectListing('lst-2')
-    expect(internal.selectedRoom.value?.id).toBe(target)
-    // On screen, still unread: nobody has looked at it.
-    expect(internal.unreadFor(target)).toBe(unreadBefore)
+    expect(internal.unreadForListing('lst-2')).toBe(unreadBefore)
   })
 
-  it('marks it read once you click the room itself', () => {
+  it('marks a room read once you click it', () => {
     const internal = useInternalInbox()
-    const target = roomIdFor('lst-2', GENERAL_ROOM_KEY)
     internal.selectListing('lst-2')
-    expect(internal.unreadFor(target)).toBeGreaterThan(0)
+    expect(internal.unreadFor(HOUSEKEEPING_MANAGER_LST2)).toBeGreaterThan(0)
 
-    internal.selectRoom(target)
-    expect(internal.unreadFor(target)).toBe(0)
+    internal.selectRoom(HOUSEKEEPING_MANAGER_LST2)
+    expect(internal.unreadFor(HOUSEKEEPING_MANAGER_LST2)).toBe(0)
   })
 
   it('marks it read when you post into it, since you are plainly there', () => {
     const internal = useInternalInbox()
-    const target = roomIdFor('lst-2', GENERAL_ROOM_KEY)
     internal.selectListing('lst-2')
-    internal.sendInternalMessage(target, 'Noted.')
-    expect(internal.unreadFor(target)).toBe(0)
+    internal.sendInternalMessage(HOUSEKEEPING_MANAGER_LST2, 'Noted.')
+    expect(internal.unreadFor(HOUSEKEEPING_MANAGER_LST2)).toBe(0)
   })
 
-  it('does nothing when the listing is already open, so re-clicking keeps your room', () => {
+  it('returns to the listing overview when the open listing is clicked again', () => {
     const internal = useInternalInbox()
+    internal.selectListing('lst-1')
     internal.selectRoom(HOUSEKEEPING_LST1)
     internal.selectListing('lst-1')
-    expect(internal.selectedRoom.value?.id).toBe(HOUSEKEEPING_LST1)
+    expect(internal.activeListingId.value).toBe('lst-1')
+    expect(internal.selectedRoom.value).toBeUndefined()
   })
 
   it('blanks the thread rather than auto-opening when a filter moves the listing', () => {
     const internal = useInternalInbox()
     internal.selectRoom(HOUSEKEEPING_LST1)
-    const readBefore = internal.unreadFor(roomIdFor('lst-4', GENERAL_ROOM_KEY))
+    const readBefore = internal.unreadForListing('lst-4')
 
     // A tag that only lst-4 carries pushes the open listing away on its own.
     internal.toggleTagFilter('Umalas')
     expect(internal.activeListingId.value).toBe('lst-4')
     expect(internal.selectedRoom.value).toBeUndefined()
     // Nothing was opened, so nothing was silently marked read.
-    expect(internal.unreadFor(roomIdFor('lst-4', GENERAL_ROOM_KEY))).toBe(readBefore)
+    expect(internal.unreadForListing('lst-4')).toBe(readBefore)
   })
 
   it('keeps the thread on a room the room-list search has filtered out of view', () => {
     const internal = useInternalInbox()
-    internal.selectRoom(GENERAL_LST1)
+    internal.selectRoom(LISTING_MANAGER_LST1)
     internal.roomSearch.value = 'housekeeping'
 
-    // General is gone from the list, but you are still reading it.
-    expect(internal.activeRooms.value.some(r => r.id === GENERAL_LST1)).toBe(false)
-    expect(internal.selectedRoom.value?.id).toBe(GENERAL_LST1)
+    // Listing Manager is gone from the list, but you are still reading it.
+    expect(internal.activeRooms.value.some(r => r.id === LISTING_MANAGER_LST1)).toBe(false)
+    expect(internal.selectedRoom.value?.id).toBe(LISTING_MANAGER_LST1)
     internal.roomSearch.value = ''
+  })
+})
+
+describe('the listing overview', () => {
+  it('lists everybody staffing the open listing, once each', () => {
+    const internal = useInternalInbox()
+    internal.selectListing('lst-1')
+    const ids = internal.listingMembers.value.map(u => u.id)
+    const fromRooms = new Set(internal.activeListingRooms.value.flatMap(r => r.memberIds))
+    expect(new Set(ids)).toEqual(fromRooms)
+    expect(ids).toHaveLength(fromRooms.size)
+    // Komang is a Guest Experience Manager on lst-1.
+    expect(ids).toContain('user-1')
+  })
+
+  it('orders the members by room, so a role reads as a block', () => {
+    const internal = useInternalInbox()
+    internal.selectListing('lst-1')
+    const expected = [...new Set(internal.activeListingRooms.value.flatMap(r => r.memberIds))]
+    expect(internal.listingMembers.value.map(u => u.id)).toEqual(expected)
+  })
+
+  it('shows every task at the listing, a person-assigned one included', () => {
+    const internal = useInternalInbox()
+    const { tasks } = useTaskStore()
+    internal.selectListing('lst-1')
+    const name = internal.activeListing.value!.listingName
+    const atListing = tasks.value.filter(t => t.listing === name).map(t => t.id)
+    expect(atListing.length).toBeGreaterThan(0)
+    expect(internal.listingTasks.value.map(t => t.id).sort()).toEqual([...atListing].sort())
+  })
+
+  it('never reaches into another listing', () => {
+    const internal = useInternalInbox()
+    internal.selectListing('lst-1')
+    const name = internal.activeListing.value!.listingName
+    expect(internal.listingTasks.value.every(t => t.listing === name)).toBe(true)
   })
 })
 

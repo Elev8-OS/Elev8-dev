@@ -2,6 +2,13 @@ import { z } from 'zod'
 
 export const statusUpdateSchema = z.object({
   date: z.string(),
+  /**
+   * What happened, which the timeline turns into its sentence ("… has created
+   * a new task for …", "… is 31% through the task", "… has completed the
+   * task", see `timelineSentence`). Absent on entries that carry their own
+   * sentence in `note` (a quote sent, an owner's decision).
+   */
+  kind: z.enum(['created', 'progress', 'completed']).optional(),
   note: z.string().optional(),
   progress: z.number().min(0).max(100).optional(),
   images: z.array(z.string()).optional(),
@@ -34,10 +41,28 @@ export const statusUpdateSchema = z.object({
 
 export type StatusUpdate = z.infer<typeof statusUpdateSchema>
 
+/**
+ * ⚠️ A task has exactly three statuses. There is no Backlog, To do, Done or
+ * Cancelled: a task nobody will do is deleted (an owner rejecting the quote
+ * included), not parked in a fourth state.
+ */
+export const TASK_STATUSES = ['not started', 'in progress', 'completed'] as const
+export type TaskStatus = typeof TASK_STATUSES[number]
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  'not started': 'Not started',
+  'in progress': 'In progress',
+  'completed': 'Completed',
+}
+
+export function isTaskCompleted(task: { status: string }): boolean {
+  return task.status === 'completed'
+}
+
 export const taskSchema = z.object({
   id: z.string(),
   title: z.string(),
-  status: z.string(),
+  status: z.enum(TASK_STATUSES),
   assignee: z.string().optional(),
   assigneeType: z.enum(['role', 'person']).optional(),
   priority: z.string(),
@@ -83,3 +108,16 @@ export const taskSchema = z.object({
 })
 
 export type Task = z.infer<typeof taskSchema>
+
+/**
+ * What a caller can fill in before the New Task form opens (a task raised from
+ * inbox messages). `instructions` lands in `Task.description`, and its first
+ * line becomes the title: there is no separate title to prefill.
+ */
+export interface NewTaskPrefill {
+  /** Listing NAME, which is what `Task.listing` stores. */
+  listing?: string
+  assignee?: string
+  instructions?: string
+  images?: string[]
+}

@@ -19,8 +19,6 @@ export interface TaskRequest {
   refs: ForwardedRef[]
   /** Listing NAME, which is what `Task.listing` stores. */
   listingName?: string
-  /** Room to post the "task opened" notice into, when started from a room. */
-  roomId?: string
   /** Pre-selected assignee, from the room's role. */
   assignee?: string
 }

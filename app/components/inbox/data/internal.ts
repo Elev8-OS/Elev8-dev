@@ -1,6 +1,7 @@
 import type { Message } from './conversations'
 import type { RoleId } from '~/components/users/data/roles'
 import type { User } from '~/components/users/data/users'
+import { format } from 'date-fns'
 
 /**
  * Internal staff messaging, one step removed from the guest inbox.
@@ -12,22 +13,25 @@ import type { User } from '~/components/users/data/users'
  * user to a listing opens the room and removing the last one closes it. There
  * is no room CRUD for exactly that reason.
  *
+ * ⚠️ There is no listing-wide "General" room, deliberately: the mobile app
+ * has none, and the two must agree on which rooms exist. Every room is a
+ * role at a listing, and reaching everybody at a property means forwarding
+ * to several rooms at once.
+ *
  * This module is framework-free (the same split as `gm-dashboard.ts` and
  * `promo-code-form.ts`): the composable owns the reactive state and calls in.
  */
 
-/** The role-less room every member of a listing shares. */
-export const GENERAL_ROOM_KEY = 'general'
-
-export type RoomKey = RoleId | typeof GENERAL_ROOM_KEY
+/** Every room belongs to one role; there is no role-less room. */
+export type RoomKey = RoleId
 
 export interface InternalRoom {
   id: string
   listingId: string
   listingName: string
-  /** `general`, or the role whose holders staff this room. */
+  /** The role whose holders staff this room. */
   roomKey: RoomKey
-  /** Room name: the role's name, or `General`. */
+  /** Room name: the role's name. */
   name: string
   /** User ids of the people in the room. */
   memberIds: string[]
@@ -86,9 +90,6 @@ export interface InternalMessage {
    * migrated and a read message never renders a status line.
    */
   sendStatus?: 'sending' | 'sent' | 'failed'
-  /** A system line rather than a person talking (a task was opened here). */
-  systemKind?: 'task_created'
-  taskRef?: { id: string, title: string }
 }
 
 export interface RoomListingGroup {
@@ -99,16 +100,12 @@ export interface RoomListingGroup {
   photo?: string
   /** The listing's own tags, which the nav tag filter reads. */
   tags: string[]
-  /**
-   * How many ROLES staff this listing, which is the room count minus the
-   * General room. General is not a role, so counting it would overstate the
-   * team by one on every card.
-   */
+  /** How many ROLES staff this listing. One room per role, so the room count. */
   roleCount: number
   /**
    * How many PEOPLE staff this listing, counted once each. Derived from the
-   * union of the rooms rather than summed across them: most staff sit in two
-   * rooms (General plus their role), so summing would roughly double it.
+   * union of the rooms rather than summed across them, so a person can never
+   * be counted twice however the rooms are cut.
    */
   memberCount: number
 }
@@ -197,8 +194,8 @@ export function isRoomMember(room: InternalRoom, userId: string | undefined): bo
 
 /**
  * Derives the rooms for one listing. A role room exists only where at least
- * one active user of that role is assigned to the listing; the General room
- * exists wherever anybody is.
+ * one active user of that role is assigned to the listing. There is no
+ * General room (see the module comment).
  */
 export function buildRoomsForListing(
   listing: RoomListingLike,
@@ -211,14 +208,7 @@ export function buildRoomsForListing(
   if (assigned.length === 0)
     return []
 
-  const rooms: InternalRoom[] = [{
-    id: roomIdFor(listing.id, GENERAL_ROOM_KEY),
-    listingId: listing.id,
-    listingName: listing.name,
-    roomKey: GENERAL_ROOM_KEY,
-    name: 'General',
-    memberIds: assigned.map(u => u.id),
-  }]
+  const rooms: InternalRoom[] = []
 
   // Role order follows the roles list, so every listing orders its rooms the
   // same way rather than by whoever happened to be seeded first.
@@ -259,7 +249,7 @@ export function buildRoomGroups(
       rooms,
       photo: listing.photos?.[0],
       tags: listing.tags ?? [],
-      roleCount: rooms.filter(r => r.roomKey !== GENERAL_ROOM_KEY).length,
+      roleCount: rooms.length,
       memberCount: new Set(rooms.flatMap(r => r.memberIds)).size,
     })
   }
@@ -404,8 +394,6 @@ export function previewLineFor(message: InternalMessage | undefined): RoomPrevie
       icon: 'lucide:forward',
     }
   }
-  if (message.systemKind === 'task_created')
-    return { text: `Task opened: ${message.taskRef?.title ?? ''}`, icon: 'lucide:list-checks' }
   return { text: '' }
 }
 
@@ -496,10 +484,10 @@ export function buildSeedMessages(): Record<string, InternalMessage[]> {
         ],
       },
     ],
-    [roomIdFor('lst-1', GENERAL_ROOM_KEY)]: [
+    [roomIdFor('lst-1', 'role-listing-manager')]: [
       {
         id: 'imsg-seed-3',
-        roomId: roomIdFor('lst-1', GENERAL_ROOM_KEY),
+        roomId: roomIdFor('lst-1', 'role-listing-manager'),
         authorId: 'user-2',
         authorName: 'Made Surya',
         authorInitials: 'MS',
@@ -520,10 +508,10 @@ export function buildSeedMessages(): Record<string, InternalMessage[]> {
         createdAt: at(2),
       },
     ],
-    [roomIdFor('lst-2', GENERAL_ROOM_KEY)]: [
+    [roomIdFor('lst-2', 'role-housekeeping-manager')]: [
       {
         id: 'imsg-seed-5',
-        roomId: roomIdFor('lst-2', GENERAL_ROOM_KEY),
+        roomId: roomIdFor('lst-2', 'role-housekeeping-manager'),
         authorId: 'user-6',
         authorName: 'Ni Putu Sari',
         authorInitials: 'NS',
@@ -566,21 +554,35 @@ export function taskAssigneeForRoom(roomKey: RoomKey): string {
 }
 
 /**
- * Turns the messages being acted on into a task title and body. The title is
- * the first message, trimmed to something that fits a table row; the body
- * keeps every message in full with its sender, because the person picking the
+ * Turns the messages being acted on into a task title and instructions. The
+ * title is the first message, trimmed to something that fits a table row; the
+ * instructions keep every message in full with its sender, because the person picking the
  * task up was not in the conversation.
  */
-export function taskSeedFromRefs(refs: ForwardedRef[]): { title: string, description: string } {
+export function taskSeedFromRefs(refs: ForwardedRef[]): { title: string, instructions: string } {
   if (refs.length === 0)
-    return { title: '', description: '' }
+    return { title: '', instructions: '' }
   const first = refs[0]!
   const flat = first.content.replace(/\s+/g, ' ').trim()
   const title = flat.length > 80 ? `${flat.slice(0, 77)}…` : flat
-  const description = refs
-    .map(r => `${r.senderName} (${r.senderLabel}), ${r.timestamp}:\n${r.content}`)
+  // What was said comes FIRST and who said it after: the task's title is the
+  // first line of its instructions, and that should be the problem, not a
+  // sender's name.
+  const instructions = refs
+    .map(r => `${r.content.trim()}\n(${r.senderName}, ${r.senderLabel}, ${readableTimestamp(r.timestamp)})`)
     .join('\n\n')
-  return { title, description }
+  return { title, instructions }
+}
+
+/**
+ * "26 Aug 2026, 17:15" in the reader's local time, instead of the raw ISO
+ * string (`2026-08-26T09:15:00Z`) nobody on a task can read at a glance.
+ * Anything that does not parse is passed through untouched rather than
+ * turned into "Invalid Date".
+ */
+export function readableTimestamp(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : format(date, 'd MMM yyyy, HH:mm')
 }
 
 /**
@@ -598,7 +600,8 @@ export interface RoomTaskLike {
   dueDate?: string
 }
 
-const CLOSED_TASK_STATUSES = new Set(['done', 'canceled', 'cancelled'])
+/** A task is open until it is Completed; there is no cancelled state (see `TASK_STATUSES`). */
+const CLOSED_TASK_STATUSES = new Set(['completed'])
 
 export function isTaskOpen(task: RoomTaskLike): boolean {
   return !CLOSED_TASK_STATUSES.has(task.status.toLowerCase())
@@ -606,9 +609,9 @@ export function isTaskOpen(task: RoomTaskLike): boolean {
 
 /**
  * The tasks a room is answerable for: the ones at its listing that fall to its
- * role. The General room is the exception and shows every task at the listing,
- * because it is the room everybody at the property is in, and a panel that is
- * empty in the room people actually sit in is a panel nobody reads.
+ * role. A task assigned to a person, or to a task role no room maps to, shows
+ * in no room, since borrowing a role room for it would say the wrong people
+ * own it; it shows in the listing overview instead (`tasksForListing`).
  *
  * ⚠️ Matched on `Task.listing`, which stores a listing NAME, and on the Tasks
  * module's own short `assigneeRoles` vocabulary via `taskAssigneeForRoom`. A
@@ -622,18 +625,26 @@ export function tasksForRoom(
   tasks: RoomTaskLike[],
   room: Pick<InternalRoom, 'roomKey' | 'listingName'>,
 ): RoomTaskLike[] {
-  const atListing = tasks.filter(t => t.listing === room.listingName)
+  const role = taskAssigneeForRoom(room.roomKey)
+  if (!role)
+    return []
+  return sortRoomTasks(tasks.filter(t =>
+    t.listing === room.listingName && t.assigneeType !== 'person' && t.assignee === role,
+  ))
+}
 
-  const scoped = room.roomKey === GENERAL_ROOM_KEY
-    ? atListing
-    : (() => {
-        const role = taskAssigneeForRoom(room.roomKey)
-        if (!role)
-          return []
-        return atListing.filter(t => t.assigneeType !== 'person' && t.assignee === role)
-      })()
+/**
+ * Every task at a listing, whoever it is assigned to: what the side panel
+ * shows while a listing is open and no room is. This is where a task assigned
+ * to a person, or to a role no room maps to, is visible at all.
+ */
+export function tasksForListing(tasks: RoomTaskLike[], listingName: string): RoomTaskLike[] {
+  return sortRoomTasks(tasks.filter(t => t.listing === listingName))
+}
 
-  return [...scoped].sort((a, b) => {
+/** Open first, then soonest due, undated last. Returns a copy. */
+function sortRoomTasks(tasks: RoomTaskLike[]): RoomTaskLike[] {
+  return [...tasks].sort((a, b) => {
     const openDiff = Number(isTaskOpen(b)) - Number(isTaskOpen(a))
     if (openDiff !== 0)
       return openDiff
@@ -645,4 +656,99 @@ export function tasksForRoom(
       return 1
     return 0
   })
+}
+
+// ── Incoming messages and notifications ─────────────────────────────────
+
+/**
+ * Where a colleague's message surfaces.
+ *
+ * ⚠️ Never the notification bell. A room message is a conversation happening
+ * now, not an alert to triage later, so it is pushed at you in real time
+ * instead: a native browser notification while the tab is in the
+ * background, a toast anywhere else in the dashboard, and nothing extra while
+ * the Internal view is on screen, where the thread and the unread badges
+ * already change in front of you.
+ */
+export type NotificationSurface = 'none' | 'toast' | 'native'
+
+export interface NotificationContext {
+  /** The dashboard tab is the one in front. */
+  tabVisible: boolean
+  /** Inbox > Internal is on screen. */
+  internalViewOpen: boolean
+}
+
+export function notificationSurfaceFor(ctx: NotificationContext): NotificationSurface {
+  if (!ctx.tabVisible)
+    return 'native'
+  if (ctx.internalViewOpen)
+    return 'none'
+  return 'toast'
+}
+
+/**
+ * Every room you can see notifies, not only the ones you are a member of:
+ * the point of the feature is reading maintenance's answer without being
+ * maintenance. Your own messages never do.
+ */
+export function shouldNotifyFor(message: InternalMessage, currentUserId: string | undefined): boolean {
+  return message.authorId !== currentUserId
+}
+
+export interface NotificationCopy {
+  title: string
+  body: string
+  listing: string
+}
+
+/**
+ * The words on a toast or a native notification. Several unread messages in
+ * one room read as one line ("3 new messages in Housekeeping"), since the
+ * toast and the native notification for a room replace each other rather
+ * than stack.
+ */
+export function notificationCopy(
+  message: InternalMessage,
+  room: Pick<InternalRoom, 'name' | 'listingName'>,
+  unread: number,
+): NotificationCopy {
+  const preview = previewLineFor(message).text
+  if (unread > 1) {
+    return {
+      title: `${unread} new messages in ${room.name}`,
+      body: `${message.authorName}: ${preview}`,
+      listing: room.listingName,
+    }
+  }
+  return {
+    title: `${message.authorName} in ${room.name}`,
+    body: preview,
+    listing: room.listingName,
+  }
+}
+
+/**
+ * Mock only: a colleague answers what you posted, so the real-time path can
+ * be shown without a websocket. Long enough to switch to another tab and see
+ * the native notification arrive.
+ */
+export const SIMULATED_REPLY_MIN_MS = 8000
+export const SIMULATED_REPLY_SPREAD_MS = 7000
+
+export function simulatedReplyDelay(roll: number): number {
+  return SIMULATED_REPLY_MIN_MS + Math.round(roll * SIMULATED_REPLY_SPREAD_MS)
+}
+
+export const SIMULATED_REPLIES = [
+  'On it, heading over now.',
+  'Noted, I will check it within the hour.',
+  'Done, all sorted.',
+  'Can you send a photo so I know what to bring?',
+  'Seen. I will update the task once it is finished.',
+]
+
+export function simulatedReplyText(roll: number): string {
+  const index = Math.min(SIMULATED_REPLIES.length - 1, Math.floor(roll * SIMULATED_REPLIES.length))
+  return SIMULATED_REPLIES[index]!
 }

@@ -1,30 +1,59 @@
 <script lang="ts" setup>
-import { GENERAL_ROOM_KEY, isTaskOpen } from '~/components/inbox/data/internal'
+import type { TaskStatus } from '~/components/tasks/data/schema'
+import { isTaskOpen } from '~/components/inbox/data/internal'
+import { TASK_STATUS_LABELS } from '~/components/tasks/data/schema'
 
-const { selectedRoom, membersOf, roomTasks, isLoading } = useInternalInbox()
+const {
+  selectedRoom,
+  activeListing,
+  membersOf,
+  roomTasks,
+  listingMembers,
+  listingTasks,
+  isLoading,
+} = useInternalInbox()
 const { currentUser } = useCurrentDashboardUser()
+// A task card opens the task itself, in the same detail sheet the Tasks page
+// uses, instead of dropping you on the task list to find it again.
+const { openTaskDetailById } = useTaskDetail()
 const { roles } = useRoles()
 
-const members = computed(() => membersOf(selectedRoom.value))
-
-const openTasks = computed(() => roomTasks.value.filter(isTaskOpen))
-
 /**
- * General is the room everybody at the property is in, so it answers for the
- * whole listing rather than for one role. The heading says which it is.
+ * Two modes. With a room open the panel is about that room: its members and
+ * the tasks its role answers for. With only a listing open (picking a listing
+ * opens no room) it is the listing overview: everybody staffing the property
+ * and every task there, whoever it is assigned to.
  */
-const isGeneralRoom = computed(() => selectedRoom.value?.roomKey === GENERAL_ROOM_KEY)
+const panelListing = computed(() => {
+  if (selectedRoom.value)
+    return { id: selectedRoom.value.listingId, name: selectedRoom.value.listingName }
+  if (activeListing.value)
+    return { id: activeListing.value.listingId, name: activeListing.value.listingName }
+  return undefined
+})
+
+const members = computed(() =>
+  selectedRoom.value ? membersOf(selectedRoom.value) : listingMembers.value,
+)
+
+const panelTasks = computed(() =>
+  selectedRoom.value ? roomTasks.value : listingTasks.value,
+)
+
+const openTasks = computed(() => panelTasks.value.filter(isTaskOpen))
 
 function roleName(roleId: string) {
   return roles.value.find(r => r.id === roleId)?.name ?? roleId
 }
 
-const statusClass: Record<string, string> = {
-  'todo': 'bg-muted text-muted-foreground',
-  'backlog': 'bg-muted text-muted-foreground',
+const statusClass: Record<TaskStatus, string> = {
+  'not started': 'bg-muted text-muted-foreground',
   'in progress': 'bg-secondary text-secondary-foreground',
-  'done': 'bg-green-500/15 text-green-600',
-  'canceled': 'bg-muted text-muted-foreground',
+  'completed': 'bg-green-500/15 text-green-600',
+}
+
+function statusLabel(status: string) {
+  return TASK_STATUS_LABELS[status as TaskStatus] ?? status
 }
 
 function dueLabel(due: string) {
@@ -57,10 +86,10 @@ function dueLabel(due: string) {
       </div>
     </template>
 
-    <template v-else-if="selectedRoom">
+    <template v-else-if="panelListing">
       <div class="flex h-[56px] shrink-0 items-center px-4">
         <h2 class="text-sm font-semibold">
-          Room
+          {{ selectedRoom ? 'Room' : 'Listing' }}
         </h2>
       </div>
       <Separator />
@@ -72,10 +101,10 @@ function dueLabel(due: string) {
               Listing
             </p>
             <NuxtLink
-              :to="`/listings/${selectedRoom.listingId}`"
+              :to="`/listings/${panelListing.id}`"
               class="text-sm font-medium underline-offset-2 hover:underline"
             >
-              {{ selectedRoom.listingName }}
+              {{ panelListing.name }}
             </NuxtLink>
           </div>
 
@@ -107,53 +136,55 @@ function dueLabel(due: string) {
               </div>
             </div>
             <p v-if="members.length === 0" class="text-xs text-muted-foreground">
-              Nobody is assigned to this room yet.
+              {{ selectedRoom ? 'Nobody is assigned to this room yet.' : 'Nobody is assigned to this listing yet.' }}
             </p>
           </div>
 
-          <!-- The work this room answers for, so a hand-off can be checked
-               against what is already open rather than re-raised. -->
+          <!-- The work this room (or, with no room open, this listing)
+               answers for, so a hand-off can be checked against what is
+               already open rather than re-raised. -->
           <div class="space-y-2">
             <div class="flex items-center justify-between">
               <p class="text-xs font-medium text-muted-foreground">
-                {{ isGeneralRoom ? 'Tasks at this listing' : `${selectedRoom.name} tasks` }}
+                {{ selectedRoom ? `${selectedRoom.name} tasks` : 'Tasks at this listing' }}
               </p>
-              <span v-if="roomTasks.length" class="text-[10px] text-muted-foreground">
+              <span v-if="panelTasks.length" class="text-[10px] text-muted-foreground">
                 {{ openTasks.length }} open
               </span>
             </div>
 
-            <NuxtLink
-              v-for="task of roomTasks"
+            <button
+              v-for="task of panelTasks"
               :key="task.id"
-              to="/tasks"
-              class="block space-y-1 rounded-lg border p-2 transition-colors hover:bg-accent"
+              type="button"
+              class="block w-full space-y-1 rounded-lg border p-2 text-left transition-colors hover:bg-accent"
+              :aria-label="`Open task: ${task.title}`"
+              @click="openTaskDetailById(task.id)"
             >
               <div class="flex items-start gap-1.5">
                 <p class="min-w-0 flex-1 text-xs font-medium leading-tight">
                   {{ task.title }}
                 </p>
                 <span
-                  class="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium capitalize"
-                  :class="statusClass[task.status.toLowerCase()] ?? 'bg-muted text-muted-foreground'"
+                  class="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                  :class="statusClass[task.status as TaskStatus] ?? 'bg-muted text-muted-foreground'"
                 >
-                  {{ task.status }}
+                  {{ statusLabel(task.status) }}
                 </span>
               </div>
               <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
-                <span class="font-mono">{{ task.id }}</span>
-                <span v-if="task.priority" class="capitalize">· {{ task.priority }}</span>
+                <span v-if="task.priority" class="capitalize">{{ task.priority }}</span>
                 <span v-if="task.dueDate" class="ml-auto inline-flex items-center gap-0.5">
                   <Icon name="lucide:calendar" class="size-2.5" />
                   {{ dueLabel(task.dueDate) }}
                 </span>
               </div>
-            </NuxtLink>
+            </button>
 
-            <p v-if="roomTasks.length === 0" class="text-xs text-muted-foreground">
-              {{ isGeneralRoom
-                ? 'No tasks at this listing yet.'
-                : 'No tasks fall to this role. Right-click a message to raise one.' }}
+            <p v-if="panelTasks.length === 0" class="text-xs text-muted-foreground">
+              {{ selectedRoom
+                ? 'No tasks fall to this role. Right-click a message to raise one.'
+                : 'No tasks at this listing yet.' }}
             </p>
           </div>
         </div>
@@ -163,7 +194,7 @@ function dueLabel(due: string) {
     <div v-else class="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
       <Icon name="lucide:users" class="size-10" />
       <p class="text-sm">
-        Select a room
+        Select a listing
       </p>
     </div>
   </div>

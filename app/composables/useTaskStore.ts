@@ -1,6 +1,6 @@
-import type { Task } from '@/components/tasks/data/schema'
-import type { StatusUpdate } from '@/components/tasks/data/schema'
+import type { StatusUpdate, Task, TaskStatus } from '@/components/tasks/data/schema'
 import { mockTasks } from '@/components/tasks/data/tasks-mock'
+import { useCurrentDashboardUser } from './useCurrentDashboardUser'
 import { useHostBuddyInventorySync } from './useHostBuddyInventorySync'
 
 export function useTaskStore() {
@@ -10,12 +10,15 @@ export function useTaskStore() {
   function addTask(data: Omit<Task, 'id'>): Task {
     const id = `TASK-${Math.floor(1000 + Math.random() * 9000)}`
     const now = new Date().toISOString()
+    // "<you> has created a new task for <listing>": the sentence is built from
+    // `kind` by the timeline (`timelineSentence`), not stored here.
+    const creator = useCurrentDashboardUser().currentUser.value?.name ?? 'Komang Juliantara'
     const task: Task = {
       ...data,
       id,
       createdAt: now,
       statusUpdates: [
-        { date: now, note: 'Admin has created task', progress: 0 },
+        { date: now, actor: { name: creator, kind: 'staff' }, kind: 'created', progress: 0 },
         ...(data.statusUpdates || []),
       ],
     }
@@ -39,7 +42,7 @@ export function useTaskStore() {
     })
   }
 
-  function updateStatus(id: string, status: string) {
+  function updateStatus(id: string, status: TaskStatus) {
     const task = tasks.value.find(t => t.id === id)
     if (!task)
       return

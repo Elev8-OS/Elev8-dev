@@ -27,6 +27,8 @@ export default defineConfig({
       // utilities). Listed BEFORE the broader `~` alias so it wins the
       // longest-match for `~/server/...` imports.
       '~/server': fileURLToPath(new URL('./server', import.meta.url)),
+      // Nuxt's virtual component registry, which only exists in a Nuxt build.
+      '#components': fileURLToPath(new URL('./tests/utils/nuxt-components.ts', import.meta.url)),
       '~': fileURLToPath(new URL('./app', import.meta.url)),
       // Mirror Nuxt's `@` alias (also points to `app/`). The shadcn-vue
       // UI primitives import `@/lib/utils` internally, so tests that

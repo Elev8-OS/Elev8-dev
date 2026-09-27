@@ -9,6 +9,7 @@ import { listings } from '~/components/listings/data/listings'
 import CleaningReportPanel from '~/components/operations-calendar/CleaningReportPanel.vue'
 import { cleaningTypeIcons, cleaningTypeVariants } from '~/components/operations-calendar/data/operations-calendar'
 import StaffMultiSelectDropdown from '~/components/shared/StaffMultiSelectDropdown.vue'
+import { TASK_STATUS_LABELS } from '~/components/tasks/data/schema'
 import { Label } from '~/components/ui/label'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useTaskStore } from '~/composables/useTaskStore'
@@ -742,7 +743,7 @@ const stayInfoLabel = computed(() => {
                   Status
                 </p>
                 <p class="font-medium">
-                  {{ task.status }}
+                  {{ TASK_STATUS_LABELS[task.status] ?? task.status }}
                 </p>
               </div>
               <div>

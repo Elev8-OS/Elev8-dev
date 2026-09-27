@@ -99,7 +99,6 @@ function taskFromSelection() {
   openTask({
     refs: refsFromInternalMessages(selectedMessages.value, room),
     listingName: room.listingName,
-    roomId: room.id,
     assignee: taskAssigneeForRoom(room.roomKey),
   })
 }

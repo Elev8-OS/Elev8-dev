@@ -21,31 +21,22 @@ export const assigneeOptions = [
   ...staffMembers.map(s => ({ value: s.value, label: s.label, type: 'person' as const })),
 ]
 
+/** The three task statuses (see `TASK_STATUSES`), with the icon each shows. */
 export const statuses = [
   {
-    value: 'backlog',
-    label: 'Backlog',
-    icon: h(Icon, { name: 'i-radix-icons-question-mark-circled' }),
-  },
-  {
-    value: 'todo',
-    label: 'Todo',
+    value: 'not started',
+    label: 'Not started',
     icon: h(Icon, { name: 'i-radix-icons-circle' }),
   },
   {
     value: 'in progress',
-    label: 'In Progress',
+    label: 'In progress',
     icon: h(Icon, { name: 'i-radix-icons-stopwatch' }),
   },
   {
-    value: 'done',
-    label: 'Done',
+    value: 'completed',
+    label: 'Completed',
     icon: h(Icon, { name: 'i-radix-icons-check-circled' }),
-  },
-  {
-    value: 'canceled',
-    label: 'Canceled',
-    icon: h(Icon, { name: 'i-radix-icons-cross-circled' }),
   },
 ]
 

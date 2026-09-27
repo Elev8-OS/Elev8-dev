@@ -22,8 +22,7 @@ const isOverdueTask = computed(() => {
   const today = new Date().toISOString().slice(0, 10)
   if (dueDate >= today)
     return false
-  const status = props.event.status
-  return status !== 'done' && status !== 'canceled'
+  return props.event.status !== 'completed'
 })
 
 const displayTitle = computed(() => {

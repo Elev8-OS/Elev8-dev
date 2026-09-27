@@ -8,16 +8,24 @@ import {
   filterRoomGroups,
   forwardRefFromGuestMessage,
   forwardRefFromInternalMessage,
-  GENERAL_ROOM_KEY,
   isRoomMember,
   isTaskOpen,
+  notificationCopy,
+  notificationSurfaceFor,
   previewLineFor,
+  readableTimestamp,
   replyRefFrom,
   SEND_FAILURE_RATE,
   SEND_LATENCY_MS,
   SEND_LATENCY_WITH_PHOTO_MS,
   sendLatencyFor,
+  shouldNotifyFor,
   shouldSendFail,
+  SIMULATED_REPLIES,
+  SIMULATED_REPLY_MIN_MS,
+  SIMULATED_REPLY_SPREAD_MS,
+  simulatedReplyDelay,
+  simulatedReplyText,
   tagsForGroups,
   taskAssigneeForRoom,
   taskSeedFromRefs,
@@ -25,6 +33,7 @@ import {
   unreadCountFor,
   visibleListingIdsFor,
 } from '~/components/inbox/data/internal'
+import { TASK_TITLE_MAX, taskTitleFromInstructions } from '~/components/tasks/data/task-title'
 
 const LISTINGS: RoomListingLike[] = [
   { id: 'lst-1', name: 'Villa One', photos: ['one.jpg'], tags: ['Canggu', 'Pool'] },
@@ -68,33 +77,37 @@ describe('room derivation', () => {
   it('opens a role room only where someone with that role is assigned', () => {
     const rooms = buildRoomsForListing(LISTINGS[0]!, USERS, ROLES)
     expect(rooms.map(r => r.roomKey)).toEqual([
-      GENERAL_ROOM_KEY,
       'role-listing-manager',
       'role-housekeeping',
     ])
+  })
+
+  it('opens no General room: every room is a role, as in the mobile app', () => {
+    const rooms = buildRoomsForListing(LISTINGS[0]!, USERS, ROLES)
+    expect(rooms.map(r => r.name)).not.toContain('General')
+    expect(rooms.every(r => ROLES.some(role => role.id === r.roomKey))).toBe(true)
   })
 
   it('leaves a listing with nobody assigned without any room at all', () => {
     expect(buildRoomsForListing(LISTINGS[2]!, USERS, ROLES)).toEqual([])
   })
 
-  it('opens the General room but no role room where only one role is present', () => {
+  it('opens only the room of the one role present', () => {
     const rooms = buildRoomsForListing(LISTINGS[1]!, USERS, ROLES)
-    expect(rooms.map(r => r.roomKey)).toEqual([GENERAL_ROOM_KEY, 'role-listing-manager'])
+    expect(rooms.map(r => r.roomKey)).toEqual(['role-listing-manager'])
   })
 
   it('leaves an inactive user out of every room', () => {
     const rooms = buildRoomsForListing(LISTINGS[0]!, USERS, ROLES)
     const housekeeping = rooms.find(r => r.roomKey === 'role-housekeeping')!
     expect(housekeeping.memberIds).toEqual(['u-hk1', 'u-hk2'])
-    expect(rooms[0]!.memberIds).not.toContain('u-off')
+    expect(rooms.flatMap(r => r.memberIds)).not.toContain('u-off')
   })
 
   it('orders role rooms by the roles list, not by who was seeded first', () => {
     const reversed = [...ROLES].reverse()
     const rooms = buildRoomsForListing(LISTINGS[0]!, USERS, reversed)
     expect(rooms.map(r => r.roomKey)).toEqual([
-      GENERAL_ROOM_KEY,
       'role-housekeeping',
       'role-listing-manager',
     ])
@@ -143,7 +156,7 @@ describe('filterRoomGroups', () => {
   it('keeps every room of a listing whose name matches', () => {
     const out = filterRoomGroups(groups, { ...base, search: 'villa one' })
     expect(out).toHaveLength(1)
-    expect(out[0]!.rooms).toHaveLength(3)
+    expect(out[0]!.rooms).toHaveLength(2)
   })
 
   it('matches on room name across listings', () => {
@@ -306,11 +319,6 @@ describe('reply excerpt and preview line', () => {
       .toEqual({ text: 'Forwarded 2 messages', icon: 'lucide:forward' })
   })
 
-  it('describes a task notice', () => {
-    expect(previewLineFor(msg({ systemKind: 'task_created', taskRef: { id: 'TASK-1', title: 'Fix AC' } })))
-      .toEqual({ text: 'Task opened: Fix AC', icon: 'lucide:list-checks' })
-  })
-
   it('has nothing to say about no message', () => {
     expect(previewLineFor(undefined)).toEqual({ text: '' })
   })
@@ -367,9 +375,29 @@ describe('task seeding', () => {
   it('titles the task from the first message and keeps every message in the body', () => {
     const seed = taskSeedFromRefs(refs)
     expect(seed.title).toBe('The AC is blowing warm air in the main bedroom.')
-    expect(seed.description).toContain('Anna (Guest)')
-    expect(seed.description).toContain('Komang (Guest Relations)')
-    expect(seed.description).toContain('Sending someone over.')
+    expect(seed.instructions).toContain('(Anna, Guest,')
+    expect(seed.instructions).toContain('(Komang, Guest Relations,')
+    expect(seed.instructions).toContain('Sending someone over.')
+  })
+
+  it('puts what was said first, so the first line (the task title) is the problem', () => {
+    const seed = taskSeedFromRefs(refs)
+    expect(seed.instructions.split('\n')[0]).toBe('The AC is blowing warm air in the main bedroom.')
+  })
+
+  it('writes each timestamp as a readable local date and time, never raw ISO', () => {
+    const seed = taskSeedFromRefs(refs)
+    expect(seed.instructions).not.toContain('2026-09-20T10:00:00Z')
+    expect(seed.instructions).toContain(`(Anna, Guest, ${readableTimestamp('2026-09-20T10:00:00Z')})`)
+  })
+
+  it('formats as day, short month, year and 24-hour local time', () => {
+    const local = new Date(2026, 7, 26, 17, 15)
+    expect(readableTimestamp(local.toISOString())).toBe('26 Aug 2026, 17:15')
+  })
+
+  it('passes a timestamp it cannot parse through untouched', () => {
+    expect(readableTimestamp('yesterday')).toBe('yesterday')
   })
 
   it('truncates a title that would not fit a table row', () => {
@@ -379,7 +407,7 @@ describe('task seeding', () => {
   })
 
   it('returns nothing to seed from nothing', () => {
-    expect(taskSeedFromRefs([])).toEqual({ title: '', description: '' })
+    expect(taskSeedFromRefs([])).toEqual({ title: '', instructions: '' })
   })
 })
 
@@ -393,8 +421,8 @@ describe('taskAssigneeForRoom', () => {
   })
 
   it('leaves the task unassigned rather than guessing', () => {
-    expect(taskAssigneeForRoom(GENERAL_ROOM_KEY)).toBe('')
     expect(taskAssigneeForRoom('role-owner')).toBe('')
+    expect(taskAssigneeForRoom('role-it-team')).toBe('')
   })
 })
 
@@ -409,11 +437,11 @@ describe('listing cards', () => {
     expect(groups[1]!.photo).toBeUndefined()
   })
 
-  it('counts ROLES, which excludes the General room', () => {
-    // lst-1 opens General + Listing Manager + Housekeeping.
-    expect(groups[0]!.rooms).toHaveLength(3)
+  it('counts ROLES, one per room', () => {
+    // lst-1 opens Listing Manager + Housekeeping.
+    expect(groups[0]!.rooms).toHaveLength(2)
     expect(groups[0]!.roleCount).toBe(2)
-    // lst-2 opens General + Listing Manager.
+    // lst-2 opens Listing Manager.
     expect(groups[1]!.roleCount).toBe(1)
   })
 
@@ -459,11 +487,11 @@ describe('tag and listing scope filters', () => {
 describe('member count on a listing card', () => {
   const groups = buildRoomGroups(LISTINGS, USERS, ROLES, ['lst-1', 'lst-2'])
 
-  it('counts each person once, not once per room they sit in', () => {
-    // lst-1 holds the listing manager plus two housekeepers, and every one of
-    // them is also in General, so summing the rooms would give 6.
-    expect(groups[0]!.rooms.reduce((n, r) => n + r.memberIds.length, 0)).toBe(6)
+  it('counts each person once', () => {
+    // lst-1 holds the listing manager plus two housekeepers.
     expect(groups[0]!.memberCount).toBe(3)
+    expect(groups[0]!.memberCount)
+      .toBe(new Set(groups[0]!.rooms.flatMap(r => r.memberIds)).size)
   })
 
   it('counts an inactive user in neither the rooms nor the total', () => {
@@ -478,15 +506,14 @@ describe('member count on a listing card', () => {
 
 describe('tasksForRoom', () => {
   const HOUSEKEEPING = { roomKey: 'role-housekeeping' as const, listingName: 'Villa One' }
-  const GENERAL = { roomKey: GENERAL_ROOM_KEY, listingName: 'Villa One' }
 
   const TASKS = [
-    { id: 'T-1', title: 'Deep clean the pool villa', status: 'todo', listing: 'Villa One', assignee: 'housekeeping', assigneeType: 'role' as const, dueDate: '2026-09-25' },
+    { id: 'T-1', title: 'Deep clean the pool villa', status: 'not started', listing: 'Villa One', assignee: 'housekeeping', assigneeType: 'role' as const, dueDate: '2026-09-25' },
     { id: 'T-2', title: 'Fix the AC', status: 'in progress', listing: 'Villa One', assignee: 'maintenance', assigneeType: 'role' as const },
-    { id: 'T-3', title: 'Restock towels', status: 'done', listing: 'Villa One', assignee: 'housekeeping', assigneeType: 'role' as const, dueDate: '2026-09-20' },
-    { id: 'T-4', title: 'Clean the other villa', status: 'todo', listing: 'Villa Two', assignee: 'housekeeping', assigneeType: 'role' as const },
-    { id: 'T-5', title: 'Personal errand', status: 'todo', listing: 'Villa One', assignee: 'komang-juliantara', assigneeType: 'person' as const },
-    { id: 'T-6', title: 'Undated housekeeping job', status: 'todo', listing: 'Villa One', assignee: 'housekeeping', assigneeType: 'role' as const },
+    { id: 'T-3', title: 'Restock towels', status: 'completed', listing: 'Villa One', assignee: 'housekeeping', assigneeType: 'role' as const, dueDate: '2026-09-20' },
+    { id: 'T-4', title: 'Clean the other villa', status: 'not started', listing: 'Villa Two', assignee: 'housekeeping', assigneeType: 'role' as const },
+    { id: 'T-5', title: 'Personal errand', status: 'not started', listing: 'Villa One', assignee: 'komang-juliantara', assigneeType: 'person' as const },
+    { id: 'T-6', title: 'Undated housekeeping job', status: 'not started', listing: 'Villa One', assignee: 'housekeeping', assigneeType: 'role' as const },
   ]
 
   it('answers with the tasks that fall to the room role, at its listing', () => {
@@ -511,9 +538,9 @@ describe('tasksForRoom', () => {
     expect(ids).toEqual(['T-1', 'T-6', 'T-3'])
   })
 
-  it('shows every task at the listing in the General room, which everybody is in', () => {
-    expect(tasksForRoom(TASKS, GENERAL).map(t => t.id).sort())
-      .toEqual(['T-1', 'T-2', 'T-3', 'T-5', 'T-6'])
+  it('shows a task assigned to a person in no role room at all', () => {
+    const rooms = [HOUSEKEEPING, { roomKey: 'role-engineering' as const, listingName: 'Villa One' }]
+    expect(rooms.flatMap(r => tasksForRoom(TASKS, r)).map(t => t.id)).not.toContain('T-5')
   })
 
   it('answers with nothing rather than guessing for a role the Tasks module does not know', () => {
@@ -526,12 +553,10 @@ describe('tasksForRoom', () => {
     expect(TASKS.map(t => t.id)).toEqual(before)
   })
 
-  it('reads done and cancelled as closed, whichever spelling', () => {
-    expect(isTaskOpen({ id: 'x', title: '', status: 'todo' })).toBe(true)
-    expect(isTaskOpen({ id: 'x', title: '', status: 'In Progress' })).toBe(true)
-    expect(isTaskOpen({ id: 'x', title: '', status: 'done' })).toBe(false)
-    expect(isTaskOpen({ id: 'x', title: '', status: 'canceled' })).toBe(false)
-    expect(isTaskOpen({ id: 'x', title: '', status: 'cancelled' })).toBe(false)
+  it('reads only Completed as closed: Not started and In progress are open', () => {
+    expect(isTaskOpen({ id: 'x', title: '', status: 'not started' })).toBe(true)
+    expect(isTaskOpen({ id: 'x', title: '', status: 'in progress' })).toBe(true)
+    expect(isTaskOpen({ id: 'x', title: '', status: 'completed' })).toBe(false)
   })
 })
 
@@ -552,5 +577,87 @@ describe('mock delivery', () => {
   it('lets "error" force a failure, the only way to demonstrate it on purpose', () => {
     expect(shouldSendFail('this will error', 0.99)).toBe(true)
     expect(shouldSendFail('THIS WILL ERROR', 0.99)).toBe(true)
+  })
+})
+
+describe('real-time notifications', () => {
+  const ROOM = { name: 'Housekeeping', listingName: 'Villa One' }
+  function msg(patch: Partial<InternalMessage> = {}): InternalMessage {
+    return {
+      id: 'm1',
+      roomId: 'room-lst-1-role-housekeeping',
+      authorId: 'u-hk1',
+      authorName: 'Ketut Antara',
+      authorInitials: 'KA',
+      authorRole: 'Housekeeping',
+      content: 'Towels restocked.',
+      createdAt: '2026-09-27T10:00:00.000Z',
+      ...patch,
+    }
+  }
+
+  it('goes native while the tab is in the background, wherever you were in the app', () => {
+    expect(notificationSurfaceFor({ tabVisible: false, internalViewOpen: false })).toBe('native')
+    expect(notificationSurfaceFor({ tabVisible: false, internalViewOpen: true })).toBe('native')
+  })
+
+  it('toasts anywhere else in the dashboard', () => {
+    expect(notificationSurfaceFor({ tabVisible: true, internalViewOpen: false })).toBe('toast')
+  })
+
+  it('adds nothing on top while the Internal view is on screen, since the badges already move', () => {
+    expect(notificationSurfaceFor({ tabVisible: true, internalViewOpen: true })).toBe('none')
+  })
+
+  it('notifies for a colleague, never for your own message', () => {
+    expect(shouldNotifyFor(msg(), 'u-lm')).toBe(true)
+    expect(shouldNotifyFor(msg(), 'u-hk1')).toBe(false)
+  })
+
+  it('names the sender, the room and the listing for a single message', () => {
+    expect(notificationCopy(msg(), ROOM, 1)).toEqual({
+      title: 'Ketut Antara in Housekeeping',
+      body: 'Towels restocked.',
+      listing: 'Villa One',
+    })
+  })
+
+  it('rolls several unread messages in a room into one line', () => {
+    expect(notificationCopy(msg(), ROOM, 3)).toEqual({
+      title: '3 new messages in Housekeeping',
+      body: 'Ketut Antara: Towels restocked.',
+      listing: 'Villa One',
+    })
+  })
+
+  it('says Photo for an uncaptioned photo rather than a blank body', () => {
+    expect(notificationCopy(msg({ content: '', mediaUrl: 'blob:x' }), ROOM, 1).body).toBe('Photo')
+  })
+
+  it('keeps the mock reply delay inside its window', () => {
+    expect(simulatedReplyDelay(0)).toBe(SIMULATED_REPLY_MIN_MS)
+    expect(simulatedReplyDelay(1)).toBe(SIMULATED_REPLY_MIN_MS + SIMULATED_REPLY_SPREAD_MS)
+  })
+
+  it('always picks one of the canned replies, even at the edge of the roll', () => {
+    expect(simulatedReplyText(0)).toBe(SIMULATED_REPLIES[0])
+    expect(simulatedReplyText(0.9999)).toBe(SIMULATED_REPLIES.at(-1))
+    expect(simulatedReplyText(1)).toBe(SIMULATED_REPLIES.at(-1))
+  })
+})
+
+describe('task title from instructions', () => {
+  it('is the first non-empty line, whitespace collapsed', () => {
+    expect(taskTitleFromInstructions('\n\n  AC   is warm \nCheck the filter.')).toBe('AC is warm')
+  })
+
+  it('is trimmed to fit a table row', () => {
+    const title = taskTitleFromInstructions('x'.repeat(200))
+    expect(title).toHaveLength(TASK_TITLE_MAX)
+    expect(title.endsWith('…')).toBe(true)
+  })
+
+  it('is empty for empty instructions, which is what keeps Create disabled', () => {
+    expect(taskTitleFromInstructions('   \n ')).toBe('')
   })
 })
