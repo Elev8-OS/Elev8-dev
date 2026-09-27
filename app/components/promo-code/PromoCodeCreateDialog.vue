@@ -3,8 +3,8 @@ import type { PromoCodeFormDraft, PromoCodeFormErrors, PromoCodeStepId } from '.
 import { computed, nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings as allListings } from '~/components/listings/data/listings'
-import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 import { usePromoCodes } from '~/composables/usePromoCodes'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 import {
   createDefaultPromoCodeFormDraft,
   firstInvalidPromoCodeStep,
@@ -49,12 +49,14 @@ const isLastStep = computed(() => stepIndex.value === steps.length - 1)
  * can reject a free upsell that none of those properties actually sell. Both
  * are injected rather than imported by the form module, which stays store-free.
  */
+const { services: upsellServices } = useUpsellServices()
+
 const validationContext = computed(() => ({
   isCodeTaken: (code: string) => isCodeTaken(code),
   scopedListingNames: draft.value.listingIds.length === 0
     ? allListings.value.map(l => l.name)
     : allListings.value.filter(l => draft.value.listingIds.includes(l.id)).map(l => l.name),
-  upsellServices: mockUpsellServices,
+  upsellServices: upsellServices.value,
 }))
 
 watch(open, (isOpen) => {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { PromoCodeFormDraft, PromoCodeFormErrors } from './data/promo-code-form'
 import type { PromoCodeDiscountType, PromoCodeLengthOfStayTier } from './data/promo-codes'
+import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import { computed, ref } from 'vue'
 import { listings as allListings } from '~/components/listings/data/listings'
-import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 import { PROMO_CODE_CURRENCIES, upsellServiceCoverage } from './data/promo-code-form'
+import { listingsWithoutFreeUpsell } from './data/promo-code-redemption'
 
 /**
  * Step 3 fields — what the code gives away.
@@ -19,6 +21,11 @@ import { PROMO_CODE_CURRENCIES, upsellServiceCoverage } from './data/promo-code-
  * at the properties it is assigned to. Services none of the covered listings
  * offer are unpickable, and services only some of them offer carry their
  * coverage on the row — a code cannot promise a free spa at a villa that has no spa.
+ *
+ * Coverage is judged on every picked service together: two regional copies of one
+ * service (Floating Breakfast North / South) each reach part of the scope, but between
+ * them reach all of it, and each guest gets the one offered at their listing. The
+ * warning only names listings that none of the picked services reach.
  */
 const props = defineProps<{
   errors: PromoCodeFormErrors
@@ -95,22 +102,17 @@ function updateLengthOfStayTier(index: number, patch: Partial<PromoCodeLengthOfS
 const search = ref('')
 const collapsedServiceIds = ref<string[]>([])
 
+// The live catalog, not the seed: a service turned off or re-assigned since the code was
+// made must show here as it is now.
+const { services: upsellServices } = useUpsellServices()
+
+/** `IDR 350,000`: the ISO code before the amount, never a symbol. */
 function formatPrice(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 0,
-    }).format(amount)
-  }
-  catch {
-    // An unknown currency code should show the number, not blow up the step.
-    return `${currency} ${amount}`
-  }
+  return `${currency} ${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 }
 
 /** Price span across a service's items — the value at stake before expanding. */
-function priceRange(service: typeof mockUpsellServices[number]): string {
+function priceRange(service: UpsellService): string {
   const prices = service.items.map(i => i.price)
   if (prices.length === 0)
     return '—'
@@ -124,8 +126,8 @@ function priceRange(service: typeof mockUpsellServices[number]): string {
 const filteredServices = computed(() => {
   const query = search.value.trim().toLowerCase()
   if (!query)
-    return mockUpsellServices
-  return mockUpsellServices.filter((s) => {
+    return upsellServices.value
+  return upsellServices.value.filter((s) => {
     if (`${s.name} ${s.category}`.toLowerCase().includes(query))
       return true
     return s.items.some(item => `${item.name} ${item.description ?? ''}`.toLowerCase().includes(query))
@@ -158,16 +160,16 @@ function toggleItem(id: string) {
   setItemIds(ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
 }
 
-function isServiceFullySelected(service: typeof mockUpsellServices[number]) {
+function isServiceFullySelected(service: UpsellService) {
   return service.items.length > 0 && service.items.every(item => draft.value.freeUpsellItemIds.includes(item.id))
 }
 
-function isServicePartiallySelected(service: typeof mockUpsellServices[number]) {
+function isServicePartiallySelected(service: UpsellService) {
   const hits = service.items.filter(item => draft.value.freeUpsellItemIds.includes(item.id)).length
   return hits > 0 && hits < service.items.length
 }
 
-function toggleService(service: typeof mockUpsellServices[number]) {
+function toggleService(service: UpsellService) {
   const ids = service.items.map(item => item.id)
   if (isServiceFullySelected(service)) {
     setItemIds(draft.value.freeUpsellItemIds.filter(id => !ids.includes(id)))
@@ -194,17 +196,17 @@ const scopedListingNames = computed(() => {
 
 const scopeIsWholePortfolio = computed(() => draft.value.listingIds.length === 0)
 
-function coverageOf(service: typeof mockUpsellServices[number]) {
+function coverageOf(service: UpsellService) {
   return upsellServiceCoverage(service.assignedListings, scopedListingNames.value)
 }
 
 /** Offered at none of the covered listings — shown, but not pickable. */
-function isUnreachable(service: typeof mockUpsellServices[number]) {
+function isUnreachable(service: UpsellService) {
   return coverageOf(service).covered === 0
 }
 
 /** Offered at some but not all — pickable, with the gap stated on the row. */
-function isPartial(service: typeof mockUpsellServices[number]) {
+function isPartial(service: UpsellService) {
   const { covered, total } = coverageOf(service)
   return covered > 0 && covered < total
 }
@@ -212,11 +214,31 @@ function isPartial(service: typeof mockUpsellServices[number]) {
 const reachableServices = computed(() => filteredServices.value.filter(s => !isUnreachable(s)))
 const unreachableServices = computed(() => filteredServices.value.filter(s => isUnreachable(s)))
 
-/** Picked items whose service is only offered at part of the scope. */
-const partiallyCoveredSelected = computed(() =>
-  mockUpsellServices.filter(s =>
-    isPartial(s) && s.items.some(item => draft.value.freeUpsellItemIds.includes(item.id)),
-  ),
+function selectedCount(service: UpsellService): number {
+  return service.items.filter(item => draft.value.freeUpsellItemIds.includes(item.id)).length
+}
+
+/**
+ * Scoped listings none of the picked services reach. The code is rejected there, so they
+ * are named rather than counted.
+ */
+const listingsLeftOut = computed(() => {
+  if (draft.value.freeUpsellItemIds.length === 0)
+    return []
+  return listingsWithoutFreeUpsell(draft.value.freeUpsellItemIds, upsellServices.value, scopedListingNames.value)
+})
+
+const LEFT_OUT_NAMED = 3
+
+const leftOutLabel = computed(() => {
+  const names = listingsLeftOut.value
+  const shown = names.slice(0, LEFT_OUT_NAMED).join(', ')
+  return names.length > LEFT_OUT_NAMED ? `${shown} and ${names.length - LEFT_OUT_NAMED} more` : shown
+})
+
+/** Picked services switched off in the catalog: they give nothing until switched back on. */
+const inactiveSelected = computed(() =>
+  upsellServices.value.filter(s => s.status === 'inactive' && selectedCount(s) > 0),
 )
 
 const focusRef = ref<unknown>(null)
@@ -534,9 +556,13 @@ defineExpose({ focus: () => focusElement(focusRef.value) })
                   <p class="truncate text-xs text-muted-foreground">
                     {{ service.category }} · {{ service.items.length }} item{{ service.items.length === 1 ? '' : 's' }} · {{ priceRange(service) }}
                   </p>
-                  <p v-if="isPartial(service)" class="flex items-center gap-1 text-xs text-amber-600">
-                    <Icon name="lucide:triangle-alert" class="size-3 shrink-0" aria-hidden="true" />
+                  <p v-if="isPartial(service)" class="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Icon name="lucide:map-pin" class="size-3 shrink-0" aria-hidden="true" />
                     Offered at {{ coverageOf(service).covered }} of {{ coverageOf(service).total }} listings
+                  </p>
+                  <p v-if="selectedCount(service) > 1" class="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Icon name="lucide:list-checks" class="size-3 shrink-0" aria-hidden="true" />
+                    Guests pick one of these {{ selectedCount(service) }} items
                   </p>
                 </div>
                 <Icon
@@ -592,15 +618,31 @@ defineExpose({ focus: () => focusElement(focusRef.value) })
       <!-- What the listing scope did to this list -->
       <div v-else class="space-y-2">
         <p
-          v-if="partiallyCoveredSelected.length > 0"
+          v-if="listingsLeftOut.length > 0"
           class="flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs"
         >
           <Icon name="lucide:triangle-alert" class="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-hidden="true" />
           <span>
-            {{ partiallyCoveredSelected.map(s => s.name).join(', ') }}
-            {{ partiallyCoveredSelected.length === 1 ? 'is' : 'are' }} not offered at every listing this code covers.
-            Guests at the other properties will not be able to redeem it.
+            {{ listingsLeftOut.length }} listing{{ listingsLeftOut.length === 1 ? ' gets' : 's get' }}
+            no free upsell from this code: {{ leftOutLabel }}.
+            The code will be rejected there.
           </span>
+        </p>
+
+        <p
+          v-if="inactiveSelected.length > 0"
+          class="flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs"
+        >
+          <Icon name="lucide:circle-pause" class="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-hidden="true" />
+          <span>
+            {{ inactiveSelected.map(s => s.name).join(', ') }}
+            {{ inactiveSelected.length === 1 ? 'is' : 'are' }} inactive in the upsell catalog.
+            Guests get nothing from {{ inactiveSelected.length === 1 ? 'it' : 'them' }} until {{ inactiveSelected.length === 1 ? 'it is' : 'they are' }} switched back on.
+          </span>
+        </p>
+
+        <p v-if="draft.freeUpsellItemIds.length > 0 && listingsLeftOut.length === 0" class="text-xs text-muted-foreground">
+          Each guest gets the picked services offered at their listing, one item per service, once per stay.
         </p>
 
         <p v-if="unreachableServices.length > 0" class="text-xs text-muted-foreground">

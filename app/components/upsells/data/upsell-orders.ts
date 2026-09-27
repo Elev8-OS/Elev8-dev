@@ -53,6 +53,18 @@ export interface UpsellOrder {
    * array means access was already granted.
    */
   issuedAccessCodeIds?: string[]
+  /**
+   * Set when a free-upsell promo code created this order. The items are priced at 0;
+   * `originalPrice` freezes what the catalog charged at redemption, so the value given
+   * away survives later price changes. Such an order has nothing to pay: approving it
+   * goes straight to paid (see `approveOrder`).
+   */
+  promoRedemption?: {
+    redemptionId: string
+    promoCodeId: string
+    code: string
+    originalPrice: number
+  }
   createdByStaffId: string
   approvalRequestedAt?: string
   approvedAt?: string
