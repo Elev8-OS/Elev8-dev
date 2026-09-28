@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
+import { payoutAccounts } from '~/components/settings/data/payouts'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -14,6 +15,7 @@ vi.mock('vue-sonner', () => ({ toast }))
 const passthrough = { template: '<div><slot /></div>' }
 const STUBS = {
   Icon: true,
+  NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
   // Honours `open`, so a closed dialog renders nothing.
   Dialog: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
   DialogContent: passthrough,
@@ -122,5 +124,18 @@ describe('the damage waiver activation', () => {
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     expect(wrapper.find('[data-testid="tern-no-subscription-card"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="tern-activate"]').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('the damage waiver activation without Stripe', () => {
+  it('sends the tenant to Payouts instead of the wizard', () => {
+    useTernActivation().replayActivation()
+    const saved = payoutAccounts.value
+    payoutAccounts.value = saved.filter(a => a.provider !== 'stripe')
+    const wrapper = mountCard()
+    expect(wrapper.find('[data-testid="tern-card-no-stripe"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tern-activate-open"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tern-connect-stripe"]').element.closest('a')!.getAttribute('href')).toBe('/settings/payouts')
+    payoutAccounts.value = saved
   })
 })

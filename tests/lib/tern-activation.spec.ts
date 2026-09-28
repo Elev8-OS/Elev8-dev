@@ -8,6 +8,7 @@ import {
   createActivationDraft,
   emptyBankDraft,
   firstInvalidActivationStep,
+  hasConnectedStripePayout,
   invoiceTemplateHasBank,
   ternPayoutTarget,
   ternRegistrationPayload,
@@ -124,5 +125,13 @@ describe('what leaves the app', () => {
     expect(ternPayoutTarget({ status: 'registration_failed', payoutBank })).toBeNull()
     expect(ternPayoutTarget({ status: 'active', payoutBank, ternOrganizationId: 'tern_org_1' }))
       .toEqual({ id: 'tern_org_1', accountName: 'Aargauische Kantonalbank •••• 2957' })
+  })
+})
+
+describe('the Stripe payout activation needs', () => {
+  it('counts only a connected Stripe account', () => {
+    expect(hasConnectedStripePayout([{ provider: 'stripe', status: 'connected' }])).toBe(true)
+    expect(hasConnectedStripePayout([{ provider: 'stripe', status: 'needs_setup' }, { provider: 'xendit', status: 'connected' }])).toBe(false)
+    expect(hasConnectedStripePayout([])).toBe(false)
   })
 })

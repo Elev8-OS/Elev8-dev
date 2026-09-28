@@ -1,4 +1,5 @@
 import type { InvoiceTemplate } from '~/components/settings/data/invoice-templates'
+import type { PayoutAccount } from '~/components/settings/data/payouts'
 import { compactIban, isValidBic, isValidIban } from '~/components/owners/data/owner-payout-details'
 
 /**
@@ -12,10 +13,22 @@ import { compactIban, isValidBic, isValidIban } from '~/components/owners/data/o
  *
  * Framework-free; `useTernActivation` owns the state and calls in.
  *
+ * ⚠️ A connected Stripe payout account comes first (owner's decision,
+ * 2026-09-28): without one, activation is refused (`no_stripe_payout`) and every
+ * way in points to Settings, Payouts instead of starting the wizard.
+ *
  * ⚠️ Until the status is `active`, nothing that uses the waiver works: a policy
  * offering the waiver is paused, a listing cannot be host-paid, and no claim
  * can be filed with Tern. Deposit-only policies are not Tern's and keep working.
  */
+
+/** Whether the tenant has the Stripe payout account activation needs. Only a connected one counts. */
+export function hasConnectedStripePayout(accounts: Pick<PayoutAccount, 'provider' | 'status'>[]): boolean {
+  return accounts.some(a => a.provider === 'stripe' && a.status === 'connected')
+}
+
+/** Where the tenant connects it. */
+export const PAYOUT_SETTINGS_PATH = '/settings/payouts'
 
 export type TernActivationStatus = 'not_activated' | 'registering' | 'active' | 'registration_failed'
 

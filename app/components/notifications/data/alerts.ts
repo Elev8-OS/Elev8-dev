@@ -17,6 +17,7 @@ export type AlertType
     | 'PARTNER_CLAIM_INFO_REQUESTED'
     | 'PARTNER_CLAIM_REJECTED'
     | 'PARTNER_CLAIM_PAYOUT_OVERDUE'
+    | 'WAIVER_INVOICE_PAYMENT_FAILED'
     | 'BOOKING_QUOTA_EMPTY'
     | 'BRIDGE_OFFLINE'
     | 'SMART_LOCK_BATTERY_CRITICAL'
@@ -120,6 +121,7 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   PARTNER_CLAIM_INFO_REQUESTED: 'Insurance Claim - Information Requested',
   PARTNER_CLAIM_REJECTED: 'Insurance Claim - Rejected',
   PARTNER_CLAIM_PAYOUT_OVERDUE: 'Insurance Claim - Payout Overdue',
+  WAIVER_INVOICE_PAYMENT_FAILED: 'Damage Waiver Invoice - Payment Failed',
   BOOKING_QUOTA_EMPTY: 'Booking Quota - 0 Remaining',
   BRIDGE_OFFLINE: 'Elev8 Bridge - Offline',
   SMART_LOCK_BATTERY_CRITICAL: 'Smart Lock - Battery Critical',
@@ -208,6 +210,7 @@ export const alertIcons: Record<AlertType, string> = {
   PARTNER_CLAIM_INFO_REQUESTED: 'i-lucide-shield-question',
   PARTNER_CLAIM_REJECTED: 'i-lucide-shield-x',
   PARTNER_CLAIM_PAYOUT_OVERDUE: 'i-lucide-landmark',
+  WAIVER_INVOICE_PAYMENT_FAILED: 'i-lucide-receipt',
   BOOKING_QUOTA_EMPTY: 'i-lucide-ticket',
   BRIDGE_OFFLINE: 'i-lucide-router',
   SMART_LOCK_BATTERY_CRITICAL: 'i-lucide-lock',
@@ -296,6 +299,7 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   PARTNER_CLAIM_INFO_REQUESTED: '/damage-protection',
   PARTNER_CLAIM_REJECTED: '/damage-protection',
   PARTNER_CLAIM_PAYOUT_OVERDUE: '/damage-protection',
+  WAIVER_INVOICE_PAYMENT_FAILED: '/damage-protection',
   BOOKING_QUOTA_EMPTY: '/',
   BRIDGE_OFFLINE: '/',
   SMART_LOCK_BATTERY_CRITICAL: '/',
@@ -411,6 +415,8 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.guest_name || 'Guest'}: ${context.info_request || 'the partner needs more information'}`
     case 'PARTNER_CLAIM_PAYOUT_OVERDUE':
       return `${context.guest_name || 'Guest'}, ${context.currency || 'USD'} ${context.approved_amount || 0} approved, not paid`
+    case 'WAIVER_INVOICE_PAYMENT_FAILED':
+      return `${context.invoice_number || 'Invoice'}, ${context.currency || 'USD'} ${context.amount || 0}: ${context.reason || 'declined'}`
     case 'BOOKING_QUOTA_EMPTY':
       return `Auto-refill ${context.auto_refill_failed ? 'failed' : 'attempted'}`
     case 'BRIDGE_OFFLINE':

@@ -19,6 +19,7 @@ const sections: Section[] = [
     items: [
       { title: 'Profile', href: '/settings/profile' },
       { title: 'Account', href: '/settings/account' },
+      { title: 'Billing', href: '/settings/billing' },
     ],
   },
   {

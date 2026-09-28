@@ -581,7 +581,7 @@ export interface PromoValidationResult {
   promo: OnboardingPromoCode | null
 }
 
-const PMS_MODEL_LABELS: Record<PmsModel, string> = {
+export const PMS_MODEL_LABELS: Record<PmsModel, string> = {
   PMS_CM: 'ELEV8 as PMS and Channel Manager',
   PMS_ONLY: 'ELEV8 as PMS only',
   MIGRATION: 'Migration to ELEV8',

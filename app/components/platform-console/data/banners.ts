@@ -63,7 +63,7 @@ export const mockBanners: PlatformBanner[] = [
   {
     id: 'banner-2', title: "You're 2 units from your Growth ceiling",
     body: 'Upgrade now to Pro to avoid the paywall.',
-    severity: 'warning', ctaLabel: 'Upgrade plan', ctaUrl: '/billing',
+    severity: 'warning', ctaLabel: 'Upgrade plan', ctaUrl: '/settings/billing',
     targetScope: 'segment', targetFilter: { scope: 'segment', planTypes: ['per_property'], tiers: ['growth'], regions: ['id'] },
     visibleRoles: ['Admin', 'General Manager', 'Finance/HR'],
     dismissible: true, dismissalScope: 'account',

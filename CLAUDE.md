@@ -15,7 +15,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 
 | Area | Doc | Covers |
 |---|---|---|
-| Listings | `docs/claude/listings.md` | 6-tab detail page, AI schedule, Listing Setup overlay, rooms/unit types/rate plans, status + AI aggregation, listings table |
+| Listings | `docs/claude/listings.md` | 7-tab detail page, AI schedule, Listing Setup overlay, rooms/unit types/rate plans, status + AI aggregation, listings table |
 | Inbox | `docs/claude/inbox.md` | Conversations, filters, phone calls, notes, auto-translate, image sending, `ensureConversationForReservation`, inbox settings / AI settings |
 | Internal staff messaging | `docs/claude/internal-inbox.md` | Derived listing+role rooms, forward/create-task context menu, delivery state, image viewer |
 | WhatsApp | `docs/claude/whatsapp.md` | Multi-account settings, test send, 24h window, unmatched queue |
@@ -37,6 +37,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Operations calendar | `docs/claude/operations-calendar.md` | Week/day board, merged stay sources, half-day bars, lanes |
 | Promo codes | `docs/claude/promo-codes.md` | Code library, create wizard, scope chain, booking widget links |
 | Branding | `docs/claude/branding.md` | Tenant logo/favicon/Guest Guide colors, server + guide-app wiring |
+| Tenant billing | `docs/claude/tenant-billing.md` | `/settings/billing`: package and active units, next invoices, payment method, history, invoice PDF kit |
 | Tenant onboarding | `docs/claude/onboarding.md` | PMS models, pricing, server-validated promos, import, banners |
 | GM dashboard | `docs/claude/gm-dashboard.md` | Role-gated portfolio dashboard, generated stays, sentiment panel |
 | App shell | `docs/claude/app-shell.md` | Notification Center, layout/header, Tasks, Kanban, Auth, Mail |

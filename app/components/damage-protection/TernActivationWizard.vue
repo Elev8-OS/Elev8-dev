@@ -11,6 +11,7 @@ import {
   createActivationDraft,
   firstInvalidActivationStep,
   invoiceTemplateHasBank,
+  PAYOUT_SETTINGS_PATH,
   TERN_ACTIVATION_TERMS,
   validateActivationStep,
 } from '~/components/reservations/data/tern-activation'
@@ -167,6 +168,23 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
       </div>
 
       <template v-else>
+        <!-- Stripe payout comes first: without it, Activate stays disabled. -->
+        <div
+          v-if="mode === 'activate' && !tern.hasStripePayout.value"
+          class="flex items-start gap-2 border-b bg-amber-500/5 px-6 py-3 text-sm"
+          data-testid="tern-no-stripe"
+        >
+          <Icon name="lucide:alert-triangle" class="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <span class="flex-1">
+            Activating the damage waiver needs a Stripe payout account. Connect one in Payouts first.
+          </span>
+          <NuxtLink :to="PAYOUT_SETTINGS_PATH" @click="open = false">
+            <Button size="sm" variant="outline" class="h-7 text-xs">
+              Connect Stripe
+            </Button>
+          </NuxtLink>
+        </div>
+
         <!-- Steps -->
         <ol v-if="steps.length > 1" class="flex gap-2 border-b px-6 py-3 text-xs" data-testid="tern-activation-steps">
           <li
@@ -347,6 +365,12 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                 </Button>
               </dd>
               <dt class="text-muted-foreground">
+                Stripe payout account
+              </dt>
+              <dd data-testid="tern-review-stripe">
+                {{ tern.hasStripePayout.value ? 'Connected' : 'Not connected yet' }}
+              </dd>
+              <dt class="text-muted-foreground">
                 Per-stay fees charged to
               </dt>
               <dd data-testid="tern-review-card">
@@ -403,7 +427,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           <Button v-else-if="!isLast" data-testid="tern-next" @click="next">
             Next
           </Button>
-          <Button v-else :disabled="tern.isRegistering.value || !hasSubscriptionCard" data-testid="tern-activate" @click="activate">
+          <Button v-else :disabled="tern.isRegistering.value || !hasSubscriptionCard || !tern.hasStripePayout.value" data-testid="tern-activate" @click="activate">
             <Icon v-if="tern.isRegistering.value" name="lucide:loader-2" class="mr-1.5 size-3.5 animate-spin" />
             {{ tern.isRegistering.value ? 'Registering with Tern…' : tern.activation.value.status === 'registration_failed' ? 'Try again' : 'Activate' }}
           </Button>

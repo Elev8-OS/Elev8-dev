@@ -1,5 +1,6 @@
 import type { ActivationDraft } from '~/components/reservations/data/tern-activation'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useOnboarding } from '~/composables/useOnboarding'
 import { useTernActivation } from '~/composables/useTernActivation'
 
@@ -48,6 +49,18 @@ describe('useTernActivation', () => {
     await expect(tern.activate(draft(), 'X')).resolves.toEqual({ ok: false, reason: 'no_subscription_card' })
     expect(tern.activation.value.status).toBe('not_activated')
     onboarding.state.value = saved
+  })
+
+  it('refuses to activate without a connected Stripe payout account', async () => {
+    const tern = useTernActivation()
+    tern.replayActivation()
+    // Module-level: not reset between tests, so put it back by hand.
+    const saved = payoutAccounts.value
+    payoutAccounts.value = saved.filter(a => a.provider !== 'stripe')
+    expect(tern.hasStripePayout.value).toBe(false)
+    await expect(tern.activate(draft(), 'X')).resolves.toEqual({ ok: false, reason: 'no_stripe_payout' })
+    expect(tern.activation.value.status).toBe('not_activated')
+    payoutAccounts.value = saved
   })
 
   it('activates: accepts the terms, stores the bank, and registers an organization on Tern', async () => {

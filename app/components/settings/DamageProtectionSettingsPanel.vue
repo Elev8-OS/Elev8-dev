@@ -2,17 +2,25 @@
 import type { DamageProtectionPolicy, StaySlot } from '~/components/reservations/data/damage-protection'
 import type { ListingProtectionMode } from '~/composables/useDamageProtection'
 import { toast } from 'vue-sonner'
+import {
+  currencyBlocked,
+  depositSummary,
+  hostBlocked,
+  listingProtectionView,
+  PROTECTION_MODE_LABELS as MODE_LABELS,
+  PROTECTION_MODES as MODES,
+  policyUsage,
+  protectionRefusalText,
+  waiverSummary,
+} from '~/components/damage-protection/data/listing-protection'
 import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { allTags, listings } from '~/components/listings/data/listings'
 import {
   channelsSelectable,
   formatProtectionAmount,
-  listingSlots,
   LONG_STAY_THRESHOLD_NIGHTS,
-  waiverCover,
 } from '~/components/reservations/data/damage-protection'
 import { elev8CoverPartner } from '~/components/reservations/data/damage-protection-seed'
-import { recommendedTier, ternProduct, tierTooSmall } from '~/components/reservations/data/tern-products'
 import DamageProtectionPolicySheet from '~/components/settings/DamageProtectionPolicySheet.vue'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 
@@ -39,31 +47,7 @@ function openEditor(policy: DamageProtectionPolicy | null) {
 }
 
 function usage(policyId: string) {
-  const bands = dp.assignments.value.filter(a => a.policyId === policyId)
-  const listingIds = new Set(bands.map(a => a.listingId))
-  return {
-    short: bands.filter(a => a.minNights < LONG_STAY_THRESHOLD_NIGHTS).length,
-    long: bands.filter(a => a.minNights >= LONG_STAY_THRESHOLD_NIGHTS).length,
-    total: listingIds.size,
-    /** Used, and only on host-paid listings: the guest price is never charged. */
-    hostOnly: listingIds.size > 0 && [...listingIds].every(id => dp.payerFor(id) === 'host'),
-  }
-}
-
-function waiverLine(policy: DamageProtectionPolicy): string {
-  const cover = waiverCover(policy)
-  const tier = ternProduct(policy.waiver.tier).name
-  if (!cover)
-    return `Tern ${tier}, not available in ${policy.currency} yet`
-  return `Tern ${tier}, covers up to ${formatProtectionAmount(cover.coverageCap, policy.currency)}. `
-    + `Guest pays ${formatProtectionAmount(policy.waiver.guestPrice, policy.currency)}, `
-    + `Elev8 charges you ${formatProtectionAmount(cover.perStayFee, policy.currency)} per stay`
-}
-
-function depositLine(policy: DamageProtectionPolicy): string {
-  const { pricing, rate, settleWithinDays } = policy.deposit
-  const limit = pricing === 'percent_of_subtotal' ? `${rate}% of the stay` : formatProtectionAmount(rate, policy.currency)
-  return `Card on file, charged up to ${limit} only for damage, decided within ${settleWithinDays} days`
+  return policyUsage(dp, policyId)
 }
 
 /** A waiver covers every booking, so its channels are not a choice. */
@@ -90,13 +74,6 @@ const KEEP = 'keep'
 const tagFilter = ref<string>('all')
 const statusFilter = ref<'all' | ListingProtectionMode>('all')
 
-const MODE_LABELS: Record<ListingProtectionMode, string> = {
-  off: 'No protection',
-  guest_paid: 'Guest pays',
-  host_paid: 'Host pays',
-}
-const MODES: ListingProtectionMode[] = ['off', 'guest_paid', 'host_paid']
-
 const missingGuide = computed(() => new Set(dp.listingsMissingGuideSection()))
 
 const rows = computed(() => {
@@ -105,62 +82,20 @@ const rows = computed(() => {
     .filter(l => !term || l.name.toLowerCase().includes(term) || l.location?.toLowerCase().includes(term))
     .filter(l => tagFilter.value === 'all' || l.tags.includes(tagFilter.value))
     .filter(l => statusFilter.value === 'all' || dp.listingMode(l.id) === statusFilter.value)
-    .map((listing) => {
-      const slots = listingSlots(dp.assignments.value, listing.id)
-      const account = dp.payoutAccountFor(listing.id)
-      const mode = dp.listingMode(listing.id)
-      const assigned = [slots.short, slots.long].filter(Boolean) as string[]
-      const offersDeposit = assigned.some(id => dp.policies.value.find(p => p.id === id)?.offers.includes('deposit'))
-      // Sized to the property: a tier smaller than its guest count calls for is flagged.
-      const undersized = assigned
-        .map(id => dp.policies.value.find(p => p.id === id))
-        .filter((p): p is DamageProtectionPolicy => Boolean(p?.offers.includes('waiver')))
-        .filter(p => tierTooSmall(p.waiver.tier, listing.capacity))
-      return {
-        listing,
-        slots,
-        mode,
-        currency: account?.currency ?? null,
-        // The host pays for the waiver, so there is no deposit to lose here.
-        waiverOnly: mode === 'guest_paid' && offersDeposit && dp.railForListing(listing.id) !== 'card',
-        // Its policies carry the waiver, and the waiver is not activated yet.
-        paused: assigned.some(id => dp.pausedUntilActivation(dp.policies.value.find(p => p.id === id) ?? null)),
-        noChoiceScreen: mode === 'guest_paid' && assigned.length > 0 && missingGuide.value.has(listing.id),
-        undersized: undersized.length
-          ? `${ternProduct(undersized[0]!.waiver.tier).name} cover is sized for smaller properties. This one sleeps ${listing.capacity}: ${ternProduct(recommendedTier(listing.capacity)).name} is recommended.`
-          : null,
-      }
-    })
+    .map(listing => ({ listing, ...listingProtectionView(dp, listing, missingGuide.value) }))
 })
 
 const setUpCount = computed(() =>
   listings.value.filter(l => dp.assignments.value.some(a => a.listingId === l.id)).length)
 const needsAttention = computed(() => rows.value.filter(r => r.noChoiceScreen).length)
 
-/** A policy in another currency cannot be used where the listing is paid out: no conversion, ever. */
-function currencyBlocked(policy: DamageProtectionPolicy, currency: string | null): boolean {
-  return currency !== null && policy.currency !== currency
-}
-
 /** Host-paid cover is Tern's: it cannot be chosen before the service is activated. */
 function modeBlocked(mode: ListingProtectionMode): boolean {
   return mode === 'host_paid' && !dp.waiverServiceActive.value
 }
 
-/** Where the host pays, a deposit-only policy has nothing for them to pay for. */
-function hostBlocked(policy: DamageProtectionPolicy, mode: ListingProtectionMode): boolean {
-  return mode === 'host_paid' && !policy.offers.includes('waiver')
-}
-
-const REFUSALS: Record<string, string> = {
-  currency_mismatch: 'That policy is in another currency than this listing\'s payouts.',
-  host_needs_waiver: 'Where you pay for the cover, the policy needs the waiver. A deposit-only policy has nothing for you to pay for.',
-  no_policy_in_currency: 'There is no policy in this listing\'s payout currency yet. Create one from a template in the Policies tab.',
-  waiver_not_activated: 'Activate the damage waiver first, at the top of this page: host-paid cover is Tern\'s.',
-}
-
 function refusalText(reason: string): string {
-  return REFUSALS[reason] ?? `Could not set the policy (${reason.replace(/_/g, ' ')})`
+  return protectionRefusalText(reason, 'settings')
 }
 
 function setSlot(listingId: string, slot: StaySlot, value: unknown) {
@@ -357,7 +292,7 @@ function resetCustom(listingId: string) {
                 />
                 <span :class="policy.offers.includes('waiver') ? '' : 'text-muted-foreground'">
                   <span class="font-medium">Waiver:</span>
-                  {{ policy.offers.includes('waiver') ? waiverLine(policy) : 'not offered' }}
+                  {{ policy.offers.includes('waiver') ? waiverSummary(policy) : 'not offered' }}
                 </span>
               </li>
               <li class="flex items-start gap-2">
@@ -368,7 +303,7 @@ function resetCustom(listingId: string) {
                 />
                 <span :class="policy.offers.includes('deposit') ? '' : 'text-muted-foreground'">
                   <span class="font-medium">Deposit:</span>
-                  {{ policy.offers.includes('deposit') ? depositLine(policy) : 'not offered' }}
+                  {{ policy.offers.includes('deposit') ? depositSummary(policy) : 'not offered' }}
                 </span>
               </li>
             </ul>

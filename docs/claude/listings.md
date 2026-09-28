@@ -25,7 +25,7 @@
 - Mock data: 16 listings with Unsplash photos (lst-1 has rich mock data + custom schedule; rest use `alwaysOn()` + defaults)
 
 #### Page (`app/pages/listings/[id].vue`)
-- 6-tab layout: Overview | Pricing | Calendar | Reviews | Maintenance | Settings
+- 7-tab layout: Overview | Pricing | Calendar | Reviews | Maintenance | Protection | Settings
 - Imports child components explicitly (not auto-imported)
 - `ListingHeroCompact` emits `update`; tabs emit `update`/`switchTab` (Overview links to Calendar/Reviews tabs)
 
@@ -36,6 +36,7 @@
 - **`ListingCalendarTab.vue`** — Bookings list + blocked dates
 - **`ListingReviewsTab.vue`** — Rating summary (category Progress bars) + filter + review cards with host reply
 - **`ListingMaintenanceTab.vue`** — Cleaning schedule + tasks + add-task dialog
+- **`ListingProtectionTab.vue`**: Damage waiver and deposit for this listing: who pays, short/long stay policies, policy summaries with Edit policy, protected stays. Rules live in `docs/claude/damage-protection.md`
 - **`ListingSettingsTab.vue`** — Property details form + amenities (Popover) + distribution channels + Smart Locks card with Property/Rooms tabs, compact per-lock cards in 1/2/3-col grid, per-lock Codes Dialog with 3-state time-status badge and add-code form (Ongoing / Start-end times) (AI schedule moved to hero Sheet)
 - **`ListingRowActions.vue`** — Dropdown menu (View Detail, Deactivate, Toggle AI)
 - **`ListingFloatingMenu.vue`** — Fixed floating pill bar at bottom of page: Listing Setup · Test AI · AI Schedule
