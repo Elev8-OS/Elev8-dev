@@ -376,8 +376,10 @@ refusing" switch makes it fail).
 **Elev8 billing the tenant on the 1st** (`damage-protection/data/waiver-billing.ts` framework-free,
 `useWaiverBilling`, owner's decision 2026-09-28). On the 1st of every month Elev8 invoices the Tern
 per-stay fee for every covered stay whose guest **checked out** in the month before, and charges it
-to the card on the tenant's Elev8 subscription. Surface: the **Elev8 billing** tab on
-`/damage-protection` (`WaiverBillingPanel.vue`).
+to the card on the tenant's Elev8 subscription. Surface: **Settings, Billing** only
+(`settings/BillingPanel.vue`, see `tenant-billing.md`). ⚠️ The `/damage-protection` worklist has **no
+billing tab** (removed 2026-09-28, it duplicated Settings); it still runs `runDueBilling()` on mount so
+a declined charge alerts early, and `WAIVER_INVOICE_PAYMENT_FAILED` links to `/settings/billing`.
 - ⚠️ **Billed on check-out, not on booking**, the same way Tern bills Elev8 (monthly in arrears for
   completed bookings, per Tern's PMC handbook). A cancelled stay never reaches an invoice, so there
   are no credit lines. Guest-paid and host-paid stays are both billed.
@@ -391,14 +393,14 @@ to the card on the tenant's Elev8 subscription. Surface: the **Elev8 billing** t
   status not `cancelled` / `blocked` / `owner_request` / `inquiry`, check-out inside the month.
 - **No scheduler**: `runDueBilling(now)` catches up every 1st since the month of
   `activation.registeredAt` (`periodsDue`), called on the worklist's mount. **Run the 1 Oct billing now
-  (demo)** passes the coming 1st as `now`; the next invoice then moves on a month. The panel shows the
-  month so far (`upcoming`, check-outs up to today) and the history, each row expandable and
-  downloadable (`app/lib/waiver-invoice-pdf.ts`, drawn in the shared `elev8-invoice-pdf-kit.ts` frame, see `tenant-billing.md`; it states in every state
+  (demo)** passes the coming 1st as `now`; the next invoice then moves on a month. Settings, Billing shows the
+  month so far (`upcoming`, check-outs up to today) and the history, each row
+  downloadable (the stay lines are in the PDF) (`app/lib/waiver-invoice-pdf.ts`, drawn in the shared `elev8-invoice-pdf-kit.ts` frame, see `tenant-billing.md`; it states in every state
   whether it was paid).
 - ⚠️ **Same card as the subscription.** The mock charge (1.5s) is **declined while
   `useSubscriptionBilling().needsPaymentUpdate`** (the header's payment-failed banner), with that
   decline reason. That raises `WAIVER_INVOICE_PAYMENT_FAILED` (WARNING, in `FINANCE_TYPES`); **Retry
-  charge** (`dashboardEdit`) goes through once the card is updated there and resolves the alert. A
+  charge** (on the failed row of the Settings billing history, not permission-gated, like Update card) goes through once the card is updated there and resolves the alert. A
   reload mid-charge reads as `payment_failed`, never paid. Demo: the seeded subscription is failing,
   so the demo run shows the declined path first.
 - **Bill to** is the onboarding profile when filled in, else the tenant's default invoice template

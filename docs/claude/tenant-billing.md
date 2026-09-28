@@ -16,11 +16,12 @@ Four parts, top to bottom:
    when past).
 3. **Next invoices**: the subscription (`nextSubscriptionInvoice()`: one cycle after the last invoice
    issued, else after activation, for the units active now) and, when the waiver is active, the
-   damage waiver invoice on the 1st so far (`useWaiverBilling().upcoming`, linking to
-   `/damage-protection?tab=billing`).
+   damage waiver invoice on the 1st so far (`useWaiverBilling().upcoming`), with **Run the 1st billing
+   now (demo)**. This is the only damage waiver billing surface (the old `/damage-protection` tab is gone).
 4. **Billing history**: subscription and damage waiver invoices in one list, newest first. ⚠️ **Type
    (Invoice) and status (Paid, Payment failed) are separate columns**, an Elev8 billing UI rule.
-   Every row downloads its PDF.
+   Every row downloads its PDF; a failed damage waiver row also has **Retry charge**
+   (`useWaiverBilling().retryCharge`).
 
 - ⚠️ **A unit is a room**, and on Per Unit the package counts the rooms the tenant has **activated**
   (`subscription.unitCount`), never a count of listings: activation is the billing event, and

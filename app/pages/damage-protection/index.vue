@@ -6,7 +6,6 @@ import type { PartnerClaimRow } from '~/composables/usePartnerClaims'
 import { toast } from 'vue-sonner'
 import DamageProtectionTable from '~/components/damage-protection/DamageProtectionTable.vue'
 import PartnerClaimTable from '~/components/damage-protection/PartnerClaimTable.vue'
-import WaiverBillingPanel from '~/components/damage-protection/WaiverBillingPanel.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
 import { useDamageProtection } from '~/composables/useDamageProtection'
@@ -23,15 +22,16 @@ onMounted(() => {
   dp.hydrate()
   dp.emitProtectionAlerts()
   pc.emitPartnerAlerts()
-  // Elev8 bills on the 1st: catch up any 1st that has passed since the last visit.
+  // Elev8 bills on the 1st: catch up any 1st that has passed since the last visit,
+  // so a declined charge alerts even before Settings, Billing is opened.
   waiverBilling.hydrate()
   waiverBilling.runDueBilling()
 })
 
-type Tab = 'awaiting_choice' | 'decision' | 'failed' | 'on_file' | 'refund_due' | 'settled' | 'insurance' | 'billing'
+type Tab = 'awaiting_choice' | 'decision' | 'failed' | 'on_file' | 'refund_due' | 'settled' | 'insurance'
 const route = useRoute()
-const TABS: Tab[] = ['awaiting_choice', 'decision', 'failed', 'on_file', 'refund_due', 'settled', 'insurance', 'billing']
-/** `?tab=billing` opens a tab directly, e.g. from Settings, Billing. */
+const TABS: Tab[] = ['awaiting_choice', 'decision', 'failed', 'on_file', 'refund_due', 'settled', 'insurance']
+/** `?tab=insurance` opens a tab directly. */
 const tab = ref<Tab>(TABS.includes(route.query.tab as Tab) ? route.query.tab as Tab : 'decision')
 const search = ref('')
 const channelFilter = ref<'all' | 'Airbnb' | 'Booking.com' | 'Direct'>('all')
@@ -58,7 +58,6 @@ const tabRows = computed<ProtectionRow[]>(() => {
     refund_due: dp.refundDue.value,
     settled: dp.settled.value,
     insurance: [],
-    billing: [],
   }
   return byTab[tab.value]
 })
@@ -156,7 +155,6 @@ const tabs: { id: Tab, label: string }[] = [
   { id: 'refund_due', label: 'Waiver refunds' },
   { id: 'settled', label: 'Closed' },
   { id: 'insurance', label: 'Insurance claims' },
-  { id: 'billing', label: 'Elev8 billing' },
 ]
 
 /**
@@ -288,9 +286,7 @@ async function bulkClose() {
 
       <!-- Insurance claims: the waiver claims filed with the partner under the
            property manager's master policy, until the money is in the account. -->
-      <WaiverBillingPanel v-if="tab === 'billing'" :can-edit="dp.canEditProtection.value" />
-
-      <template v-else-if="tab === 'insurance'">
+      <template v-if="tab === 'insurance'">
         <!-- Elev8's own integration with the partner, the same for every tenant:
              nothing to configure, so this is a read-out, not a form. -->
         <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-4" data-testid="partner-summary">

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { SubscriptionInvoice } from '~/components/billing/data/subscription-billing'
 import type { WaiverInvoice } from '~/components/damage-protection/data/waiver-billing'
+import { toast } from 'vue-sonner'
 import { nextSubscriptionInvoice, packageView } from '~/components/billing/data/billing-overview'
 import { cardBrandLabels, declineReasonLabels } from '~/components/billing/data/subscription-billing'
-import { periodLabel } from '~/components/damage-protection/data/waiver-billing'
+import { billingDateFor, periodLabel } from '~/components/damage-protection/data/waiver-billing'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { useOnboarding } from '~/composables/useOnboarding'
 import { useSubscriptionBilling } from '~/composables/useSubscriptionBilling'
@@ -79,6 +80,9 @@ interface HistoryRow {
   status: RowStatus
   note?: string
   download: () => void
+  /** Only a failed damage waiver invoice: the subscription retries through Update card. */
+  retry?: () => void
+  retrying?: boolean
 }
 
 const STATUS_LABEL: Record<RowStatus, string> = { paid: 'Paid', payment_failed: 'Payment failed', charging: 'Charging' }
@@ -112,7 +116,34 @@ function waiverRow(inv: WaiverInvoice): HistoryRow {
     status: inv.status,
     note: inv.status === 'paid' ? inv.cardLabel : inv.failureReason,
     download: () => buildWaiverInvoicePdf(inv, { download: true }),
+    retry: inv.status === 'payment_failed' ? () => retryWaiver(inv) : undefined,
+    retrying: waiver.charging.value.includes(inv.id),
   }
+}
+
+async function retryWaiver(inv: WaiverInvoice) {
+  const result = await waiver.retryCharge(inv.id)
+  if (result.ok) {
+    toast.success(`${inv.number} paid`)
+  }
+  else {
+    toast.error(subscription.needsPaymentUpdate.value
+      ? 'Declined again. Update the card on your subscription first.'
+      : 'The charge did not go through.')
+  }
+}
+
+/** Plays the coming 1st now, for the demo: the month in progress is billed as if it had ended. */
+async function runNextWaiverBilling() {
+  const created = await waiver.runDueBilling(billingDateFor(nextWaiver.value.period))
+  if (!created.length) {
+    toast.info(`Nothing to bill for ${periodLabel(nextWaiver.value.period)}: no covered stays checked out.`)
+    return
+  }
+  if (created.every(inv => inv.status === 'paid'))
+    toast.success(created.length === 1 ? `${created[0]!.number} issued and paid` : `${created.length} invoices issued and paid`)
+  else
+    toast.error('Invoice issued, but the charge was declined. See the billing history.')
 }
 
 /** Newest first, both kinds of invoice in one list. */
@@ -320,10 +351,18 @@ const history = computed<HistoryRow[]>(() => [
             </p>
             <p class="text-sm text-muted-foreground">
               Covered stays that check out in {{ periodLabel(nextWaiver.period) }}, so far.
-              <NuxtLink to="/damage-protection?tab=billing" class="underline underline-offset-2">
-                See the stays
-              </NuxtLink>
             </p>
+            <Button
+              size="sm"
+              variant="outline"
+              class="mt-2 h-7 text-xs"
+              :disabled="waiver.running.value"
+              data-testid="billing-waiver-run"
+              @click="runNextWaiverBilling"
+            >
+              <Icon v-if="waiver.running.value" name="lucide:loader-2" class="mr-1.5 size-3.5 animate-spin" />
+              Run the {{ fmtDay(nextWaiver.billsOn) }} billing now (demo)
+            </Button>
           </div>
           <div class="text-right">
             <p v-if="!nextWaiver.totals.length" class="text-lg font-semibold tabular-nums">
@@ -395,18 +434,31 @@ const history = computed<HistoryRow[]>(() => [
                 <td class="px-4 py-3 text-right whitespace-nowrap tabular-nums">
                   {{ row.amount }}
                 </td>
-                <td class="px-4 py-3 text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    class="h-7 gap-1 text-xs"
-                    :aria-label="`Download ${row.number} as PDF`"
-                    data-testid="billing-history-pdf"
-                    @click="row.download()"
-                  >
-                    <Icon name="lucide:download" class="size-3.5" />
-                    PDF
-                  </Button>
+                <td class="px-4 py-3">
+                  <div class="flex items-center justify-end gap-1">
+                    <Button
+                      v-if="row.retry"
+                      size="sm"
+                      variant="outline"
+                      class="h-7 text-xs"
+                      :disabled="row.retrying"
+                      data-testid="billing-history-retry"
+                      @click="row.retry()"
+                    >
+                      Retry charge
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-7 gap-1 text-xs"
+                      :aria-label="`Download ${row.number} as PDF`"
+                      data-testid="billing-history-pdf"
+                      @click="row.download()"
+                    >
+                      <Icon name="lucide:download" class="size-3.5" />
+                      PDF
+                    </Button>
+                  </div>
                 </td>
               </tr>
             </tbody>

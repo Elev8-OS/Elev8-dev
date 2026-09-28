@@ -7,6 +7,7 @@ import { Button } from '~/components/ui/button'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSubscriptionBilling } from '~/composables/useSubscriptionBilling'
 import { useTernActivation } from '~/composables/useTernActivation'
+import { useWaiverBilling } from '~/composables/useWaiverBilling'
 
 const pdf = vi.hoisted(() => ({ subscription: vi.fn(), waiver: vi.fn() }))
 vi.mock('~/lib/subscription-invoice-pdf', () => ({ buildSubscriptionInvoicePdf: pdf.subscription }))
@@ -88,5 +89,39 @@ describe('settings billing page', () => {
     const wrapper = mountPanel()
     expect(wrapper.find('[data-testid="billing-waiver-addon"]').text()).toBe('Not activated')
     expect(wrapper.find('[data-testid="billing-next-waiver"]').exists()).toBe(false)
+  })
+
+  it('retries a declined damage waiver invoice from the history once the card works', async () => {
+    const card = { brand: 'visa' as const, last4: '4242', expMonth: 12, expYear: 2030, holderName: 'X' }
+    useSubscriptionBilling().billing.value = createHealthySubscriptionBilling(card)
+    const wrapper = mountPanel()
+    await nextTick()
+    useWaiverBilling().invoices.value = [{
+      id: 'dw-1',
+      number: 'E8-DW-202608-001',
+      period: '2026-08',
+      issuedOn: '2026-09-01',
+      currency: 'USD',
+      lines: [],
+      total: 12,
+      status: 'payment_failed',
+      attempts: 1,
+      billTo: { companyName: 'Tenant', addressLines: [] },
+      paymentMethodId: 'pm_1',
+      cardLabel: 'Visa ending 4242',
+      failureReason: 'Declined: expired card',
+      createdAt: '2026-09-01T00:00:00.000Z',
+    }]
+    await nextTick()
+    const row = wrapper.findAll('[data-testid="billing-history-row"]').find(r => r.text().includes('E8-DW-202608-001'))!
+    // Only the damage waiver row carries a retry: the subscription retries through Update card.
+    expect(wrapper.findAll('[data-testid="billing-history-retry"]')).toHaveLength(1)
+    vi.useFakeTimers()
+    await row.find('[data-testid="billing-history-retry"]').trigger('click')
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+    await nextTick()
+    expect(useWaiverBilling().invoices.value[0]!.status).toBe('paid')
+    expect(wrapper.find('[data-testid="billing-history-retry"]').exists()).toBe(false)
   })
 })

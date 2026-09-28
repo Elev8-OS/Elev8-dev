@@ -299,7 +299,7 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   PARTNER_CLAIM_INFO_REQUESTED: '/damage-protection',
   PARTNER_CLAIM_REJECTED: '/damage-protection',
   PARTNER_CLAIM_PAYOUT_OVERDUE: '/damage-protection',
-  WAIVER_INVOICE_PAYMENT_FAILED: '/damage-protection',
+  WAIVER_INVOICE_PAYMENT_FAILED: '/settings/billing',
   BOOKING_QUOTA_EMPTY: '/',
   BRIDGE_OFFLINE: '/',
   SMART_LOCK_BATTERY_CRITICAL: '/',
