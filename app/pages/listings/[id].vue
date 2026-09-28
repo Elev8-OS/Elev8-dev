@@ -6,6 +6,7 @@ import ListingHeroCompact from '~/components/listings/ListingHeroCompact.vue'
 import ListingMaintenanceTab from '~/components/listings/ListingMaintenanceTab.vue'
 import ListingOverviewTab from '~/components/listings/ListingOverviewTab.vue'
 import ListingPricingTab from '~/components/listings/ListingPricingTab.vue'
+import ListingProtectionTab from '~/components/listings/ListingProtectionTab.vue'
 import ListingReviewsTab from '~/components/listings/ListingReviewsTab.vue'
 import ListingSettingsTab from '~/components/listings/ListingSettingsTab.vue'
 import ListingSetupOverlay from '~/components/listings/ListingSetupOverlay.vue'
@@ -85,6 +86,10 @@ function handleOpenSchedule() {
             <Icon name="lucide:wrench" class="mr-1.5 size-3.5" />
             Maintenance
           </TabsTrigger>
+          <TabsTrigger value="protection">
+            <Icon name="lucide:shield-check" class="mr-1.5 size-3.5" />
+            Protection
+          </TabsTrigger>
           <TabsTrigger value="settings">
             <Icon name="lucide:settings" class="mr-1.5 size-3.5" />
             Settings
@@ -110,6 +115,10 @@ function handleOpenSchedule() {
 
       <TabsContent value="maintenance" class="mt-6">
         <ListingMaintenanceTab :listing="listing" :active-unit="activeUnit" @update="updateListing" />
+      </TabsContent>
+
+      <TabsContent value="protection" class="mt-6">
+        <ListingProtectionTab :listing="listing" />
       </TabsContent>
 
       <TabsContent value="settings" class="mt-6">

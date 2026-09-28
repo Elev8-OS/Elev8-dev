@@ -1,10 +1,13 @@
-import type { BillingPaymentMethod, SubscriptionBilling } from '~/components/billing/data/subscription-billing'
+import type { BillingPaymentMethod, SubscriptionBilling, SubscriptionInvoice } from '~/components/billing/data/subscription-billing'
 import { computed } from 'vue'
 import {
   BILLING_STORAGE_KEY,
+  cardBrandLabels,
   createHealthySubscriptionBilling,
   createMockSubscriptionBilling,
+  createSeedInvoiceHistory,
   daysUntilSuspension,
+  INVOICE_HISTORY_STORAGE_KEY,
 } from '~/components/billing/data/subscription-billing'
 
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -43,6 +46,22 @@ export function useSubscriptionBilling() {
     () => loadFromStorage(BILLING_STORAGE_KEY, createMockSubscriptionBilling()),
   )
   const isProcessing = useState<boolean>('subscription-billing-processing', () => false)
+  /** Every subscription invoice so far, newest first. */
+  const invoices = useState<SubscriptionInvoice[]>(
+    'subscription-invoices',
+    () => loadFromStorage(INVOICE_HISTORY_STORAGE_KEY, createSeedInvoiceHistory(billing.value)),
+  )
+  watch(invoices, value => saveToStorage(INVOICE_HISTORY_STORAGE_KEY, value), { deep: true })
+
+  /** The failed invoice is paid the moment the charge on a working card goes through. */
+  function markFailedInvoicePaid(failedId: string | undefined, pm: BillingPaymentMethod) {
+    if (!failedId)
+      return
+    const now = new Date().toISOString()
+    invoices.value = invoices.value.map(inv => inv.id === failedId
+      ? { ...inv, status: 'paid' as const, paidAt: now, failureReason: undefined, cardLabel: `${cardBrandLabels[pm.brand]} ending ${pm.last4}` }
+      : inv)
+  }
 
   watch(billing, (val) => { saveToStorage(BILLING_STORAGE_KEY, val) }, { deep: true })
 
@@ -75,7 +94,9 @@ export function useSubscriptionBilling() {
       return { ok: false, error: 'The bank declined this card. Try another card or contact your bank.' }
     }
 
+    const failedId = billing.value.failedInvoice?.id
     billing.value = createHealthySubscriptionBilling(pm)
+    markFailedInvoicePaid(failedId, pm)
     return { ok: true }
   }
 
@@ -88,17 +109,22 @@ export function useSubscriptionBilling() {
     await new Promise(resolve => setTimeout(resolve, 1200))
     isProcessing.value = false
 
-    billing.value = createHealthySubscriptionBilling(billing.value.paymentMethod)
+    const failedId = billing.value.failedInvoice?.id
+    const pm = billing.value.paymentMethod
+    billing.value = createHealthySubscriptionBilling(pm)
+    markFailedInvoicePaid(failedId, pm)
     return { ok: true }
   }
 
   /** Demo helper: puts the tenant back into the failed state. */
   function simulatePaymentFailure() {
     billing.value = createMockSubscriptionBilling()
+    invoices.value = createSeedInvoiceHistory(billing.value)
   }
 
   return {
     billing,
+    invoices,
     isProcessing,
     isPaymentFailed,
     isSuspended,

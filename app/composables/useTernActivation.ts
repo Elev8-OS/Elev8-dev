@@ -3,10 +3,12 @@ import { computed } from 'vue'
 import {
   bankDraftToAccount,
   firstInvalidActivationStep,
+  hasConnectedStripePayout,
   TERN_ACTIVATION_TERMS_VERSION,
   ternPayoutTarget,
   validateBankDraft,
 } from '~/components/reservations/data/tern-activation'
+import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useOnboarding } from '~/composables/useOnboarding'
 
@@ -68,6 +70,9 @@ export function useTernActivation() {
   /** The card saved at onboarding for the Elev8 subscription. Null if there is none. */
   const subscriptionPaymentMethodId = computed(() => subscription.value.stripePaymentMethodId)
 
+  /** Activation needs a connected Stripe payout account first. */
+  const hasStripePayout = computed(() => hasConnectedStripePayout(payoutAccounts.value))
+
   const isActive = computed(() => activation.value.status === 'active')
   const isRegistering = computed(() => activation.value.status === 'registering')
   /** Where Tern pays a claim, or null until the service is active. */
@@ -119,6 +124,8 @@ export function useTernActivation() {
       return { ok: false, reason: 'already_active' }
     if (activation.value.status === 'registering')
       return { ok: false, reason: 'already_registering' }
+    if (!hasStripePayout.value)
+      return { ok: false, reason: 'no_stripe_payout' }
     const invalid = firstInvalidActivationStep(draft)
     if (invalid)
       return { ok: false, reason: `invalid_${invalid}` }
@@ -197,6 +204,7 @@ export function useTernActivation() {
     isRegistering,
     payoutTarget,
     subscriptionPaymentMethodId,
+    hasStripePayout,
     hydrate,
     activate,
     updatePayoutBank,

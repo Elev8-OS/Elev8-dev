@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import TernActivationWizard from '~/components/damage-protection/TernActivationWizard.vue'
-import { bankAccountLabel } from '~/components/reservations/data/tern-activation'
+import { bankAccountLabel, PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
 import { useTernActivation } from '~/composables/useTernActivation'
 
 /**
@@ -94,10 +94,23 @@ function when(iso?: string): string {
             Tern pays your claims into. The per-stay fees go on the card on your Elev8 subscription. Until then, policies
             with the waiver are paused and deposit-only policies keep working.
           </p>
+          <p
+            v-if="!tern.hasStripePayout.value"
+            class="mt-2 flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400"
+            data-testid="tern-card-no-stripe"
+          >
+            <Icon name="lucide:alert-triangle" class="mt-0.5 size-3.5 shrink-0" />
+            Connect a Stripe payout account first, in Payouts.
+          </p>
         </div>
       </div>
       <div>
-        <Button size="sm" data-testid="tern-activate-open" @click="openWizard('activate')">
+        <NuxtLink v-if="!tern.hasStripePayout.value" :to="PAYOUT_SETTINGS_PATH">
+          <Button size="sm" data-testid="tern-connect-stripe">
+            Connect Stripe
+          </Button>
+        </NuxtLink>
+        <Button v-else size="sm" data-testid="tern-activate-open" @click="openWizard('activate')">
           {{ activation.status === 'registration_failed' ? 'Try again' : 'Activate' }}
         </Button>
       </div>

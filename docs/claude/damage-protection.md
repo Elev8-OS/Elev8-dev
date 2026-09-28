@@ -270,6 +270,39 @@ Extending across a band boundary re-opens the choice for the added period via
   ⚠️ **The terms version bumps itself** (`bumpTermsVersion`) when the terms wording changed, so
   there is no version field to forget. `newPolicyDraft` is the standard short-term template.
 
+**Listing detail, Protection tab** (`ListingProtectionTab.vue`, `/listings/[id]`, between
+Maintenance and Settings): the same per-listing setup as the settings Listings tab, for one
+listing. Who pays as three radio cards (Host pays disabled until activation), the payout line
+(Stripe takes a deposit, anything else is waiver only), the short/long slot selects or the custom
+ranges reset, the undersized / paused flags (the missing guest guide section is flagged on the settings page only, not here, by request), each assigned policy in plain words with
+**Edit policy** (the same `DamageProtectionPolicySheet`, noting how many other listings share it),
+and **Protected stays**: `dp.rows` for this listing, status chip, link to
+`/reservations?reservation=<id>`, paged 10 to a page (10/20/30/50, same footer as the upsell orders table).
+- **The VACATERN pitch** (`TernPromoDialog.vue`): opening the tab while the activation is
+  `not_activated` or `registration_failed` opens a promo dialog (never while `registering`, never
+  once active). It shows **every visit**: reka's `TabsContent` unmounts a hidden tab, so each
+  click remounts it. It leads with this listing in money: the headline is the cover of the tier
+  sized for `Listing.capacity`, and a folio-style receipt shows guest price (an editable
+  **try-out** value, never saved: the real price is set on the policy), Tern's fee, what is kept
+  per stay, and a yearly estimate that prints its own assumptions (occupancy, average nights).
+  The maths is `damage-protection/data/tern-pitch.ts` (framework-free): `averageStayNights`
+  ignores blocks, cancellations and inquiries and falls back to `DEFAULT_STAY_NIGHTS`,
+  `estimatedStaysPerYear` caps at a full year, a negative margin reads "You pay". The try-out
+  price starts from the listing's own waiver policy, else the standard template. ⚠️ No pitch in a
+  currency Tern does not price (`ternPitchFor` answers null, nothing converted): the dialog falls
+  back to a generic headline with no receipt. Opening focus goes to **Activate damage waiver**
+  (`@open-auto-focus`), not the price field. Only the button bar is fixed; on mobile the receipt
+  comes before the coverage list. **Activate** and the tab's amber banner both open
+  `TernActivationWizard` in place. Staff-facing only, so it may say insurance; it still states the
+  guest sees a waiver. Copy follows Tern's PMC product handbook (guest damage, host liability, bed bugs).
+- ⚠️ **Both screens read one helper**, `damage-protection/data/listing-protection.ts`
+  (`listingProtectionView`, `policyUsage`, `waiverSummary` / `depositSummary`, `currencyBlocked`,
+  `hostBlocked`, `protectionRefusalText(reason, 'settings' | 'listing')`). Add a flag or a refusal
+  there, never in one component, or the two pages disagree. The refusal context only changes where
+  the sentence points (the Policies tab vs Settings, Damage protection).
+- `listingProtectionView` reads every band of the listing, so a custom-range listing gets its flags
+  too (the settings row used to read only the two standard slots).
+
 **Permissions**: `damage_protection` is its own `PermissionModule`. `dashboardView` opens the
 worklist, **`dashboardEdit` gates charging or closing a deposit and releasing a cancelled
 stay's card**. Reading a stay
@@ -291,6 +324,14 @@ the top of `/settings/damage-protection`): **Terms** (`TERN_ACTIVATION_TERMS`, t
 deductible) → **Bank account** (where Tern pays claims) → **Review**, then **Activate** registers the
 tenant as an organization on Tern (mock API, 1.5s, returns a `tern_org_` id; a "simulate Tern
 refusing" switch makes it fail).
+- ⚠️ **A connected Stripe payout account comes first** (owner's decision, 2026-09-28).
+  `hasConnectedStripePayout` (only `provider: 'stripe'` with `status: 'connected'` counts) backs
+  `useTernActivation().hasStripePayout`; without it `activate` refuses (`no_stripe_payout`, checked
+  before the draft), and every way in points to `PAYOUT_SETTINGS_PATH` instead of the wizard: the
+  settings activation card and the listing tab banner show **Connect Stripe**, the VACATERN pitch
+  swaps its button for **Connect Stripe** with "First, connect a Stripe payout account", and the
+  wizard itself shows a notice and keeps Activate disabled (Review row "Stripe payout account").
+  Losing the Stripe account after activation is not handled: nothing deactivates the service.
 - ⚠️ **There is no card step** (owner's decision, 2026-09-25). The per-stay fees go on the card the
   tenant already saved at onboarding for its Elev8 subscription:
   `useOnboarding().subscription.stripePaymentMethodId` is copied onto the activation as
@@ -328,10 +369,46 @@ refusing" switch makes it fail).
   card `pm_demo`, `tern_org_demo_0001`) so the seeded waivers and insurance claims keep working; **Replay
   activation (demo)** resets it to show the flow. Persisted to `elev8-tern-activation-v1`;
   `useDamageProtection().hydrate()` hydrates it first.
-- **Not implemented:** a real Tern API call or webhook, charging the per-stay fees to the
-  subscription card (no billing run), deactivating the service, per-listing bank accounts, and
+- **Not implemented:** a real Tern API call or webhook, deactivating the service, per-listing bank accounts, and
   verifying the account (no micro-deposit or name match). A later change of the subscription card
   is not copied onto the activation.
+
+**Elev8 billing the tenant on the 1st** (`damage-protection/data/waiver-billing.ts` framework-free,
+`useWaiverBilling`, owner's decision 2026-09-28). On the 1st of every month Elev8 invoices the Tern
+per-stay fee for every covered stay whose guest **checked out** in the month before, and charges it
+to the card on the tenant's Elev8 subscription. Surface: the **Elev8 billing** tab on
+`/damage-protection` (`WaiverBillingPanel.vue`).
+- ⚠️ **Billed on check-out, not on booking**, the same way Tern bills Elev8 (monthly in arrears for
+  completed bookings, per Tern's PMC handbook). A cancelled stay never reaches an invoice, so there
+  are no credit lines. Guest-paid and host-paid stays are both billed.
+- ⚠️ **The fee is the frozen `elev8Fee`**, never re-read from `tern-products.ts`. Lines are
+  snapshots (`WaiverInvoiceLine`), and `billTo` is frozen at issue.
+- ⚠️ **One invoice per currency per month**, numbered `E8-DW-YYYYMM-NNN` (running within the month).
+  Nothing converted or blended.
+- ⚠️ **A stay is billed once, ever** (`billableLines` skips any reservation id already on an invoice),
+  and **a month once**: every billed month is a `WaiverBillingRun`, even with nothing to bill.
+- **Billable** = `option: 'waiver'`, `state: 'waiver_active'`, a numeric `elev8Fee`, reservation
+  status not `cancelled` / `blocked` / `owner_request` / `inquiry`, check-out inside the month.
+- **No scheduler**: `runDueBilling(now)` catches up every 1st since the month of
+  `activation.registeredAt` (`periodsDue`), called on the worklist's mount. **Run the 1 Oct billing now
+  (demo)** passes the coming 1st as `now`; the next invoice then moves on a month. The panel shows the
+  month so far (`upcoming`, check-outs up to today) and the history, each row expandable and
+  downloadable (`app/lib/waiver-invoice-pdf.ts`, drawn in the shared `elev8-invoice-pdf-kit.ts` frame, see `tenant-billing.md`; it states in every state
+  whether it was paid).
+- ⚠️ **Same card as the subscription.** The mock charge (1.5s) is **declined while
+  `useSubscriptionBilling().needsPaymentUpdate`** (the header's payment-failed banner), with that
+  decline reason. That raises `WAIVER_INVOICE_PAYMENT_FAILED` (WARNING, in `FINANCE_TYPES`); **Retry
+  charge** (`dashboardEdit`) goes through once the card is updated there and resolves the alert. A
+  reload mid-charge reads as `payment_failed`, never paid. Demo: the seeded subscription is failing,
+  so the demo run shows the declined path first.
+- **Bill to** is the onboarding profile when filled in, else the tenant's default invoice template
+  company (with its VAT number). The issuer is `ELEV8_BILLING_ENTITY`, **Elev8 Software AG**
+  (confirmed 2026-09-28). ⚠️ Name only: its address and tax number are not known yet and none is invented.
+- **Not implemented:** a real charge or Stripe invoice, a scheduled job, tax on the invoice (none is
+  added: Tern's rate is stated tax-inclusive, Elev8's own VAT position is a finance decision), emailing
+  the invoice, and suspending the waiver on a long-unpaid invoice.
+- Persisted to `elev8-waiver-billing-v1`. Tests: `tests/lib/waiver-billing.spec.ts` (10),
+  `tests/composables/useWaiverBilling.spec.ts` (9), `tests/lib/waiver-invoice-pdf.spec.ts` (4).
 
 **Insurance partner (master policy)** (`data/partner-claims.ts` framework-free,
 `usePartnerClaims`, owner's decision 2026-09-24). The property manager is the insured under a
@@ -421,7 +498,7 @@ the same header and `px-3` content padding as the city tax and folio sections: a
 a mock card form, the consent wording and a "simulate a declined card" switch, and hands the
 card back for the section to save FIRST, so a declined card records nothing),
 `DamageProtectionStatusChip.vue` (shared with `ReservationTable`), the `/damage-protection`
-worklist, `/settings/damage-protection`, and in the guide app
+worklist, `/settings/damage-protection`, the listing detail Protection tab, and in the guide app
 `sections/DamageProtectionSection.vue` + `forms/DamageProtectionForm.vue` behind
 `POST /api/guest-guides/by-token/[token]/protection-choice`.
 
@@ -461,6 +538,8 @@ computed at module load; a fixed fixture rots into a stay that already ended.
 `tests/lib/partner-claims.spec.ts` (21),
 `tests/lib/damage-protection-settings.spec.ts` (15),
 `tests/components/settings/DamageProtectionSettings.spec.ts` (26),
+`tests/components/listings/ListingProtectionTab.spec.ts` (15),
+`tests/lib/tern-pitch.spec.ts` (7),
 `tests/composables/usePartnerClaims.spec.ts` (17),
 `tests/components/damage-protection/PartnerClaimPanel.spec.ts` (9),
 `tests/lib/tern-activation.spec.ts` (13),

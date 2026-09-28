@@ -44,6 +44,35 @@ export interface SubscriptionBilling {
 
 export const BILLING_STORAGE_KEY = 'elev8-subscription-billing-v2'
 
+/** Every subscription invoice issued so far, paid or not. The billing page's history. */
+export type SubscriptionInvoiceStatus = 'paid' | 'payment_failed'
+
+export interface SubscriptionInvoice {
+  id: string
+  number: string
+  periodLabel: string
+  /** When it was issued and charged. */
+  issuedOn: string
+  amountUsd: number
+  status: SubscriptionInvoiceStatus
+  planName: string
+  units: number
+  unitRateUsd: number
+  /** The card it was charged to, a label only. */
+  cardLabel: string
+  paidAt?: string
+  failureReason?: string
+}
+
+export const INVOICE_HISTORY_STORAGE_KEY = 'elev8-subscription-invoices-v1'
+
+/**
+ * The demo tenant's package, the same as the onboarding demo seed (16 units on
+ * Growth at USD 59, monthly), so the banner, the history and the next invoice
+ * agree on one amount.
+ */
+export const DEMO_PLAN = { name: 'Growth', units: 16, unitRateUsd: 59 } as const
+
 /** Billing retries a failed charge once a day for seven days, then suspends (PP-502). */
 export const DUNNING_WINDOW_DAYS = 7
 
@@ -89,7 +118,7 @@ export function createMockSubscriptionBilling(): SubscriptionBilling {
     failedInvoice: {
       id: 'inv-2026-09',
       number: 'INV-2026-09-0142',
-      amountUsd: 899,
+      amountUsd: DEMO_PLAN.units * DEMO_PLAN.unitRateUsd,
       periodLabel: 'September 2026',
       dueDate: daysAgo(2),
       firstFailedAt: daysAgo(2),
@@ -113,6 +142,58 @@ export function createHealthySubscriptionBilling(pm: BillingPaymentMethod): Subs
     finalAttemptDate: null,
     updatedAt: new Date().toISOString(),
   }
+}
+
+function monthsBefore(iso: string, months: number): Date {
+  const d = new Date(iso)
+  return new Date(d.getFullYear(), d.getMonth() - months, d.getDate(), 9)
+}
+
+function cardLabel(pm: BillingPaymentMethod | null): string {
+  return pm ? `${cardBrandLabels[pm.brand]} ending ${pm.last4}` : 'No card on file'
+}
+
+/**
+ * Demo history: the failed invoice (when there is one) and the three paid
+ * months before it, each on the same day of the month. Dates are relative to
+ * the failed invoice, so the seed never rots.
+ */
+export function createSeedInvoiceHistory(billing: SubscriptionBilling): SubscriptionInvoice[] {
+  const amount = DEMO_PLAN.units * DEMO_PLAN.unitRateUsd
+  const latest = billing.failedInvoice?.dueDate ?? monthsBefore(new Date().toISOString(), 0).toISOString()
+  const base = { amountUsd: amount, planName: DEMO_PLAN.name, units: DEMO_PLAN.units, unitRateUsd: DEMO_PLAN.unitRateUsd }
+  const paid = [3, 2, 1].map((back) => {
+    const on = monthsBefore(latest, back)
+    const yyyy = on.getFullYear()
+    const mm = String(on.getMonth() + 1).padStart(2, '0')
+    return {
+      ...base,
+      id: `inv-${yyyy}-${mm}`,
+      number: `INV-${yyyy}-${mm}-${String(142 - back * 11).padStart(4, '0')}`,
+      periodLabel: on.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+      issuedOn: on.toISOString(),
+      status: 'paid' as const,
+      cardLabel: cardLabel(billing.paymentMethod),
+      paidAt: on.toISOString(),
+    }
+  })
+  const failed = billing.failedInvoice
+  if (!failed)
+    return paid.reverse()
+  return [
+    {
+      ...base,
+      id: failed.id,
+      number: failed.number,
+      periodLabel: failed.periodLabel,
+      issuedOn: failed.dueDate,
+      amountUsd: failed.amountUsd,
+      status: 'payment_failed' as const,
+      cardLabel: cardLabel(billing.paymentMethod),
+      failureReason: declineReasonLabels[failed.declineReason],
+    },
+    ...paid.reverse(),
+  ]
 }
 
 /** Whole days left before the account is suspended (0 when the window has passed). */
