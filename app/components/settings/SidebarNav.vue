@@ -71,7 +71,7 @@ const sections: Section[] = [
           :key="item.href"
           variant="ghost"
           :class="cn(
-            'w-full text-left justify-start items-start',
+            'w-auto shrink-0 whitespace-nowrap text-left justify-start items-start lg:w-full',
             route.path === item.href && 'bg-muted hover:bg-muted',
           )"
           as-child

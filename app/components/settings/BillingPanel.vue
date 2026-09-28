@@ -219,9 +219,7 @@ const history = computed<HistoryRow[]>(() => [
                 Contract
               </dt>
               <dd>
-                {{ pkg.contractMonths }} months<template v-if="pkg.contractEndsOn">
-                  , until {{ fmtDay(pkg.contractEndsOn) }}
-                </template>
+                {{ pkg.contractEndsOn ? `${pkg.contractMonths} months, until ${fmtDay(pkg.contractEndsOn)}` : `${pkg.contractMonths} months` }}
               </dd>
             </div>
             <div>

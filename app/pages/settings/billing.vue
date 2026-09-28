@@ -1,5 +1,5 @@
 <template>
-  <SettingsLayout>
+  <SettingsLayout wide>
     <SettingsBillingPanel />
   </SettingsLayout>
 </template>
