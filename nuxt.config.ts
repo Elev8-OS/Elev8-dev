@@ -67,6 +67,8 @@ export default defineNuxtConfig({
 
   icon: {
     mode: 'svg',
+    // `elev8:elevai` is the ElevAI mark (gradient, keeps its own colours).
+    customCollections: [{ prefix: 'elev8', dir: './app/assets/icons' }],
     serverBundle: {
       collections: ['lucide', 'logos', 'simple-icons'],
     },

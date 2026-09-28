@@ -43,7 +43,7 @@ function handleClose() {
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
-          <Icon name="i-lucide-sparkles" class="h-4 w-4" :style="{ color: '#C8A84B' }" />
+          <Icon name="elev8:elevai" class="h-4 w-4" />
           Build with AI
         </DialogTitle>
         <DialogDescription>
@@ -86,7 +86,7 @@ function handleClose() {
           Cancel
         </Button>
         <Button :disabled="!prompt.trim()" @click="handleBuild">
-          <Icon name="i-lucide-sparkles" class="mr-2 h-4 w-4" />
+          <Icon name="elev8:elevai" class="mr-2 h-4 w-4" />
           Build
         </Button>
       </DialogFooter>

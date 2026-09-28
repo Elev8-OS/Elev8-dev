@@ -44,7 +44,7 @@ const categoryBadgeClass: Record<string, string> = {
             class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
             :style="{ backgroundColor: '#C8A84B22' }"
           >
-            <Icon name="i-lucide-sparkles" class="h-7 w-7" :style="{ color: '#C8A84B' }" />
+            <Icon name="elev8:elevai" class="h-7 w-7" />
           </div>
           <h2 class="text-2xl font-bold tracking-tight">
             AI Journey Builder
@@ -74,7 +74,7 @@ const categoryBadgeClass: Record<string, string> = {
           </div>
           <div class="mt-4 flex justify-end">
             <Button :disabled="!prompt.trim()" @click="emit('generate', prompt.trim())">
-              <Icon name="i-lucide-sparkles" class="mr-2 h-4 w-4" />
+              <Icon name="elev8:elevai" class="mr-2 h-4 w-4" />
               Generate Journey
             </Button>
           </div>

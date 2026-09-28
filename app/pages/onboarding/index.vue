@@ -585,7 +585,7 @@ function handleLogout(): void {
               </div>
               <div class="flex items-center gap-1.5 text-muted-foreground">
                 <Icon name="lucide:languages" class="size-4 opacity-70" />
-                <Icon name="lucide:sparkles" class="size-4 text-amber-500 opacity-90" />
+                <Icon name="elev8:elevai" class="size-4 opacity-90" />
                 <Icon name="lucide:bell" class="size-4 opacity-70" />
                 <div class="size-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-bold">
                   E

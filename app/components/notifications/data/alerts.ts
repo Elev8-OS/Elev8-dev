@@ -233,7 +233,7 @@ export const alertIcons: Record<AlertType, string> = {
   CALL_INCOMING: 'i-lucide-phone-incoming',
   CALL_MISSED: 'i-lucide-phone-missed',
   CALL_COMPLETED: 'i-lucide-phone',
-  AIRBNB_REVIEW_GENERATED: 'i-lucide-sparkles',
+  AIRBNB_REVIEW_GENERATED: 'elev8:elevai',
   AIRBNB_REVIEW_POSTED: 'i-lucide-check-circle-2',
   AIRBNB_REVIEW_FAILED: 'i-lucide-alert-circle',
   REVIEW_GUEST_LEFT: 'i-lucide-star',

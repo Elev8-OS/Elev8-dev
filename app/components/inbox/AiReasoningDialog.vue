@@ -67,7 +67,7 @@ watch(open, (isOpen) => {
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2 text-base">
-          <Icon name="lucide:sparkles" class="size-4 text-[#C8A84B]" />
+          <Icon name="elev8:elevai" class="size-4" />
           Where did this response come from?
         </DialogTitle>
         <DialogDescription class="sr-only">

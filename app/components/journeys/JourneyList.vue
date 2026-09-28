@@ -242,7 +242,7 @@ function submitRename() {
         <DropdownMenu>
           <div class="flex">
             <Button class="rounded-r-none pr-3" @click="emit('new-journey')">
-              <Icon name="i-lucide-sparkles" class="mr-2 h-4 w-4" />
+              <Icon name="elev8:elevai" class="mr-2 h-4 w-4" />
               Build with AI
             </Button>
             <DropdownMenuTrigger as-child>
@@ -253,7 +253,7 @@ function submitRename() {
           </div>
           <DropdownMenuContent align="end">
             <DropdownMenuItem @click="emit('new-journey')">
-              <Icon name="i-lucide-sparkles" class="mr-2 h-4 w-4" />
+              <Icon name="elev8:elevai" class="mr-2 h-4 w-4" />
               Build with AI
             </DropdownMenuItem>
             <DropdownMenuItem @click="emit('new-journey-scratch')">
@@ -278,7 +278,7 @@ function submitRename() {
         </p>
         <div class="flex gap-2">
           <Button @click="emit('new-journey')">
-            <Icon name="i-lucide-sparkles" class="mr-2 h-4 w-4" />
+            <Icon name="elev8:elevai" class="mr-2 h-4 w-4" />
             Build with AI
           </Button>
           <Button variant="outline" @click="emit('new-journey-scratch')">

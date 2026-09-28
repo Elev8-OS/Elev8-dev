@@ -195,7 +195,7 @@ function templateStatusBadge(status: ScheduledTemplate['status']) {
           title="Rewrite with ElevAI"
           @click="rewriteWithAI"
         >
-          <Icon name="lucide:sparkles" class="size-4" />
+          <Icon name="elev8:elevai" class="size-4" />
         </button>
       </Transition>
       <div

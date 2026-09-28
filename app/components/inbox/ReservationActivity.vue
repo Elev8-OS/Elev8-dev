@@ -100,12 +100,12 @@ const generatedEvents = computed(() => {
         events.push({
           id: `tpl-${tpl.id}`,
           title: `ElevAI skipped — ${tpl.label}`,
-          description: tpl.skipReason.summary,
+          // No summary line: the reason lives behind "Why was this skipped?".
+          description: '',
           timestamp: tpl.skipReason.decidedAt,
           type: 'ai_skip',
           colorDot: 'gold',
           channel: undefined,
-          _canSend: true,
           _templateLabel: tpl.label,
           _templateContent: tpl.content,
           _skipReason: tpl.skipReason,
@@ -187,11 +187,11 @@ const allActivities = computed(() => {
               v-if="event.type === 'ai_skip'"
               class="inline-flex items-center gap-0.5 rounded border border-[#C8A84B]/40 px-1 py-px text-[9px] font-medium text-[#8a7223] dark:text-[#C8A84B]"
             >
-              <Icon name="lucide:sparkles" class="size-2.5" />
+              <Icon name="elev8:elevai" class="size-2.5" />
               ElevAI
             </span>
           </div>
-          <div class="text-xs text-muted-foreground">
+          <div v-if="event.description" class="text-xs text-muted-foreground">
             {{ event.description }}
           </div>
           <div class="flex items-center gap-2 mt-0.5">
@@ -212,9 +212,7 @@ const allActivities = computed(() => {
               :reason="(event as any)._skipReason"
               :template-label="(event as any)._templateLabel"
               :template-content="(event as any)._templateContent"
-              :can-send="!sentTemplates.has(event.id)"
               @update:open="(v: boolean) => openSkipId = v ? event.id : null"
-              @send="sendTemplate(event)"
             />
           </template>
 
@@ -223,7 +221,7 @@ const allActivities = computed(() => {
             class="mt-2 block text-xs text-primary hover:text-primary/80 transition-colors"
             @click="sendTemplate(event)"
           >
-            {{ (event as any)._skipReason ? 'Send it anyway' : 'Send now' }}
+            Send now
           </button>
           <span
             v-else-if="(event as any)._canSend && sentTemplates.has(event.id)"

@@ -167,7 +167,7 @@ function getStatusVariant(status: PhoneCallStatus): 'default' | 'destructive' | 
           <!-- AI Summary -->
           <section v-if="summary">
             <div class="flex items-center gap-2 mb-2">
-              <Icon name="lucide:sparkles" class="size-4 text-[#C8A84B]" />
+              <Icon name="elev8:elevai" class="size-4" />
               <h3 class="text-sm font-semibold">
                 AI Summary
               </h3>

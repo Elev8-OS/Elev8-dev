@@ -66,7 +66,7 @@ function getTimeAgo(isoString: string): string {
         {{ description }}
       </p>
       <p v-if="hasAiSummary" class="inline-flex items-center gap-1 text-xs text-[#C8A84B] mt-1">
-        <Icon name="i-lucide-sparkles" class="size-3" />
+        <Icon name="elev8:elevai" class="size-3" />
         <span class="truncate">AI Summary</span>
       </p>
       <p class="text-xs text-muted-foreground/70 mt-0.5">

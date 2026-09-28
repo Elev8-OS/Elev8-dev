@@ -53,7 +53,7 @@ watch(isOpen, (open) => {
         <!-- Header -->
         <header class="flex h-14 shrink-0 items-center justify-between border-b px-4">
           <div class="flex items-center gap-2">
-            <Icon name="lucide:sparkles" class="size-4 text-primary" />
+            <Icon name="elev8:elevai" class="size-4" />
             <h2 class="text-sm font-medium">Ask AI</h2>
           </div>
           <div class="flex items-center gap-1">

@@ -372,7 +372,7 @@ function handleElevaiDisable() {
     <!-- ElevAI Toggle -->
     <div class="flex items-center justify-between rounded-lg border bg-muted/50 px-3 py-2">
       <div class="flex items-center gap-2">
-        <Icon name="lucide:sparkles" class="size-3.5 text-[#FBC800]" />
+        <Icon name="elev8:elevai" class="size-3.5" />
         <div>
           <div class="text-xs font-medium">
             ElevAI

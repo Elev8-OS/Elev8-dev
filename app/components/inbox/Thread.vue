@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { PhoneCall } from '~/components/inbox/data/conversations'
+import type { AiSkipReason, PhoneCall, ScheduledTemplate } from '~/components/inbox/data/conversations'
 import { differenceInDays, format, isToday, isYesterday } from 'date-fns'
 import { toast } from 'vue-sonner'
 
@@ -159,7 +159,12 @@ const threadItems = computed(() => {
   const notes = conversationNotes.value
     .filter(n => n.authorId !== 'guest')
     .map(n => ({ type: 'note' as const, data: n, timestamp: n.createdAt }))
-  const combined = [...msgs, ...notes]
+  // Skipped templates sit in the thread at the moment ElevAI held them back,
+  // not only in the reservation timeline.
+  const skips = (selectedReservation.value?.scheduledTemplates ?? [])
+    .filter((t): t is ScheduledTemplate & { skipReason: AiSkipReason } => t.status === 'skipped' && !!t.skipReason)
+    .map(t => ({ type: 'skip' as const, data: t, timestamp: t.skipReason.decidedAt }))
+  const combined = [...msgs, ...notes, ...skips]
   combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
   return combined
 })
@@ -504,6 +509,7 @@ function formatCallDate(timestamp: string): string {
                 </Badge>
               </div>
               <InboxThreadMessage v-if="item.type === 'message'" :message="item.data" />
+              <InboxThreadSkipNotice v-else-if="item.type === 'skip'" :template="item.data" />
               <div v-else class="flex justify-end">
                 <div class="flex flex-col gap-1 max-w-[75%]">
                   <div class="flex items-center gap-2">
@@ -513,7 +519,7 @@ function formatCallDate(timestamp: string): string {
                     <span class="text-xs font-medium">Internal Note</span>
                     <span class="text-[10px] text-muted-foreground">· {{ item.data.authorName }}</span>
                     <span v-if="item.data.visibleToAI" class="inline-flex items-center gap-0.5 text-[10px] text-[#FBC800]">
-                      <Icon name="lucide:sparkles" class="size-3" />
+                      <Icon name="elev8:elevai" class="size-3" />
                       ElevAI
                     </span>
                   </div>
@@ -527,7 +533,7 @@ function formatCallDate(timestamp: string): string {
                             type="checkbox"
                             class="size-3 rounded border-warning-foreground/30 accent-[#FBC800]"
                           >
-                          <Icon name="lucide:sparkles" class="size-2.5 text-[#FBC800]" />
+                          <Icon name="elev8:elevai" class="size-2.5" />
                           ElevAI
                         </label>
                         <div class="flex items-center gap-1">
@@ -672,7 +678,7 @@ function formatCallDate(timestamp: string): string {
                   <span>·</span>
                   <span>{{ formatNoteDate(call.timestamp) }}</span>
                   <span class="inline-flex items-center gap-0.5 text-[#FBC800]">
-                    <Icon name="lucide:sparkles" class="size-3" />
+                    <Icon name="elev8:elevai" class="size-3" />
                     ElevAI
                   </span>
                 </div>
@@ -689,7 +695,7 @@ function formatCallDate(timestamp: string): string {
                       type="checkbox"
                       class="size-3.5 rounded border-muted-foreground/30 accent-[#FBC800]"
                     >
-                    <Icon name="lucide:sparkles" class="size-3 text-[#FBC800]" />
+                    <Icon name="elev8:elevai" class="size-3" />
                     Let ElevAI read this note
                   </label>
                   <div class="flex items-center gap-1.5">
@@ -712,7 +718,7 @@ function formatCallDate(timestamp: string): string {
                     <span>·</span>
                     <span>{{ formatNoteDate(note.createdAt) }}</span>
                     <span v-if="note.visibleToAI" class="inline-flex items-center gap-0.5 text-[#FBC800]">
-                      <Icon name="lucide:sparkles" class="size-3" />
+                      <Icon name="elev8:elevai" class="size-3" />
                       ElevAI
                     </span>
                   </div>
@@ -745,7 +751,7 @@ function formatCallDate(timestamp: string): string {
                   type="checkbox"
                   class="size-3.5 rounded border-muted-foreground/30 accent-[#FBC800]"
                 >
-                <Icon name="lucide:sparkles" class="size-3 text-[#FBC800]" />
+                <Icon name="elev8:elevai" class="size-3" />
                 Let ElevAI read this note
               </label>
               <Button size="sm" :disabled="!newNoteContent.trim()" @click="handleAddNote">
@@ -879,7 +885,7 @@ function formatCallDate(timestamp: string): string {
                     </div>
                     <div v-else-if="call.summary" class="mt-1.5 text-xs leading-relaxed bg-[#FBC800]/5 border border-[#FBC800]/20 rounded px-2 py-1.5">
                       <div class="flex items-center gap-1 mb-0.5 text-[10px] text-[#FBC800]">
-                        <Icon name="lucide:sparkles" class="size-2.5" />
+                        <Icon name="elev8:elevai" class="size-2.5" />
                         <span class="font-medium">AI Summary</span>
                       </div>
                       <span class="text-muted-foreground">{{ call.summary }}</span>

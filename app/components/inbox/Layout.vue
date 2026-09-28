@@ -227,7 +227,7 @@ function setInboxView(view: 'conversations' | 'calls' | 'internal') {
                     <Icon name="lucide:plug" class="size-4 shrink-0 text-muted-foreground" /><span>Integrations</span>
                   </button>
                   <button type="button" class="flex w-full flex-row items-center justify-start gap-2.5 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors text-left" @click="openSheet('ai')">
-                    <Icon name="lucide:sparkles" class="size-4 shrink-0 text-muted-foreground" /><span>AI Conversation Settings</span>
+                    <Icon name="elev8:elevai" class="size-4 shrink-0 text-muted-foreground" /><span>AI Conversation Settings</span>
                   </button>
                 </PopoverContent>
               </Popover>

@@ -231,7 +231,7 @@ const isFilled = (val?: string) => !!val?.trim()
                   </button>
                 </div>
                 <span v-if="isFilled(basics.description)" class="text-[10px] text-primary flex items-center gap-1">
-                  <Icon name="lucide:sparkles" class="size-3" /> AI filled
+                  <Icon name="elev8:elevai" class="size-3" /> AI filled
                 </span>
               </div>
               <Textarea :model-value="basics.description ?? ''" rows="5" placeholder="Describe your property..." @update:model-value="(v) => updateBasics({ description: String(v) })" />
@@ -269,7 +269,7 @@ const isFilled = (val?: string) => !!val?.trim()
             <div class="flex items-center justify-between">
               <Label>Full Listing Description</Label>
               <span v-if="isFilled(listing.resources.listingDetails)" class="text-[10px] text-primary flex items-center gap-1">
-                <Icon name="lucide:sparkles" class="size-3" /> AI filled
+                <Icon name="elev8:elevai" class="size-3" /> AI filled
               </span>
             </div>
             <Textarea

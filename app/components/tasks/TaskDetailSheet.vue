@@ -334,7 +334,7 @@ function formatDate(iso: string): string {
 
             <!-- HostBuddy link -->
             <div v-if="task.linkedInventoryItemName" class="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-              <Icon name="lucide:sparkles" class="h-4 w-4 shrink-0 text-[#C8A84B]" />
+              <Icon name="elev8:elevai" class="h-4 w-4 shrink-0" />
               <span>Linked to <strong>{{ task.linkedInventoryItemName }}</strong></span>
             </div>
 

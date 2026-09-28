@@ -101,7 +101,7 @@ export const columns: ColumnDef<Task>[] = [
         return h('span', { class: 'text-muted-foreground text-sm' }, '—')
       return h('div', { class: 'flex items-center gap-1.5' }, [
         detected
-          ? h(Icon, { name: 'lucide:sparkles', class: 'h-3 w-3 shrink-0 text-[#C8A84B]' })
+          ? h(Icon, { name: 'elev8:elevai', class: 'h-3 w-3 shrink-0' })
           : null,
         h(Badge, { variant: 'outline', class: 'text-xs font-normal' }, () => itemName),
       ])

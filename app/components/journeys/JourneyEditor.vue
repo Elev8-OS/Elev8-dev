@@ -321,7 +321,7 @@ const addStepGroups = computed(() => {
           :disabled="!localJourney.name.trim()"
           @click="buildAIOpen = true"
         >
-          <Icon name="i-lucide-sparkles" class="mr-1.5 h-3.5 w-3.5" />
+          <Icon name="elev8:elevai" class="mr-1.5 h-3.5 w-3.5" />
           Build with AI
         </Button>
         <Button variant="outline" size="sm" class="h-8" @click="saveTemplateOpen = true">

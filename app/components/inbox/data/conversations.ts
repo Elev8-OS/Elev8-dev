@@ -153,11 +153,16 @@ export interface AiReasoning {
 
 /**
  * Why ElevAI held back a scheduled template. A skip is a decision, so it is
- * explained the same way a reply is, and the host can still send the template
- * by hand from the timeline.
+ * explained the same way a reply is. There is deliberately no way to send the
+ * held-back template from the timeline: a host who disagrees writes in the
+ * thread.
  */
 export interface AiSkipReason {
-  /** One line for the timeline row, e.g. "Sarah already had the details." */
+  /**
+   * One line, e.g. "Sarah already had the details." Not rendered in the Inbox:
+   * the thread and the timeline show only "Why was this skipped?". Kept for
+   * the Journey run log.
+   */
   summary: string
   /** Prose answer to "why was this skipped?", shown in the dialog. */
   explanation: string
@@ -2306,7 +2311,7 @@ export const reservations: Record<string, Reservation> = {
         content: 'Hi Sarah! Check-in is from 15:00. Our team will meet you at the villa gate with the keys and walk you through the property.',
         skipReason: {
           summary: 'Sarah already had the check-in details from chat.',
-          explanation: 'Sarah asked what time check-in was on 25 April and was answered with 15:00 in the thread, and the early check-in follow-up was settled the same day. The scheduled template carries the same two facts and nothing else, so sending it on the morning of arrival would have repeated a conversation she had already had. It was held back rather than cancelled, so it can still be sent by hand if the arrival plan changes.',
+          explanation: 'Sarah asked what time check-in was on 25 April and was answered with 15:00 in the thread, and the early check-in follow-up was settled the same day. The scheduled template carries the same two facts and nothing else, so sending it on the morning of arrival would have repeated a conversation she had already had. It was held back rather than cancelled, so the decision stays on the timeline if the arrival plan changes.',
           decidedAt: '2026-04-26T09:00:00Z',
         },
       },

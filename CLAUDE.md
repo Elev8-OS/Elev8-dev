@@ -111,6 +111,8 @@ Specs and plans: `docs/superpowers/{specs,plans,changelogs}/`, PRDs in `docs/prd
 
 `lucide:` by default (`<Icon name="lucide:user-check" />`). OTA logos `logos:airbnb`, `simple-icons:bookingdotcom`. Collections bundled: lucide, logos, simple-icons (no `lucide:broom`; use `lucide:brush-cleaning`).
 
+**ElevAI / AI icon**: always `<Icon name="elev8:elevai" />` (custom collection in `app/assets/icons/`, gradient artwork) or `<SharedAiIcon />`, never `lucide:sparkles`. Colour classes have no effect on it. `lucide:sparkles` is still fine where it does not mean AI (housekeeping, upsells, promo).
+
 ## 🚫 Anti-Patterns
 
 - Clone HTML from an existing component → import and compose

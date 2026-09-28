@@ -36,6 +36,12 @@
   - `ThreadMessage.vue`: when auto-translate ON → bubble shows translated text only + "Translated" label; when OFF → shows original
   - `ReplyBox.vue`: shows "Messages will be auto-translated to {guestLanguage}" indicator when ON
 
+#### AI reasons (why ElevAI sent or skipped)
+- `Message.aiReasoning` on `aiWritten` messages: hover "Why this answer?" opens `AiReasoningDialog` (prose + optional listing field fix via `app/lib/ai-knowledge.ts`)
+- `ScheduledTemplate.status: 'skipped'` + `skipReason { summary, explanation, decidedAt }`: shown in two places, the reservation timeline (`ReservationActivity.vue`) and the Messages tab at `decidedAt` (`ThreadSkipNotice.vue`, merged into `threadItems` in `Thread.vue`). Both show only the label and a "Why was this skipped?" button (no `summary` line) that opens `AiSkipReasonDialog`
+- ⚠️ A skipped template has **no send action** (no "Send it anyway"), in the dialog or the timeline, by decision: a host who disagrees writes in the thread. "Send now" on cancelled rows is separate and stays
+- PRD: Claude Doc "PRD: Inbox AI Send Reasons and Journey Skip Reasons" (reason codes, Journey refs, next phases)
+
 #### Phone Call Features
 - `PhoneCall` interface with `direction`, `status`, `duration`, `transcript`, `summary`, `recording_url`
 - Phone tab in Thread.vue — call history with transcript expand/collapse, download recording, AI summary block per call (gold-tinted, ElevAI badge)

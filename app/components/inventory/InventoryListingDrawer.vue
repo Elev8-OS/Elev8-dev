@@ -327,7 +327,7 @@ function formatRelativeDate(iso: string) {
                     v-if="event.actor === 'hostbuddy'"
                     class="inline-flex items-center gap-1 text-xs font-medium text-[#C8A84B]"
                   >
-                    <Icon name="lucide:sparkles" class="h-2.5 w-2.5" />
+                    <Icon name="elev8:elevai" class="h-2.5 w-2.5" />
                     HostBuddy
                   </span>
                   <span v-else class="text-xs text-muted-foreground">Staff</span>

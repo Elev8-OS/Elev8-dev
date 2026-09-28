@@ -279,7 +279,7 @@ const dateLabel = computed(() => {
         </AvatarFallback>
       </Avatar>
       <div v-if="isAiWritten" class="flex size-8 shrink-0 mt-1 items-center justify-center rounded-full bg-[#FBC800]/10">
-        <Icon name="lucide:sparkles" class="size-4 text-[#FBC800]" />
+        <Icon name="elev8:elevai" class="size-4" />
       </div>
 
       <div class="group/msg flex flex-col gap-1 max-w-[75%]">
@@ -287,7 +287,7 @@ const dateLabel = computed(() => {
           <span class="text-xs font-medium">{{ displayName }}</span>
           <span v-if="displayLabel" class="text-[10px] text-muted-foreground">{{ displayLabel }}</span>
           <span v-if="isAiWritten" class="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-            <Icon name="lucide:sparkles" class="size-3" />
+            <Icon name="elev8:elevai" class="size-3" />
             AI
           </span>
           <span v-if="message.channel" class="text-[10px] text-muted-foreground">via {{ message.channel }}</span>
@@ -329,7 +329,7 @@ const dateLabel = computed(() => {
             :class="[reasoningOpen && 'opacity-100', message.sender === 'guest' ? 'self-start' : 'self-end']"
             @click="reasoningOpen = true"
           >
-            <Icon name="lucide:sparkles" class="size-2.5 text-[#C8A84B]" />
+            <Icon name="elev8:elevai" class="size-2.5" />
             Why this answer?
           </button>
           <InboxAiReasoningDialog v-model:open="reasoningOpen" :reasoning="reasoning" />

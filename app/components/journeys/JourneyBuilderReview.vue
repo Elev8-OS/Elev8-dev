@@ -120,7 +120,7 @@ const stepMeta: Record<string, { icon: string, colorClasses: string }> = {
       <div class="w-80 shrink-0 border-l overflow-y-auto p-4 flex flex-col gap-4">
         <div v-if="journey.aiReasoning" class="rounded-lg border bg-card p-4">
           <div class="flex items-center gap-2 mb-2">
-            <Icon name="i-lucide-sparkles" class="h-4 w-4" :style="{ color: '#C8A84B' }" />
+            <Icon name="elev8:elevai" class="h-4 w-4" />
             <span class="text-sm font-semibold">AI Reasoning</span>
           </div>
           <p class="text-xs text-muted-foreground leading-relaxed">
@@ -167,7 +167,7 @@ const stepMeta: Record<string, { icon: string, colorClasses: string }> = {
             @click="handleRefine"
           >
             <Icon v-if="isRefining" name="i-lucide-loader-2" class="mr-2 h-4 w-4 animate-spin" />
-            <Icon v-else name="i-lucide-sparkles" class="mr-2 h-4 w-4" />
+            <Icon v-else name="elev8:elevai" class="mr-2 h-4 w-4" />
             {{ isRefining ? 'Refining…' : 'Refine Journey' }}
           </Button>
         </div>

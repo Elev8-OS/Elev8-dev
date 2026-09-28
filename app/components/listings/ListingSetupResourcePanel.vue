@@ -232,7 +232,7 @@ function saveAiDocument() {
             :disabled="listing.resources.documents.length >= MAX_DOCS"
             @click="openAiDialog"
           >
-            <Icon name="lucide:sparkles" class="size-3.5" />
+            <Icon name="elev8:elevai" class="size-3.5" />
             Generate with AI
           </Button>
         </div>
@@ -262,7 +262,7 @@ function saveAiDocument() {
           </div>
           <Button class="w-full gap-1.5" :disabled="isAutoFilling" @click="autoFill">
             <Icon v-if="isAutoFilling" name="lucide:loader-2" class="size-3.5 animate-spin" />
-            <Icon v-else name="lucide:sparkles" class="size-3.5" />
+            <Icon v-else name="elev8:elevai" class="size-3.5" />
             {{ isAutoFilling ? 'Filling...' : 'Auto-Fill Property Details' }}
           </Button>
           <Button variant="outline" class="w-full gap-1.5" @click="showCopyDialog = true">
@@ -304,7 +304,7 @@ function saveAiDocument() {
       <DialogContent class="max-w-lg">
         <DialogHeader>
           <DialogTitle class="flex items-center gap-2">
-            <Icon name="lucide:sparkles" class="size-4 text-primary" />
+            <Icon name="elev8:elevai" class="size-4" />
             Generate Document with AI
           </DialogTitle>
           <DialogDescription>
@@ -369,7 +369,7 @@ function saveAiDocument() {
             :disabled="!aiPrompt.trim() || isAiGenerating"
             @click="generateAiDocument"
           >
-            <Icon name="lucide:sparkles" class="size-3.5 mr-1.5" />
+            <Icon name="elev8:elevai" class="size-3.5 mr-1.5" />
             Generate
           </Button>
           <Button

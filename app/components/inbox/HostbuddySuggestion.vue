@@ -15,7 +15,7 @@ const emit = defineEmits<HostbuddySuggestionEmits>()
     class="flex items-center gap-2 rounded-full border border-[#FBC800]/30 bg-[#FBC800]/10 px-3 py-1.5 text-sm transition-all hover:border-[#FBC800]/50 hover:bg-[#FBC800]/20 cursor-pointer min-w-0"
     @click="emit('use', suggestion.content)"
   >
-    <span class="shrink-0 text-sm">&#10024;</span>
+    <Icon name="elev8:elevai" class="size-4 shrink-0" />
     <span class="shrink-0 text-[#FBC800] font-medium">ElevAI</span>
     <span class="text-muted-foreground truncate min-w-0">{{ suggestion.content }}</span>
     <Icon name="lucide:arrow-down-left" class="size-3.5 text-[#FBC800] shrink-0" />
