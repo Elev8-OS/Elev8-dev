@@ -43,6 +43,11 @@ reservation migrates.
   separate total and never merged in. `commit()` also moves `guestPaid` and
   `payout` by the same delta as `extras`, in lockstep, and leaves `commission`
   untouched, since a desk-posted extra carries no OTA commission.
+- **Extending a stay** (`useReservationsModule().extendReservation`, from the
+  detail sheet's Modify menu) is the one other writer of `priceDetails`: it
+  moves `subtotal`, `guestPaid` and `payout` by the added nights' amount and
+  raises `totalPrice`, but never touches `extras`. Room-line stays grow only
+  their per-night lines, so the Edit dialog's rebuilt total agrees.
 - ⚠️ **`useReservationFolio` never writes to `useUpsellOrders`**, and each action
   patches the items array and its `ActivityEvent` in **one**
   `updateReservation` call so a posting and its audit line cannot land apart.

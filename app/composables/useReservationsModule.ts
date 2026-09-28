@@ -1,9 +1,11 @@
+import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
-import { generateGuestId, generateReservationId, initialGuests, initialReservations } from '~/components/reservations/data/reservations'
+import { generateGuestId, generateReservationId, initialGuests, initialReservations, nightsBetween } from '~/components/reservations/data/reservations'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { usePromoRedemption } from '~/composables/usePromoRedemption'
 
 export interface ReservationFilters {
@@ -24,6 +26,37 @@ export interface UnitConflict {
 
 function rangesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): boolean {
   return aIn < bOut && bIn < aOut
+}
+
+export const DEFAULT_CHECK_IN_TIME = '14:00'
+export const DEFAULT_CHECK_OUT_TIME = '11:00'
+
+const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+
+/** Statuses a stay can no longer be extended from. */
+export const NON_EXTENDABLE_STATUSES: ReservationStatus[] = ['cancelled', 'checked_out']
+/** Once the guest is in (or the stay is over), the check-in time is history. */
+export const CHECK_IN_TIME_LOCKED_STATUSES: ReservationStatus[] = ['checked_in', 'checked_out', 'cancelled']
+/** A checked-in guest can still get a late check-out; a finished stay cannot. */
+export const CHECK_OUT_TIME_LOCKED_STATUSES: ReservationStatus[] = ['checked_out', 'cancelled']
+
+/** IDR has no minor unit; everything else rounds to cents. */
+function roundForCurrency(amount: number, currency: string): number {
+  return currency === 'IDR' ? Math.round(amount) : Math.round(amount * 100) / 100
+}
+
+function isPerNightLine(line: ReservationRoomLine): boolean {
+  return (line.priceMode ?? 'per_night') === 'per_night'
+}
+
+export interface ExtensionQuote {
+  extraNights: number
+  newNights: number
+  nightlyRate: number
+  amount: number
+  newTotal: number
+  /** true when the rate comes from the booked room lines and is not editable. */
+  rateFromRooms: boolean
 }
 
 export function useReservationsModule() {
@@ -270,6 +303,184 @@ export function useReservationsModule() {
     )
   }
 
+  function listingBasics(listingId: string) {
+    return listings.value.find(l => l.id === listingId)?.resources?.basics
+  }
+
+  /** The stay's agreed check-in time, else the listing's, else the house default. */
+  function getCheckInTime(r: ReservationEntry): string {
+    return r.checkInTime ?? getListingCheckInTime(r.listingId)
+  }
+
+  function getListingCheckInTime(listingId: string): string {
+    return listingBasics(listingId)?.checkInTime ?? DEFAULT_CHECK_IN_TIME
+  }
+
+  /** The stay's agreed check-out time, else the listing's, else the house default. */
+  function getCheckOutTime(r: ReservationEntry): string {
+    return r.checkOutTime ?? getListingCheckOutTime(r.listingId)
+  }
+
+  function getListingCheckOutTime(listingId: string): string {
+    return listingBasics(listingId)?.checkOutTime ?? DEFAULT_CHECK_OUT_TIME
+  }
+
+  function actorName(): string {
+    return useCurrentDashboardUser().currentUser.value?.name ?? 'Staff'
+  }
+
+  function activityEvent(kind: string, title: string, description: string): ActivityEvent {
+    return {
+      id: `act-${kind}-${Date.now()}`,
+      type: 'reservation',
+      title,
+      description,
+      actor: actorName(),
+      timestamp: new Date().toISOString(),
+      colorDot: 'blue',
+    }
+  }
+
+  /**
+   * Sets this stay's check-in and/or check-out time. A time equal to the
+   * listing's own clears the override, so the stay follows the listing again.
+   * Check-in is fixed once the guest is in; check-out once the stay is over.
+   */
+  function updateReservationTimes(id: string, times: { checkInTime?: string, checkOutTime?: string }): { success: boolean, error?: string } {
+    const r = reservations.value.find(x => x.id === id)
+    if (!r)
+      return { success: false, error: 'Reservation not found.' }
+    if (times.checkInTime !== undefined && CHECK_IN_TIME_LOCKED_STATUSES.includes(r.status))
+      return { success: false, error: 'The check-in time can no longer be changed for this stay.' }
+    if (times.checkOutTime !== undefined && CHECK_OUT_TIME_LOCKED_STATUSES.includes(r.status))
+      return { success: false, error: 'The check-out time can no longer be changed for this stay.' }
+    for (const t of [times.checkInTime, times.checkOutTime]) {
+      if (t !== undefined && !TIME_PATTERN.test(t))
+        return { success: false, error: 'Enter a time as HH:MM.' }
+    }
+
+    const patch: Partial<ReservationEntry> = {}
+    const changes: string[] = []
+    if (times.checkInTime !== undefined && times.checkInTime !== getCheckInTime(r)) {
+      changes.push(`check-in ${getCheckInTime(r)} to ${times.checkInTime}`)
+      patch.checkInTime = times.checkInTime === getListingCheckInTime(r.listingId) ? undefined : times.checkInTime
+    }
+    if (times.checkOutTime !== undefined && times.checkOutTime !== getCheckOutTime(r)) {
+      changes.push(`check-out ${getCheckOutTime(r)} to ${times.checkOutTime}`)
+      patch.checkOutTime = times.checkOutTime === getListingCheckOutTime(r.listingId) ? undefined : times.checkOutTime
+    }
+    if (!changes.length)
+      return { success: true }
+
+    const description = changes.join(', ')
+    const event = activityEvent('stay-times', 'Reservation time changed', description.charAt(0).toUpperCase() + description.slice(1))
+    reservations.value = reservations.value.map(x =>
+      x.id === id ? { ...x, ...patch, activity: [...x.activity, event] } : x,
+    )
+    return { success: true }
+  }
+
+  /** Nightly rate an extension is priced at when the stay has no room lines. */
+  function defaultNightlyRate(r: ReservationEntry): number {
+    if (r.rooms?.length)
+      return roundForCurrency(r.rooms.filter(isPerNightLine).reduce((sum, l) => sum + l.pricePerNight, 0), r.currency)
+    const base = r.priceDetails?.subtotal || r.totalPrice
+    return roundForCurrency(base / Math.max(r.nights, 1), r.currency)
+  }
+
+  /**
+   * Prices moving check-out to `newCheckOut`. Room-line stays are priced from
+   * their per-night lines (flat-rate lines do not grow), so the Edit dialog,
+   * which rebuilds the total from the lines, lands on the same number.
+   */
+  function quoteExtension(r: ReservationEntry, newCheckOut: string, nightlyRate?: number): ExtensionQuote {
+    const extraNights = Math.max(nightsBetween(r.checkOut, newCheckOut), 0)
+    const rateFromRooms = Boolean(r.rooms?.length)
+    const rate = rateFromRooms ? defaultNightlyRate(r) : Math.max(nightlyRate ?? defaultNightlyRate(r), 0)
+    const amount = roundForCurrency(rate * extraNights, r.currency)
+    return {
+      extraNights,
+      newNights: r.nights + extraNights,
+      nightlyRate: rate,
+      amount,
+      newTotal: roundForCurrency(r.totalPrice + amount, r.currency),
+      rateFromRooms,
+    }
+  }
+
+  /**
+   * Stays that already hold the listing (or, for room-line bookings, one of
+   * the same units) in the nights the extension would add.
+   */
+  function getExtensionConflicts(id: string, newCheckOut: string): ReservationEntry[] {
+    const r = reservations.value.find(x => x.id === id)
+    if (!r || newCheckOut <= r.checkOut)
+      return []
+    const ownUnits = new Set((r.rooms ?? []).map(l => l.unitId))
+    return reservations.value.filter((other) => {
+      if (other.id === r.id || other.listingId !== r.listingId || other.status === 'cancelled')
+        return false
+      if (other.status === 'inquiry' && other.blocksAvailability === false)
+        return false
+      if (!rangesOverlap(r.checkOut, newCheckOut, other.checkIn, other.checkOut))
+        return false
+      // Both booked by unit: only a shared unit collides.
+      if (ownUnits.size && other.rooms?.length)
+        return other.rooms.some(l => ownUnits.has(l.unitId))
+      return true
+    })
+  }
+
+  function extendReservation(id: string, input: { checkOut: string, nightlyRate?: number }): { success: boolean, error?: string } {
+    const r = reservations.value.find(x => x.id === id)
+    if (!r)
+      return { success: false, error: 'Reservation not found.' }
+    if (NON_EXTENDABLE_STATUSES.includes(r.status))
+      return { success: false, error: 'This stay can no longer be extended.' }
+    if (input.checkOut <= r.checkOut)
+      return { success: false, error: 'Pick a check-out date after the current one.' }
+    const conflicts = getExtensionConflicts(id, input.checkOut)
+    if (conflicts.length)
+      return { success: false, error: `Those nights are already booked by ${conflicts[0]!.guestName}.` }
+
+    const quote = quoteExtension(r, input.checkOut, input.nightlyRate)
+    const rooms = r.rooms?.map(l => isPerNightLine(l)
+      ? { ...l, lineTotal: roundForCurrency(l.pricePerNight * quote.newNights, r.currency) }
+      : l)
+    // The folio owns `priceDetails.extras`; the extension only moves the room
+    // subtotal and keeps guestPaid / payout in step, as the folio does.
+    const priceDetails = r.priceDetails
+      ? {
+          ...r.priceDetails,
+          subtotal: roundForCurrency(r.priceDetails.subtotal + quote.amount, r.currency),
+          guestPaid: roundForCurrency(r.priceDetails.guestPaid + quote.amount, r.currency),
+          payout: roundForCurrency(r.priceDetails.payout + quote.amount, r.currency),
+        }
+      : undefined
+
+    const amountLabel = `${r.currency} ${quote.amount.toLocaleString('en-US', { minimumFractionDigits: r.currency === 'IDR' ? 0 : 2, maximumFractionDigits: r.currency === 'IDR' ? 0 : 2 })}`
+    const event = activityEvent(
+      'extend',
+      'Stay extended',
+      `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'} added, check-out moved from ${r.checkOut} to ${input.checkOut} · ${amountLabel}`,
+    )
+
+    reservations.value = reservations.value.map(x =>
+      x.id === id
+        ? {
+            ...x,
+            checkOut: input.checkOut,
+            nights: quote.newNights,
+            totalPrice: quote.newTotal,
+            ...(rooms ? { rooms } : {}),
+            ...(priceDetails ? { priceDetails } : {}),
+            activity: [...x.activity, event],
+          }
+        : x,
+    )
+    return { success: true }
+  }
+
   function reset() {
     reservations.value = initialReservations.map(r => ({ ...r }))
     guests.value = initialGuests.map(g => ({ ...g }))
@@ -291,6 +502,15 @@ export function useReservationsModule() {
     updateReservation,
     getUnitConflicts,
     getConflictedUnitIds,
+    getCheckInTime,
+    getListingCheckInTime,
+    getCheckOutTime,
+    getListingCheckOutTime,
+    updateReservationTimes,
+    defaultNightlyRate,
+    quoteExtension,
+    getExtensionConflicts,
+    extendReservation,
     reset,
   }
 }

@@ -10,6 +10,7 @@ import ReservationCityTaxSection from '~/components/reservations/ReservationCity
 import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
+import ReservationModifyMenu from '~/components/reservations/ReservationModifyMenu.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
@@ -34,7 +35,7 @@ const emit = defineEmits<{
   'openGuest': [id: string]
 }>()
 
-const { reservations, updateReservationStatus } = useReservationsModule()
+const { reservations, updateReservationStatus, getCheckInTime, getCheckOutTime } = useReservationsModule()
 const inbox = useInbox()
 
 /**
@@ -331,7 +332,7 @@ const guestGuideRoute = computed(() => {
           <div class="min-w-0 flex-1 flex-col h-full overflow-hidden flex">
             <!-- Details view (default) -->
             <div v-if="activeTab === 'details'" class="flex flex-col h-full overflow-hidden">
-              <!-- Header: status dropdown + edit reservation button -->
+              <!-- Header: status dropdown + Modify menu (edit / check-in time / extend) -->
               <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5">
                 <Select :model-value="reservation.status" @update:model-value="onStatusChange">
                   <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
@@ -380,10 +381,11 @@ const guestGuideRoute = computed(() => {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <Button variant="outline" size="sm" class="h-8 gap-1.5 text-xs font-medium" @click="editOpen = true">
-                    <Icon name="lucide:pencil" class="size-3.5" />
-                    <span>Edit reservation</span>
-                  </Button>
+                  <ReservationModifyMenu
+                    :reservation="reservation"
+                    button-class="h-8 gap-1.5 text-xs font-medium"
+                    @edit="editOpen = true"
+                  />
                 </div>
               </div>
 
@@ -443,8 +445,8 @@ const guestGuideRoute = computed(() => {
                           <div class="text-base font-semibold">
                             {{ fmtDate(reservation.checkIn) }}
                           </div>
-                          <div class="text-xs text-muted-foreground">
-                            14:00
+                          <div class="text-xs text-muted-foreground" data-testid="reservation-checkin-time">
+                            {{ getCheckInTime(reservation) }}
                           </div>
                         </div>
                         <div class="flex flex-col items-center gap-1">
@@ -463,7 +465,7 @@ const guestGuideRoute = computed(() => {
                             {{ fmtDate(reservation.checkOut) }}
                           </div>
                           <div class="text-xs text-muted-foreground">
-                            11:00
+                            {{ getCheckOutTime(reservation) }}
                           </div>
                         </div>
                       </div>

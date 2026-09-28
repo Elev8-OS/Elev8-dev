@@ -9,10 +9,10 @@ import { describe, expect, it } from 'vitest'
 describe('reservation detail inbox button', () => {
   const source = readFileSync(join(process.cwd(), 'app/components/reservations/ReservationDetailSheet.vue'), 'utf8')
 
-  it('sits in the header beside Edit reservation', () => {
+  it('sits in the header beside the Modify menu', () => {
     const header = source.slice(source.indexOf('Header: status dropdown'), source.indexOf('<ScrollArea'))
     expect(header).toContain('data-testid="reservation-open-inbox"')
-    expect(header).toContain('Edit reservation')
+    expect(header).toContain('<ReservationModifyMenu')
   })
 
   it('opens the conversation through openForReservation, closes the sheet and goes to the inbox', () => {

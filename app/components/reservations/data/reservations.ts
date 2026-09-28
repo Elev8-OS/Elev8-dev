@@ -385,6 +385,13 @@ export interface ReservationEntry {
   activity: ActivityEvent[]
   /** Estimated guest arrival time ("HH:MM"). */
   estimatedArrivalTime?: string
+  /**
+   * Agreed check-in time for this stay ("HH:MM"), e.g. an early check-in.
+   * Absent means the listing default applies (see `getCheckInTime`).
+   */
+  checkInTime?: string
+  /** Agreed check-out time ("HH:MM"), e.g. a late check-out. Absent = listing default. */
+  checkOutTime?: string
   /** Inquiry-only: hours before the inquiry expires. */
   inquiryExpiryHours?: number
   /** false = "Do not block availability" (inquiry does not block the calendar). */

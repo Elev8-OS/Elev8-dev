@@ -18,6 +18,7 @@ import GuestReservationsTable from '~/components/reservations/GuestReservationsT
 import GuestUpsells from '~/components/reservations/GuestUpsells.vue'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
+import ReservationModifyMenu from '~/components/reservations/ReservationModifyMenu.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 import { useInbox } from '~/composables/useInbox'
@@ -34,6 +35,7 @@ const {
   getReservationsForGuest,
   getPreviousStayCount,
   updateGuestNotes,
+  getCheckInTime,
 } = useReservationsModule()
 const { requests, cancelRequest, duplicateRequest } = usePaymentRequests()
 const { orders: upsellOrders } = useUpsellOrders()
@@ -438,16 +440,11 @@ const bookingSteps = computed<BookingStep[]>(() => {
                 <Icon name="lucide:download" class="size-3.5" />
                 <span>Download invoice</span>
               </Button>
-              <Button
+              <ReservationModifyMenu
                 v-if="primaryStay"
-                variant="outline"
-                size="sm"
-                class="h-8 gap-1.5"
-                @click="editReservationOpen = true"
-              >
-                <Icon name="lucide:pencil" class="size-3.5" />
-                <span>Edit reservation</span>
-              </Button>
+                :reservation="primaryStay"
+                @edit="editReservationOpen = true"
+              />
             </div>
           </CardHeader>
           <CardContent class="space-y-4">
@@ -478,7 +475,7 @@ const bookingSteps = computed<BookingStep[]>(() => {
                     Check-in (ETA)
                   </p>
                   <p class="text-sm font-semibold text-foreground">
-                    {{ fmtDate(primaryStay.checkIn) }} · 14:00
+                    {{ fmtDate(primaryStay.checkIn) }} · {{ getCheckInTime(primaryStay) }}
                   </p>
                 </div>
               </div>
