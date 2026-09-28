@@ -5,7 +5,7 @@ import type { ReservationCleaningSchedule } from '~/components/reservations/data
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { housekeepingStatus, housekeepingStatusClasses, housekeepingStatusIcons, housekeepingStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { listings } from '~/components/listings/data/listings'
 import CalendarEventDetailDialog from '~/components/operations-calendar/CalendarEventDetailDialog.vue'
 import { cleaningTypeLabels, normalizeCleaningType } from '~/components/operations-calendar/data/operations-calendar'
@@ -41,7 +41,7 @@ const {
 
 const housekeepingJobs = computed(() =>
   cleaningJobs.value
-    .filter(j => j.listingId === props.reservation.listingId)
+    .filter(j => j.listingId === props.reservation.listingId && j.status !== 'cancelled')
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
 )
 
@@ -142,7 +142,15 @@ function fmtCleaningDate(iso: string): string {
 }
 
 function cleaningStatusLabel(job: CleaningJob): string {
-  return cleaningJobStatusLabels[job.status] ?? job.status
+  return housekeepingStatusLabels[housekeepingStatus(job.status, job.scheduledAt)]
+}
+
+function cleaningStatusClass(job: CleaningJob): string {
+  return housekeepingStatusClasses[housekeepingStatus(job.status, job.scheduledAt)]
+}
+
+function cleaningStatusIcon(job: CleaningJob): string {
+  return housekeepingStatusIcons[housekeepingStatus(job.status, job.scheduledAt)]
 }
 
 function toCleaningCalendarEvent(job: CleaningJob): CalendarEvent {
@@ -289,7 +297,8 @@ function openAddCleaning() {
                 </p>
               </div>
               <div class="flex items-center gap-1.5">
-                <Badge variant="outline" class="shrink-0 text-[10px]">
+                <Badge variant="outline" class="shrink-0 gap-1 text-[10px]" :class="cleaningStatusClass(nextCleaning)" data-testid="housekeeping-status">
+                  <Icon :name="cleaningStatusIcon(nextCleaning)" class="size-3" />
                   {{ cleaningStatusLabel(nextCleaning) }}
                 </Badge>
                 <Button
@@ -391,7 +400,8 @@ function openAddCleaning() {
                 </div>
               </div>
               <div class="flex shrink-0 items-center gap-1">
-                <Badge variant="outline" class="text-[9px]">
+                <Badge variant="outline" class="gap-1 text-[9px]" :class="cleaningStatusClass(job)" data-testid="housekeeping-status">
+                  <Icon :name="cleaningStatusIcon(job)" class="size-2.5" />
                   {{ cleaningStatusLabel(job) }}
                 </Badge>
                 <Button

@@ -224,6 +224,45 @@ export function cleaningDisplayStatus(status: CleaningJobStatus, scheduledAt: st
   return scheduled.getTime() < today.getTime() ? 'missed' : 'not_started'
 }
 
+/**
+ * The four states the reservation Housekeeping tab shows. It follows
+ * `cleaningDisplayStatus` (so a cleaning reads Missed here exactly when it does
+ * on the Operations Calendar) but says "In progress" rather than "Ongoing".
+ * Cancelled jobs are left out of that tab entirely.
+ */
+export type HousekeepingStatus = 'not_started' | 'in_progress' | 'completed' | 'missed'
+
+export const housekeepingStatusLabels: Record<HousekeepingStatus, string> = {
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  missed: 'Missed',
+}
+
+/** Badge colours, the same tones the cleaning detail dialog uses for these states. */
+export const housekeepingStatusClasses: Record<HousekeepingStatus, string> = {
+  not_started: 'border-border bg-muted text-muted-foreground',
+  in_progress: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  completed: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  missed: 'border-destructive/40 bg-destructive/10 text-destructive',
+}
+
+export const housekeepingStatusIcons: Record<HousekeepingStatus, string> = {
+  not_started: 'lucide:circle-dot',
+  in_progress: 'lucide:loader',
+  completed: 'lucide:check-circle-2',
+  missed: 'lucide:circle-x',
+}
+
+export function housekeepingStatus(status: CleaningJobStatus, scheduledAt: string, now = new Date()): HousekeepingStatus {
+  const display = cleaningDisplayStatus(status, scheduledAt, now)
+  if (display === 'ongoing')
+    return 'in_progress'
+  if (display === 'completed' || display === 'missed')
+    return display
+  return 'not_started'
+}
+
 export const cleaningJobPriorityVariants: Record<CleaningJobPriority, 'outline' | 'secondary' | 'default' | 'destructive'> = {
   low: 'outline',
   normal: 'secondary',
