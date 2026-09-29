@@ -61,7 +61,7 @@ function invoice(patch: Partial<WaiverInvoice> = {}): WaiverInvoice {
     total: 34,
     status: 'paid',
     attempts: 1,
-    billTo: { companyName: 'Bali Villas Co.', addressLines: ['Jl. Pantai 1', '80361 Canggu'], ternOrganizationId: 'tern_org_demo_0001' },
+    billTo: { companyName: 'Bali Villas Co.', addressLines: ['Jl. Pantai 1', '80361 Canggu'], ternOrganizationId: 'cover_org_demo_0001' },
     paymentMethodId: 'pm_demo',
     cardLabel: 'Visa ending 4242',
     chargedAt: '2026-10-01T00:05:00.000Z',

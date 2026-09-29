@@ -34,6 +34,8 @@ export interface WaiverInvoiceLine {
   checkOut: string
   tier?: TernTier
   paidBy: ProtectionPayer
+  /** The stay's 30-night cover packages, frozen on it. `fee` is already the total for all of them. */
+  packages: number
   fee: number
 }
 
@@ -162,6 +164,7 @@ export function billableLines(stays: BillableStay[], period: string, alreadyBill
       checkOut: r.checkOut,
       tier: r.damageProtection!.tier,
       paidBy: r.damageProtection!.paidBy ?? 'guest',
+      packages: r.damageProtection!.packages ?? 1,
       fee: r.damageProtection!.elev8Fee!,
       currency: r.damageProtection!.currency,
     }))

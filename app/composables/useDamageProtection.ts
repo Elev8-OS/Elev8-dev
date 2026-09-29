@@ -23,6 +23,7 @@ import {
   claimCoverage,
   claimEvidenceSummary,
   depositAmount,
+  elev8FeeFor,
   formatProtectionAmount,
   formatSavedCard,
   hostCoverProtection,
@@ -42,7 +43,9 @@ import {
   waiverAmount,
   waiverCover,
   waiverPotTotal,
+  withExtraPackages,
 } from '~/components/reservations/data/damage-protection'
+import { coverPackagesFor } from '~/components/reservations/data/tern-products'
 import { seedProtectionAssignments, seedProtectionPayers, seedProtectionPolicies } from '~/components/reservations/data/damage-protection-seed'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
@@ -490,7 +493,7 @@ export function useDamageProtection() {
         continue
       if (dayOf(reservation.checkOut) <= today.getTime())
         continue
-      const cover = hostCoverProtection(policy, now)
+      const cover = hostCoverProtection(policy, now, reservation.nights)
       if (cover)
         commit(reservation, cover, protectionActivityEvent('host_covered', cover, actor.value))
     }
@@ -611,7 +614,7 @@ export function useDamageProtection() {
       return { ok: false, reason: 'invalid_choice' }
 
     const isWaiver = draft.option === 'waiver'
-    const amount = isWaiver ? waiverAmount(policy) : depositAmount(policy, reservation)
+    const amount = isWaiver ? waiverAmount(policy, 'guest', reservation.nights) : depositAmount(policy, reservation)
     const cover = isWaiver ? waiverCover(policy) : null
     const protection: DamageProtection = {
       policyId: policy.id,
@@ -622,7 +625,9 @@ export function useDamageProtection() {
       amount,
       currency: policy.currency,
       coverageCap: cover?.coverageCap,
-      ...(isWaiver ? { paidBy: 'guest' as const, tier: policy.waiver.tier, elev8Fee: cover?.perStayFee } : {}),
+      ...(isWaiver
+        ? { paidBy: 'guest' as const, tier: policy.waiver.tier, elev8Fee: elev8FeeFor(policy, reservation.nights) ?? undefined, packages: coverPackagesFor(reservation.nights) }
+        : {}),
       termsVersion: policy.termsVersion,
       termsText: policy.termsText,
       acceptedAt: new Date().toISOString(),
@@ -952,15 +957,32 @@ export function useDamageProtection() {
   }
 
   /**
-   * Extending across a band boundary RE-OPENS the choice for the added period.
-   * It never silently re-prices the original one: the existing freeze stays
-   * valid for the nights it was agreed for.
+   * Called after a stay is extended (`useReservationsModule.extendReservation`).
+   *
+   * 1. An active waiver that now needs more 30-night packages takes them at the
+   *    prices frozen on it (`withExtraPackages`), guest price and Elev8 fee
+   *    alike; the cover cap stays. Collecting the guest's difference is not
+   *    modelled: the activity line states it.
+   * 2. Extending across a band boundary RE-OPENS the choice for the added
+   *    period. It never silently re-prices the original one.
    */
   function reassessOnExtension(reservationId: string, previousNights: number) {
-    const reservation = reservationById(reservationId)
-    const protection = reservation?.damageProtection
+    let reservation = reservationById(reservationId)
+    let protection = reservation?.damageProtection
     if (!reservation || !protection)
       return
+    const extended = withExtraPackages(protection, reservation.nights)
+    if (extended) {
+      const money = (n: number) => formatProtectionAmount(n, extended.currency)
+      const parts = [`Stay is now ${reservation.nights} nights: ${extended.packages} packages of up to 30 nights`]
+      if (extended.paidBy !== 'host')
+        parts.push(`guest price ${money(extended.amount)} (${money(extended.amount - protection.amount)} more to collect)`)
+      if (typeof extended.elev8Fee === 'number')
+        parts.push(`Elev8 fee ${money(extended.elev8Fee)}`)
+      commit(reservation, extended, protectionActivityEvent('packages_added', extended, actor.value, parts.join(', ')))
+      reservation = reservationById(reservationId)!
+      protection = extended
+    }
     // Nobody is asked on a host-paid listing: the cover already follows the stay.
     if (protection.paidBy === 'host')
       return

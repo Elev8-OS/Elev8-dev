@@ -66,6 +66,9 @@ function pick(option: ProtectionOption) {
              nothing upfront would otherwise look like the obvious pick. -->
         <template v-if="view.option === 'waiver'">
           <li>Covers accidental damage up to {{ formatProtectionAmount(view.coverageCap ?? 0, view.currency) }}</li>
+          <li v-if="(view.packages ?? 1) > 1" data-testid="waiver-packages">
+            {{ view.packages }} × {{ formatProtectionAmount(view.packagePrice ?? 0, view.currency) }}, one for every 30 nights of your stay
+          </li>
           <li>Nothing more to pay after you leave</li>
           <li>No card kept on file</li>
           <li>Pay with any method. Non-refundable</li>

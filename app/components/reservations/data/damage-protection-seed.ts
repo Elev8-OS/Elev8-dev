@@ -46,7 +46,7 @@ export const seedProtectionPayers: Record<string, ProtectionPayer> = {}
  */
 export const elev8CoverPartner: CoverPartner = {
   id: 'partner-tern',
-  name: 'Tern',
+  name: 'Elev8 Cover',
   policyNumber: 'MP-2026-0001',
   currency: 'USD',
   deductiblePerClaim: 100,

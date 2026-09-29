@@ -137,6 +137,6 @@ describe('useWaiverBilling', () => {
 
   it('bills the tenant\'s own billing entity when the onboarding profile is blank', async () => {
     const [invoice] = await settle(() => useWaiverBilling().runDueBilling(OCT_1))
-    expect(invoice!.billTo).toMatchObject({ companyName: 'Elevate Schweiz GmbH', vatNumber: 'CHE-163.290.666MWST', ternOrganizationId: 'tern_org_demo_0001' })
+    expect(invoice!.billTo).toMatchObject({ companyName: 'Elevate Schweiz GmbH', vatNumber: 'CHE-163.290.666MWST', ternOrganizationId: 'cover_org_demo_0001' })
   })
 })

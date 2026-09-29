@@ -478,6 +478,12 @@ export function useReservationsModule() {
           }
         : x,
     )
+    // Damage protection prices by 30-night package and re-opens the choice across
+    // a band. ⚠️ Dynamic import: useDamageProtection imports this composable, so a
+    // static import would close a cycle (same rule as useInbox and upsells).
+    const previousNights = r.nights
+    void import('~/composables/useDamageProtection')
+      .then(m => m.useDamageProtection().reassessOnExtension(id, previousNights))
     return { success: true }
   }
 

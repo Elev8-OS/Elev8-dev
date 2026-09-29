@@ -220,7 +220,9 @@ function undo() {
                 {{ hostPaid ? 'The host' : money(protection.amount) }}
               </p>
               <p v-if="protection.option === 'waiver' && protection.elev8Fee !== undefined" class="text-xs text-muted-foreground tabular-nums">
-                Elev8 charges {{ money(protection.elev8Fee) }}
+                Elev8 charges {{ money(protection.elev8Fee) }}<template v-if="(protection.packages ?? 1) > 1">
+                  · {{ protection.packages }} packages of 30 nights
+                </template>
               </p>
             </div>
             <div v-if="protection.option === 'waiver'">

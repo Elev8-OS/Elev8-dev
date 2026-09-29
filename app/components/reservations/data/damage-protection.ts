@@ -12,7 +12,7 @@ import type {
   SavedCard,
 } from '~/components/reservations/data/reservations'
 import type { TernPrice, TernTier } from '~/components/reservations/data/tern-products'
-import { ternPriceFor, ternProduct } from '~/components/reservations/data/tern-products'
+import { coverPackagesFor, ternPriceFor, ternProduct } from '~/components/reservations/data/tern-products'
 
 export type ProtectionCurrency = 'USD' | 'IDR' | 'EUR' | 'CHF'
 
@@ -205,18 +205,22 @@ function capped(raw: number, maxAmount: number | undefined): number {
 }
 
 /**
- * What the guest pays for the waiver: the tenant's own per-stay price, the
- * same for every stay length. Zero where the host pays.
+ * What the guest pays for the waiver: the tenant's own price per package (up to
+ * 30 nights), times the packages the stay takes. Zero where the host pays.
  */
-export function waiverAmount(policy: DamageProtectionPolicy, payer: ProtectionPayer = 'guest'): number {
+export function waiverAmount(policy: DamageProtectionPolicy, payer: ProtectionPayer = 'guest', nights = 1): number {
   if (payer === 'host')
     return 0
-  return roundProtectionAmount(Math.max(0, policy.waiver.guestPrice), policy.currency)
+  return roundProtectionAmount(Math.max(0, policy.waiver.guestPrice) * coverPackagesFor(nights), policy.currency)
 }
 
-/** What Elev8 charges the tenant for one covered stay, or null when Tern has no price here. */
-export function elev8FeeFor(policy: DamageProtectionPolicy): number | null {
-  return waiverCover(policy)?.perStayFee ?? null
+/**
+ * What Elev8 charges the tenant for a covered stay of `nights`: the tier's fee
+ * per package times the packages. Null when Tern has no price here.
+ */
+export function elev8FeeFor(policy: DamageProtectionPolicy, nights = 1): number | null {
+  const fee = waiverCover(policy)?.perStayFee
+  return fee === undefined ? null : roundProtectionAmount(fee * coverPackagesFor(nights), policy.currency)
 }
 
 export function depositAmount(policy: DamageProtectionPolicy, reservation: PricedStay): number {
@@ -259,6 +263,10 @@ export interface ProtectionOptionView {
   /** Waiver only. */
   coverageCap?: number
   exclusions?: string[]
+  /** Waiver only: the 30-night packages this stay takes (1 for most stays). `amount` is already multiplied. */
+  packages?: number
+  /** Waiver only: the price of one package. */
+  packagePrice?: number
   /** Deposit only: how long after check-out the card stays on file. */
   settleWithinDays?: number
   isDefault: boolean
@@ -291,9 +299,11 @@ export function buildOptions(
     if (option === 'waiver') {
       return {
         option,
-        amount: waiverAmount(policy),
+        amount: waiverAmount(policy, 'guest', reservation.nights),
         currency: policy.currency,
         coverageCap: waiverCover(policy)?.coverageCap ?? 0,
+        packages: coverPackagesFor(reservation.nights),
+        packagePrice: waiverAmount(policy),
         exclusions: waiverExclusions(policy),
         isDefault,
       }
@@ -448,13 +458,14 @@ export function resolveBucket(
 /**
  * The protection a host-paid listing writes onto a guest stay. The guest is
  * never asked and pays nothing (`amount: 0`); Elev8 bills the tenant the Tern
- * per-stay fee, frozen here with the cover so a later price change cannot
+ * fee per 30-night package times the packages the stay takes, frozen here with the cover so a later price change cannot
  * rewrite a stay already covered. Null when Tern has no price in the policy's
  * currency, which `policyErrors` refuses to save in the first place.
  */
 export function hostCoverProtection(
   policy: DamageProtectionPolicy,
   now: Date = new Date(),
+  nights = 1,
 ): DamageProtection | null {
   const cover = waiverCover(policy)
   if (!cover || !policy.offers.includes('waiver'))
@@ -468,7 +479,8 @@ export function hostCoverProtection(
     coverageCap: cover.coverageCap,
     paidBy: 'host',
     tier: policy.waiver.tier,
-    elev8Fee: cover.perStayFee,
+    elev8Fee: roundProtectionAmount(cover.perStayFee * coverPackagesFor(nights), policy.currency),
+    packages: coverPackagesFor(nights),
     termsVersion: policy.termsVersion,
     termsText: policy.termsText,
     acceptedAt: now.toISOString(),
@@ -666,6 +678,30 @@ export function canSettle(
   return unnotified ? { ok: false, reason: 'claim_not_notified' } : { ok: true }
 }
 
+/**
+ * A waiver on a stay extended past a 30-night boundary takes the extra
+ * packages at the prices FROZEN on it, never the live policy: the guest price
+ * and the Elev8 fee per package are read back off the protection. The cover
+ * cap does not change. Null when nothing changes: not an active waiver, or the
+ * new length needs no extra package.
+ */
+export function withExtraPackages(protection: DamageProtection, nights: number): DamageProtection | null {
+  if (protection.option !== 'waiver' || protection.state !== 'waiver_active')
+    return null
+  const before = protection.packages ?? 1
+  const after = coverPackagesFor(nights)
+  if (after <= before)
+    return null
+  return {
+    ...protection,
+    packages: after,
+    amount: roundProtectionAmount(protection.amount / before * after, protection.currency),
+    ...(typeof protection.elev8Fee === 'number'
+      ? { elev8Fee: roundProtectionAmount(protection.elev8Fee / before * after, protection.currency) }
+      : {}),
+  }
+}
+
 /** Where settling lands, read off the arithmetic, never a flag. */
 export function settleOutcome(protection: DamageProtection): 'deposit_released' | 'deposit_charged' {
   return chargeableTotal(protection) === 0 ? 'deposit_released' : 'deposit_charged'
@@ -687,6 +723,7 @@ export type ProtectionEventKind
     | 'partner_update'
     | 'host_covered'
     | 'host_cover_removed'
+    | 'packages_added'
 
 export function formatProtectionAmount(amount: number, currency: string): string {
   return `${currency} ${amount.toLocaleString('de-CH', {
@@ -732,6 +769,7 @@ export function protectionActivityEvent(
       description: detail ?? 'The listing no longer pays for the cover, so the guest will be asked',
       colorDot: 'gray',
     },
+    packages_added: { title: 'Cover packages added', description: detail ?? '', colorDot: 'blue' },
   }
   const meta = map[kind]
   return {

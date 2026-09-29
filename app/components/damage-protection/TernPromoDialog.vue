@@ -44,7 +44,7 @@ function setTryPrice(value: string | number) {
 }
 
 const margin = computed(() => pitch.value ? marginPerStay(tryPrice.value, pitch.value.perStayFee) : 0)
-const perYear = computed(() => pitch.value ? margin.value * pitch.value.staysPerYear : 0)
+const perYear = computed(() => pitch.value ? margin.value * pitch.value.staysPerYear * pitch.value.packagesPerStay : 0)
 
 function money(amount: number): string {
   return formatProtectionAmount(Math.abs(amount), pitch.value?.currency ?? 'USD')
@@ -102,7 +102,7 @@ function activate() {
         <DialogHeader class="gap-3 border-b p-6 text-left sm:p-8">
           <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Icon name="lucide:shield-check" class="size-3.5 text-primary" />
-            VACATERN, from TERN Financial Group
+            Elev8 Cover
           </p>
           <DialogTitle class="max-w-[30ch] text-2xl leading-tight font-semibold tracking-tight text-balance">
             <template v-if="pitch">
@@ -114,7 +114,7 @@ function activate() {
           </DialogTitle>
           <DialogDescription class="max-w-[62ch] text-sm leading-relaxed">
             <template v-if="pitch">
-              {{ listing.name }} sleeps {{ listing.capacity }}, so it takes Tern {{ pitch.tierName }}.
+              {{ listing.name }} sleeps {{ listing.capacity }}, so it takes Elev8 Cover {{ pitch.tierName }}.
             </template>
             Elev8 attaches the cover to every booking on the listings you choose. Owner stays are never included.
           </DialogDescription>
@@ -140,7 +140,7 @@ function activate() {
               </li>
             </ul>
             <p class="mt-6 max-w-[48ch] text-sm leading-relaxed text-muted-foreground">
-              A claim starts from the photos in the housekeeper's cleaning report. Tern pays it by bank transfer.
+              A claim starts from the photos in the housekeeper's cleaning report. Our insurance partner pays it by bank transfer.
             </p>
           </section>
 
@@ -179,14 +179,14 @@ function activate() {
               </div>
               <div class="flex items-baseline justify-between gap-3">
                 <dt class="text-muted-foreground">
-                  Tern {{ pitch.tierName }} fee
+                  Elev8 Cover {{ pitch.tierName }} fee
                 </dt>
                 <dd class="text-muted-foreground">
                   &minus; {{ money(pitch.perStayFee) }}
                 </dd>
               </div>
               <div class="flex items-baseline justify-between gap-3 border-t border-foreground/15 pt-3 font-medium">
-                <dt>{{ margin >= 0 ? 'You keep, per stay' : 'You pay, per stay' }}</dt>
+                <dt>{{ margin >= 0 ? 'You keep, per 30 nights' : 'You pay, per 30 nights' }}</dt>
                 <dd data-testid="tern-promo-margin">
                   {{ money(margin) }}
                 </dd>
@@ -211,8 +211,8 @@ function activate() {
         <p class="max-w-[72ch] px-6 pb-6 text-xs leading-relaxed text-muted-foreground sm:px-8 sm:pb-8">
           Claims are paid above a
           {{ formatProtectionAmount(elev8CoverPartner.deductiblePerClaim, elev8CoverPartner.currency) }} deductible.
-          Wear and tear is not covered. VACATERN comes on top of the owner's homeowner's insurance and does not replace
-          it. Guests are offered a damage waiver, never insurance, and never see Tern's name.
+          Wear and tear is not covered. Elev8 Cover comes on top of the owner's homeowner's insurance and does not replace
+          it. Guests are offered a damage waiver, never insurance.
         </p>
       </div>
 

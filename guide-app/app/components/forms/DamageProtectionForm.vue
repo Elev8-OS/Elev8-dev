@@ -7,6 +7,10 @@ interface OptionView {
   exclusions?: string[]
   /** Deposit: how long after check-out the card stays on file. */
   settleWithinDays?: number
+  /** Waiver: 30-night packages this stay takes; `amount` is already multiplied. */
+  packages?: number
+  /** Waiver: the price of one package. */
+  packagePrice?: number
   isDefault?: boolean
 }
 
@@ -16,6 +20,9 @@ const props = withDefaults(defineProps<{
   termsText?: string
   longStay?: boolean
 }>(), { longStay: false })
+
+// The API lives on the dashboard, not on this app's host (same as PreArrivalForm).
+const apiBase = useRuntimeConfig().public.apiBaseUrl
 
 // The dashboard lists the waiver first and pre-selects it; keep that order.
 const ordered = computed(() => [...(props.options ?? [])]
@@ -133,7 +140,7 @@ async function submit() {
   submitting.value = true
   try {
     const card = isDeposit.value ? await saveCardWithProvider() : undefined
-    await $fetch(`/api/guest-guides/by-token/${props.token}/protection-choice`, {
+    await $fetch(`${apiBase}/api/guest-guides/by-token/${props.token}/protection-choice`, {
       method: 'POST',
       body: {
         option: selected.value,
@@ -200,6 +207,9 @@ async function submit() {
           <ul class="flex flex-col gap-1.5 text-sm text-muted-foreground">
             <template v-if="view.option === 'waiver'">
               <li>Covers accidental damage up to {{ money(view.coverageCap ?? 0, view.currency) }}</li>
+              <li v-if="(view.packages ?? 1) > 1" data-testid="waiver-packages">
+                {{ view.packages }} × {{ money(view.packagePrice ?? 0, view.currency) }}, one for every 30 nights of your stay
+              </li>
               <li>Nothing more to pay after you leave</li>
               <li>No card kept on file</li>
               <li>Pay with any method. Non-refundable</li>

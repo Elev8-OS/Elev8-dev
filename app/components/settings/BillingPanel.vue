@@ -259,7 +259,7 @@ const history = computed<HistoryRow[]>(() => [
               </dt>
               <dd data-testid="billing-waiver-addon">
                 <template v-if="tern.isActive.value">
-                  Active, billed on the 1st per covered stay
+                  Active, billed on the 1st per 30 nights of each covered stay
                 </template>
                 <NuxtLink v-else to="/settings/damage-protection" class="underline underline-offset-2">
                   Not activated

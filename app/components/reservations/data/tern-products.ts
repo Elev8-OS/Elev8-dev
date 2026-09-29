@@ -16,10 +16,22 @@ export type TernTier = 'bronze' | 'silver' | 'gold'
 export const TERN_TIERS: TernTier[] = ['bronze', 'silver', 'gold']
 
 export interface TernPrice {
-  /** The most Tern covers on one stay. */
+  /** The most Tern covers on one stay, whatever its length: the cap never multiplies. */
   coverageCap: number
-  /** What Elev8 charges the tenant for one covered stay. Fixed, whatever the stay length. */
+  /** What Elev8 charges the tenant for one package, i.e. up to `COVER_PACKAGE_NIGHTS` of a covered stay. */
   perStayFee: number
+}
+
+/**
+ * One cover package lasts this many nights (owner's decision, 2026-09-29). A
+ * longer stay takes one package per started block: the Elev8 fee AND the guest
+ * price multiply, the cover cap does not.
+ */
+export const COVER_PACKAGE_NIGHTS = 30
+
+/** 1 to 30 nights is one package, 31 to 60 two, and so on. Never below one. */
+export function coverPackagesFor(nights: number): number {
+  return Math.max(1, Math.ceil(nights / COVER_PACKAGE_NIGHTS))
 }
 
 export interface TernProduct {

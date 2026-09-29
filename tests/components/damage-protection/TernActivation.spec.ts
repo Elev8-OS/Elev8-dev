@@ -86,7 +86,7 @@ describe('the damage waiver activation', () => {
     expect(wrapper.find('[data-testid="tern-step-card"]').exists()).toBe(false)
     await clickAndSettle(wrapper, 'tern-activate')
     expect(wrapper.find('[data-testid="tern-activation-done"]').text()).toContain('Damage waiver active')
-    expect(useTernActivation().activation.value.ternOrganizationId).toMatch(/^tern_org_/)
+    expect(useTernActivation().activation.value.ternOrganizationId).toMatch(/^cover_org_/)
     expect(wrapper.find('[data-testid="tern-activation-card"]').attributes('data-status')).toBe('active')
   })
 
@@ -104,7 +104,7 @@ describe('the damage waiver activation', () => {
     await wrapper.find('#tern-simulate-failure').setValue(true)
     await clickAndSettle(wrapper, 'tern-activate')
 
-    expect(wrapper.find('[data-testid="tern-registration-failed"]').text()).toContain('could not register')
+    expect(wrapper.find('[data-testid="tern-registration-failed"]').text()).toContain('activation was refused')
     expect(wrapper.find('[data-testid="tern-activate"]').text()).toBe('Try again')
     expect(useTernActivation().activation.value).toMatchObject({ status: 'registration_failed', payoutBank: { bankName: 'AKB' } })
   })

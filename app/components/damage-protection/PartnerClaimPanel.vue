@@ -86,7 +86,7 @@ async function submit() {
   else if (result.reason === 'submission_failed')
     toast.error('The partner rejected the submission. See the reason and retry.')
   else if (result.reason === 'waiver_not_activated')
-    toast.error('Activate the damage waiver first: that is where you give Tern the bank account it pays into')
+    toast.error('Activate the damage waiver first: that is where you give the bank account claims are paid into')
   else
     toast.error(`Could not file the claim (${result.reason})`)
 }

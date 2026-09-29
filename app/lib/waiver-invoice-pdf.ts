@@ -45,7 +45,7 @@ const COLUMNS = [
 export function buildWaiverInvoicePdf(invoice: WaiverInvoice, opts: { download?: boolean } = {}): Blob {
   const pdf = new InvoiceDoc({
     issuer: ELEV8_BILLING_ENTITY.name,
-    subtitle: 'Damage waiver cover by Tern, billed by Elev8',
+    subtitle: 'Elev8 Cover damage waiver fees',
     number: invoice.number,
     issuedOn: invoice.issuedOn,
   })
@@ -58,7 +58,7 @@ export function buildWaiverInvoicePdf(invoice: WaiverInvoice, opts: { download?:
   if (invoice.billTo.vatNumber)
     pdf.row('VAT number', invoice.billTo.vatNumber)
   if (invoice.billTo.ternOrganizationId)
-    pdf.row('Tern organization', invoice.billTo.ternOrganizationId)
+    pdf.row('Cover account', invoice.billTo.ternOrganizationId)
 
   const count = invoice.lines.length
   pdf.section(`Covered stays that checked out in ${periodLabel(invoice.period)}`, 17)
@@ -68,7 +68,7 @@ export function buildWaiverInvoicePdf(invoice: WaiverInvoice, opts: { download?:
       day(line.checkOut),
       line.guestName,
       line.listingName,
-      line.tier ? ternProduct(line.tier).name : '-',
+      line.tier ? `${ternProduct(line.tier).name}${(line.packages ?? 1) > 1 ? ` x${line.packages}` : ''}` : '-',
       line.paidBy === 'host' ? 'You' : 'Guest',
       money(line.fee, currency),
     ]),
@@ -81,8 +81,9 @@ export function buildWaiverInvoicePdf(invoice: WaiverInvoice, opts: { download?:
 
   pdf.section('How this invoice is worked out')
   pdf.note(
-    'One fixed fee for every stay covered by the damage waiver whose guest checked out in the month, whether the '
-    + 'guest or you paid for the waiver. The fee is the one fixed when the stay was covered. Cancelled stays and '
+    'One fixed fee per 30 nights for every stay covered by the damage waiver whose guest checked out in the month, '
+    + 'whether the guest or you paid for the waiver: a stay of 31 to 60 nights takes two packages (x2), and so on. '
+    + 'The fee is the one fixed when the stay was covered. Cancelled stays and '
     + 'owner stays are never billed. Invoiced on the 1st of the following month and charged to the card on your '
     + 'Elev8 subscription.',
   )

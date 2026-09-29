@@ -322,6 +322,13 @@ export interface DamageProtection {
    * `currency`. A later Tern price change cannot rewrite a stay already covered.
    */
   elev8Fee?: number
+  /**
+   * Waiver: the 30-night cover packages this stay takes, frozen with `amount`
+   * and `elev8Fee`, which are already multiplied by it. Absent means 1, which
+   * is every protection written before packages existed. Raised, never lowered,
+   * when the stay is extended past a 30-night boundary.
+   */
+  packages?: number
   termsVersion: string
   termsText: string
   acceptedAt: string

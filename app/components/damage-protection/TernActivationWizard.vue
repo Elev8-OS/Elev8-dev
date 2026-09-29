@@ -146,8 +146,8 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
         <DialogTitle>{{ mode === 'bank' ? 'Change the payout bank account' : 'Activate the damage waiver' }}</DialogTitle>
         <DialogDescription>
           {{ mode === 'bank'
-            ? 'Where Tern pays your approved claims by bank transfer.'
-            : 'Accept the terms, add the bank account Tern pays into, and Elev8 registers you with Tern.' }}
+            ? 'Where your approved claims are paid by bank transfer.'
+            : 'Accept the terms and add a bank account for claim payouts, then Elev8 Cover switches on.' }}
         </DialogDescription>
       </DialogHeader>
 
@@ -158,7 +158,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           Damage waiver active
         </p>
         <p class="max-w-md text-sm text-muted-foreground">
-          You are registered with Tern as {{ organizationName }}
+          Elev8 Cover is active for {{ organizationName }}
           ({{ tern.activation.value.ternOrganizationId }}). Now choose which properties are protected, and who pays, in the
           Listings tab.
         </p>
@@ -229,7 +229,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                       Covers up to
                     </th>
                     <th class="px-3 py-2 text-right font-medium">
-                      Elev8 charges per stay
+                      Elev8 charges per 30 nights
                     </th>
                   </tr>
                 </thead>
@@ -253,7 +253,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
             </div>
             <p class="text-xs text-muted-foreground">
               Claims up to {{ formatProtectionAmount(elev8CoverPartner.deductiblePerClaim, elev8CoverPartner.currency) }}
-              are carried by the waiver fees; Tern pays the part above that.
+              are carried by the waiver fees; our insurance partner pays the part above that.
             </p>
 
             <!-- A custom box, not reka-ui's Checkbox inside a label: that double-toggles. -->
@@ -272,7 +272,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
               >
                 <Icon v-if="draft.termsAccepted" name="lucide:check" class="size-3" />
               </span>
-              I accept the damage waiver terms with Tern on behalf of my company.
+              I accept the Elev8 Cover terms on behalf of my company.
             </button>
             <p v-if="errors.termsAccepted" class="text-xs text-destructive">
               {{ errors.termsAccepted }}
@@ -282,7 +282,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           <!-- 2. Bank account -->
           <section v-else-if="step.id === 'bank'" class="flex flex-col gap-4" data-testid="tern-step-bank">
             <p class="text-sm text-muted-foreground">
-              Tern pays your approved claims by bank transfer, in {{ elev8CoverPartner.currency }}, into this account. One
+              Approved claims are paid by bank transfer, in {{ elev8CoverPartner.currency }}, into this account. One
               account covers all your listings for now.
             </p>
 
@@ -299,7 +299,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                 </SelectContent>
               </Select>
               <p class="text-xs text-muted-foreground">
-                A copy: changing the invoice later does not change where Tern pays.
+                A copy: changing the invoice later does not change where claims are paid.
               </p>
             </div>
 
@@ -350,7 +350,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           <section v-else class="flex flex-col gap-4" data-testid="tern-step-review">
             <dl class="grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
               <dt class="text-muted-foreground">
-                Registered with Tern as
+                Registered as
               </dt>
               <dd class="font-medium">
                 {{ organizationName }}
@@ -371,7 +371,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                 {{ tern.hasStripePayout.value ? 'Connected' : 'Not connected yet' }}
               </dd>
               <dt class="text-muted-foreground">
-                Per-stay fees charged to
+                Cover fees charged to
               </dt>
               <dd data-testid="tern-review-card">
                 {{ hasSubscriptionCard ? 'The card on your Elev8 subscription' : 'No card on your Elev8 subscription' }}
@@ -395,7 +395,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
               class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm"
               data-testid="tern-no-subscription-card"
             >
-              There is no card on your Elev8 subscription, so the per-stay fees would have nowhere to go. Add one to your
+              There is no card on your Elev8 subscription, so the cover fees would have nowhere to go. Add one to your
               subscription first.
             </div>
 
@@ -409,7 +409,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
 
             <div class="flex items-center gap-2">
               <Switch id="tern-simulate-failure" :model-value="simulateFailure" @update:model-value="(v) => simulateFailure = v" />
-              <Label for="tern-simulate-failure" class="text-xs font-normal text-muted-foreground">Simulate Tern refusing the registration</Label>
+              <Label for="tern-simulate-failure" class="text-xs font-normal text-muted-foreground">Simulate the registration being refused</Label>
             </div>
           </section>
         </div>
@@ -429,7 +429,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           </Button>
           <Button v-else :disabled="tern.isRegistering.value || !hasSubscriptionCard || !tern.hasStripePayout.value" data-testid="tern-activate" @click="activate">
             <Icon v-if="tern.isRegistering.value" name="lucide:loader-2" class="mr-1.5 size-3.5 animate-spin" />
-            {{ tern.isRegistering.value ? 'Registering with Tern…' : tern.activation.value.status === 'registration_failed' ? 'Try again' : 'Activate' }}
+            {{ tern.isRegistering.value ? 'Activating…' : tern.activation.value.status === 'registration_failed' ? 'Try again' : 'Activate' }}
           </Button>
         </DialogFooter>
       </template>

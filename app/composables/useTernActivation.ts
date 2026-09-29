@@ -39,7 +39,7 @@ export function seedTernActivation(): TernActivation {
       accountNumber: '7890 1234 56',
       bicSwift: 'CENAIDJA',
     },
-    ternOrganizationId: 'tern_org_demo_0001',
+    ternOrganizationId: 'cover_org_demo_0001',
     registeredAt: SEEDED_AT,
     attempts: 1,
   }
@@ -100,7 +100,7 @@ export function useTernActivation() {
       if (parsed && typeof parsed.status === 'string') {
         // A reload mid-registration never heard back: it did not register.
         activation.value = parsed.status === 'registering'
-          ? { ...parsed, status: 'registration_failed', lastError: 'The page was closed before Tern answered. Try again.' }
+          ? { ...parsed, status: 'registration_failed', lastError: 'The page was closed before the activation finished. Try again.' }
           : parsed
       }
     }
@@ -158,7 +158,7 @@ export function useTernActivation() {
       activation.value = {
         ...activation.value,
         status: 'registration_failed',
-        lastError: 'Tern could not register the organization. Nothing was charged.',
+        lastError: 'The activation was refused. Nothing was charged.',
       }
       persist()
       return { ok: false, reason: 'registration_failed' }
@@ -167,7 +167,7 @@ export function useTernActivation() {
     activation.value = {
       ...activation.value,
       status: 'active',
-      ternOrganizationId: `tern_org_${Date.now().toString(36)}`,
+      ternOrganizationId: `cover_org_${Date.now().toString(36)}`,
       registeredAt: new Date().toISOString(),
     }
     persist()

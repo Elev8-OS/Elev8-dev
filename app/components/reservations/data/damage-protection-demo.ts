@@ -134,7 +134,7 @@ function filed(claimedAmount: number, events: [number, PartnerClaimEvent['status
     claimedAmount,
     deductible: elev8CoverPartner.deductiblePerClaim,
     // The bank account the demo tenant registered at activation (`seedTernActivation`).
-    payoutAccountId: 'tern_org_demo_0001',
+    payoutAccountId: 'cover_org_demo_0001',
     payoutAccountName: 'Bank Central Asia (BCA) •••• 3456',
     status: 'submitted',
     events: events.map(([offset, status, source, note], i) => ({
@@ -370,11 +370,14 @@ export const damageProtectionDemoReservations: ReservationEntry[] = [
       policyId: 'dp-long-stay',
       option: 'waiver',
       state: 'waiver_active',
-      amount: 249,
+      // 60 nights is two 30-night packages: the guest price and the Elev8 fee
+      // are both doubled, the cover is not.
+      amount: 498,
       coverageCap: 5000,
       paidBy: 'guest',
       tier: 'silver',
-      elev8Fee: 15,
+      elev8Fee: 30,
+      packages: 2,
       termsVersion: 'v1-long',
       acceptedAt: iso(-32),
       claims: [{

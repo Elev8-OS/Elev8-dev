@@ -247,7 +247,7 @@ async function bulkClose() {
 
       <div class="rounded-lg border p-4" data-testid="elev8-fees">
         <p class="text-[11px] tracking-wide text-muted-foreground uppercase">
-          Charged by Elev8 for Tern cover
+          Charged by Elev8 for Elev8 Cover
         </p>
         <div class="mt-2 flex flex-wrap gap-8">
           <div>
@@ -268,7 +268,7 @@ async function bulkClose() {
           </div>
         </div>
         <p class="mt-2 text-xs text-muted-foreground">
-          A fixed fee per covered stay. On a host-paid listing the guest is not asked and you carry it.
+          A fixed fee per 30 nights of each covered stay. On a host-paid listing the guest is not asked and you carry it.
         </p>
       </div>
 
@@ -297,7 +297,7 @@ async function bulkClose() {
             <p class="text-xs text-muted-foreground">
               Policy {{ pc.partner.value.policyNumber }} ·
               {{ formatProtectionAmount(pc.partner.value.deductiblePerClaim, pc.partner.value.currency) }} deductible per claim ·
-              pays into your Stripe payout account
+              pays into the bank account you gave when activating
             </p>
           </div>
           <span class="rounded-md border border-green-500/30 bg-green-500/10 px-1.5 py-0.5 text-[11px] text-green-700 dark:text-green-400">

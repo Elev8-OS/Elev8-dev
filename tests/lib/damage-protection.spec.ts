@@ -32,8 +32,9 @@ import {
   waiverAmount,
   waiverCover,
   waiverPotTotal,
+  withExtraPackages,
 } from '~/components/reservations/data/damage-protection'
-import { recommendedTier, TERN_PRODUCTS, ternPriceFor, tierTooSmall } from '~/components/reservations/data/tern-products'
+import { coverPackagesFor, recommendedTier, TERN_PRODUCTS, ternPriceFor, tierTooSmall } from '~/components/reservations/data/tern-products'
 
 // Dates are relative to today on purpose: the decision deadline is evaluated
 // against the current day, so a fixed fixture rots.
@@ -191,8 +192,53 @@ describe('pricing', () => {
     expect(depositAmount(p, stay({ priceDetails: { ...stay().priceDetails!, subtotal: 9000 } }))).toBe(750)
   })
 
-  it('keeps the waiver price the same for any stay length', () => {
-    expect(buildOptions(policy(), stay({ nights: 90 }), 'card')[0]!.amount).toBe(39)
+  it('multiplies the waiver price per started 30 nights, and keeps the cover', () => {
+    const [waiver] = buildOptions(policy(), stay({ nights: 45 }), 'card')
+    expect(waiver).toMatchObject({ amount: 78, packages: 2, packagePrice: 39, coverageCap: 2000 })
+    expect(buildOptions(policy(), stay({ nights: 30 }), 'card')[0]).toMatchObject({ amount: 39, packages: 1 })
+    expect(buildOptions(policy(), stay({ nights: 90 }), 'card')[0]!.amount).toBe(117)
+  })
+})
+
+describe('30-night cover packages', () => {
+  it('takes one package per started 30 nights, never fewer than one', () => {
+    expect(coverPackagesFor(0)).toBe(1)
+    expect(coverPackagesFor(1)).toBe(1)
+    expect(coverPackagesFor(30)).toBe(1)
+    expect(coverPackagesFor(31)).toBe(2)
+    expect(coverPackagesFor(60)).toBe(2)
+    expect(coverPackagesFor(61)).toBe(3)
+  })
+
+  it('multiplies the guest price and the Elev8 fee alike', () => {
+    expect(waiverAmount(policy(), 'guest', 45)).toBe(78)
+    expect(waiverAmount(policy(), 'host', 45)).toBe(0)
+    expect(elev8FeeFor(policy(), 61)).toBe(ternPriceFor('bronze', 'USD')!.perStayFee * 3)
+    expect(elev8FeeFor(policy({ currency: 'IDR' }), 61)).toBeNull()
+  })
+
+  it('freezes the packages on a host-paid cover, with the same cap', () => {
+    const silver = ternPriceFor('silver', 'USD')!
+    const cover = hostCoverProtection(policy({ waiver: { tier: 'silver', guestPrice: 39 } }), new Date(), 40)!
+    expect(cover).toMatchObject({ packages: 2, elev8Fee: silver.perStayFee * 2, coverageCap: silver.coverageCap, amount: 0 })
+  })
+
+  it('adds packages on an extension at the prices frozen on the stay, never the live policy', () => {
+    const frozen = { ...hostCoverProtection(policy())!, paidBy: 'guest' as const, amount: 45, elev8Fee: 7, packages: 1 }
+    expect(withExtraPackages(frozen, 31)).toMatchObject({ packages: 2, amount: 90, elev8Fee: 14, coverageCap: frozen.coverageCap })
+    expect(withExtraPackages({ ...frozen, packages: 2, amount: 90, elev8Fee: 14 }, 75)).toMatchObject({ packages: 3, amount: 135, elev8Fee: 21 })
+  })
+
+  it('adds nothing when the new length needs no extra package, or the waiver is not active', () => {
+    const frozen = { ...hostCoverProtection(policy())!, packages: 1 }
+    expect(withExtraPackages(frozen, 30)).toBeNull()
+    expect(withExtraPackages({ ...frozen, state: 'cancelled' }, 45)).toBeNull()
+    expect(withExtraPackages({ ...frozen, option: 'deposit', state: 'card_on_file' }, 45)).toBeNull()
+  })
+
+  it('reads a protection written before packages existed as one package', () => {
+    const legacy = { ...hostCoverProtection(policy())!, paidBy: 'guest' as const, amount: 39, elev8Fee: 9, packages: undefined }
+    expect(withExtraPackages(legacy, 40)).toMatchObject({ packages: 2, amount: 78, elev8Fee: 18 })
   })
 })
 

@@ -5,6 +5,12 @@
 Something breaks: who pays, and out of what? The guest chooses before arrival between a
 non-refundable **damage waiver** and a **security deposit, which is a card kept on file**.
 
+- ⚠️ **The product name is Elev8 Cover; the insurer is never named** (owner's decision, 2026-09-29).
+  No screen, PDF, toast, seed or error text says "Tern" (or VACATERN): tiers read "Elev8 Cover
+  Bronze", `elev8CoverPartner.name` is `'Elev8 Cover'`, and where the payer of a claim matters the copy
+  says "our insurance partner". Tern is still the partner behind it, so code identifiers keep the
+  `tern*` names (`tern-activation.ts`, `useTernActivation`, `TernTier`) and this doc still says Tern.
+  Mock organization ids are `cover_org_...`.
 - ⚠️ **The deposit is a CARD SAVED WITH STRIPE, charged only if there is damage.** Nothing is
   charged at booking and nothing is held. It replaced a charge-upfront-and-refund deposit
   (the owner's call, 2026-09-24). **Not an authorization hold**: a hold lapses in about 7 days
@@ -54,14 +60,22 @@ non-refundable **damage waiver** and a **security deposit, which is a card kept 
   reservations and pay nothing, so an owner stay is never protected, on either payer.
 - ⚠️ **The tenant never writes a coverage amount or an exclusion.** The waiver's cover comes
   from a **Tern tier** (`data/tern-products.ts`: Bronze / Silver / Gold, sized by
-  `Listing.capacity`, each with a `coverageCap`, a fixed `perStayFee` Elev8 charges the tenant,
-  and Tern's exclusions, which include wear and tear). A policy stores only
-  `waiver: { tier, guestPrice }`: the one number the tenant types is what they charge the guest,
-  flat per stay, shown next to Elev8's fee and the margin. **The figures are placeholders** until
+  `Listing.capacity`, each with a `coverageCap`, a fixed `perStayFee` Elev8 charges the tenant
+  per package, and Tern's exclusions, which include wear and tear). A policy stores only
+  `waiver: { tier, guestPrice }`: the one number the tenant types is what they charge the guest
+  per package, shown next to Elev8's fee and the margin. **The figures are placeholders** until
   Tern hands over its price list, and they are **per currency, never converted**: only USD is
   priced today, so a waiver policy in IDR / EUR / CHF is refused by `policyErrors` ("The Bronze
   cover is not available in IDR yet"). The listings table flags a tier smaller than the
   property's size (`tierTooSmall`); a bigger one is never flagged.
+- ⚠️ **One cover package lasts 30 nights** (`COVER_PACKAGE_NIGHTS`, `coverPackagesFor`, owner's
+  decision 2026-09-29). A stay takes one package per started 30 nights (1-30 = 1, 31-60 = 2, ...):
+  the **guest price and the Elev8 fee both multiply**, the **cover cap does not**. The count is
+  frozen on the protection as `packages` (absent = 1, every protection written before), and
+  `amount` / `elev8Fee` are stored already multiplied. `buildOptions` returns `packages` and
+  `packagePrice`, and the guest card names them ("2 × USD 39.00, one for every 30 nights of your
+  stay") only when there is more than one. The 30-night package and the 28-night long-stay band are
+  separate rules: a 29-night stay is a long stay on one package.
 - **Policy templates** (`POLICY_TEMPLATES`: *Standard short-term* waiver + deposit on Bronze,
   *Standard long-term* 28+ nights waiver-only on Silver, *Deposit only* on Direct) are complete
   policies a tenant assigns rather than builds; `policyFromTemplate` makes one and records
@@ -229,8 +243,13 @@ pending a per-market legal answer on whether a months-long deposit is a tenancy 
 (Bali, Germany, Switzerland differ sharply). Wear and tear must be an explicit exclusion, and
 there is deliberately **no recurring waiver billing**: a renewal failing in month four with a
 guest in the property who believes they are covered is a state nothing else here has.
-Extending across a band boundary re-opens the choice for the added period via
-`reassessOnExtension` and never re-prices the original.
+`useReservationsModule.extendReservation` calls `reassessOnExtension` (⚠️ through a **dynamic**
+`import()`: `useDamageProtection` imports the reservations composable). It does two things. An
+active waiver that now needs more packages takes them at the prices **frozen on the stay**
+(`withExtraPackages`, per-package price read back as `amount / packages`), never the live policy,
+with a "Cover packages added" activity line; collecting the guest's difference is not modelled, so
+the line says how much is still to collect. Then, extending across a band boundary re-opens the
+choice for the added period, as before, without re-pricing the original.
 
 **Settings page** (`/settings/damage-protection`, redesigned for plain use 2026-09-24):
 `DamageProtectionSettingsPanel.vue` has two tabs.
@@ -278,7 +297,7 @@ ranges reset, the undersized / paused flags (the missing guest guide section is 
 **Edit policy** (the same `DamageProtectionPolicySheet`, noting how many other listings share it),
 and **Protected stays**: `dp.rows` for this listing, status chip, link to
 `/reservations?reservation=<id>`, paged 10 to a page (10/20/30/50, same footer as the upsell orders table).
-- **The VACATERN pitch** (`TernPromoDialog.vue`): opening the tab while the activation is
+- **The Elev8 Cover pitch** (`TernPromoDialog.vue`): opening the tab while the activation is
   `not_activated` or `registration_failed` opens a promo dialog (never while `registering`, never
   once active). It shows **every visit**: reka's `TabsContent` unmounts a hidden tab, so each
   click remounts it. It leads with this listing in money: the headline is the cover of the tier
@@ -322,13 +341,13 @@ alerts **directly**, not through `dismiss()`.
 the service in a 3-step wizard (`TernActivationWizard.vue`, opened from `TernActivationCard.vue` at
 the top of `/settings/damage-protection`): **Terms** (`TERN_ACTIVATION_TERMS`, the tier table, the
 deductible) → **Bank account** (where Tern pays claims) → **Review**, then **Activate** registers the
-tenant as an organization on Tern (mock API, 1.5s, returns a `tern_org_` id; a "simulate Tern
+tenant as an organization on Tern (mock API, 1.5s, returns a `cover_org_` id; a "simulate Tern
 refusing" switch makes it fail).
 - ⚠️ **A connected Stripe payout account comes first** (owner's decision, 2026-09-28).
   `hasConnectedStripePayout` (only `provider: 'stripe'` with `status: 'connected'` counts) backs
   `useTernActivation().hasStripePayout`; without it `activate` refuses (`no_stripe_payout`, checked
   before the draft), and every way in points to `PAYOUT_SETTINGS_PATH` instead of the wizard: the
-  settings activation card and the listing tab banner show **Connect Stripe**, the VACATERN pitch
+  settings activation card and the listing tab banner show **Connect Stripe**, the Elev8 Cover pitch
   swaps its button for **Connect Stripe** with "First, connect a Stripe payout account", and the
   wizard itself shows a notice and keeps Activate disabled (Review row "Stripe payout account").
   Losing the Stripe account after activation is not handled: nothing deactivates the service.
@@ -366,7 +385,7 @@ refusing" switch makes it fail).
   mid-registration reads as failed, never active. Changing the bank later ("Change bank account",
   the wizard in `mode: 'bank'`) affects only claims filed afterwards.
 - ⚠️ **The demo tenant starts ACTIVE** (`seedTernActivation`: BCA account, the demo subscription
-  card `pm_demo`, `tern_org_demo_0001`) so the seeded waivers and insurance claims keep working; **Replay
+  card `pm_demo`, `cover_org_demo_0001`) so the seeded waivers and insurance claims keep working; **Replay
   activation (demo)** resets it to show the flow. Persisted to `elev8-tern-activation-v1`;
   `useDamageProtection().hydrate()` hydrates it first.
 - **Not implemented:** a real Tern API call or webhook, deactivating the service, per-listing bank accounts, and
@@ -383,8 +402,9 @@ a declined charge alerts early, and `WAIVER_INVOICE_PAYMENT_FAILED` links to `/s
 - ⚠️ **Billed on check-out, not on booking**, the same way Tern bills Elev8 (monthly in arrears for
   completed bookings, per Tern's PMC handbook). A cancelled stay never reaches an invoice, so there
   are no credit lines. Guest-paid and host-paid stays are both billed.
-- ⚠️ **The fee is the frozen `elev8Fee`**, never re-read from `tern-products.ts`. Lines are
-  snapshots (`WaiverInvoiceLine`), and `billTo` is frozen at issue.
+- ⚠️ **The fee is the frozen `elev8Fee`** (already times the stay's packages), never re-read from
+  `tern-products.ts`. Lines are snapshots (`WaiverInvoiceLine`, carrying `packages`; the PDF prints
+  "Silver x2"), and `billTo` is frozen at issue.
 - ⚠️ **One invoice per currency per month**, numbered `E8-DW-YYYYMM-NNN` (running within the month).
   Nothing converted or blended.
 - ⚠️ **A stay is billed once, ever** (`billableLines` skips any reservation id already on an invoice),
@@ -511,6 +531,17 @@ resolves to Vue's auto-imported `readonly()` inside a template, never to the pro
 ⚠️ A policy assigned to a listing is a **silent no-op** unless that listing's guest guide has
 an enabled `damage_protection` section. `listingsMissingGuideSection()` surfaces the mismatch
 in settings.
+⚠️ **The guide API does not compute the options yet.** `GET /api/guest-guides/by-token/[token]`
+returns the stored section data as-is, and `DamageProtectionForm` renders `section.data.options`,
+`termsText` and `longStay` from it, so nothing shows until the server builds them per stay with
+`buildOptions`. Until then, `guest-guides/data/damage-protection-demo-guides.ts` bakes one demo
+guide per guest case with `buildOptions`, opened at `http://localhost:3001/<token>`: `dpboth`
+(waiver and deposit), `dpwaiver` (waiver only), `dplong` (45 nights, two packages), `dpdeposit`
+(deposit only), `dphost` (host pays, no section). They assign no listing, so they never change
+`listingsMissingGuideSection`, and are drafts. The guest form posts to
+`${apiBaseUrl}/api/...` like the other guide forms (it used a relative URL, which hit the guide
+app's own host and always failed), and repeats the dashboard card's 30-night package line.
+Separately, the guide app has no Tailwind installed, so its pages render unstyled.
 
 **Seeds:** `damage-protection-seed.ts` (three USD policies against the Stripe account that
 covers lst-1/lst-2/lst-18; lst-18 carries only the long-stay band) and `damage-protection-demo.ts`

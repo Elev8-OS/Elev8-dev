@@ -84,7 +84,7 @@ describe('submitToPartner', () => {
     const filed = partnerClaim()!
     expect(filed).toMatchObject({ status: 'submitted', claimedAmount: 220, deductible: 100, policyNumber: 'MP-2026-0001' })
     // Tern pays by bank transfer into the account registered at activation.
-    expect(filed).toMatchObject({ payoutAccountId: 'tern_org_demo_0001', payoutAccountName: 'Bank Central Asia (BCA) •••• 3456' })
+    expect(filed).toMatchObject({ payoutAccountId: 'cover_org_demo_0001', payoutAccountName: 'Bank Central Asia (BCA) •••• 3456' })
     expect(filed.partnerClaimRef).toMatch(/^PC-/)
     expect(filed.events.map(e => [e.status, e.source])).toEqual([['submitting', 'staff'], ['submitted', 'api']])
   })
@@ -257,7 +257,7 @@ describe('the worklist', () => {
 describe('the partner contract', () => {
   it('is Elev8\'s single integration: read-only, with nothing for a tenant to configure', () => {
     const pc = usePartnerClaims()
-    expect(pc.partner.value).toMatchObject({ name: 'Tern', deductiblePerClaim: 100, paymentTermsDays: 14 })
+    expect(pc.partner.value).toMatchObject({ name: 'Elev8 Cover', deductiblePerClaim: 100, paymentTermsDays: 14 })
     expect(pc).not.toHaveProperty('savePartner')
     expect(pc).not.toHaveProperty('connectPartner')
     expect(pc.partner.value).not.toHaveProperty('payoutAccount')

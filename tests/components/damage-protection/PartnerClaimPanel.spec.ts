@@ -45,7 +45,7 @@ function claim(patch: Partial<ProtectionClaim> = {}): ProtectionClaim {
 
 function filed(patch: Partial<PartnerClaim>): PartnerClaim {
   return {
-    ...newPartnerClaim(elev8CoverPartner, 220, { id: 'tern_org_demo_0001', accountName: 'Bank Central Asia (BCA) •••• 3456' }),
+    ...newPartnerClaim(elev8CoverPartner, 220, { id: 'cover_org_demo_0001', accountName: 'Bank Central Asia (BCA) •••• 3456' }),
     status: 'submitted',
     partnerClaimRef: 'PC-1',
     events: [],

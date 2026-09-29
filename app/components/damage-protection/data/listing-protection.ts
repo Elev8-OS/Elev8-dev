@@ -97,10 +97,10 @@ export function waiverSummary(policy: DamageProtectionPolicy): string {
   const cover = waiverCover(policy)
   const tier = ternProduct(policy.waiver.tier).name
   if (!cover)
-    return `Tern ${tier}, not available in ${policy.currency} yet`
-  return `Tern ${tier}, covers up to ${formatProtectionAmount(cover.coverageCap, policy.currency)}. `
+    return `Elev8 Cover ${tier}, not available in ${policy.currency} yet`
+  return `Elev8 Cover ${tier}, covers up to ${formatProtectionAmount(cover.coverageCap, policy.currency)}. `
     + `Guest pays ${formatProtectionAmount(policy.waiver.guestPrice, policy.currency)}, `
-    + `Elev8 charges you ${formatProtectionAmount(cover.perStayFee, policy.currency)} per stay`
+    + `Elev8 charges you ${formatProtectionAmount(cover.perStayFee, policy.currency)}, per 30 nights of a stay`
 }
 
 export function depositSummary(policy: DamageProtectionPolicy): string {
@@ -139,8 +139,8 @@ const REFUSALS: Record<string, Record<RefusalContext, string>> = {
     listing: 'There is no policy in this listing\'s payout currency yet. Create one from a template in Settings, Damage protection.',
   },
   waiver_not_activated: {
-    settings: 'Activate the damage waiver first, at the top of this page: host-paid cover is Tern\'s.',
-    listing: 'Activate the damage waiver first, in Settings, Damage protection: host-paid cover is Tern\'s.',
+    settings: 'Activate the damage waiver first, at the top of this page: host-paid cover needs Elev8 Cover.',
+    listing: 'Activate the damage waiver first, in Settings, Damage protection: host-paid cover needs Elev8 Cover.',
   },
 }
 

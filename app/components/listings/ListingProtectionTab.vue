@@ -64,7 +64,7 @@ const takesDeposit = computed(() => dp.railForListing(props.listing.id) === 'car
 const MODE_META: Record<ListingProtectionMode, { icon: string, text: string }> = {
   off: { icon: 'lucide:shield-off', text: 'Damage is handled outside Elev8.' },
   guest_paid: { icon: 'lucide:user-round', text: 'The guest buys the damage waiver, or leaves a card on file, in the guest guide.' },
-  host_paid: { icon: 'lucide:building-2', text: 'The guest is not asked. Elev8 charges you the Tern fee per stay.' },
+  host_paid: { icon: 'lucide:building-2', text: 'The guest is not asked. Elev8 charges you the Elev8 Cover fee.' },
 }
 
 /** Host-paid cover is Tern's: it cannot be chosen before the service is activated. */
@@ -79,7 +79,7 @@ function setMode(mode: ListingProtectionMode) {
   if (!result.ok)
     toast.error(protectionRefusalText(result.reason, 'listing'))
   else if (mode === 'host_paid')
-    toast.success('Covered by you: guests on this listing are not asked, and Elev8 charges you per stay.')
+    toast.success('Covered by you: guests on this listing are not asked, and Elev8 charges you the cover fee.')
   else
     toast.success(mode === 'off' ? 'Protection turned off for this listing' : 'Guests on this listing now choose their protection')
 }
@@ -216,7 +216,7 @@ function claimCount(row: ProtectionRow): number {
             Damage protection
           </CardTitle>
           <CardDescription>
-            Who pays if something breaks. The cover comes from Tern through Elev8. Owner stays are never included.
+            Who pays if something breaks. The cover is Elev8 Cover. Owner stays are never included.
           </CardDescription>
         </div>
         <NuxtLink to="/settings/damage-protection" class="shrink-0">
@@ -279,7 +279,7 @@ function claimCount(row: ProtectionRow): number {
       <CardHeader>
         <CardTitle>Policies</CardTitle>
         <CardDescription>
-          The policy decides the Tern cover, what the guest pays and the terms. Stays of
+          The policy decides the Elev8 Cover tier, what the guest pays and the terms. Stays of
           {{ LONG_STAY_THRESHOLD_NIGHTS }} nights or more can use a different one.
         </CardDescription>
       </CardHeader>

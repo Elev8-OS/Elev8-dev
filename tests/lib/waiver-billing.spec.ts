@@ -133,3 +133,13 @@ describe('invoices', () => {
     expect(buildPeriodInvoices(lines, '2026-09', { ...ctx, existingInPeriod: 2 })[0]!.number).toBe('E8-DW-202609-003')
   })
 })
+
+describe('30-night packages on the invoice', () => {
+  it('bills the frozen multiplied fee once and carries the package count, 1 for older stays', () => {
+    const lines = billableLines([
+      stay('long', '2026-09-20', {}, { elev8Fee: 18, packages: 2 }),
+      stay('old', '2026-09-21', {}, { elev8Fee: 9, packages: undefined }),
+    ], '2026-09', new Set())
+    expect(lines.map(l => [l.reservationId, l.packages, l.fee])).toEqual([['long', 2, 18], ['old', 1, 9]])
+  })
+})

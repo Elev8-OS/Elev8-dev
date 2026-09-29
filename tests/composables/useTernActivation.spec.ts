@@ -30,7 +30,7 @@ describe('useTernActivation', () => {
   it('starts the demo tenant active, with a bank account for Tern to pay into', () => {
     const tern = useTernActivation()
     expect(tern.isActive.value).toBe(true)
-    expect(tern.payoutTarget.value).toEqual({ id: 'tern_org_demo_0001', accountName: 'Bank Central Asia (BCA) •••• 3456' })
+    expect(tern.payoutTarget.value).toEqual({ id: 'cover_org_demo_0001', accountName: 'Bank Central Asia (BCA) •••• 3456' })
   })
 
   it('replays the flow from the start, with nowhere to pay until it is done again', () => {
@@ -74,7 +74,7 @@ describe('useTernActivation', () => {
       billingPaymentMethodId: 'pm_demo',
       payoutBank: { country: 'CH', iban: 'CH9300762011623852957' },
     })
-    expect(tern.activation.value.ternOrganizationId).toMatch(/^tern_org_/)
+    expect(tern.activation.value.ternOrganizationId).toMatch(/^cover_org_/)
     expect(JSON.parse(localStorage.getItem('elev8-tern-activation-v1')!).status).toBe('active')
   })
 

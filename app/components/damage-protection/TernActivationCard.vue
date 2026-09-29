@@ -37,7 +37,7 @@ function when(iso?: string): string {
               Damage waiver active
             </p>
             <p class="text-xs text-muted-foreground">
-              Registered with Tern {{ when(activation.registeredAt) }} · {{ activation.ternOrganizationId }}
+              Active since {{ when(activation.registeredAt) }} · {{ activation.ternOrganizationId }}
             </p>
           </div>
         </div>
@@ -61,7 +61,7 @@ function when(iso?: string): string {
         </div>
         <div>
           <dt class="text-xs text-muted-foreground">
-            Per-stay fees charged to
+            Cover fees charged to
           </dt>
           <dd>The card on your Elev8 subscription</dd>
         </div>
@@ -71,7 +71,7 @@ function when(iso?: string): string {
     <!-- Registering -->
     <div v-else-if="activation.status === 'registering'" class="flex items-center gap-3 text-sm">
       <Icon name="lucide:loader-2" class="size-5 animate-spin text-muted-foreground" />
-      Registering your organization with Tern…
+      Activating Elev8 Cover…
     </div>
 
     <!-- Not activated, or the registration failed -->
@@ -90,8 +90,8 @@ function when(iso?: string): string {
             {{ activation.lastError }}
           </p>
           <p v-else class="text-sm text-muted-foreground">
-            The waiver is Tern's cover, so it runs once you have signed up: accept the terms and add the bank account
-            Tern pays your claims into. The per-stay fees go on the card on your Elev8 subscription. Until then, policies
+            The waiver is Elev8 Cover, so it runs once you have signed up: accept the terms and add the bank account
+            your claims are paid into. The cover fees go on the card on your Elev8 subscription. Until then, policies
             with the waiver are paused and deposit-only policies keep working.
           </p>
           <p

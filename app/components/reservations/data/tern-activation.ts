@@ -76,17 +76,17 @@ export const TERN_ACTIVATION_TERMS_VERSION = 'tern-2026-09'
 
 /** What the tenant agrees to, one plain sentence each. The wizard and the record print the same list. */
 export const TERN_ACTIVATION_TERMS: string[] = [
-  'Tern, through Elev8, covers accidental damage on every covered stay up to the cover of the tier each policy uses.',
-  'Elev8 charges the tier\'s fixed fee for every covered stay to the card on your Elev8 subscription, whether the guest or you pay for the waiver.',
-  'Tern pays approved claims above the deductible by bank transfer to the bank account you give here.',
-  'Guests are offered a damage waiver, never insurance, and never see Tern\'s name.',
+  'Elev8 Cover covers accidental damage on every covered stay up to the cover of the tier each policy uses.',
+  'Elev8 charges the tier\'s fixed fee for every started 30 nights of a covered stay to the card on your Elev8 subscription, whether the guest or you pay for the waiver.',
+  'Our insurance partner pays approved claims above the deductible by bank transfer to the bank account you give here.',
+  'Guests are offered a damage waiver, never insurance.',
 ]
 
 export type ActivationStepId = 'terms' | 'bank' | 'review'
 
 export const ACTIVATION_STEPS: { id: ActivationStepId, title: string, description: string }[] = [
   { id: 'terms', title: 'Terms', description: 'What activating the damage waiver means' },
-  { id: 'bank', title: 'Bank account', description: 'Where Tern pays your claims' },
+  { id: 'bank', title: 'Bank account', description: 'Where your claims are paid' },
   { id: 'review', title: 'Review', description: 'Check and activate' },
 ]
 

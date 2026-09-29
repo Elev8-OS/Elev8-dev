@@ -66,7 +66,7 @@ describe('listing protection tab', () => {
     expect(slotValue(wrapper, 'long')).toBe('dp-long-stay')
     const policies = wrapper.findAll('[data-testid="protection-policy"]')
     expect(policies.map(p => p.find('p.font-medium').text())).toEqual(['Standard stay', 'Long stay (28 nights and over)'])
-    expect(policies[0]!.text()).toContain('Waiver: Tern Bronze')
+    expect(policies[0]!.text()).toContain('Waiver: Elev8 Cover Bronze')
     expect(policies[0]!.text()).toContain('Deposit: Card on file, charged up to USD 500.00')
   })
 
@@ -180,7 +180,7 @@ describe('listing protection tab: VACATERN pitch', () => {
       expect(promo.text()).toContain(pillar)
     // lst-1 sleeps 10: Gold is the tier sized for it.
     expect(promo.text()).toContain(`Cover every stay here up to ${formatProtectionAmount(10000, 'USD')}`)
-    expect(promo.text()).toContain('so it takes Tern Gold')
+    expect(promo.text()).toContain('so it takes Elev8 Cover Gold')
   })
 
   it('starts the receipt from the listing\'s own waiver price, and works out a year', async () => {
@@ -206,7 +206,7 @@ describe('listing protection tab: VACATERN pitch', () => {
     expect(wrapper.find('[data-testid="tern-promo-margin"]').text()).toBe('USD 35.00')
     await price.setValue('10')
     const receipt = wrapper.find('[data-testid="tern-promo-receipt"]')
-    expect(receipt.text()).toContain('You pay, per stay')
+    expect(receipt.text()).toContain('You pay, per 30 nights')
     expect(receipt.find('[data-testid="tern-promo-margin"]').text()).toBe('USD 15.00')
     expect(receipt.text()).toContain('It costs you about')
   })

@@ -248,7 +248,7 @@ function save() {
                     Damage waiver
                   </p>
                   <p class="text-xs text-muted-foreground">
-                    Accidental damage is covered up to the Tern cover. Applies to every booking, on every channel.
+                    Accidental damage is covered up to the Elev8 Cover tier. Applies to every booking, on every channel.
                   </p>
                 </div>
                 <Switch
@@ -274,9 +274,9 @@ function save() {
                 <!-- The cover is a Tern product. The tenant picks a tier and never types an amount. -->
                 <div class="flex flex-col gap-1.5">
                   <p class="text-sm">
-                    Cover, provided by Tern through Elev8
+                    Cover, provided by Elev8 Cover
                   </p>
-                  <div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Tern cover">
+                  <div class="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Elev8 Cover tier">
                     <button
                       v-for="product in TERN_PRODUCTS"
                       :key="product.tier"
@@ -299,7 +299,7 @@ function save() {
                           Covers {{ formatProtectionAmount(ternPriceFor(product.tier, draft.currency)!.coverageCap, draft.currency) }}
                         </span>
                         <span class="text-xs text-muted-foreground tabular-nums">
-                          Elev8 charges {{ formatProtectionAmount(ternPriceFor(product.tier, draft.currency)!.perStayFee, draft.currency) }} per stay
+                          Elev8 charges {{ formatProtectionAmount(ternPriceFor(product.tier, draft.currency)!.perStayFee, draft.currency) }} per 30 nights
                         </span>
                       </template>
                       <span v-else class="mt-1 text-xs text-muted-foreground">Not available in {{ draft.currency }} yet</span>
@@ -309,12 +309,12 @@ function save() {
 
                 <div class="grid gap-3 sm:grid-cols-2">
                   <div class="flex flex-col gap-1.5">
-                    <Label for="policy-guest-price">You charge the guest, per stay ({{ draft.currency }})</Label>
+                    <Label for="policy-guest-price">You charge the guest, per 30 nights ({{ draft.currency }})</Label>
                     <Input id="policy-guest-price" v-model.number="draft.waiver.guestPrice" type="number" min="0" />
                   </div>
                   <div v-if="cover" class="flex flex-col justify-end gap-0.5 text-sm" data-testid="policy-fee-readout">
                     <p class="tabular-nums">
-                      Elev8 charges you {{ formatProtectionAmount(cover.perStayFee, draft.currency) }} per covered stay
+                      Elev8 charges you {{ formatProtectionAmount(cover.perStayFee, draft.currency) }} per 30 nights of a covered stay
                     </p>
                     <p
                       v-if="margin !== null && draft.waiver.guestPrice > 0"
@@ -322,18 +322,18 @@ function save() {
                       :class="margin < 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
                     >
                       {{ margin < 0
-                        ? `You would collect ${formatProtectionAmount(-margin, draft.currency)} less per stay than Elev8 charges you.`
-                        : `You keep ${formatProtectionAmount(margin, draft.currency)} per guest-paid stay.` }}
+                        ? `You would collect ${formatProtectionAmount(-margin, draft.currency)} less per 30 nights than Elev8 charges you.`
+                        : `You keep ${formatProtectionAmount(margin, draft.currency)} per 30 nights of a guest-paid stay.` }}
                     </p>
                   </div>
                 </div>
                 <p class="text-xs text-muted-foreground">
-                  On a listing where you pay for the cover, the guest is not asked and pays nothing. Elev8 charges you the same fee per stay.
+                  On a listing where you pay for the cover, the guest is not asked and pays nothing. Elev8 charges you the same fee. A stay longer than 30 nights takes one package per started 30 nights, for the guest price and the fee alike; the cover stays the same.
                 </p>
 
                 <div class="flex flex-col gap-1.5">
                   <p class="text-sm">
-                    Not covered <span class="text-xs text-muted-foreground">(set by Tern)</span>
+                    Not covered <span class="text-xs text-muted-foreground">(set by Elev8 Cover)</span>
                   </p>
                   <ul class="flex flex-col gap-1 text-xs text-muted-foreground" data-testid="policy-exclusions">
                     <li v-for="exclusion in exclusions" :key="exclusion">

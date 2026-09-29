@@ -112,7 +112,7 @@ function setMode(listingId: string, value: unknown) {
   if (!result.ok)
     toast.error(refusalText(result.reason))
   else if (value === 'host_paid')
-    toast.success('Covered by you: guests on this listing are not asked, and Elev8 charges you per stay.')
+    toast.success('Covered by you: guests on this listing are not asked, and Elev8 charges you the cover fee.')
 }
 
 // ------------------------------------------------------------ bulk assign
@@ -212,7 +212,7 @@ function resetCustom(listingId: string) {
       </h2>
       <p class="text-sm text-muted-foreground">
         Choose for each property: no protection, the guest buys the damage waiver in the guest guide, or you pay
-        for it and the guest is not asked. The cover comes from Tern through Elev8. Owner stays are never included.
+        for it and the guest is not asked. The cover is Elev8 Cover. Owner stays are never included.
       </p>
     </div>
 
@@ -233,7 +233,7 @@ function resetCustom(listingId: string) {
       <TabsContent value="policies" class="mt-4 flex flex-col gap-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <p class="text-sm text-muted-foreground">
-            A policy is the Tern cover, what the guest pays for it, and the terms. Start new ones from a template.
+            A policy is the Elev8 Cover tier, what the guest pays for it, and the terms. Start new ones from a template.
           </p>
           <Button size="sm" class="gap-1.5" data-testid="policy-new" @click="openEditor(null)">
             <Icon name="lucide:plus" class="size-4" />
@@ -327,9 +327,9 @@ function resetCustom(listingId: string) {
         <!-- Elev8's own insurance integration: a read-out, nothing to set. -->
         <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Icon name="lucide:info" class="size-3.5 shrink-0" />
-          The waiver cover is provided by {{ elev8CoverPartner.name }} through Elev8. Claims above
+          The waiver cover is {{ elev8CoverPartner.name }}. Claims above
           {{ formatProtectionAmount(elev8CoverPartner.deductiblePerClaim, elev8CoverPartner.currency) }} are insured by
-          {{ elev8CoverPartner.name }} and paid by bank transfer into the account you gave when activating.
+          our insurance partner and paid by bank transfer into the account you gave when activating.
         </p>
       </TabsContent>
 
@@ -538,7 +538,7 @@ function resetCustom(listingId: string) {
                       </SelectContent>
                     </Select>
                     <p v-if="row.mode === 'host_paid'" class="mt-1 text-xs text-muted-foreground">
-                      Guests are not asked. Elev8 charges you per stay.
+                      Guests are not asked. Elev8 charges you the cover fee.
                     </p>
                     <p
                       v-else-if="row.mode === 'guest_paid' && row.paused"

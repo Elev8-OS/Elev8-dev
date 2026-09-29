@@ -1,6 +1,6 @@
 import type { Booking, ListingStats } from '~/components/listings/data/listings'
 import { policyTemplate } from '~/components/reservations/data/damage-protection'
-import { recommendedTier, ternPriceFor, ternProduct } from '~/components/reservations/data/tern-products'
+import { coverPackagesFor, recommendedTier, ternPriceFor, ternProduct } from '~/components/reservations/data/tern-products'
 
 /**
  * The numbers behind the VACATERN pitch for one listing: the tier sized for
@@ -23,6 +23,8 @@ export interface TernPitch {
   occupancyPct: number
   avgNights: number
   staysPerYear: number
+  /** 30-night cover packages an average stay takes: the guest price and the fee both multiply by it. */
+  packagesPerStay: number
 }
 
 /** Mean nights of the listing's real stays: blocks, cancellations and inquiries do not count. */
@@ -69,5 +71,6 @@ export function ternPitchFor(
     occupancyPct: listing.stats.occupancyRate,
     avgNights,
     staysPerYear: estimatedStaysPerYear(listing.stats.occupancyRate, avgNights),
+    packagesPerStay: coverPackagesFor(Math.round(avgNights)),
   }
 }

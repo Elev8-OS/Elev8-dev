@@ -53,7 +53,7 @@ describe('damage protection settings: policies', () => {
     const cards = mountPanel().findAll('[data-testid="policy-card"]')
     const standard = cards.find(c => c.text().includes('Standard stay'))!
     // Built with the same formatter: ICU groups thousands with a typographic apostrophe.
-    expect(standard.text()).toContain(`Waiver: Tern Bronze, covers up to ${formatProtectionAmount(2000, 'USD')}. Guest pays USD 39.00, Elev8 charges you USD 9.00 per stay`)
+    expect(standard.text()).toContain(`Waiver: Elev8 Cover Bronze, covers up to ${formatProtectionAmount(2000, 'USD')}. Guest pays USD 39.00, Elev8 charges you USD 9.00, per 30 nights of a stay`)
     expect(standard.text()).toContain('All channels')
     expect(standard.text()).toContain('Deposit: Card on file, charged up to USD 500.00 only for damage, decided within 7 days')
     expect(standard.find('[data-testid="policy-usage"]').text()).toBe('Used on 1 listing for short stays')
@@ -67,7 +67,7 @@ describe('damage protection settings: policies', () => {
   })
 
   it('says the insurance comes from Elev8, with nothing to configure', () => {
-    expect(mountPanel().text()).toContain('provided by Tern through Elev8')
+    expect(mountPanel().text()).toContain('The waiver cover is Elev8 Cover')
   })
 
   it('opens the editor for a new policy', async () => {
@@ -108,7 +108,7 @@ describe('damage protection settings: listings', () => {
     select.vm.$emit('update:modelValue', 'host_paid')
     await nextTick()
     expect(useDamageProtection().listingMode('lst-2')).toBe('host_paid')
-    expect(row().text()).toContain('Guests are not asked. Elev8 charges you per stay.')
+    expect(row().text()).toContain('Guests are not asked. Elev8 charges you the cover fee.')
     expect(row().text()).toContain('(no waiver for you to pay for)')
   })
 
@@ -264,7 +264,7 @@ describe('the policy editor', () => {
     expect(wrapper.find('#policy-waiver-cap').exists()).toBe(false)
     expect(wrapper.find('#policy-exclusion').exists()).toBe(false)
     expect(wrapper.find('[data-testid="policy-exclusions"]').text()).toContain('Normal wear and tear')
-    expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('Elev8 charges you USD 9.00 per covered stay')
+    expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('Elev8 charges you USD 9.00 per 30 nights of a covered stay')
     expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('You keep USD 30.00')
     await wrapper.find('[data-testid="policy-tier-gold"]').trigger('click')
     expect(wrapper.find('[data-testid="policy-fee-readout"]').text()).toContain('USD 25.00')

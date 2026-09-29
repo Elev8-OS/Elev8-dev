@@ -1,5 +1,6 @@
 // app/components/guest-guides/data/mock-guides.ts
 import type { GuestGuide, GuestGuideLink } from './types'
+import { damageProtectionDemoGuides, damageProtectionDemoLinks } from './damage-protection-demo-guides'
 
 const now = new Date().toISOString()
 
@@ -45,6 +46,7 @@ export const mockGuestGuides: GuestGuide[] = [
     createdAt: now,
     updatedAt: now,
   },
+  ...damageProtectionDemoGuides,
 ]
 
 export const mockGuestGuideLinks: GuestGuideLink[] = [
@@ -82,4 +84,5 @@ export const mockGuestGuideLinks: GuestGuideLink[] = [
     status: 'submitted',
     channel: 'whatsapp',
   },
+  ...damageProtectionDemoLinks,
 ]

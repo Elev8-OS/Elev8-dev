@@ -651,7 +651,7 @@ describe('reassessOnExtension', () => {
     expect(useNotifications().alerts.value.some(a => a.type === 'PROTECTION_CHOICE_MISSING')).toBe(false)
   })
 
-  it('re-opens the choice across a band boundary without re-pricing the original', () => {
+  it('re-opens the choice across a band boundary, and adds the package at the frozen price', () => {
     seedReservation()
     const dp = useDamageProtection()
     dp.recordChoice('res-dp-1', ACCEPT_WAIVER)
@@ -660,8 +660,49 @@ describe('reassessOnExtension', () => {
     dp.reassessOnExtension('res-dp-1', 5)
 
     expect(useNotifications().alerts.value.some(a => a.type === 'PROTECTION_CHOICE_MISSING')).toBe(true)
-    expect(protectionOf().amount).toBe(before.amount)
+    // 40 nights lands on the long-stay policy (USD 249), but the stay keeps the
+    // USD 39 it agreed to, now for two 30-night packages.
+    expect(protectionOf()).toMatchObject({ packages: 2, amount: before.amount * 2, elev8Fee: before.elev8Fee! * 2, coverageCap: before.coverageCap })
     expect(protectionOf().termsText).toBe(before.termsText)
+  })
+
+  it('adds no package while the stay stays within 30 nights', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_WAIVER)
+    useReservationsModule().updateReservation('res-dp-1', { nights: 30 })
+    dp.reassessOnExtension('res-dp-1', 5)
+    expect(protectionOf()).toMatchObject({ packages: 1, amount: 39 })
+  })
+
+  it('says what the guest still owes in the activity line', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_WAIVER)
+    useReservationsModule().updateReservation('res-dp-1', { nights: 35 })
+    dp.reassessOnExtension('res-dp-1', 5)
+    const line = reservationOf().activity.at(-1)!
+    expect(line.title).toBe('Cover packages added')
+    expect(line.description).toContain('2 packages of up to 30 nights')
+    expect(line.description).toContain('USD 39.00 more to collect')
+  })
+
+  it('runs when a stay is extended from the Modify menu', async () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_WAIVER)
+    expect(useReservationsModule().extendReservation('res-dp-1', { checkOut: isoDaysFromNow(40) }).success).toBe(true)
+    await vi.waitFor(() => expect(protectionOf().packages).toBe(2))
+  })
+})
+
+describe('long stays take one package per started 30 nights', () => {
+  it('freezes the packages, the multiplied guest price and the multiplied Elev8 fee', () => {
+    seedReservation({ nights: 45, checkOut: isoDaysFromNow(50) })
+    const dp = useDamageProtection()
+    const long = dp.policyFor('lst-1', 45)!
+    expect(dp.recordChoice('res-dp-1', ACCEPT_WAIVER).ok).toBe(true)
+    expect(protectionOf()).toMatchObject({ packages: 2, amount: long.waiver.guestPrice * 2, elev8Fee: 30 })
   })
 })
 
