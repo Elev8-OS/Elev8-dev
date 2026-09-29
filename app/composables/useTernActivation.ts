@@ -39,7 +39,7 @@ export function seedTernActivation(): TernActivation {
       accountNumber: '7890 1234 56',
       bicSwift: 'CENAIDJA',
     },
-    ternOrganizationId: 'cover_org_demo_0001',
+    ternOrganizationId: 10421,
     registeredAt: SEEDED_AT,
     attempts: 1,
   }
@@ -167,7 +167,8 @@ export function useTernActivation() {
     activation.value = {
       ...activation.value,
       status: 'active',
-      ternOrganizationId: `cover_org_${Date.now().toString(36)}`,
+      // Stands in for the organization Tern sets up and hands over (no API for it in v0).
+      ternOrganizationId: 10000 + Math.floor(Math.random() * 90000),
       registeredAt: new Date().toISOString(),
     }
     persist()

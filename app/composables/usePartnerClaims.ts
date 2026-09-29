@@ -15,9 +15,14 @@ import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useTernActivation } from '~/composables/useTernActivation'
+import { useTernApi } from '~/composables/useTernApi'
+import { partnerEventsFromTern, TERN_EXTERNAL_SYSTEM, ternClaimCorrections, ternStatusFor, toTernClaim } from '~/lib/tern/mappers'
 
-/** The mock partner API round trip. Long enough for the spinner to be seen. */
+/** The mock partner API round trip on filing. Long enough for the spinner to be seen. */
 const PARTNER_API_MOCK_MS = 1500
+
+/** Claims read per page when polling Tern. */
+const POLL_PAGE_SIZE = 100
 
 export interface PartnerClaimRow {
   reservation: ReservationEntry
@@ -61,9 +66,13 @@ function eventId(prefix: string): string {
  * `partner` is the platform's contract, read-only. The tenant's side, its card
  * and its bank account, lives in `useTernActivation`.
  *
- * The partner API is MOCKED: `submitToPartner` is a timer, and the partner's
- * replies arrive through `receivePartnerEvent`, the path a real webhook would
- * take. `simulatePartner` plays the partner's side for the demo.
+ * The partner is Tern, reached through `useTernApi().client`, whose shapes are
+ * Tern's own API (`~/lib/tern`). The flow follows Tern's model: the stay is a
+ * Tern booking (`ensureBooking`), the claim is filed against it with the
+ * evidence uploaded as documents, and Tern's changes are read by POLLING
+ * (`pollPartnerUpdates`, its spec has no webhook) and translated into our events
+ * (`partnerEventsFromTern`). In the demo the client is an in-memory mock and
+ * `simulatePartner` plays Tern's staff before polling.
  *
  * Writes go through `useDamageProtection().patchClaim`, which stays the only
  * writer of a reservation's protection.
@@ -77,6 +86,7 @@ export function usePartnerClaims() {
   const partner = computed<CoverPartner>(() => elev8CoverPartner)
 
   const tern = useTernActivation()
+  const ternApi = useTernApi()
 
   /**
    * The bank account Tern pays a claim into, by transfer. One per tenant for
@@ -109,15 +119,34 @@ export function usePartnerClaims() {
     claimId: string,
     base: PartnerClaim,
     event: PartnerEventPayload,
+    extra: Partial<PartnerClaim> = {},
   ): { ok: true, claim: PartnerClaim } | { ok: false, reason: string } {
     const result = applyPartnerEvent(base, event)
     if (!result.ok)
       return result
+    const claim = { ...result.claim, ...extra }
     const detail = `${PARTNER_EVENT_LABELS[event.status]}${event.note ? `: ${event.note}` : ''}`
-    const written = dp.patchClaim(reservationId, claimId, { partnerClaim: result.claim }, detail)
+    const written = dp.patchClaim(reservationId, claimId, { partnerClaim: claim }, detail)
     if (!written.ok)
       return written
-    return result
+    return { ok: true, claim }
+  }
+
+  /** The files a claim carries, as Tern will receive them: uploads first, then the housekeeper's photos. */
+  function evidenceFiles(claim: ProtectionClaim): { fileName: string, url: string }[] {
+    const urls = [...claim.evidenceUrls, ...(claim.cleaningReport?.photoUrls ?? [])]
+    return urls.map((url, i) => ({ url, fileName: url.split('?')[0]!.split('/').pop() || `evidence-${i + 1}.jpg` }))
+  }
+
+  /**
+   * Upload the claim's evidence to Tern. ⚠️ The real integration must send the
+   * ORIGINAL bytes (fetched server-side from our storage): Tern reads EXIF and
+   * GPS and flags edited or generated photos (`getDocumentMetadata`), so a
+   * re-compressed copy weakens the claim. The mock sends an empty placeholder.
+   */
+  async function uploadEvidence(ternClaimId: number, claim: ProtectionClaim) {
+    for (const file of evidenceFiles(claim))
+      await ternApi.client.uploadDocument({ entityType: 'Claim', entityId: ternClaimId, visibility: 'Public', notes: file.url }, new Blob([]), file.fileName)
   }
 
   function alertContext(found: NonNullable<ReturnType<typeof locate>>) {
@@ -176,7 +205,24 @@ export function usePartnerClaims() {
       return started
 
     submitting.value = new Set(submitting.value).add(claimId)
-    await new Promise(resolve => setTimeout(resolve, PARTNER_API_MOCK_MS))
+    let filed: Awaited<ReturnType<typeof ternApi.client.createClaim>> | null = null
+    let failure: string | null = null
+    try {
+      // The demo's "simulate a rejected submission": Tern answers the next create with a 400.
+      if (forceFailure)
+        ternApi.controls.failNextCreateClaim('The partner API rejected the request: evidence pack missing a photo of the damage')
+      // A Tern claim hangs off a Tern booking: send the stay first if it never was.
+      const bookingId = await ternApi.ensureBooking(reservationId)
+      if (bookingId === null)
+        throw new Error('The stay could not be registered with the partner')
+      await new Promise(resolve => setTimeout(resolve, PARTNER_API_MOCK_MS))
+      const claimant = ternApi.manager()
+      filed = await ternApi.client.createClaim(toTernClaim({ bookingId, claim: found.claim, currency: found.protection.currency, claimant }))
+      await uploadEvidence(filed.claimId!, found.claim)
+    }
+    catch (error) {
+      failure = error instanceof Error ? error.message : 'The partner did not accept the claim'
+    }
     const next = new Set(submitting.value)
     next.delete(claimId)
     submitting.value = next
@@ -186,20 +232,37 @@ export function usePartnerClaims() {
     if (!live || !current)
       return { ok: false, reason: 'claim_not_found' }
 
-    if (forceFailure) {
-      const reason = 'The partner API rejected the request: evidence pack missing a photo of the damage'
+    if (failure || !filed) {
+      const reason = failure ?? 'The partner did not accept the claim'
       apply(reservationId, claimId, current, { id: eventId('evt-api'), status: 'submission_failed', source: 'api', submissionError: reason })
       createProtectionAlert('PARTNER_CLAIM_SUBMISSION_FAILED', { ...alertContext(live), reason })
       return { ok: false, reason: 'submission_failed' }
     }
-    const ref = `PC-${String(Date.now()).slice(-6)}`
-    const done = apply(reservationId, claimId, current, { id: eventId('evt-api'), status: 'submitted', source: 'api', partnerClaimRef: ref })
+    const done = apply(
+      reservationId,
+      claimId,
+      current,
+      { id: eventId('evt-api'), status: 'submitted', source: 'api', partnerClaimRef: filed.claimDisplayId },
+      ternClaimCorrections(filed, current, partner.value.maxPerClaim),
+    )
     return done.ok ? { ok: true } : done
   }
 
+  /** Alerts that follow a partner-side change, however it arrived. */
+  function alertOnPartnerChange(found: NonNullable<ReturnType<typeof locate>>, before: PartnerClaimStatus, claim: PartnerClaim) {
+    if (claim.status === before)
+      return
+    if (claim.status === 'info_requested')
+      createProtectionAlert('PARTNER_CLAIM_INFO_REQUESTED', { ...alertContext(found), info_request: claim.infoRequest })
+    if (claim.status === 'rejected')
+      createProtectionAlert('PARTNER_CLAIM_REJECTED', { ...alertContext(found), reason: claim.rejectionReason })
+    if (claim.status === 'paid')
+      resolvePartnerAlerts(found.claim.id, ['PARTNER_CLAIM_PAYOUT_OVERDUE'])
+  }
+
   /**
-   * An event from the partner, as its webhook would deliver it. Duplicates and
-   * out-of-order events are refused by `applyPartnerEvent`, never applied.
+   * One partner event, applied through `applyPartnerEvent`. Duplicates and
+   * out-of-order events are refused, never applied. Polling uses the same rules.
    */
   function receivePartnerEvent(reservationId: string, claimId: string, event: PartnerEventPayload): PartnerWriteResult {
     const found = locate(reservationId, claimId)
@@ -209,61 +272,173 @@ export function usePartnerClaims() {
     const result = apply(reservationId, claimId, current, event)
     if (!result.ok)
       return result
-    if (result.claim.status === 'info_requested')
-      createProtectionAlert('PARTNER_CLAIM_INFO_REQUESTED', { ...alertContext(found), info_request: result.claim.infoRequest })
-    if (result.claim.status === 'rejected')
-      createProtectionAlert('PARTNER_CLAIM_REJECTED', { ...alertContext(found), reason: result.claim.rejectionReason })
-    if (result.claim.status === 'paid')
-      resolvePartnerAlerts(claimId, ['PARTNER_CLAIM_PAYOUT_OVERDUE'])
+    alertOnPartnerChange(found, current.status, result.claim)
     return { ok: true }
   }
 
-  /** The mock partner. Builds the event a real partner would send and delivers it. */
-  function simulatePartner(reservationId: string, claimId: string, simulation: PartnerSimulation): PartnerWriteResult {
-    const base = { id: eventId('evt-webhook'), source: 'webhook' as const }
-    switch (simulation.kind) {
-      case 'under_review':
-        return receivePartnerEvent(reservationId, claimId, { ...base, status: 'under_review' })
-      case 'info_requested':
-        return receivePartnerEvent(reservationId, claimId, { ...base, status: 'info_requested', infoRequest: simulation.infoRequest })
-      case 'approved':
-        return receivePartnerEvent(reservationId, claimId, { ...base, status: 'approved', approvedAmount: simulation.approvedAmount })
-      case 'rejected':
-        return receivePartnerEvent(reservationId, claimId, { ...base, status: 'rejected', rejectionReason: simulation.rejectionReason })
-      case 'payout_scheduled':
-        return receivePartnerEvent(reservationId, claimId, { ...base, status: 'payout_scheduled', payoutScheduledFor: simulation.payoutScheduledFor })
-      case 'paid':
-        return receivePartnerEvent(reservationId, claimId, {
-          ...base,
-          status: 'paid',
-          paidAmount: simulation.paidAmount,
-          payoutReference: `TRF-${String(Date.now()).slice(-8)}`,
-        })
+  /** Tern claim id → the `modStamp` last applied, so an unchanged claim is skipped. */
+  const seenStamps = useState<Record<number, string>>('tern-claim-seen-stamps', () => ({}))
+
+  function locateByClaimId(claimId: string) {
+    for (const reservation of reservations.value) {
+      const claim = reservation.damageProtection?.claims?.find(c => c.id === claimId)
+      if (claim)
+        return locate(reservation.id, claimId)
     }
+    return null
   }
 
-  /** Our answer to the partner's information request. Sends the claim back to review. */
-  function respondToInfoRequest(reservationId: string, claimId: string, note: string): PartnerWriteResult {
+  /**
+   * Read what changed at Tern and bring our claims in line. Tern's spec has no
+   * webhook, so this is the way in: in production a scheduled job calls it every
+   * few minutes; here the worklist calls it on mount and the demo calls it after
+   * playing Tern's staff. Safe to call again: a snapshot read twice produces
+   * events already applied, which are refused.
+   *
+   * ⚠️ Tern's claim list has NO `modStampFrom` filter (its booking and note lists
+   * do) and cannot sort by it, so every Elev8 claim is read, page by page, and
+   * one whose `modStamp` matches the last applied is skipped. Worth asking Tern
+   * for the filter, or a webhook, before the volume grows.
+   */
+  async function pollPartnerUpdates(): Promise<{ checked: number, changed: number }> {
+    const items: Awaited<ReturnType<typeof ternApi.client.listClaim>>['items'] = []
+    for (let offset = 0; ; offset += POLL_PAGE_SIZE) {
+      const page = await ternApi.client.listClaim({ externalClaimSystemContains: TERN_EXTERNAL_SYSTEM, limit: POLL_PAGE_SIZE, offset })
+      items.push(...page.items)
+      if (page.items.length < POLL_PAGE_SIZE)
+        break
+    }
+    let changed = 0
+    for (const ternClaim of items) {
+      if (ternClaim.claimId === undefined || (ternClaim.modStamp && seenStamps.value[ternClaim.claimId] === ternClaim.modStamp))
+        continue
+      if (ternClaim.modStamp)
+        seenStamps.value = { ...seenStamps.value, [ternClaim.claimId]: ternClaim.modStamp }
+      const found = ternClaim.externalClaimId ? locateByClaimId(ternClaim.externalClaimId) : null
+      const before = found?.claim.partnerClaim
+      if (!found || !before)
+        continue
+      const notes = await ternApi.client.listClaimNote({ parentEntityId: ternClaim.claimId!, visibilities: ['Public'], sort: 'ModStamp', sortDir: 'Desc', limit: 1 })
+      let current: PartnerClaim = { ...before, ...ternClaimCorrections(ternClaim, before, partner.value.maxPerClaim) }
+      const applied: string[] = []
+      for (const event of partnerEventsFromTern(ternClaim, current, notes.items[0])) {
+        // Refused events are steps already taken (duplicate) or already passed: skip them.
+        const result = applyPartnerEvent(current, event)
+        if (result.ok) {
+          current = result.claim
+          applied.push(PARTNER_EVENT_LABELS[event.status])
+        }
+      }
+      if (JSON.stringify(current) === JSON.stringify(before))
+        continue
+      const written = dp.patchClaim(found.reservation.id, found.claim.id, { partnerClaim: current }, applied.length ? applied.join(', ') : 'Partner figures updated')
+      if (written.ok) {
+        changed += 1
+        alertOnPartnerChange(found, before.status, current)
+      }
+    }
+    return { checked: items.length, changed }
+  }
+
+  /**
+   * The Tern claim id for one of our claims. A claim filed before the Tern client
+   * existed (the demo seeds) is put into the mock as it stands, so the demo can
+   * carry on with it. The real API never needs this.
+   */
+  function ternClaimIdFor(reservationId: string, claimId: string): number | null {
+    const found = locate(reservationId, claimId)
+    const current = found?.claim.partnerClaim
+    if (!found || !current)
+      return null
+    const known = current.partnerClaimId
+    if (known !== undefined && ternApi.controls.claims().some(c => c.claimId === known))
+      return known
+    const mapped = ternStatusFor(current.status)
+    if (!mapped)
+      return null
+    const adopted = ternApi.controls.adoptClaim({
+      ...toTernClaim({ bookingId: 0, claim: found.claim, currency: current.currency, claimant: ternApi.manager() }),
+      bookingId: undefined,
+      claimId: known,
+      claimDisplayId: current.partnerClaimRef,
+      claimAmount: current.claimedAmount + current.deductible,
+      deductibleApplied: current.deductible,
+      status: mapped.status,
+      ...(mapped.paymentStatus ? { paymentStatus: mapped.paymentStatus } : {}),
+      ...(current.approvedAmount !== undefined ? { totalNetApprovedAmount: current.approvedAmount, ternApprovedAmount: current.approvedAmount + current.deductible } : {}),
+    })
+    // The adoption itself is not a change at Tern.
+    if (adopted.modStamp)
+      seenStamps.value = { ...seenStamps.value, [adopted.claimId!]: adopted.modStamp }
+    dp.patchClaim(reservationId, claimId, { partnerClaim: { ...current, partnerClaimId: adopted.claimId, partnerStatus: adopted.status } }, 'Linked to the partner record')
+    return adopted.claimId!
+  }
+
+  /** Demo only: play Tern's staff on the mock, then read the change back the way production would, by polling. */
+  async function simulatePartner(reservationId: string, claimId: string, simulation: PartnerSimulation): Promise<PartnerWriteResult> {
+    const ternId = ternClaimIdFor(reservationId, claimId)
+    if (ternId === null)
+      return { ok: false, reason: 'not_filed' }
+    const deductible = locate(reservationId, claimId)?.claim.partnerClaim?.deductible ?? 0
+    const c = ternApi.controls
+    switch (simulation.kind) {
+      case 'under_review': c.review(ternId); break
+      case 'info_requested': c.requestFollowUp(ternId, simulation.infoRequest); break
+      // Our figures are net of the deductible, Tern approves gross.
+      case 'approved': c.approve(ternId, simulation.approvedAmount !== undefined ? simulation.approvedAmount + deductible : undefined); break
+      case 'rejected': c.deny(ternId, simulation.rejectionReason); break
+      case 'payout_scheduled': c.schedulePayment(ternId, simulation.payoutScheduledFor); break
+      case 'paid': c.sendPayment(ternId); break
+    }
+    const before = locate(reservationId, claimId)?.claim.partnerClaim?.status
+    await pollPartnerUpdates()
+    const after = locate(reservationId, claimId)?.claim.partnerClaim?.status
+    return before !== after ? { ok: true } : { ok: false, reason: 'illegal_transition' }
+  }
+
+  /**
+   * Our answer to the partner's information request: a Public claim note, and
+   * the claim marked `FollowUpReceived` at Tern. Sends ours back to review.
+   */
+  async function respondToInfoRequest(reservationId: string, claimId: string, note: string): Promise<PartnerWriteResult> {
     if (!note.trim())
       return { ok: false, reason: 'empty_response' }
     const found = locate(reservationId, claimId)
     const current = found?.claim.partnerClaim
     if (!found || !current)
       return { ok: false, reason: 'not_filed' }
-    const result = apply(reservationId, claimId, current, { id: eventId('evt-info'), status: 'info_sent', source: 'staff', note: note.trim() })
+    if (current.status !== 'info_requested')
+      return { ok: false, reason: 'illegal_transition' }
+    const ternId = ternClaimIdFor(reservationId, claimId)
+    if (ternId !== null) {
+      const live = await ternApi.client.getClaim(ternId)
+      await ternApi.client.updateClaim(ternId, { claim: { ...live, status: 'FollowUpReceived' }, publicNote: note.trim() })
+    }
+    const fresh = locate(reservationId, claimId)!.claim.partnerClaim!
+    const result = apply(reservationId, claimId, fresh, { id: eventId('evt-info'), status: 'info_sent', source: 'staff', note: note.trim() })
     if (!result.ok)
       return result
     resolvePartnerAlerts(claimId, ['PARTNER_CLAIM_INFO_REQUESTED'])
     return { ok: true }
   }
 
-  function withdraw(reservationId: string, claimId: string, reason: string): PartnerWriteResult {
+  /** Withdraw at Tern (status `Withdrawn`, the reason as a Public note), then on ours. */
+  async function withdraw(reservationId: string, claimId: string, reason: string): Promise<PartnerWriteResult> {
     if (!reason.trim())
       return { ok: false, reason: 'missing_reason' }
     const current = locate(reservationId, claimId)?.claim.partnerClaim
     if (!current)
       return { ok: false, reason: 'not_filed' }
-    const result = apply(reservationId, claimId, current, { id: eventId('evt-withdraw'), status: 'withdrawn', source: 'staff', note: reason.trim() })
+    if (!['submission_failed', 'submitted', 'under_review', 'info_requested'].includes(current.status))
+      return { ok: false, reason: 'illegal_transition' }
+    // A failed submission never reached Tern: there is nothing to withdraw there.
+    const ternId = current.status === 'submission_failed' ? null : ternClaimIdFor(reservationId, claimId)
+    if (ternId !== null) {
+      const live = await ternApi.client.getClaim(ternId)
+      await ternApi.client.updateClaim(ternId, { claim: { ...live, status: 'Withdrawn' }, publicNote: reason.trim() })
+    }
+    const fresh = locate(reservationId, claimId)!.claim.partnerClaim!
+    const result = apply(reservationId, claimId, fresh, { id: eventId('evt-withdraw'), status: 'withdrawn', source: 'staff', note: reason.trim() })
     if (!result.ok)
       return result
     resolvePartnerAlerts(claimId, ['PARTNER_CLAIM_SUBMISSION_FAILED', 'PARTNER_CLAIM_INFO_REQUESTED'])
@@ -372,6 +547,7 @@ export function usePartnerClaims() {
     submitToPartner,
     isSubmitting,
     receivePartnerEvent,
+    pollPartnerUpdates,
     simulatePartner,
     respondToInfoRequest,
     withdraw,

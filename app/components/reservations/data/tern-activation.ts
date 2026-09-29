@@ -66,7 +66,12 @@ export interface TernActivation {
   /** The invoice template the bank details were copied from. Provenance only, never a live join. */
   bankCopiedFromTemplateId?: string
   /** Tern's id for the tenant, returned when the organization is registered. */
-  ternOrganizationId?: string
+  /**
+   * Tern's `organizationId` (an integer), which every booking must carry. ⚠️ Tern's
+   * API v0 has no endpoint to create an organization: Tern sets it up and hands
+   * the id over. The mock activation stands in for that step.
+   */
+  ternOrganizationId?: number
   registeredAt?: string
   lastError?: string
   attempts?: number
@@ -234,7 +239,7 @@ export function ternPayoutTarget(activation: TernActivation): { id: string, acco
   if (activation.status !== 'active' || !activation.payoutBank)
     return null
   return {
-    id: activation.ternOrganizationId ?? 'tern-bank',
+    id: activation.ternOrganizationId !== undefined ? `cover-org-${activation.ternOrganizationId}` : 'cover-bank',
     accountName: bankAccountLabel(activation.payoutBank),
   }
 }

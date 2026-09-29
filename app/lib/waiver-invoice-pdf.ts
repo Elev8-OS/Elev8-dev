@@ -57,8 +57,8 @@ export function buildWaiverInvoicePdf(invoice: WaiverInvoice, opts: { download?:
     pdf.row('Address', invoice.billTo.addressLines.join(', '))
   if (invoice.billTo.vatNumber)
     pdf.row('VAT number', invoice.billTo.vatNumber)
-  if (invoice.billTo.ternOrganizationId)
-    pdf.row('Cover account', invoice.billTo.ternOrganizationId)
+  if (invoice.billTo.ternOrganizationId !== undefined)
+    pdf.row('Cover account', String(invoice.billTo.ternOrganizationId))
 
   const count = invoice.lines.length
   pdf.section(`Covered stays that checked out in ${periodLabel(invoice.period)}`, 17)

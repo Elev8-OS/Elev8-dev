@@ -86,7 +86,7 @@ describe('the damage waiver activation', () => {
     expect(wrapper.find('[data-testid="tern-step-card"]').exists()).toBe(false)
     await clickAndSettle(wrapper, 'tern-activate')
     expect(wrapper.find('[data-testid="tern-activation-done"]').text()).toContain('Damage waiver active')
-    expect(useTernActivation().activation.value.ternOrganizationId).toMatch(/^cover_org_/)
+    expect(useTernActivation().activation.value.ternOrganizationId).toEqual(expect.any(Number))
     expect(wrapper.find('[data-testid="tern-activation-card"]').attributes('data-status')).toBe('active')
   })
 

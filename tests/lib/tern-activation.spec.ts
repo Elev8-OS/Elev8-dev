@@ -123,8 +123,8 @@ describe('what leaves the app', () => {
   it('has somewhere for Tern to pay only once the service is active', () => {
     const payoutBank = bankDraftToAccount(bank())
     expect(ternPayoutTarget({ status: 'registration_failed', payoutBank })).toBeNull()
-    expect(ternPayoutTarget({ status: 'active', payoutBank, ternOrganizationId: 'tern_org_1' }))
-      .toEqual({ id: 'tern_org_1', accountName: 'Aargauische Kantonalbank •••• 2957' })
+    expect(ternPayoutTarget({ status: 'active', payoutBank, ternOrganizationId: 1 }))
+      .toEqual({ id: 'cover-org-1', accountName: 'Aargauische Kantonalbank •••• 2957' })
   })
 })
 

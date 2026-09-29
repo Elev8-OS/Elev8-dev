@@ -5,6 +5,7 @@ import { useNotifications } from '~/composables/useNotifications'
 import { usePartnerClaims } from '~/composables/usePartnerClaims'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useTernActivation } from '~/composables/useTernActivation'
+import { resetTernMock, useTernApi } from '~/composables/useTernApi'
 
 vi.mock('vue-sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
@@ -74,6 +75,7 @@ beforeEach(() => {
   useReservationsModule().reset()
   useReservationsModule().reservations.value = []
   localStorage.clear()
+  resetTernMock()
 })
 
 describe('submitToPartner', () => {
@@ -84,8 +86,11 @@ describe('submitToPartner', () => {
     const filed = partnerClaim()!
     expect(filed).toMatchObject({ status: 'submitted', claimedAmount: 220, deductible: 100, policyNumber: 'MP-2026-0001' })
     // Tern pays by bank transfer into the account registered at activation.
-    expect(filed).toMatchObject({ payoutAccountId: 'cover_org_demo_0001', payoutAccountName: 'Bank Central Asia (BCA) •••• 3456' })
-    expect(filed.partnerClaimRef).toMatch(/^PC-/)
+    expect(filed).toMatchObject({ payoutAccountId: 'cover-org-10421', payoutAccountName: 'Bank Central Asia (BCA) •••• 3456' })
+    // Tern's own ids come back: the display id as the reference, the numeric id for later calls.
+    expect(filed.partnerClaimRef).toMatch(/^C-\d{6}$/)
+    expect(filed.partnerClaimId).toEqual(expect.any(Number))
+    expect(filed.partnerStatus).toBe('Submitted')
     expect(filed.events.map(e => [e.status, e.source])).toEqual([['submitting', 'staff'], ['submitted', 'api']])
   })
 
@@ -155,11 +160,11 @@ describe('the partner process, end to end', () => {
     seed()
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
-    expect(pc.simulatePartner('res-w-1', 'clm-1', { kind: 'under_review' })).toEqual({ ok: true })
-    expect(pc.simulatePartner('res-w-1', 'clm-1', { kind: 'approved', approvedAmount: 200 })).toEqual({ ok: true })
+    await expect(pc.simulatePartner('res-w-1', 'clm-1', { kind: 'under_review' })).resolves.toEqual({ ok: true })
+    await expect(pc.simulatePartner('res-w-1', 'clm-1', { kind: 'approved', approvedAmount: 200 })).resolves.toEqual({ ok: true })
     expect(partnerClaim()!.status).toBe('partially_approved')
-    pc.simulatePartner('res-w-1', 'clm-1', { kind: 'payout_scheduled', payoutScheduledFor: new Date().toISOString() })
-    pc.simulatePartner('res-w-1', 'clm-1', { kind: 'paid' })
+    await pc.simulatePartner('res-w-1', 'clm-1', { kind: 'payout_scheduled', payoutScheduledFor: '2026-10-05' })
+    await pc.simulatePartner('res-w-1', 'clm-1', { kind: 'paid' })
     expect(partnerClaim()).toMatchObject({ status: 'paid', paidAmount: 200 })
     expect(pc.confirmReceived('res-w-1', 'clm-1', 195)).toEqual({ ok: true })
     expect(partnerClaim()).toMatchObject({ status: 'received', receivedAmount: 195 })
@@ -169,12 +174,16 @@ describe('the partner process, end to end', () => {
     seed()
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
-    pc.simulatePartner('res-w-1', 'clm-1', { kind: 'info_requested', infoRequest: 'Send the invoice' })
+    await pc.simulatePartner('res-w-1', 'clm-1', { kind: 'info_requested', infoRequest: 'Send the invoice' })
     const alert = () => useNotifications().alerts.value.find(a => a.type === 'PARTNER_CLAIM_INFO_REQUESTED')!
     expect(alert().status).toBe('ACTIVE')
+    // The request text arrives as Tern's Public claim note.
+    expect(partnerClaim()!.infoRequest).toBe('Send the invoice')
 
-    expect(pc.respondToInfoRequest('res-w-1', 'clm-1', '  ')).toEqual({ ok: false, reason: 'empty_response' })
-    expect(pc.respondToInfoRequest('res-w-1', 'clm-1', 'Invoice attached')).toEqual({ ok: true })
+    await expect(pc.respondToInfoRequest('res-w-1', 'clm-1', '  ')).resolves.toEqual({ ok: false, reason: 'empty_response' })
+    await expect(pc.respondToInfoRequest('res-w-1', 'clm-1', 'Invoice attached')).resolves.toEqual({ ok: true })
+    // Our answer goes to Tern as a Public note, with the claim marked FollowUpReceived.
+    expect(useTernApi().controls.claims()[0]!.status).toBe('FollowUpReceived')
     expect(partnerClaim()!.status).toBe('under_review')
     expect(alert().status).toBe('RESOLVED')
   })
@@ -183,8 +192,8 @@ describe('the partner process, end to end', () => {
     seed()
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
-    pc.simulatePartner('res-w-1', 'clm-1', { kind: 'rejected', rejectionReason: 'Wear and tear' })
-    expect(partnerClaim()).toMatchObject({ status: 'rejected', rejectionReason: 'Wear and tear' })
+    await pc.simulatePartner('res-w-1', 'clm-1', { kind: 'rejected', rejectionReason: 'Wear and tear' })
+    expect(partnerClaim()).toMatchObject({ status: 'rejected', rejectionReason: 'Wear and tear', partnerStatus: 'Denied' })
     expect(useNotifications().alerts.value.some(a => a.type === 'PARTNER_CLAIM_REJECTED')).toBe(true)
   })
 
@@ -203,15 +212,52 @@ describe('the partner process, end to end', () => {
     seed()
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
-    expect(pc.withdraw('res-w-1', 'clm-1', '')).toEqual({ ok: false, reason: 'missing_reason' })
-    expect(pc.withdraw('res-w-1', 'clm-1', 'Guest paid for it directly')).toEqual({ ok: true })
+    await expect(pc.withdraw('res-w-1', 'clm-1', '')).resolves.toEqual({ ok: false, reason: 'missing_reason' })
+    await expect(pc.withdraw('res-w-1', 'clm-1', 'Guest paid for it directly')).resolves.toEqual({ ok: true })
     expect(partnerClaim()!.status).toBe('withdrawn')
+    expect(useTernApi().controls.claims()[0]!.status).toBe('Withdrawn')
   })
 
   it('stops the damage claim being removed while it is filed with the partner', async () => {
     seed({}, [claim({ guestNotifiedAt: undefined })])
     await settle(() => usePartnerClaims().submitToPartner('res-w-1', 'clm-1'))
     expect(useDamageProtection().removeClaim('res-w-1', 'clm-1')).toEqual({ ok: false, reason: 'filed_with_partner' })
+  })
+})
+
+describe('the Tern API, as the flow uses it', () => {
+  it('registers the stay as a Tern booking, files the claim against it gross, and uploads the evidence', async () => {
+    seed()
+    await settle(() => usePartnerClaims().submitToPartner('res-w-1', 'clm-1'))
+    const { controls, bookingIds } = useTernApi()
+    const [booking] = controls.bookings()
+    const [filed] = controls.claims()
+    expect(booking).toMatchObject({ bookingNumber: 'res-w-1', clientFirstName: 'Hannah', clientLastName: 'Brecht', organizationId: 10421, active: true })
+    expect(bookingIds.value['res-w-1']).toBe(booking!.bookingId)
+    // Gross: Tern applies its own deductible.
+    expect(filed).toMatchObject({ bookingId: booking!.bookingId, claimAmount: 320, claimCurrency: 'USD', externalClaimSystem: 'Elev8', externalClaimId: 'clm-1', deductibleApplied: 100, status: 'Submitted' })
+    expect(controls.documents().map(d => [d.entityType, d.entityId, d.fileName])).toEqual([['Claim', filed!.claimId, 'worktop.jpg']])
+  })
+
+  it('picks up a change made at Tern by polling, and a second poll changes nothing', async () => {
+    seed()
+    const pc = usePartnerClaims()
+    await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
+    const { controls } = useTernApi()
+    controls.approve(partnerClaim()!.partnerClaimId!)
+    controls.sendPayment(partnerClaim()!.partnerClaimId!, 'TRF-1')
+    await expect(pc.pollPartnerUpdates()).resolves.toMatchObject({ changed: 1 })
+    expect(partnerClaim()).toMatchObject({ status: 'paid', approvedAmount: 220, paidAmount: 220, payoutReference: 'TRF-1', partnerStatus: 'Approved' })
+    const events = partnerClaim()!.events.length
+    await expect(pc.pollPartnerUpdates()).resolves.toMatchObject({ changed: 0 })
+    expect(partnerClaim()!.events).toHaveLength(events)
+  })
+
+  it('carries a demo claim filed before the client existed into the mock, then on', async () => {
+    seed({}, [claim({ partnerClaim: { partnerId: 'partner-tern', partnerName: 'Elev8 Cover', policyNumber: 'MP-2026-0001', currency: 'USD', claimedAmount: 220, deductible: 100, status: 'under_review', partnerClaimRef: 'PC-240117', payoutAccountId: 'cover-org-10421', payoutAccountName: 'BCA', events: [] } })])
+    const pc = usePartnerClaims()
+    await expect(pc.simulatePartner('res-w-1', 'clm-1', { kind: 'approved' })).resolves.toEqual({ ok: true })
+    expect(partnerClaim()).toMatchObject({ status: 'approved', approvedAmount: 220, partnerClaimRef: 'PC-240117' })
   })
 })
 
@@ -229,7 +275,7 @@ describe('the worklist', () => {
     seed({}, [claim(), claim({ id: 'clm-2', coveredAmount: 700, amount: 700 })])
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-2'))
-    pc.simulatePartner('res-w-1', 'clm-2', { kind: 'approved' })
+    await pc.simulatePartner('res-w-1', 'clm-2', { kind: 'approved' })
     expect(pc.moneyTotals.value).toEqual({
       claimable: [{ currency: 'USD', amount: 220 }],
       withPartner: [],
@@ -242,7 +288,7 @@ describe('the worklist', () => {
     seed()
     const pc = usePartnerClaims()
     await settle(() => pc.submitToPartner('res-w-1', 'clm-1'))
-    pc.simulatePartner('res-w-1', 'clm-1', { kind: 'approved' })
+    await pc.simulatePartner('res-w-1', 'clm-1', { kind: 'approved' })
     const later = new Date(Date.now() + 15 * 86400000)
     pc.emitPartnerAlerts(later)
     pc.emitPartnerAlerts(later)

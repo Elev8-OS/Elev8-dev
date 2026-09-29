@@ -22,6 +22,9 @@ onMounted(() => {
   dp.hydrate()
   dp.emitProtectionAlerts()
   pc.emitPartnerAlerts()
+  // Tern has no webhook: read what changed at the partner since the last poll.
+  // In production a scheduled job does this; the worklist catches up on mount.
+  void pc.pollPartnerUpdates()
   // Elev8 bills on the 1st: catch up any 1st that has passed since the last visit,
   // so a declined charge alerts even before Settings, Billing is opened.
   waiverBilling.hydrate()

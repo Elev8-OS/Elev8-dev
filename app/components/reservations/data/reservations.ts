@@ -228,7 +228,8 @@ export interface PartnerClaimEvent {
   id: string
   at: string
   status: PartnerClaimStatus | 'info_sent'
-  source: 'api' | 'webhook' | 'staff'
+  /** 'poll': read from the partner's API by polling (Tern has no webhook). */
+  source: 'api' | 'webhook' | 'poll' | 'staff'
   note?: string
 }
 
@@ -246,8 +247,18 @@ export interface PartnerClaim {
   claimedAmount: number
   deductible: number
   status: PartnerClaimStatus
-  /** The partner's own reference, returned by their API on submission. */
+  /** The partner's own reference, returned by their API on submission (Tern `claimDisplayId`). */
   partnerClaimRef?: string
+  /** The partner's numeric claim id (Tern `claimId`): what every later API call names. */
+  partnerClaimId?: number
+  /**
+   * The partner's own status, as its API last reported it (a Tern `status`).
+   * Several of Tern's statuses share one of ours (`TERN_STATUS_MAP`), so the raw
+   * one is kept to show staff exactly where the claim stands.
+   */
+  partnerStatus?: string
+  /** A goodwill payment the partner added on top of the cover (Tern `exGratiaPayment`). */
+  exGratiaAmount?: number
   submittedAt?: string
   submissionError?: string
   infoRequest?: string
@@ -258,9 +269,10 @@ export interface PartnerClaim {
   paidAt?: string
   payoutReference?: string
   /**
-   * The tenant's Stripe payout account the partner pays into, frozen at
-   * submission (`stripePayoutAccountFor`), so moving a listing to another
-   * account later cannot redirect money already on its way.
+   * The bank account the partner pays into, frozen at submission from the
+   * tenant's activation (`useTernActivation().payoutTarget`), so changing the
+   * bank later cannot redirect money already on its way. ⚠️ Tern's API has no
+   * field for it: the account is registered with Tern outside the API.
    */
   payoutAccountId: string
   payoutAccountName: string

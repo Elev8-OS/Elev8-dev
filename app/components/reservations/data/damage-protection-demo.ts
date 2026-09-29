@@ -134,7 +134,7 @@ function filed(claimedAmount: number, events: [number, PartnerClaimEvent['status
     claimedAmount,
     deductible: elev8CoverPartner.deductiblePerClaim,
     // The bank account the demo tenant registered at activation (`seedTernActivation`).
-    payoutAccountId: 'cover_org_demo_0001',
+    payoutAccountId: 'cover-org-10421',
     payoutAccountName: 'Bank Central Asia (BCA) •••• 3456',
     status: 'submitted',
     events: events.map(([offset, status, source, note], i) => ({

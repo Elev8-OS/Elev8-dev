@@ -91,8 +91,8 @@ async function submit() {
     toast.error(`Could not file the claim (${result.reason})`)
 }
 
-function sendInfo() {
-  const result = pc.respondToInfoRequest(props.reservationId, props.claim.id, infoResponse.value)
+async function sendInfo() {
+  const result = await pc.respondToInfoRequest(props.reservationId, props.claim.id, infoResponse.value)
   if (result.ok) {
     infoResponse.value = ''
     toast.success('Information sent to the partner')
@@ -102,8 +102,8 @@ function sendInfo() {
   }
 }
 
-function withdraw() {
-  const result = pc.withdraw(props.reservationId, props.claim.id, withdrawReason.value)
+async function withdraw() {
+  const result = await pc.withdraw(props.reservationId, props.claim.id, withdrawReason.value)
   if (result.ok) {
     showWithdraw.value = false
     withdrawReason.value = ''
@@ -113,6 +113,12 @@ function withdraw() {
     toast.error(result.reason === 'missing_reason' ? 'Say why the claim is withdrawn' : `Could not withdraw (${result.reason})`)
   }
 }
+
+/** The partner's own status, spelled out ("FollowUpRequested" → "Follow up requested"). */
+const partnerStatusLabel = computed(() => {
+  const raw = partnerClaim.value?.partnerStatus
+  return raw ? raw.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase()).replace(/ (\w)/g, (_, c: string) => ` ${c.toLowerCase()}`) : ''
+})
 
 function confirmReceived() {
   const result = pc.confirmReceived(props.reservationId, props.claim.id, receivedAmount.value)
@@ -131,14 +137,14 @@ const simulations = computed<{ label: string, simulation: PartnerSimulation }[]>
     { label: 'Approve in full', simulation: { kind: 'approved' }, to: 'approved' },
     { label: 'Approve partially', simulation: { kind: 'approved', approvedAmount: Math.round(claimed * 50) / 100 }, to: 'partially_approved' },
     { label: 'Reject', simulation: { kind: 'rejected', rejectionReason: 'Wear and tear is excluded under the policy.' }, to: 'rejected' },
-    { label: 'Schedule payout', simulation: { kind: 'payout_scheduled', payoutScheduledFor: new Date(Date.now() + 5 * 86400000).toISOString() }, to: 'payout_scheduled' },
+    { label: 'Schedule payout', simulation: { kind: 'payout_scheduled', payoutScheduledFor: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) }, to: 'payout_scheduled' },
     { label: 'Send payment', simulation: { kind: 'paid' }, to: 'paid' },
   ]
   return options.filter(o => canTransition(s, o.to))
 })
 
-function simulate(simulation: PartnerSimulation) {
-  const result = pc.simulatePartner(props.reservationId, props.claim.id, simulation)
+async function simulate(simulation: PartnerSimulation) {
+  const result = await pc.simulatePartner(props.reservationId, props.claim.id, simulation)
   if (!result.ok)
     toast.error(`The partner event was refused (${result.reason})`)
 }
@@ -245,6 +251,10 @@ function simulate(simulation: PartnerSimulation) {
       <p class="text-[11px] text-muted-foreground">
         Policy {{ partnerClaim.policyNumber }} · pays into {{ partnerClaim.payoutAccountName }}<template v-if="partnerClaim.partnerClaimRef">
           · Partner ref {{ partnerClaim.partnerClaimRef }}
+        </template><template v-if="partnerStatusLabel">
+          · At the partner: {{ partnerStatusLabel }}
+        </template><template v-if="partnerClaim.exGratiaAmount">
+          · includes a {{ money(partnerClaim.exGratiaAmount) }} goodwill payment
         </template> · {{ money(partnerClaim.deductible) }} deductible carried by the pot
       </p>
 
@@ -327,7 +337,7 @@ function simulate(simulation: PartnerSimulation) {
       <ol class="flex flex-col gap-1 border-l pl-3" data-testid="partner-claim-timeline">
         <li v-for="event in partnerClaim.events" :key="event.id" class="text-[11px]">
           <span class="font-medium">{{ PARTNER_EVENT_LABELS[event.status] }}</span>
-          <span class="text-muted-foreground"> · {{ when(event.at) }} · {{ event.source === 'staff' ? 'staff' : event.source === 'api' ? 'partner API' : 'partner webhook' }}</span>
+          <span class="text-muted-foreground"> · {{ when(event.at) }} · {{ event.source === 'staff' ? 'staff' : event.source === 'api' ? 'partner API' : event.source === 'poll' ? 'read from the partner' : 'partner webhook' }}</span>
           <span v-if="event.note" class="block text-muted-foreground">{{ event.note }}</span>
         </li>
       </ol>

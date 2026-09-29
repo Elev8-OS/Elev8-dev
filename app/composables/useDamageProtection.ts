@@ -45,8 +45,8 @@ import {
   waiverPotTotal,
   withExtraPackages,
 } from '~/components/reservations/data/damage-protection'
-import { coverPackagesFor } from '~/components/reservations/data/tern-products'
 import { seedProtectionAssignments, seedProtectionPayers, seedProtectionPolicies } from '~/components/reservations/data/damage-protection-seed'
+import { coverPackagesFor } from '~/components/reservations/data/tern-products'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useGuestGuides } from '~/composables/useGuestGuides'
@@ -54,6 +54,7 @@ import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useRoles } from '~/composables/useRoles'
 import { useTernActivation } from '~/composables/useTernActivation'
+import { useTernApi } from '~/composables/useTernApi'
 
 // v3: the waiver's cover comes from a Tern tier and the tenant only sets the
 // guest price, so a v2 policy carries pricing, cap and exclusion fields that no
@@ -121,6 +122,8 @@ export function useDamageProtection() {
    */
   const tern = useTernActivation()
   const waiverServiceActive = computed(() => tern.isActive.value)
+  /** The partner API: every covered stay is synced as a Tern booking (`commit`). */
+  const ternApi = useTernApi()
   function pausedUntilActivation(policy: DamageProtectionPolicy | null): boolean {
     return Boolean(policy?.offers.includes('waiver')) && !waiverServiceActive.value
   }
@@ -483,6 +486,7 @@ export function useDamageProtection() {
             damageProtection: undefined,
             activity: [...reservation.activity, protectionActivityEvent('host_cover_removed', existing, actor.value)],
           })
+          void ternApi.syncBooking(reservation.id)
         }
         continue
       }
@@ -566,6 +570,7 @@ export function useDamageProtection() {
     protection: DamageProtection,
     event: ActivityEvent,
   ) {
+    const before = reservation.damageProtection
     updateReservation(reservation.id, {
       damageProtection: protection,
       // Oldest-first, matching every seeded activity array and the timeline
@@ -573,6 +578,10 @@ export function useDamageProtection() {
       // months-old reservation-confirmed one.
       activity: [...reservation.activity, event],
     })
+    // Every covered stay is a Tern booking. Sync only when something Tern
+    // bills or checks changed: the cover starting or ending, packages, the fee.
+    if (protection.option === 'waiver' && (!before || before.state !== protection.state || before.packages !== protection.packages || before.elev8Fee !== protection.elev8Fee))
+      void ternApi.syncBooking(reservation.id)
   }
 
   const savingCard = ref(false)
@@ -983,6 +992,9 @@ export function useDamageProtection() {
       reservation = reservationById(reservationId)!
       protection = extended
     }
+    // New dates for Tern's booking, packages or not.
+    if (protection.option === 'waiver')
+      void ternApi.syncBooking(reservationId)
     // Nobody is asked on a host-paid listing: the cover already follows the stay.
     if (protection.paidBy === 'host')
       return

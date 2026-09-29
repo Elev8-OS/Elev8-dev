@@ -43,7 +43,7 @@ export interface WaiverInvoiceBillTo {
   companyName: string
   addressLines: string[]
   vatNumber?: string
-  ternOrganizationId?: string
+  ternOrganizationId?: number
 }
 
 export interface WaiverInvoice {
@@ -64,6 +64,11 @@ export interface WaiverInvoice {
   cardLabel: string
   chargedAt?: string
   failureReason?: string
+  /**
+   * When each billing email to the tenant went out, ISO. Internal, for
+   * idempotency only: never shown on the tenant's Settings, Billing page.
+   */
+  emailsSent?: Partial<Record<'invoice_paid' | 'payment_failed' | 'payment_received', string>>
   createdAt: string
 }
 
