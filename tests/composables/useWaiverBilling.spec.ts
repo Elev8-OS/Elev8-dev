@@ -1,7 +1,8 @@
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHealthySubscriptionBilling } from '~/components/billing/data/subscription-billing'
 import { useNotifications } from '~/composables/useNotifications'
+import { useOnboarding } from '~/composables/useOnboarding'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSubscriptionBilling } from '~/composables/useSubscriptionBilling'
 import { useTernActivation } from '~/composables/useTernActivation'
@@ -49,6 +50,9 @@ function covered(id: string, checkOut: string, fee = 9, paidBy: 'guest' | 'host'
 
 const OCT_1 = new Date(2026, 9, 1, 0, 5)
 
+const sendEmail = vi.fn(async (_url: string, _opts: { body: { kind: string, to: string, subject: string } }) => ({ ok: true }))
+const sentKinds = () => sendEmail.mock.calls.map(([, opts]) => opts.body.kind)
+
 beforeEach(() => {
   localStorage.clear()
   // Only the stays this spec builds: the demo seeds would land on the invoice too.
@@ -58,6 +62,12 @@ beforeEach(() => {
     covered('c', '2026-10-03'),
   ]
   useSubscriptionBilling().billing.value = createHealthySubscriptionBilling(CARD)
+  sendEmail.mockClear()
+  vi.stubGlobal('$fetch', sendEmail)
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('useWaiverBilling', () => {
@@ -135,8 +145,45 @@ describe('useWaiverBilling', () => {
     expect(upcoming).toMatchObject({ period: '2026-10', billsOn: '2026-11-01' })
   })
 
+  it('emails the paid invoice on the 1st, to the email the tenant signed up with', async () => {
+    useOnboarding().state.value = { ...useOnboarding().state.value, email: 'owner@villa.example' }
+    const billing = useWaiverBilling()
+    await settle(() => billing.runDueBilling(OCT_1))
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(sendEmail.mock.calls[0]![0]).toBe('/api/billing/send-email')
+    expect(sendEmail.mock.calls[0]![1].body).toMatchObject({ kind: 'invoice_paid', to: 'owner@villa.example', subject: expect.stringContaining('E8-DW-202609-001') })
+    expect(billing.invoices.value[0]!.emailsSent?.invoice_paid).toBeTruthy()
+  })
+
+  it('falls back to the invoice template email when there is no signup email', async () => {
+    await settle(() => useWaiverBilling().runDueBilling(OCT_1))
+    expect(sendEmail.mock.calls[0]![1].body.to).toBe('hello@elevater.ch')
+  })
+
+  it('emails a failure once, even when a retry fails again, then the payment received', async () => {
+    const subscription = useSubscriptionBilling()
+    subscription.simulatePaymentFailure()
+    const billing = useWaiverBilling()
+    const [invoice] = await settle(() => billing.runDueBilling(OCT_1))
+    await settle(() => billing.retryCharge(invoice!.id))
+    expect(sentKinds()).toEqual(['payment_failed'])
+
+    subscription.billing.value = createHealthySubscriptionBilling(CARD)
+    await settle(() => billing.retryCharge(invoice!.id))
+    expect(sentKinds()).toEqual(['payment_failed', 'payment_received'])
+  })
+
+  it('never lets a failed email send touch the charge', async () => {
+    sendEmail.mockRejectedValueOnce(new Error('provider down'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const [invoice] = await settle(() => useWaiverBilling().runDueBilling(OCT_1))
+    warn.mockRestore()
+    expect(invoice).toMatchObject({ status: 'paid' })
+    expect(invoice!.emailsSent).toBeUndefined()
+  })
+
   it('bills the tenant\'s own billing entity when the onboarding profile is blank', async () => {
     const [invoice] = await settle(() => useWaiverBilling().runDueBilling(OCT_1))
-    expect(invoice!.billTo).toMatchObject({ companyName: 'Elevate Schweiz GmbH', vatNumber: 'CHE-163.290.666MWST', ternOrganizationId: 'cover_org_demo_0001' })
+    expect(invoice!.billTo).toMatchObject({ companyName: 'Elevate Schweiz GmbH', vatNumber: 'CHE-163.290.666MWST', ternOrganizationId: 10421 })
   })
 })

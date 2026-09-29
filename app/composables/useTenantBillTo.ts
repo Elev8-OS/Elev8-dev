@@ -35,5 +35,14 @@ export function useTenantBillTo() {
     }
   }
 
-  return { billTo }
+  /**
+   * Where Elev8's billing emails go: the email the tenant signed up with, else
+   * the email on its default invoice template. Read when sending, not frozen.
+   */
+  function billingEmail(): string | null {
+    const email = onboarding.state.value.email?.trim() || getDefaultTemplate().company.email?.trim()
+    return email || null
+  }
+
+  return { billTo, billingEmail }
 }

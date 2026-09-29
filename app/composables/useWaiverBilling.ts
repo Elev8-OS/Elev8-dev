@@ -1,4 +1,5 @@
 import type { BillableStay, WaiverBillingRun, WaiverInvoice } from '~/components/damage-protection/data/waiver-billing'
+import type { WaiverBillingEmail } from '~/components/damage-protection/data/waiver-billing-emails'
 import { computed } from 'vue'
 import { declineReasonShort } from '~/components/billing/data/subscription-billing'
 import {
@@ -10,6 +11,7 @@ import {
   periodsDue,
   totalsByCurrency,
 } from '~/components/damage-protection/data/waiver-billing'
+import { buildWaiverBillingEmail, waiverBillingEmailKindFor } from '~/components/damage-protection/data/waiver-billing-emails'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSubscriptionBilling } from '~/composables/useSubscriptionBilling'
@@ -27,7 +29,8 @@ const BRAND_LABELS = { visa: 'Visa', mastercard: 'Mastercard', amex: 'American E
  * Elev8's monthly damage waiver invoice to the tenant: on the 1st, one
  * invoice per currency for the stays that checked out the month before,
  * charged to the card on the Elev8 subscription. The ONLY writer of the
- * invoices and the billing runs. Rules live in `waiver-billing.ts`.
+ * invoices and the billing runs. Rules live in `waiver-billing.ts`; the
+ * emails to the tenant (paid, failed, received) in `waiver-billing-emails.ts`.
  *
  * There is no scheduler in this app, so `runDueBilling()` catches up every
  * 1st that has passed since the waiver was activated; it is idempotent (a
@@ -47,7 +50,7 @@ export function useWaiverBilling() {
   const tern = useTernActivation()
   const subscriptionBilling = useSubscriptionBilling()
   const { reservations } = useReservationsModule()
-  const { billTo } = useTenantBillTo()
+  const { billTo, billingEmail } = useTenantBillTo()
   const { alerts, createProtectionAlert } = useNotifications()
 
   function persist() {
@@ -116,6 +119,31 @@ export function useWaiverBilling() {
         : a)
   }
 
+  /**
+   * Email the tenant about where the invoice now stands, once per kind. A
+   * failed send never touches the charge and is left unrecorded. ⚠️ The mock
+   * does not retry it; a real provider queues sends and retries them.
+   */
+  async function emailTenant(invoiceId: string) {
+    const invoice = invoices.value.find(inv => inv.id === invoiceId)
+    const kind = invoice && waiverBillingEmailKindFor(invoice)
+    const to = billingEmail()
+    if (!invoice || !kind || !to)
+      return
+    // The app is served under `app.baseURL` (`/dashboard/`), which is not part of the origin.
+    const base = (typeof useRuntimeConfig === 'function' ? useRuntimeConfig().app.baseURL || '/' : '/').replace(/\/$/, '')
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const email = buildWaiverBillingEmail(kind, invoice, { to, billingUrl: `${origin}${base}/settings/billing` })
+    try {
+      await $fetch<{ ok: boolean }>(`${base}/api/billing/send-email`, { method: 'POST', body: email satisfies WaiverBillingEmail })
+      const current = invoices.value.find(inv => inv.id === invoiceId)!
+      patchInvoice(invoiceId, { emailsSent: { ...current.emailsSent, [kind]: new Date().toISOString() } })
+    }
+    catch (error) {
+      console.warn('[waiver billing] email not sent', kind, invoice.number, error)
+    }
+  }
+
   /** The mock off-session charge. Declined while the subscription card itself is failing. */
   async function charge(invoiceId: string) {
     charging.value = [...charging.value, invoiceId]
@@ -139,10 +167,12 @@ export function useWaiverBilling() {
           reason,
         })
       }
+      await emailTenant(invoiceId)
       return { ok: false as const, reason: 'declined' }
     }
     patchInvoice(invoiceId, { status: 'paid', chargedAt: new Date().toISOString(), failureReason: undefined })
     resolveFailedAlert(invoiceId)
+    await emailTenant(invoiceId)
     return { ok: true as const }
   }
 

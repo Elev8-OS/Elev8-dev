@@ -41,7 +41,11 @@ Four parts, top to bottom:
   `waiver-invoice-pdf.ts` are drawn in it. The issuer is `ELEV8_BILLING_ENTITY`.
 - **Bill to** is `useTenantBillTo()`: the onboarding profile when filled in, else the default invoice
   template's company (with its VAT number). Every invoice freezes it when issued.
+- **Emails**: Elev8 emails the tenant about each damage waiver invoice (paid, payment failed, payment
+  received), see "Emails to the tenant" in `damage-protection.md`. ⚠️ This page shows **none** of it
+  (no "emailed to" line, no resend): it is the tenant's own view.
 - **Not implemented:** real Stripe invoices or charges, the upgrade paywall and proration, plan
-  switching, per-booking deductions in the history, tax lines, emailing invoices.
+  switching, per-booking deductions in the history, tax lines, emailing subscription invoices, a real
+  email provider.
 - Tests: `tests/components/settings/BillingPanel.spec.ts` (6), `tests/lib/billing-overview.spec.ts` (8),
   `tests/lib/subscription-invoice-pdf.spec.ts` (3).

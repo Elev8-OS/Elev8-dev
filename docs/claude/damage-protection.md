@@ -341,8 +341,10 @@ alerts **directly**, not through `dismiss()`.
 the service in a 3-step wizard (`TernActivationWizard.vue`, opened from `TernActivationCard.vue` at
 the top of `/settings/damage-protection`): **Terms** (`TERN_ACTIVATION_TERMS`, the tier table, the
 deductible) → **Bank account** (where Tern pays claims) → **Review**, then **Activate** registers the
-tenant as an organization on Tern (mock API, 1.5s, returns a `cover_org_` id; a "simulate Tern
-refusing" switch makes it fail).
+tenant as an organization on Tern (mock, 1.5s, stores an integer `ternOrganizationId`; a "simulate
+Tern refusing" switch makes it fail). ⚠️ Tern's API v0 has no organization endpoint: in production
+Tern sets the organization up and hands over its id, and the bank account is registered with Tern
+outside the API (`ternRegistrationPayload` has nowhere to go yet).
 - ⚠️ **A connected Stripe payout account comes first** (owner's decision, 2026-09-28).
   `hasConnectedStripePayout` (only `provider: 'stripe'` with `status: 'connected'` counts) backs
   `useTernActivation().hasStripePayout`; without it `activate` refuses (`no_stripe_payout`, checked
@@ -426,11 +428,26 @@ a declined charge alerts early, and `WAIVER_INVOICE_PAYMENT_FAILED` links to `/s
 - **Bill to** is the onboarding profile when filled in, else the tenant's default invoice template
   company (with its VAT number). The issuer is `ELEV8_BILLING_ENTITY`, **Elev8 Software AG**
   (confirmed 2026-09-28). ⚠️ Name only: its address and tax number are not known yet and none is invented.
+- **Emails to the tenant** (`damage-protection/data/waiver-billing-emails.ts` framework-free, sent by
+  `useWaiverBilling.charge()` through the mock `server/api/billing/send-email.post.ts`, which logs):
+  `invoice_paid` on the 1st (every stay line, amount, card), `payment_failed` (the decline reason,
+  "nothing was taken", update the card and retry in Settings, Billing), `payment_received` after a
+  retry went through. `waiverBillingEmailKindFor` decides: a failure is emailed **once per invoice**,
+  not on every failed retry; paid after a failure email sends `payment_received`, not `invoice_paid`.
+  - Recipient: `useTenantBillTo().billingEmail()`, the signup email (`onboarding.state.email`), else the
+    default invoice template company email; none means no send. Read at send time, not frozen.
+  - ⚠️ **Never shown to the tenant.** `invoice.emailsSent` is internal, for idempotency only. Settings,
+    Billing is the tenant's point of view: no "emailed to" log, no resend (owner's call 2026-09-29).
+  - ⚠️ Sender is **Elev8 Software AG by name only**, no address invented. The PDF is an attachment
+    descriptor (`{ filename, invoiceId }`); the real provider renders it server-side and attaches it.
+  - A failed send never touches the charge and is left unrecorded; the mock does not retry it.
 - **Not implemented:** a real charge or Stripe invoice, a scheduled job, tax on the invoice (none is
-  added: Tern's rate is stated tax-inclusive, Elev8's own VAT position is a finance decision), emailing
-  the invoice, and suspending the waiver on a long-unpaid invoice.
+  added: Tern's rate is stated tax-inclusive, Elev8's own VAT position is a finance decision), a real
+  email provider (sending address, PDF attachment, retries), and suspending the waiver on a long-unpaid
+  invoice.
 - Persisted to `elev8-waiver-billing-v1`. Tests: `tests/lib/waiver-billing.spec.ts` (10),
-  `tests/composables/useWaiverBilling.spec.ts` (9), `tests/lib/waiver-invoice-pdf.spec.ts` (4).
+  `tests/composables/useWaiverBilling.spec.ts` (13), `tests/lib/waiver-invoice-pdf.spec.ts` (4),
+  `tests/lib/waiver-billing-emails.spec.ts` (7).
 
 **Insurance partner (master policy)** (`data/partner-claims.ts` framework-free,
 `usePartnerClaims`, owner's decision 2026-09-24). The property manager is the insured under a
@@ -466,11 +483,12 @@ never a party to it.
   duplicate event id is refused (`duplicate_event`), an out-of-order one is refused
   (`illegal_transition`, the `NEXT` table), an approval above the claim or a rejection without a
   reason is refused. Partial vs full approval is read off the amount, never trusted from the event.
-- ⚠️ **The partner API is mocked.** `submitToPartner` is a 1.5s timer returning a `PC-` reference
-  (or a rejected submission with the switch on); the partner's replies arrive through
-  `receivePartnerEvent`, the path a real webhook would take, and `simulatePartner` plays the
-  partner for the demo ("Simulate partner response" on each filed claim, offering only the
-  replies that can follow the current status).
+- ⚠️ **The partner is reached through the Tern API layer** (see *Tern API integration* below):
+  `submitToPartner` syncs the stay's Tern booking, creates the Tern claim (gross amount) and uploads
+  the evidence; Tern's replies come in by **polling** (`pollPartnerUpdates`); answering an
+  information request and withdrawing are Tern calls too. `simulatePartner` plays Tern's staff on
+  the mock ("Simulate partner response", offering only the replies that can follow the current
+  status) and then polls, the way production reads changes.
 - Writes go through `useDamageProtection().patchClaim` (one narrow door: only `partnerClaim`, one
   activity line "Insurance claim update" per step), so `useDamageProtection` stays the only writer
   of the protection. `removeClaim` refuses a claim filed with the partner (`filed_with_partner`).
@@ -589,12 +607,59 @@ compare **local** day strings: `toISOString()` shifts a UTC+8 midnight to the pr
 off-session charge are mocked timers; no Stripe Elements, SetupIntent, Customer or SCA
 re-authentication flow); authorization holds (ruled out, see above); refunding a charged
 deposit; detaching the saved card at the gateway when a deposit closes (the record says it is
-no longer on file, nothing calls Stripe); a deposit on any non-Stripe gateway; a real insurance partner API
-(submission and webhooks are mocked: no signature check, retry queue, or premium and bordereau
-reporting to the partner); appealing a partner's rejection; a partner claim on a deposit; a
+no longer on file, nothing calls Stripe); a deposit on any non-Stripe gateway; the real Tern API
+(the layer is built to its spec but runs on the mock: no server routes, API key, scheduled poll,
+retry queue, or premium and bordereau reporting); appealing a partner's rejection; a partner claim on a deposit; a
 claims workflow beyond a recorded claim (no adjuster, appeal or guest dispute); any accounting push (a damage charge's posting rules are a finance
 decision); owner payout impact; booking-widget collection (`BookingWidgetConfig.depositPct`
 keeps its unrelated meaning); per-room protection on a multi-room booking; early check-out (the
 decision deadline keys off the booked check-out); and any background job (alerts come from
 `emitProtectionAlerts()`). ⚠️ The guest-guide app has no `vue-tsc`, so
 `guide-app/app/components/forms/DamageProtectionForm.vue` is not typechecked by anything.
+
+
+### Tern API integration (`app/lib/tern/`, `useTernApi`)
+
+The demo is a frontend mock, built so the real Tern API drops in. Spec: Tern API v0,
+`https://dev-app.terngrp.com/api/swagger-ui/index.html` (read 2026-09-29).
+
+- **`lib/tern/types.ts`**: Tern's schemas field for field (`TernBooking`, `TernClaim`,
+  `TernClaimNote`, `TernDocument`, the 14 `TernClaimStatus` values, list queries). ⚠️ Never reshape
+  them to suit Elev8: mapping lives in `mappers.ts`.
+- **`lib/tern/client.ts`**: `TernApiClient`, one method per endpoint (Tern's operationIds), and
+  `createTernHttpClient({ baseUrl, apiKey })`, a `fetch` wrapper sending `X-API-Key`. ⚠️ Server only.
+- **`lib/tern/mock-client.ts`**: an in-memory Tern with the same contract (ids, display ids,
+  strictly increasing `modStamp`, 400/404 like the API, its own deductible) plus `controls`, which
+  play Tern's staff for the demo and have no production counterpart.
+- **`lib/tern/mappers.ts`**: the only place the two models meet. `toTernBooking` (reservation,
+  protection, listing, manager → booking; `insuranceCost` = the frozen `elev8Fee`),
+  `toTernClaim` (gross `claimAmount`, `externalClaimSystem: 'Elev8'`, our claim id as
+  `externalClaimId`), `TERN_STATUS_MAP` (14 statuses onto ours; `Closed` read off the amounts),
+  `partnerEventsFromTern` (a Tern snapshot → our events, idempotent ids from `modStamp`),
+  `ternClaimCorrections` (Tern's `deductibleApplied` is authoritative; raw `partnerStatus`,
+  `partnerClaimId`, `exGratiaAmount` kept on the `PartnerClaim`). `TERN_PRODUCT_IDS` and
+  `TERN_POLICY_ID` are placeholders until Tern hands them over (no catalogue endpoint).
+- **`useTernApi`**: the single integration point (`client`). It syncs every covered stay as a Tern
+  booking (`syncBooking`, called from `useDamageProtection.commit` when the cover's state,
+  packages or fee change, from `reassessOnExtension`, and when host cover is removed): create when
+  cover starts, PUT on a change, `active: false` + `cancelledDate` when it ends, never DELETE.
+  Tern booking ids live in `bookingIds` (not on the protection, one writer per field).
+- **Polling, not webhooks**: Tern's spec has none. ⚠️ `GET /v1/claim` has **no `modStampFrom`
+  filter** and no modStamp sort (bookings and notes do), so `pollPartnerUpdates` pages through
+  every Elev8 claim and skips one whose `modStamp` equals the last applied (`seenStamps`).
+  Information requests and denial reasons arrive as Tern's latest **Public claim note**. Events
+  built from a poll carry source `'poll'` ("read from the partner" in the event log), their time
+  the snapshot's `modStamp` (Tern's `paymentSentDate` has no time of day).
+- **Going live**: replace `client` in `useTernApi` with one calling our own Nitro routes, and
+  implement those routes with `createTernHttpClient({ baseUrl, apiKey: runtimeConfig.ternApiKey })`;
+  move `bookingIds` and `seenStamps` into the database; run `pollPartnerUpdates` from a scheduled
+  job; upload evidence as the **original bytes** (Tern reads EXIF/GPS and flags edited or AI
+  photos, `getDocumentMetadata`), which the housekeeping app must preserve.
+- **Open with Tern**: organization onboarding and the payout bank account (no endpoint); webhooks
+  or a `modStampFrom` on claims; product and policy ids per tier, and IDR pricing; how a stay over
+  30 nights is billed (we send one booking with the multiplied `insuranceCost`); whether a booking
+  can change after `startDatePassed`; whether `approvedCurrency` can differ from `claimCurrency`
+  (we never convert); how Tern invoices Elev8 (no statement endpoint); the production URL and
+  whether the API key is per platform or per organization.
+- Tests: `tests/lib/tern-mappers.spec.ts`, `tests/lib/tern-client.spec.ts`,
+  `tests/composables/useTernApi.spec.ts`, `tests/composables/usePartnerClaims.spec.ts`.
