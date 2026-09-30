@@ -1255,7 +1255,7 @@ export const initialReservations: ReservationEntry[] = [
     conversationId: 'conv-3',
     paymentRequestId: 'pr-006',
     guestGuideId: 'ggl-mock-002',
-    upsellIds: ['ord-003'],
+    upsellIds: ['ord-res-3-spa'],
     folioItems: [
       {
         id: 'fol-res3-1',

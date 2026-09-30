@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
 import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
@@ -20,7 +21,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
-import { getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
+import { getOrderStatus, getOrderStatusMeta } from '~/components/upsells/data/upsell-orders'
+import UpsellOrderDrawer from '~/components/upsells/UpsellOrderDrawer.vue'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useGuestRegistration } from '~/composables/useGuestRegistration'
 import { useInbox } from '~/composables/useInbox'
@@ -73,13 +75,30 @@ const reservation = computed<ReservationEntry | null>(() => {
   return reservations.value.find(r => r.id === props.reservation!.id) ?? props.reservation
 })
 
-// Upsell orders purchased for this reservation
+// Upsell orders for this reservation: linked by the order's own reservationId,
+// plus any listed on the reservation's legacy `upsellIds`. Newest service date first.
 const reservationUpsells = computed(() => {
   const r = reservation.value
-  if (!r?.upsellIds?.length)
+  if (!r)
     return []
-  return upsellOrders.value.filter(o => r.upsellIds!.includes(o.id))
+  const legacyIds = new Set(r.upsellIds ?? [])
+  return upsellOrders.value
+    .filter(o => o.reservationId === r.id || legacyIds.has(o.id))
+    .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate))
 })
+
+const selectedUpsellOrder = ref<UpsellOrder | null>(null)
+const upsellOrderDrawerOpen = ref(false)
+
+function openUpsellOrder(order: UpsellOrder) {
+  selectedUpsellOrder.value = order
+  upsellOrderDrawerOpen.value = true
+}
+
+function fmtOrderDate(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  return new Date(y!, m! - 1, d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 const { jobs: cleaningJobs } = useCleaningJobs()
 const housekeepingJobs = computed(() => {
@@ -111,6 +130,7 @@ function selectTab(tab: ReservationTab) {
 watch(() => props.open, (isOpen) => {
   if (!isOpen) {
     activeTab.value = 'details'
+    upsellOrderDrawerOpen.value = false
   }
 })
 
@@ -1134,28 +1154,53 @@ const guestGuideRoute = computed(() => {
                     No upsells purchased for this reservation.
                   </div>
                   <div v-else class="space-y-2.5">
-                    <div
+                    <button
                       v-for="order in reservationUpsells"
                       :key="order.id"
-                      class="flex items-center justify-between gap-3 border p-3"
+                      type="button"
+                      class="w-full rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50"
+                      data-testid="reservation-upsell-card"
+                      @click="openUpsellOrder(order)"
                     >
-                      <div class="min-w-0">
-                        <p class="text-sm font-medium truncate">
-                          {{ order.serviceName }}
-                        </p>
-                        <p class="text-[10px] text-muted-foreground">
-                          {{ new Date(order.orderDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }} · {{ order.guestName }}
-                        </p>
-                      </div>
-                      <div class="flex shrink-0 items-center gap-2">
-                        <Badge variant="outline" class="rounded-full" :class="getOrderStatusMeta(order).color">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <p class="truncate text-sm font-medium">
+                            {{ order.serviceName }}
+                          </p>
+                          <p class="text-xs text-muted-foreground">
+                            {{ order.items.length }} {{ order.items.length === 1 ? 'item' : 'items' }}
+                          </p>
+                        </div>
+                        <Badge variant="secondary" class="shrink-0 text-xs" :class="getOrderStatusMeta(order).color">
                           {{ getOrderStatusMeta(order).label }}
                         </Badge>
-                        <span class="text-sm font-semibold tabular-nums">
-                          {{ fmtCurrency(order.grandTotal, order.currency) }}
-                        </span>
                       </div>
-                    </div>
+                      <div class="mt-2.5 flex items-end justify-between gap-3 border-t pt-2.5">
+                        <div class="min-w-0">
+                          <p class="flex items-center gap-1.5 text-xs font-medium">
+                            <Icon name="lucide:calendar" class="size-3.5 shrink-0 text-muted-foreground" />
+                            <template v-if="order.serviceEndDate">
+                              {{ fmtOrderDate(order.serviceDate) }} – {{ fmtOrderDate(order.serviceEndDate) }}
+                            </template>
+                            <template v-else>
+                              {{ fmtOrderDate(order.serviceDate) }}
+                            </template>
+                          </p>
+                          <p class="mt-0.5 text-[11px] text-muted-foreground">
+                            Ordered {{ fmtOrderDate(order.orderDate) }}
+                          </p>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-1.5">
+                          <span
+                            class="text-sm font-semibold tabular-nums"
+                            :class="getOrderStatus(order) === 'declined' ? 'text-muted-foreground line-through' : ''"
+                          >
+                            {{ fmtCurrency(order.grandTotal, order.currency) }}
+                          </span>
+                          <Icon name="lucide:chevron-right" class="size-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                    </button>
                   </div>
                 </div>
               </ScrollArea>
@@ -1366,6 +1411,11 @@ const guestGuideRoute = computed(() => {
     </Sheet>
 
     <!-- Edit reservation dialog -->
+    <UpsellOrderDrawer
+      :order="selectedUpsellOrder"
+      :open="upsellOrderDrawerOpen"
+      @update:open="upsellOrderDrawerOpen = $event"
+    />
     <EditReservationDialog
       :reservation="reservation"
       :open="editOpen"
