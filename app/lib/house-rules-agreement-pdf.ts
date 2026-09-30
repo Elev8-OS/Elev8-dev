@@ -4,21 +4,20 @@
 // the same fallback order the public guide uses. Each rule is a title with an
 // optional description, as in Property > Guest Guides > House Rules.
 
+import type { HouseRule } from '~/components/guest-guides/data/house-rules'
 import type { GuestGuide } from '~/components/guest-guides/data/types'
 import type { Listing } from '~/components/listings/data/listings'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { jsPDF as JsPdf } from 'jspdf'
+import { normalizeHouseRules } from '~/components/guest-guides/data/house-rules'
+
+export type { HouseRule } from '~/components/guest-guides/data/house-rules'
 
 const PAGE_WIDTH = 210 // A4 mm
 const PAGE_HEIGHT = 297
 const MARGIN = 20
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
 const BOTTOM_LIMIT = PAGE_HEIGHT - 24
-
-export interface HouseRule {
-  title: string
-  description?: string
-}
 
 export const DEFAULT_HOUSE_RULES: HouseRule[] = [
   { title: 'No smoking', description: 'Smoking and vaping are not allowed anywhere inside the property, including with windows or balcony doors open.' },
@@ -56,32 +55,16 @@ export function resolveHouseRules(
 ): { rules: HouseRule[], source: HouseRulesSource } {
   const guide = sources.guides.find(g => g.status === 'active' && g.assignedListingIds.includes(reservation.listingId))
   const section = guide?.sections.find(s => s.type === 'house_rules' && s.enabled)
-  const guideRules = cleanRules(section?.data?.rules)
+  const guideRules = normalizeHouseRules(section?.data?.rules)
   if (guideRules.length)
     return { rules: guideRules, source: 'guest_guide' }
 
   const listing = sources.listings.find(l => l.id === reservation.listingId)
-  const listingRules = cleanRules(listing?.resources?.basics?.houseRules?.split('\n'))
+  const listingRules = normalizeHouseRules(listing?.resources?.basics?.houseRules?.split('\n'))
   if (listingRules.length)
     return { rules: listingRules, source: 'listing' }
 
   return { rules: DEFAULT_HOUSE_RULES.map(r => ({ ...r })), source: 'default' }
-}
-
-/** Accepts one-line rules (`'No smoking'`) and titled rules (`{ title, description }`). */
-function cleanRules(value: unknown): HouseRule[] {
-  if (!Array.isArray(value))
-    return []
-  return value.flatMap((entry): HouseRule[] => {
-    if (typeof entry === 'string')
-      return entry.trim() ? [{ title: entry.trim() }] : []
-    if (entry && typeof entry === 'object') {
-      const title = String((entry as HouseRule).title ?? '').trim()
-      const description = String((entry as HouseRule).description ?? '').trim()
-      return title ? [description ? { title, description } : { title }] : []
-    }
-    return []
-  })
 }
 
 /** Builds the agreement input from a reservation, its listing and the guest's signed documents. */

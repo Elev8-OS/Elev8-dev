@@ -14,7 +14,7 @@ const sectionTypes: Array<{ type: GuideSectionType; label: string; icon: string;
   { type: 'welcome', label: 'Welcome Message', icon: 'message-circle', description: 'Auto-translated greeting' },
   { type: 'checkin', label: 'Check-in', icon: 'log-in', description: 'Check-in time + instructions' },
   { type: 'checkout', label: 'Check-out', icon: 'log-out', description: 'Check-out time + instructions' },
-  { type: 'house_rules', label: 'House Rules', icon: 'scroll', description: 'Bulleted rules list' },
+  { type: 'house_rules', label: 'House Rules', icon: 'scroll', description: 'Rules with a title and description' },
   { type: 'amenities', label: 'Amenities', icon: 'star', description: 'Icon grid of features' },
   { type: 'wifi', label: 'Wi-Fi', icon: 'wifi', description: 'Network name + password' },
   { type: 'local_tips', label: 'Local Tips', icon: 'map-pin', description: 'Restaurants, beaches, transport' },

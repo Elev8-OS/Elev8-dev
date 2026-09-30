@@ -27,6 +27,21 @@ export const mockGuestGuides: GuestGuide[] = [
         enabled: true,
         data: { message: 'We are thrilled to welcome you to Villa Serenity. This guide will help you make the most of your stay.' },
       },
+      {
+        id: 'gs-mock-003',
+        type: 'house_rules',
+        order: 2,
+        enabled: true,
+        data: {
+          rules: [
+            { title: 'No Smoking', description: 'Smoking and vaping are not allowed anywhere inside the villa, including the bedrooms and the covered terrace. Please use the garden area by the gate. Damage compensation for violations: minimum IDR 5,000,000 (for special cleaning, odor removal and loss of use).' },
+            { title: 'No Parties or Events', description: 'Parties, events and gatherings with people who are not registered guests are not allowed. Only the guests named on the reservation may stay overnight.' },
+            { title: 'Quiet Hours', description: 'Quiet hours are from 22:00 to 08:00. Please keep music and pool noise low during these times out of respect for our neighbours.' },
+            { title: 'Pool Safety', description: 'The pool is not supervised. Children must be accompanied by an adult at all times, and glassware is not allowed on the pool deck.' },
+            { title: 'Check-out', description: 'Please leave the villa by 11:00, switch off the air conditioning and lights, and leave the keys on the kitchen counter.' },
+          ],
+        },
+      },
     ],
     defaultLanguage: 'en',
     createdBy: 'staff-1',
