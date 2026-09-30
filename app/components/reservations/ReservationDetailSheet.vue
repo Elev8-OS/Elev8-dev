@@ -24,6 +24,7 @@ import { useInbox } from '~/composables/useInbox'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSmartLock } from '~/composables/useSmartLock'
 import { useUpsellOrders } from '~/composables/useUpsellOrders'
+import { buildFolioInvoicePdf } from '~/lib/folio-invoice-pdf'
 
 const props = defineProps<{
   reservation: ReservationEntry | null
@@ -300,6 +301,23 @@ function editGuest(index: number) {
 
 function fmtDob(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+// No invoice for stays that are not a paid booking.
+const canDownloadInvoice = computed(() =>
+  Boolean(reservation.value) && !['inquiry', 'blocked', 'owner_request'].includes(reservation.value!.status))
+
+function downloadInvoice() {
+  if (!reservation.value)
+    return
+  try {
+    buildFolioInvoicePdf(reservation.value, { download: true })
+    toast.success('Invoice PDF downloaded')
+  }
+  catch (err) {
+    console.error(err)
+    toast.error('Failed to generate invoice PDF')
+  }
 }
 
 const { guides: guestGuides } = useGuestGuides()
@@ -949,7 +967,18 @@ const guestGuideRoute = computed(() => {
                   </Accordion>
 
                   <!-- Actions -->
-                  <div class="px-5 py-4">
+                  <div class="flex flex-col gap-2 px-5 py-4">
+                    <Button
+                      v-if="canDownloadInvoice"
+                      variant="outline"
+                      size="sm"
+                      class="w-full gap-1.5"
+                      data-testid="reservation-download-invoice"
+                      @click="downloadInvoice"
+                    >
+                      <Icon name="lucide:download" class="size-3.5" />
+                      Download invoice
+                    </Button>
                     <Button variant="outline" size="sm" class="w-full gap-1.5" as-child>
                       <NuxtLink :to="guestGuideRoute">
                         <Icon name="lucide:book-open" class="size-3.5" />
