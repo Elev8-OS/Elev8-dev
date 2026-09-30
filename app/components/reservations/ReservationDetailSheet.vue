@@ -3,6 +3,7 @@ import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/compo
 import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
+import { listings } from '~/components/listings/data/listings'
 import { guestRatingForReservation } from '~/components/reservations/data/guest-rating'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
@@ -27,6 +28,7 @@ import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useSmartLock } from '~/composables/useSmartLock'
 import { useUpsellOrders } from '~/composables/useUpsellOrders'
 import { buildFolioInvoicePdf } from '~/lib/folio-invoice-pdf'
+import { buildHouseRulesAgreementPdf, houseRulesAgreementInput } from '~/lib/house-rules-agreement-pdf'
 
 const props = defineProps<{
   reservation: ReservationEntry | null
@@ -161,6 +163,61 @@ const bookingNoteBody = computed(() => {
 const docViewDoc = ref<GuestDocument | null>(null)
 
 const identityDocs = computed(() => reservation.value?.identity?.documents ?? [])
+
+// The agreement is generated from the listing's house rules rather than stored,
+// so preview and download always show a real PDF.
+const { guides: guestGuides } = useGuestGuides()
+const agreementPreviewUrl = ref<string | null>(null)
+
+function agreementInput() {
+  return reservation.value
+    ? houseRulesAgreementInput(reservation.value, { listings: listings.value, guides: guestGuides.value })
+    : null
+}
+
+function revokeAgreementPreview() {
+  if (agreementPreviewUrl.value)
+    URL.revokeObjectURL(agreementPreviewUrl.value)
+  agreementPreviewUrl.value = null
+}
+
+function previewDoc(doc: GuestDocument) {
+  revokeAgreementPreview()
+  if (doc.kind === 'agreement') {
+    const input = agreementInput()
+    if (input) {
+      try {
+        agreementPreviewUrl.value = URL.createObjectURL(buildHouseRulesAgreementPdf(input))
+      }
+      catch (err) {
+        console.error(err)
+        toast.error('Failed to generate the house rules agreement')
+      }
+    }
+  }
+  docViewDoc.value = doc
+}
+
+function closeDocPreview() {
+  revokeAgreementPreview()
+  docViewDoc.value = null
+}
+
+function downloadAgreement() {
+  const input = agreementInput()
+  if (!input)
+    return
+  try {
+    buildHouseRulesAgreementPdf(input, { download: true })
+    toast.success('House rules agreement downloaded')
+  }
+  catch (err) {
+    console.error(err)
+    toast.error('Failed to generate the house rules agreement')
+  }
+}
+
+onBeforeUnmount(revokeAgreementPreview)
 
 const verifiedCount = computed(() => reservation.value?.guests?.filter(g => g.identityVerified).length ?? 0)
 
@@ -331,7 +388,6 @@ function downloadInvoice() {
   }
 }
 
-const { guides: guestGuides } = useGuestGuides()
 const { findByReservation: findGuestGuideLink } = useGuestGuideLinks()
 
 const guestGuideRoute = computed(() => {
@@ -806,10 +862,22 @@ const guestGuideRoute = computed(() => {
                                   </p>
                                 </div>
                                 <div class="flex shrink-0 items-center gap-1">
-                                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" @click="docViewDoc = doc">
+                                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" aria-label="Preview" @click="previewDoc(doc)">
                                     <Icon name="lucide:eye" class="size-3.5" />
                                   </Button>
-                                  <a v-if="doc.url" :href="doc.url" :download="doc.fileName ?? doc.name" class="shrink-0">
+                                  <Button
+                                    v-if="doc.kind === 'agreement'"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="h-7 w-7 p-0"
+                                    title="Download"
+                                    aria-label="Download house rules agreement"
+                                    data-testid="reservation-download-agreement"
+                                    @click="downloadAgreement"
+                                  >
+                                    <Icon name="lucide:download" class="size-3.5" />
+                                  </Button>
+                                  <a v-else-if="doc.url" :href="doc.url" :download="doc.fileName ?? doc.name" class="shrink-0">
                                     <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Download">
                                       <Icon name="lucide:download" class="size-3.5" />
                                     </Button>
@@ -1306,8 +1374,8 @@ const guestGuideRoute = computed(() => {
     />
 
     <!-- Document preview dialog -->
-    <Dialog :open="!!docViewDoc" @update:open="docViewDoc = null">
-      <DialogContent class="sm:max-w-md">
+    <Dialog :open="!!docViewDoc" @update:open="closeDocPreview">
+      <DialogContent :class="agreementPreviewUrl ? 'sm:max-w-3xl' : 'sm:max-w-md'">
         <DialogHeader>
           <DialogTitle>
             {{ docViewDoc?.name }}
@@ -1320,7 +1388,13 @@ const guestGuideRoute = computed(() => {
           </DialogDescription>
         </DialogHeader>
         <div class="py-2">
-          <div v-if="docViewDoc?.url" class="flex items-center justify-center rounded-md border bg-muted/30 p-2">
+          <iframe
+            v-if="agreementPreviewUrl"
+            :src="agreementPreviewUrl"
+            :title="docViewDoc?.name ?? 'House Rules Agreement'"
+            class="h-[70vh] w-full rounded-md border"
+          />
+          <div v-else-if="docViewDoc?.url" class="flex items-center justify-center rounded-md border bg-muted/30 p-2">
             <img
               :src="docViewDoc.url"
               :alt="docViewDoc.name"
@@ -1332,13 +1406,17 @@ const guestGuideRoute = computed(() => {
           </p>
         </div>
         <DialogFooter>
-          <a v-if="docViewDoc?.url" :href="docViewDoc.url" :download="docViewDoc.fileName ?? docViewDoc.name">
+          <Button v-if="docViewDoc?.kind === 'agreement'" class="gap-1.5" @click="downloadAgreement">
+            <Icon name="lucide:download" class="size-3.5" />
+            Download
+          </Button>
+          <a v-else-if="docViewDoc?.url" :href="docViewDoc.url" :download="docViewDoc.fileName ?? docViewDoc.name">
             <Button class="gap-1.5">
               <Icon name="lucide:download" class="size-3.5" />
               Download
             </Button>
           </a>
-          <Button variant="outline" @click="docViewDoc = null">
+          <Button variant="outline" @click="closeDocPreview">
             Close
           </Button>
         </DialogFooter>
