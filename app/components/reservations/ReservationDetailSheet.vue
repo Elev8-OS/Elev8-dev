@@ -3,12 +3,14 @@ import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/compo
 import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
+import { guestRatingForReservation } from '~/components/reservations/data/guest-rating'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationCityTaxSection from '~/components/reservations/ReservationCityTaxSection.vue'
 import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
+import ReservationGuestRatingSection from '~/components/reservations/ReservationGuestRatingSection.vue'
 import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
 import ReservationModifyMenu from '~/components/reservations/ReservationModifyMenu.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
@@ -88,8 +90,17 @@ const housekeepingJobs = computed(() => {
 })
 const housekeepingCount = computed(() => housekeepingJobs.value.length)
 
-type ReservationTab = 'details' | 'charges' | 'activity' | 'upsells' | 'housekeeping'
+// Shown once the guest has checked out and housekeeping has completed a rated cleaning.
+const guestRating = computed(() =>
+  reservation.value ? guestRatingForReservation(reservation.value, cleaningJobs.value) : null)
+
+type ReservationTab = 'details' | 'charges' | 'activity' | 'upsells' | 'housekeeping' | 'guest_rating'
 const activeTab = ref<ReservationTab>('details')
+
+watch(guestRating, (rating) => {
+  if (!rating && activeTab.value === 'guest_rating')
+    activeTab.value = 'details'
+})
 
 function selectTab(tab: ReservationTab) {
   activeTab.value = tab
@@ -1105,6 +1116,23 @@ const guestGuideRoute = computed(() => {
                 </div>
               </ScrollArea>
             </div>
+
+            <!-- Guest rating Tab View (housekeeping's rating of the guest) -->
+            <div v-else-if="activeTab === 'guest_rating' && guestRating" class="flex flex-col h-full">
+              <div class="flex h-14 shrink-0 items-center justify-between border-b px-5 bg-muted/20">
+                <div class="flex items-center gap-2">
+                  <Icon name="lucide:star" class="size-4 text-foreground" />
+                  <h3 class="text-sm font-semibold">
+                    Guest rating
+                  </h3>
+                </div>
+              </div>
+              <ScrollArea class="h-full min-h-0 flex-1">
+                <div class="p-5">
+                  <ReservationGuestRatingSection :rating="guestRating" />
+                </div>
+              </ScrollArea>
+            </div>
           </div>
 
           <!-- Icon Rail (Rightmost column) -->
@@ -1232,6 +1260,23 @@ const guestGuideRoute = computed(() => {
                   </TooltipTrigger>
                   <TooltipContent side="left">
                     <p>Housekeeping ({{ housekeepingCount }})</p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip v-if="guestRating">
+                  <TooltipTrigger as-child>
+                    <button
+                      type="button"
+                      class="relative flex size-9 items-center justify-center rounded-md transition-colors"
+                      :class="activeTab === 'guest_rating' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                      aria-label="Guest rating"
+                      data-testid="reservation-tab-guest-rating"
+                      @click="selectTab('guest_rating')"
+                    >
+                      <Icon name="lucide:star" class="size-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    <p>Guest rating ({{ guestRating.overall }} / 5)</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

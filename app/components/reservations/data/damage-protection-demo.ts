@@ -556,7 +556,12 @@ export const damageProtectionDemoCleaningJobs: CleaningJob[] = [
         },
       ],
       cleanlinessRating: 3,
+      houseRulesRating: 4,
       conditionNotes: 'Generally tidy, two items damaged.',
+      guestRatingPhotoUrls: [
+        'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800',
+        'https://images.unsplash.com/photo-1552321554-5fefe8c9ef14?w=800',
+      ],
       damages: [
         'Cracked shower screen, glass split from the bottom corner',
         'Red wine stain on the living room rug',

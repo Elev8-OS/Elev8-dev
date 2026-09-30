@@ -103,8 +103,14 @@ export interface CleaningFeedback {
   startedAt?: string
   confirmedAt?: string
   checklist?: CleaningChecklistGroup[]
-  cleanlinessRating: number // 1-5
+  /** Housekeeping's rating of the guest: how clean they left the property, 1-5. */
+  cleanlinessRating: number
+  /** Housekeeping's rating of the guest: how well they followed the house rules, 1-5. */
+  houseRulesRating?: number
+  /** Shown to staff as the comment on the guest rating. */
   conditionNotes: string
+  /** Photos housekeeping attached to the guest rating (not checklist evidence). */
+  guestRatingPhotoUrls?: string[]
   damages: string[]
   itemsLeft: string[]
   cleaningDurationMinutes: number
