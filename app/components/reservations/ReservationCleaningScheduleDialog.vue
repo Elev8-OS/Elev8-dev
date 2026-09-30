@@ -42,7 +42,15 @@ const emit = defineEmits<{
 
 const UNASSIGNED = 'unassigned'
 
-const { applyReservationSchedule, clearReservationSchedule } = useCleaningJobs()
+const { applyReservationSchedule, clearReservationSchedule, jobs: cleaningJobs } = useCleaningJobs()
+
+// Saving regenerates every cleaning that is not completed, one-off edits included.
+const replacedCleaningsCount = computed(() => {
+  const id = props.reservation?.id
+  if (!id)
+    return 0
+  return cleaningJobs.value.filter(j => j.reservationId === id && j.status !== 'done').length
+})
 const { updateReservation } = useReservationsModule()
 
 // Form state
@@ -552,6 +560,17 @@ function handleClear() {
             No cleanings generated with current configuration.
           </div>
         </div>
+      </div>
+
+      <div
+        v-if="replacedCleaningsCount"
+        class="mx-6 mb-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"
+        data-testid="cleaning-schedule-replace-warning"
+      >
+        <Icon name="lucide:triangle-alert" class="mt-0.5 size-3.5 shrink-0" />
+        <span>
+          Saving replaces {{ replacedCleaningsCount }} scheduled cleaning{{ replacedCleaningsCount === 1 ? '' : 's' }}, including any you edited or added by hand. Completed cleanings are kept.
+        </span>
       </div>
 
       <DialogFooter class="px-6 py-3.5 border-t bg-background shrink-0 flex items-center justify-between sm:justify-between">

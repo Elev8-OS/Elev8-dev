@@ -37,6 +37,33 @@ function buildCleaningScheduledAt(date: string, time: string) {
   return `${date}T${pad(hours)}:${pad(minutes)}:00+08:00`
 }
 
+function localIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Tomorrow, kept inside the stay.
+function defaultCleaningDate(): string {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const date = localIsoDate(tomorrow)
+  const r = props.reservation
+  if (!r)
+    return date
+  if (date < r.checkIn)
+    return r.checkIn
+  if (date > r.checkOut)
+    return r.checkOut
+  return date
+}
+
+// A cleaning must fall between check-in and check-out.
+const isDateInStay = computed(() => {
+  const r = props.reservation
+  if (!cleaningDate.value || !r)
+    return Boolean(cleaningDate.value)
+  return cleaningDate.value >= r.checkIn && cleaningDate.value <= r.checkOut
+})
+
 function initForm() {
   if (props.job) {
     cleaningDate.value = props.job.scheduledAt.slice(0, 10)
@@ -45,9 +72,7 @@ function initForm() {
     assigneeIds.value = [...(props.job.cleanerIds || [])]
   }
   else {
-    const tomorrow = new Date()
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    cleaningDate.value = tomorrow.toISOString().slice(0, 10)
+    cleaningDate.value = defaultCleaningDate()
     cleaningTime.value = '11:00'
     assigneeIds.value = []
   }
@@ -66,7 +91,7 @@ watch(() => props.job, () => {
 })
 
 function handleSave() {
-  if (!cleaningDate.value)
+  if (!isDateInStay.value)
     return
 
   const assignees = props.cleanerOptions.filter(c => assigneeIds.value.includes(c.id))
@@ -119,7 +144,12 @@ function handleSave() {
       <div class="grid gap-4 py-2">
         <div class="space-y-2">
           <Label>Date</Label>
-          <DatePicker v-model="cleaningDate" placeholder="Pick date" />
+          <DatePicker
+            v-model="cleaningDate"
+            :min="reservation?.checkIn"
+            :max="reservation?.checkOut"
+            placeholder="Pick date"
+          />
         </div>
         <div class="space-y-2">
           <Label>Time</Label>
@@ -139,7 +169,7 @@ function handleSave() {
         <Button variant="outline" @click="emit('update:open', false)">
           Cancel
         </Button>
-        <Button :disabled="!cleaningDate" @click="handleSave">
+        <Button :disabled="!isDateInStay" @click="handleSave">
           {{ isEdit ? 'Save changes' : 'Schedule' }}
         </Button>
       </DialogFooter>

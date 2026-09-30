@@ -18,6 +18,7 @@ import ReservationCleaningJobDialog from '~/components/reservations/ReservationC
 import ReservationCleaningScheduleDialog from '~/components/reservations/ReservationCleaningScheduleDialog.vue'
 import StaffMultiSelectDropdown from '~/components/shared/StaffMultiSelectDropdown.vue'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '~/components/ui/accordion'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
@@ -115,8 +116,18 @@ function clearCleaningSchedule() {
   toast.success('Reset cleaning schedule to listing default')
 }
 
+// Delete asks first; completed cleanings can be deleted too.
+const pendingDeleteJob = ref<CleaningJob | null>(null)
+
 function removeCleaning(jobId: string) {
-  deleteJob(jobId)
+  pendingDeleteJob.value = housekeepingJobs.value.find(j => j.id === jobId) ?? null
+}
+
+function confirmRemoveCleaning() {
+  if (!pendingDeleteJob.value)
+    return
+  deleteJob(pendingDeleteJob.value.id)
+  pendingDeleteJob.value = null
   toast.info('Cleaning removed')
 }
 
@@ -457,6 +468,24 @@ function openAddCleaning() {
       @update:open="cleaningJobDialogOpen = $event"
     />
 
+    <AlertDialog :open="!!pendingDeleteJob" @update:open="(val) => { if (!val) pendingDeleteJob = null }">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this cleaning?</AlertDialogTitle>
+          <AlertDialogDescription>
+            <template v-if="pendingDeleteJob">
+              The cleaning on {{ fmtCleaningDate(pendingDeleteJob.scheduledAt) }} is removed from this reservation, the operations calendar and the cleaner's tasks.
+            </template>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction data-testid="housekeeping-confirm-delete" @click="confirmRemoveCleaning">
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <CalendarEventDetailDialog
       :open="detailCleaningOpen"
       :event="detailCleaningEvent"
