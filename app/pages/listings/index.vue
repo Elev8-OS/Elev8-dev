@@ -13,6 +13,7 @@ import {
   getSortedRowModel,
   useVueTable,
 } from '@tanstack/vue-table'
+import { otaIcon } from '~/components/channels/data/channels'
 import { aiStatusLabels, aiStatusOptions, allTags, getUnits, listings } from '~/components/listings/data/listings'
 import ListingAiStatusCell from '~/components/listings/ListingAiStatusCell.vue'
 import ListingExpandRow from '~/components/listings/ListingExpandRow.vue'
@@ -55,14 +56,10 @@ const aiStatusColor: Record<string, string> = {
   not_set: 'text-muted-foreground',
 }
 
-function otaIcon(ota: string) {
-  return ota === 'Airbnb' ? 'logos:airbnb' : 'simple-icons:bookingdotcom'
-}
-
 const expandedRows = ref<Set<string>>(new Set())
 
 const listingsKey = computed(() =>
-  listings.value.map(l => {
+  listings.value.map((l) => {
     const unitTypes = l.unitTypes?.map(ut => `${ut.id}:${ut.aiStatus ?? '-'}:${ut.units.map(u => `${u.id}:${u.status}`).join(',')}`).join('|') ?? ''
     return `${l.id}:${l.status}:${l.aiStatus}:${unitTypes}`
   }).join('||'),
@@ -468,21 +465,21 @@ function handleRenameView(viewId: string, newName: string) {
       </DropdownMenu>
     </div>
 
-<SavedViewsDropdown
-  :saved-views="savedViews"
-  :active-view="activeView"
-  :is-dirty="isDirty"
-  :is-loading="savedViewsLoading"
-  :can-update-active-view="canUpdateActiveView"
-  :pending-view-id="pendingViewId"
-  @load-view="handleLoadView"
-  @save-as="handleSaveAs"
-  @update="handleUpdateView"
-  @delete="handleDeleteView"
-  @rename="handleRenameView"
-  @reset="handleResetView"
-  @confirm-load="handleConfirmLoadView"
-/>
+    <SavedViewsDropdown
+      :saved-views="savedViews"
+      :active-view="activeView"
+      :is-dirty="isDirty"
+      :is-loading="savedViewsLoading"
+      :can-update-active-view="canUpdateActiveView"
+      :pending-view-id="pendingViewId"
+      @load-view="handleLoadView"
+      @save-as="handleSaveAs"
+      @update="handleUpdateView"
+      @delete="handleDeleteView"
+      @rename="handleRenameView"
+      @reset="handleResetView"
+      @confirm-load="handleConfirmLoadView"
+    />
 
     <div v-if="activeTagFilter.length > 0 || activeAiFilter" class="flex flex-wrap items-center gap-1.5">
       <Badge

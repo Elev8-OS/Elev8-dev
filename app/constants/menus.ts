@@ -97,6 +97,12 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
+        title: 'Channels',
+        icon: 'i-lucide-network',
+        link: '/channels',
+        new: true,
+      },
+      {
         title: 'Users',
         icon: 'i-lucide-users-round',
         link: '/users',

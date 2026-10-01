@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
-import { getUnitTypes, getUnits, listings } from '~/components/listings/data/listings'
+import { otaIcon } from '~/components/channels/data/channels'
+import { getUnits, getUnitTypes, listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listingId: string }>()
 
 const listing = computed(() => listings.value.find(l => l.id === props.listingId)!)
-
-function otaIcon(ota: string) {
-  return ota === 'Airbnb' ? 'logos:airbnb' : 'simple-icons:bookingdotcom'
-}
 
 function toggleProperty() {
   const idx = listings.value.findIndex(l => l.id === props.listingId)
@@ -35,7 +32,7 @@ function toggleUnit(unitId: string) {
   const currentListing = listings.value[idx]!
   const unitTypes = currentListing.unitTypes?.map(ut => ({
     ...ut,
-    units: ut.units.map(u => {
+    units: ut.units.map((u) => {
       if (u.id !== unitId)
         return u
       const deactivating = u.status !== 'inactive'

@@ -68,6 +68,7 @@
 - `Listing.aiStatus: 'active' | 'paused' | 'not_set'` — listing-level AI status (used for single-unit + as a derived aggregate for multi-unit)
 - `Unit.status?: 'active' | 'inactive'` — per-unit status
 - `Unit.otaConnected?: string[]` — per-unit OTA override (falls back to listing OTA)
+- `Listing.otaConnected` is written only by `useChannels` (see `docs/claude/channels.md`); logos come from `otaIcon()` in `components/channels/data/channels.ts`
 - `UnitType.aiStatus?: 'active' | 'paused' | 'not_set'` — **AI is now controlled at the room-type level**, not per physical room. Toggling it applies to every unit of that type.
 - **Multi-unit logic**: property status derived from units — all inactive = property inactive
 - **AI aggregation** (multi-unit only): for the table's AI Status column, `ListingAiStatusCell` aggregates from `unitTypes[]` — any unit type active → "Active", all unit types paused → "Paused", otherwise falls back to `listing.aiStatus`

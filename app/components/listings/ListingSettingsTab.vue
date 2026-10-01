@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { Listing, Unit, UnitType } from '~/components/listings/data/listings'
-import { reservations as allReservations } from '~/components/inbox/data/conversations'
+import type { Listing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
+import ListingChannelsCard from '~/components/channels/ListingChannelsCard.vue'
 import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
+import { reservations as allReservations } from '~/components/inbox/data/conversations'
 import GuideAssignPopover from '~/components/listings/GuideAssignPopover.vue'
 import InvoiceTemplateAssignPopover from '~/components/listings/InvoiceTemplateAssignPopover.vue'
 import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
@@ -36,9 +37,26 @@ function saveDetails() {
 }
 
 const allAmenities = [
-  'Pool', 'WiFi', 'AC', 'Kitchen', 'Parking', 'Garden', 'Beach Access', 'Rooftop Deck',
-  'Plunge Pool', 'Yoga Deck', 'Hammock Deck', 'Nature Bath', 'Ocean View', 'Cliff Deck',
-  'Surfboard Storage', 'Mountain View', 'Hot Tub', 'Fireplace', 'River View', 'Bamboo Construction',
+  'Pool',
+  'WiFi',
+  'AC',
+  'Kitchen',
+  'Parking',
+  'Garden',
+  'Beach Access',
+  'Rooftop Deck',
+  'Plunge Pool',
+  'Yoga Deck',
+  'Hammock Deck',
+  'Nature Bath',
+  'Ocean View',
+  'Cliff Deck',
+  'Surfboard Storage',
+  'Mountain View',
+  'Hot Tub',
+  'Fireplace',
+  'River View',
+  'Bamboo Construction',
 ]
 const amenitySearch = ref('')
 const amenityPopoverOpen = ref(false)
@@ -50,9 +68,6 @@ const filteredAmenities = computed(() => {
 })
 function addAmenity(amenity: string) { emit('update', { ...props.listing, amenities: [...props.listing.amenities, amenity] }) }
 function removeAmenity(amenity: string) { emit('update', { ...props.listing, amenities: props.listing.amenities.filter(a => a !== amenity) }) }
-
-function otaIcon(ota: string) { return ota === 'Airbnb' ? 'logos:airbnb' : 'simple-icons:bookingdotcom' }
-const allOtas = ['Airbnb', 'Booking.com']
 
 // Smart Lock state
 const unitTypes = computed(() => props.listing.unitTypes ?? [])
@@ -80,7 +95,7 @@ const allRooms = computed(() =>
 
 // Brand lookup map for paired locks — keyed by deviceId, returns capitalized provider name + model
 const providerMap = computed(() => {
-  const map = new Map<string, { name: string; model: string }>()
+  const map = new Map<string, { name: string, model: string }>()
   for (const device of smartLock.allDevices.value) {
     map.set(device.deviceId, {
       name: device.provider.charAt(0).toUpperCase() + device.provider.slice(1),
@@ -128,14 +143,16 @@ function handleCardHeaderAdd() {
   }
   else {
     const target = roomsList.value.find(r => roomLocksForUnit(r.id).length === 0) ?? roomsList.value[0]
-    if (target) openPairDialog('room', target.id)
+    if (target)
+      openPairDialog('room', target.id)
     else openPairDialog('property')
   }
 }
 
 // Reactive default for "Set as main" — true if no lock in the selected scope yet
 watch([pairAssignment, pairUnitId, showPairDialog], () => {
-  if (!showPairDialog.value) return
+  if (!showPairDialog.value)
+    return
   if (pairAssignment.value === 'property') {
     newLockIsMain.value = listingLocks.value.filter(l => l.assignment === 'property' || !l.unitId).length === 0
   }
@@ -154,8 +171,10 @@ function openPairDialog(kind: 'property' | 'room' = 'property', unitId?: string)
 }
 
 async function handlePair() {
-  if (!selectedDeviceId.value) return
-  if (pairAssignment.value === 'room' && !pairUnitId.value) return
+  if (!selectedDeviceId.value)
+    return
+  if (pairAssignment.value === 'room' && !pairUnitId.value)
+    return
   const result = smartLock.pairLock({
     providerDeviceId: selectedDeviceId.value,
     name: newLockName.value.trim(),
@@ -200,7 +219,8 @@ async function handlePair() {
       lockId: result.lock!.id,
       guestName: 'Housekeeping',
     })
-    if (r.code) generatedSummaries.push(`Housekeeping: ${r.code.code}`)
+    if (r.code)
+      generatedSummaries.push(`Housekeeping: ${r.code.code}`)
   }
 
   if (generatedSummaries.length > 0) {
@@ -242,7 +262,8 @@ function commitRename() {
 
 function startSwap(lockId: string) {
   const lock = listingLocks.value.find(l => l.id === lockId)
-  if (!lock) return
+  if (!lock)
+    return
   const oldDevice = smartLock.allDevices.value.find(d => d.deviceId === lock.providerDeviceId)
   swapLockId.value = lockId
   swapTargetDeviceId.value = ''
@@ -250,7 +271,8 @@ function startSwap(lockId: string) {
 }
 
 function handleSwap() {
-  if (!swapLockId.value || !swapTargetDeviceId.value) return
+  if (!swapLockId.value || !swapTargetDeviceId.value)
+    return
   const result = smartLock.swapDevice(swapLockId.value, swapTargetDeviceId.value)
   if (!result.success) {
     toast.error(result.error ?? 'Failed to swap device.')
@@ -263,24 +285,29 @@ function handleSwap() {
 }
 
 const swappableDevices = computed(() => {
-  if (!swapLockId.value) return []
+  if (!swapLockId.value)
+    return []
   const lock = listingLocks.value.find(l => l.id === swapLockId.value)
-  if (!lock) return []
+  if (!lock)
+    return []
   return smartLock.allDevices.value.filter(d => d.deviceId !== lock.providerDeviceId)
 })
 
 const swapDialogOpen = computed({
   get: () => swapLockId.value !== null,
   set: (val: boolean) => {
-    if (!val) swapLockId.value = null
+    if (!val)
+      swapLockId.value = null
   },
 })
 
 function getUnitName(unitId?: string): string {
-  if (!unitId) return ''
+  if (!unitId)
+    return ''
   for (const ut of unitTypes.value) {
     const u = ut.units.find(x => x.id === unitId)
-    if (u) return u.name
+    if (u)
+      return u.name
   }
   return ''
 }
@@ -290,7 +317,8 @@ const relevantReservations = computed(() => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return Object.values(allReservations).filter((r) => {
-    if (r.listingName !== props.listing.name) return false
+    if (r.listingName !== props.listing.name)
+      return false
     const checkOut = new Date(r.checkOut)
     return checkOut >= today
   })
@@ -314,7 +342,8 @@ const newCodeError = ref('')
 const codesDialogOpen = computed({
   get: () => codesDialogLockId.value !== null,
   set: (val: boolean) => {
-    if (!val) codesDialogLockId.value = null
+    if (!val)
+      codesDialogLockId.value = null
   },
 })
 
@@ -349,14 +378,18 @@ function codesForLock(lockId: string) {
 type CodeTimeStatus = 'unset' | 'setting' | 'set'
 
 function getCodeTimeStatus(code: { status: string, startsAt: string, endsAt: string, scheduleType?: 'ongoing' | 'range' }): CodeTimeStatus {
-  if (code.status === 'revoked') return 'unset'
+  if (code.status === 'revoked')
+    return 'unset'
   const now = Date.now()
   const start = +new Date(code.startsAt)
   const end = +new Date(code.endsAt)
-  if (end <= now) return 'unset'
+  if (end <= now)
+    return 'unset'
 
-  if (code.scheduleType === 'ongoing') return 'set'
-  if (code.scheduleType === 'range') return start > now ? 'setting' : 'set'
+  if (code.scheduleType === 'ongoing')
+    return 'set'
+  if (code.scheduleType === 'range')
+    return start > now ? 'setting' : 'set'
 
   // No explicit schedule = auto-generated, sitting in transition
   return 'setting'
@@ -367,18 +400,23 @@ function timeStatusLabel(s: CodeTimeStatus): string {
 }
 
 function timeStatusClass(s: CodeTimeStatus): string {
-  if (s === 'set') return 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400'
-  if (s === 'setting') return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+  if (s === 'set')
+    return 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400'
+  if (s === 'setting')
+    return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
   return 'border-muted-foreground/30 bg-muted text-muted-foreground'
 }
 
 function timeUntilExpiry(endsAt: string): string {
   const ms = +new Date(endsAt) - Date.now()
-  if (ms <= 0) return 'expired'
+  if (ms <= 0)
+    return 'expired'
   const hours = Math.floor(ms / (1000 * 60 * 60))
   const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60))
-  if (hours <= 0) return `${minutes}m left`
-  if (hours < 24) return `${hours}h ${minutes}m left`
+  if (hours <= 0)
+    return `${minutes}m left`
+  if (hours < 24)
+    return `${hours}h ${minutes}m left`
   const days = Math.floor(hours / 24)
   return `${days}d left`
 }
@@ -392,7 +430,8 @@ async function handleUnlock(lockId: string) {
 }
 
 async function handleSaveNewCode() {
-  if (!codesDialogLockId.value) return
+  if (!codesDialogLockId.value)
+    return
   newCodeError.value = ''
   const purpose = newCodePurpose.value.trim()
   if (!purpose) {
@@ -449,22 +488,7 @@ function handleRevokeCode(codeId: string) {
 
 <template>
   <div class="flex flex-col gap-6">
-    <Card class="p-5">
-      <h3 class="text-sm font-semibold mb-4">
-        Distribution Channels
-      </h3>
-      <div class="flex flex-col gap-3">
-        <div v-for="ota in allOtas" :key="ota" class="flex items-center justify-between rounded-lg border p-4">
-          <div class="flex items-center gap-3">
-            <Icon :name="otaIcon(ota)" class="size-5" />
-            <span class="text-sm font-medium">{{ ota }}</span>
-          </div>
-          <Badge :variant="listing.otaConnected.includes(ota) ? 'default' : 'secondary'" class="text-xs">
-            {{ listing.otaConnected.includes(ota) ? 'Connected' : 'Not Connected' }}
-          </Badge>
-        </div>
-      </div>
-    </Card>
+    <ListingChannelsCard :listing-id="listing.id" :listing-name="listing.name" />
 
     <!-- Smart Locks -->
     <Card class="p-5">
@@ -654,7 +678,6 @@ function handleRevokeCode(codeId: string) {
                   <Icon name="lucide:trash-2" class="size-3.5" />
                 </Button>
               </div>
-
             </div>
           </div>
         </TabsContent>
@@ -814,7 +837,6 @@ function handleRevokeCode(codeId: string) {
                     <Icon name="lucide:trash-2" class="size-3.5" />
                   </Button>
                 </div>
-
               </div>
             </div>
           </div>
@@ -836,20 +858,28 @@ function handleRevokeCode(codeId: string) {
       <CardContent>
         <div v-if="assignedGuide" class="flex items-center justify-between">
           <div>
-            <div class="font-medium">{{ assignedGuide.title }}</div>
+            <div class="font-medium">
+              {{ assignedGuide.title }}
+            </div>
             <GuideStatusBadge :status="assignedGuide.status" />
           </div>
           <div class="flex gap-2">
             <NuxtLink :to="`/guest-guides/${assignedGuide.id}`">
-              <Button variant="outline" size="sm">Edit</Button>
+              <Button variant="outline" size="sm">
+                Edit
+              </Button>
             </NuxtLink>
             <NuxtLink :to="`/guest-guides/${assignedGuide.id}/preview`">
-              <Button variant="outline" size="sm">Preview</Button>
+              <Button variant="outline" size="sm">
+                Preview
+              </Button>
             </NuxtLink>
           </div>
         </div>
         <div v-else class="text-sm text-muted-foreground">
-          No guide assigned. <NuxtLink to="/guest-guides/new" class="underline">Create one</NuxtLink>.
+          No guide assigned. <NuxtLink to="/guest-guides/new" class="underline">
+            Create one
+          </NuxtLink>.
         </div>
       </CardContent>
     </Card>
@@ -1146,7 +1176,9 @@ function handleRevokeCode(codeId: string) {
                   :class="device.online ? 'text-green-600' : 'text-muted-foreground'"
                 />
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-medium">{{ device.name }}</p>
+                  <p class="truncate text-sm font-medium">
+                    {{ device.name }}
+                  </p>
                   <p class="truncate text-[11px] text-muted-foreground">
                     {{ device.model }} · {{ device.provider }}
                   </p>
@@ -1248,7 +1280,9 @@ function handleRevokeCode(codeId: string) {
                 :class="device.online ? 'text-green-600' : 'text-muted-foreground'"
               />
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium">{{ device.name }}</p>
+                <p class="truncate text-sm font-medium">
+                  {{ device.name }}
+                </p>
                 <p class="truncate text-[11px] text-muted-foreground">
                   {{ device.model }} · {{ device.provider }}
                 </p>
