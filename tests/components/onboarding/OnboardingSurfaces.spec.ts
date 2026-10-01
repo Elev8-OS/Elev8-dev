@@ -62,7 +62,7 @@ describe('checklistCard', () => {
     expect(text(wrapper)).toContain('1 of 7 done')
     // A completed item loses its call to action.
     const cleaningRow = wrapper.findAll('li').find(li => li.text().includes('Set up cleaning'))!
-    expect(cleaningRow.text()).not.toContain('Go to Cleaning')
+    expect(cleaningRow.text()).not.toContain('Go to Operations Calendar')
   })
 
   it('offers Skip only on optional items', () => {
