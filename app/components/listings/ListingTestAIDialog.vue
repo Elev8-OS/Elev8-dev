@@ -85,7 +85,7 @@ async function send(text?: string) {
         >
           <div v-if="msg.role === 'ai'" class="flex items-end gap-2 max-w-[80%]">
             <div class="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#C8A84B]/20">
-              <Icon name="lucide:bot" class="size-4 text-[#C8A84B]" />
+              <SharedAiIcon custom-class="size-4" />
             </div>
             <div class="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm">
               {{ msg.text }}
@@ -98,7 +98,7 @@ async function send(text?: string) {
 
         <div v-if="isTyping" class="flex items-end gap-2">
           <div class="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#C8A84B]/20">
-            <Icon name="lucide:bot" class="size-4 text-[#C8A84B]" />
+            <SharedAiIcon custom-class="size-4" />
           </div>
           <div class="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-sm text-muted-foreground">
             <span class="animate-pulse">···</span>

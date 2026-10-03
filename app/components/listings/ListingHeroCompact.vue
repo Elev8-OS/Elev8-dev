@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { AiSchedule, DateOverride, Listing, OverrideAudience, TimeSlot, Unit } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
-import { allTags, getUnitById, getUnitTypeForUnit, getUnits, listings } from '~/components/listings/data/listings'
+import { allTags, getUnitById, getUnits, listings } from '~/components/listings/data/listings'
+import ListingAssignedUsers from '~/components/listings/ListingAssignedUsers.vue'
 
 const props = defineProps<{ listing: Listing, openSchedule?: boolean }>()
 const emit = defineEmits<{ update: [listing: Listing], openSetup: [], openTestAi: [], openSchedule: [] }>()
@@ -592,12 +593,13 @@ function toggleAudience(o: DateOverride, value: OverrideAudience) {
 
         <!-- Action buttons -->
         <div class="flex items-center gap-2 mt-auto self-end">
+          <ListingAssignedUsers :listing="listing" />
           <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" @click="emit('openSetup')">
             <Icon name="lucide:pencil" class="size-4" />
             Edit Listing
           </Button>
           <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" @click="emit('openTestAi')">
-            <Icon name="lucide:bot" class="size-4" />
+            <SharedAiIcon custom-class="size-4" />
             Test AI
           </Button>
           <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" @click="emit('openSchedule')">

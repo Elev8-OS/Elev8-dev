@@ -6,6 +6,7 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { housekeepingStatus, housekeepingStatusClasses, housekeepingStatusIcons, housekeepingStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { CLEANING_STEPS_REQUIRED_MESSAGE } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import CalendarEventDetailDialog from '~/components/operations-calendar/CalendarEventDetailDialog.vue'
 import { cleaningTypeLabels, normalizeCleaningType } from '~/components/operations-calendar/data/operations-calendar'
@@ -38,6 +39,7 @@ const {
   deleteJob,
   jobs: cleaningJobs,
   updateJob,
+  listingHasCleaningSteps,
 } = useCleaningJobs()
 
 const housekeepingJobs = computed(() =>
@@ -51,6 +53,9 @@ const nextCleaning = computed(() =>
   ?? housekeepingJobs.value[0]
   ?? null,
 )
+
+// No cleaning steps on the listing, no cleaning: schedule and add are locked (`cleaning-steps.ts`).
+const cleaningStepsReady = computed(() => listingHasCleaningSteps(props.reservation.listingId))
 
 const listingForReservation = computed(() => {
   return listings.value.find(l => l.id === props.reservation.listingId) ?? null
@@ -272,6 +277,7 @@ function openAddCleaning() {
                   variant="ghost"
                   size="sm"
                   class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                  :disabled="!cleaningStepsReady"
                   @click.stop="cleaningScheduleOpen = true"
                 >
                   <Icon name="lucide:pencil" class="size-3" />
@@ -284,6 +290,7 @@ function openAddCleaning() {
                   size="sm"
                   class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
                   title="Reset to listing default"
+                  :disabled="!cleaningStepsReady"
                   @click.stop="clearCleaningSchedule"
                 >
                   <Icon name="lucide:rotate-ccw" class="size-3" />
@@ -437,11 +444,25 @@ function openAddCleaning() {
             </div>
           </div>
 
-          <div class="mt-3">
+          <div class="mt-3 flex flex-col gap-2">
+            <div
+              v-if="!cleaningStepsReady"
+              class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
+              data-testid="cleaning-steps-required"
+            >
+              <Icon name="lucide:list-checks" class="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {{ CLEANING_STEPS_REQUIRED_MESSAGE }}
+                <NuxtLink :to="`/listings/${reservation.listingId}?tab=maintenance`" class="font-medium underline">
+                  Set up steps
+                </NuxtLink>
+              </span>
+            </div>
             <Button
               variant="outline"
               size="sm"
               class="w-full gap-1.5 text-xs"
+              :disabled="!cleaningStepsReady"
               @click="openAddCleaning"
             >
               <Icon name="lucide:plus" class="size-3.5" />

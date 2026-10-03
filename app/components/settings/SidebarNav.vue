@@ -33,6 +33,19 @@ const sections: Section[] = [
     ],
   },
   {
+    label: 'Guest Guide',
+    items: [
+      { title: 'Content Templates', href: '/settings/guide-templates' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { title: 'Cleaning Templates', href: '/settings/cleaning-templates' },
+      { title: 'Guidance', href: '/settings/guidance' },
+    ],
+  },
+  {
     label: 'Integrations',
     items: [
       { title: 'Integrations', href: '/settings/integrations' },

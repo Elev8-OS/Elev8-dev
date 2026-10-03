@@ -9,7 +9,6 @@ const router = useRouter()
 const isInactive = computed(() => props.listing.status === 'inactive')
 
 const aiStatusLabel = computed(() => props.listing.aiStatus === 'active' ? 'Pause AI' : 'Activate AI')
-const aiStatusIcon = computed(() => props.listing.aiStatus === 'active' ? 'lucide:bot' : 'lucide:bot-off')
 
 function viewDetail() {
   router.push(`/listings/${props.listing.id}`)
@@ -69,7 +68,7 @@ function toggleAi() {
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem class="gap-2" @click="toggleAi">
-        <Icon :name="aiStatusIcon" class="size-4" />
+        <SharedAiIcon :custom-class="listing.aiStatus === 'active' ? 'size-4' : 'size-4 grayscale opacity-50'" />
         {{ aiStatusLabel }}
       </DropdownMenuItem>
     </DropdownMenuContent>

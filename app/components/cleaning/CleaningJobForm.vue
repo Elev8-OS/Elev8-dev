@@ -3,10 +3,12 @@ import type { CleaningJob, CleaningJobInput, CleaningJobPriority, CleaningJobRec
 import DatePicker from '~/components/base/DatePicker.vue'
 import { cleanerOptions, CLEANING_SOURCE_OPTIONS, cleaningJobSourceLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
+import { CLEANING_STEPS_REQUIRED_MESSAGE } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { allStays } from '~/components/operations-calendar/data/calendar-stays'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
+import { listingHasCleaningSteps } from '~/composables/useCleaningJobs'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = withDefaults(defineProps<{
@@ -200,8 +202,13 @@ const isValidTimeRange = computed(() => {
   return diffMinutes(cleaningTimeFrom.value, cleaningTimeTo.value) > 0
 })
 
+// A NEW job needs the listing's cleaning steps (`cleaning-steps.ts`); editing an existing one does not.
+const isNewJob = computed(() => !props.modelValue?.id)
+const stepsMissing = computed(() => isNewJob.value && Boolean(form.listingId) && !listingHasCleaningSteps(form.listingId))
+
 const canSubmit = computed(() =>
   Boolean(form.listingId)
+  && !stepsMissing.value
   && Boolean(cleaningDate.value)
   && form.cleanerIds.length > 0
   && isValidTimeRange.value,
@@ -364,6 +371,19 @@ function submit() {
       />
       <Input v-if="!isCreate" v-model="form.listingName" placeholder="Listing name" class="mt-2" />
       <GuestInfoCard v-if="form.listingId" :listing-id="form.listingId" :target-date="cleaningDate" />
+      <div
+        v-if="stepsMissing"
+        class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
+        data-testid="cleaning-steps-required"
+      >
+        <Icon name="lucide:list-checks" class="mt-0.5 size-3.5 shrink-0" />
+        <span>
+          {{ CLEANING_STEPS_REQUIRED_MESSAGE }}
+          <NuxtLink :to="`/listings/${form.listingId}?tab=maintenance`" class="font-medium underline">
+            Set up steps
+          </NuxtLink>
+        </span>
+      </div>
     </div>
 
     <div class="grid gap-1.5">

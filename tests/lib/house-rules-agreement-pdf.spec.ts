@@ -102,8 +102,19 @@ const reservation = {
 } as unknown as ReservationEntry
 
 describe('resolveHouseRules', () => {
-  it('prefers the active guide assigned to the listing', () => {
+  it('prefers the listing\'s own rules over a guide\'s (the listing owns them)', () => {
     expect(resolveHouseRules(reservation, { listings: [listing], guides: [guide({})] }))
+      .toEqual({ rules: [{ title: 'No smoking inside' }, { title: 'No parties' }], source: 'listing' })
+  })
+
+  it('reads the listing\'s structured rules with their descriptions', () => {
+    const structured = { ...listing, guestGuide: { house_rules: [{ id: 'r1', title: 'Shoes off', text: 'Floors are polished wood.' }] } } as typeof listing
+    expect(resolveHouseRules(reservation, { listings: [structured], guides: [guide({})] }))
+      .toEqual({ rules: [{ title: 'Shoes off', description: 'Floors are polished wood.' }], source: 'listing' })
+  })
+
+  it('uses an active guide\'s rules only when the listing has none', () => {
+    expect(resolveHouseRules(reservation, { listings: [], guides: [guide({})] }))
       .toEqual({ rules: [{ title: 'Shoes off inside' }], source: 'guest_guide' })
   })
 
@@ -114,7 +125,7 @@ describe('resolveHouseRules', () => {
       { title: ' ', description: 'Orphan description' },
       '',
     ] as unknown as string[]
-    expect(resolveHouseRules(reservation, { listings: [listing], guides: [guide({ rules })] }).rules).toEqual([
+    expect(resolveHouseRules(reservation, { listings: [], guides: [guide({ rules })] }).rules).toEqual([
       { title: 'No Smoking', description: 'Smoking is strictly prohibited inside the apartment.' },
       { title: 'No Pets' },
     ])

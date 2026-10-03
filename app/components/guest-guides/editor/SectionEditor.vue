@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import type { GuideSection } from '../data/types'
-import HeroSectionEditor from './sections/HeroSectionEditor.vue'
-import WelcomeSectionEditor from './sections/WelcomeSectionEditor.vue'
+import AmenitiesSectionEditor from './sections/AmenitiesSectionEditor.vue'
 import CheckinSectionEditor from './sections/CheckinSectionEditor.vue'
 import CheckoutSectionEditor from './sections/CheckoutSectionEditor.vue'
-import HouseRulesSectionEditor from './sections/HouseRulesSectionEditor.vue'
-import AmenitiesSectionEditor from './sections/AmenitiesSectionEditor.vue'
-import WifiSectionEditor from './sections/WifiSectionEditor.vue'
-import LocalTipsSectionEditor from './sections/LocalTipsSectionEditor.vue'
-import DocumentsSectionEditor from './sections/DocumentsSectionEditor.vue'
-import UpsellsSectionEditor from './sections/UpsellsSectionEditor.vue'
-import SmartLockSectionEditor from './sections/SmartLockSectionEditor.vue'
-import PreArrivalSectionEditor from './sections/PreArrivalSectionEditor.vue'
 import CustomRichSectionEditor from './sections/CustomRichSectionEditor.vue'
+import DocumentsSectionEditor from './sections/DocumentsSectionEditor.vue'
+import GoodToKnowSectionEditor from './sections/GoodToKnowSectionEditor.vue'
+import HeroSectionEditor from './sections/HeroSectionEditor.vue'
+import HouseRulesSectionEditor from './sections/HouseRulesSectionEditor.vue'
+import LocalTipsSectionEditor from './sections/LocalTipsSectionEditor.vue'
+import PreArrivalSectionEditor from './sections/PreArrivalSectionEditor.vue'
+import SmartLockSectionEditor from './sections/SmartLockSectionEditor.vue'
+import UpsellsSectionEditor from './sections/UpsellsSectionEditor.vue'
+import WelcomeSectionEditor from './sections/WelcomeSectionEditor.vue'
+import WifiSectionEditor from './sections/WifiSectionEditor.vue'
 
 const props = defineProps<{ section: GuideSection }>()
-const emit = defineEmits<{ 'update': [data: Record<string, any>] }>()
+const emit = defineEmits<{ update: [data: Record<string, any>] }>()
 
 const editorMap = {
   hero: HeroSectionEditor,
@@ -23,6 +24,7 @@ const editorMap = {
   checkin: CheckinSectionEditor,
   checkout: CheckoutSectionEditor,
   house_rules: HouseRulesSectionEditor,
+  good_to_know: GoodToKnowSectionEditor,
   amenities: AmenitiesSectionEditor,
   wifi: WifiSectionEditor,
   local_tips: LocalTipsSectionEditor,

@@ -4,6 +4,7 @@ import WelcomeSection from '~/components/sections/WelcomeSection.vue'
 import CheckinSection from '~/components/sections/CheckinSection.vue'
 import CheckoutSection from '~/components/sections/CheckoutSection.vue'
 import HouseRulesSection from '~/components/sections/HouseRulesSection.vue'
+import GoodToKnowSection from '~/components/sections/GoodToKnowSection.vue'
 import AmenitiesSection from '~/components/sections/AmenitiesSection.vue'
 import WifiSection from '~/components/sections/WifiSection.vue'
 import LocalTipsSection from '~/components/sections/LocalTipsSection.vue'
@@ -59,9 +60,9 @@ const visibleSections = computed(() => {
 // Smart section ordering: reorder by stay phase
 // (pre = >24h before check-in, arrival = within 24h, stay = checked in)
 const PHASE_ORDERS: Record<string, Record<string, number>> = {
-  pre: { pre_arrival: 0, wifi: 1, house_rules: 2, amenities: 3, local_tips: 4, checkin: 5 },
+  pre: { pre_arrival: 0, wifi: 1, house_rules: 2, good_to_know: 3, amenities: 4, local_tips: 5, checkin: 6 },
   arrival: { smart_lock: 0, checkin: 1, house_rules: 2, wifi: 3, amenities: 4 },
-  stay: { local_tips: 0, upsells: 1, documents: 2, checkout: 3 },
+  stay: { good_to_know: 0, local_tips: 1, upsells: 2, documents: 3, checkout: 4 },
 }
 
 const phase = computed<'pre' | 'arrival' | 'stay'>(() => {
@@ -94,6 +95,7 @@ const sectionComponentMap: Record<string, any> = {
   checkin: CheckinSection,
   checkout: CheckoutSection,
   house_rules: HouseRulesSection,
+  good_to_know: GoodToKnowSection,
   amenities: AmenitiesSection,
   wifi: WifiSection,
   local_tips: LocalTipsSection,
@@ -195,6 +197,7 @@ function handleUpsellAdd(serviceId: string) {
               v-else
               :data="section.data"
               :listing="data.listing"
+              :content="data.guideContent?.[section.type]"
               :token="token"
             />
           </template>

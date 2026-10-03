@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Textarea } from '~/components/ui/textarea'
 import { Label } from '~/components/ui/label'
+import { Textarea } from '~/components/ui/textarea'
 
 const props = defineProps<{ modelValue: Record<string, any> }>()
 const emit = defineEmits<{ 'update:modelValue': [v: Record<string, any>] }>()

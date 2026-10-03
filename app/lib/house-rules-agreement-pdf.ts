@@ -10,6 +10,8 @@ import type { Listing } from '~/components/listings/data/listings'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { jsPDF as JsPdf } from 'jspdf'
 import { normalizeHouseRules } from '~/components/guest-guides/data/house-rules'
+import { listingGuideItems } from '~/components/listings/data/guest-guide-content'
+import { richTextToPlainText } from '~/lib/rich-text'
 
 export type { HouseRule } from '~/components/guest-guides/data/house-rules'
 
@@ -48,21 +50,28 @@ export interface HouseRulesAgreementInput {
   signatureImageUrl?: string
 }
 
-/** The rules shown to this guest, with where they came from. */
+/**
+ * The rules shown to this guest, with where they came from. The listing owns
+ * them (`guest-guide-content.ts`): its Guest Guide tab rules come first. A
+ * guide's own rules are only read for a listing that has none, from guides
+ * made before the listing owned its rules; then the default set.
+ */
 export function resolveHouseRules(
   reservation: Pick<ReservationEntry, 'listingId'>,
   sources: { listings: Listing[], guides: GuestGuide[] },
 ): { rules: HouseRule[], source: HouseRulesSource } {
+  const listing = sources.listings.find(l => l.id === reservation.listingId)
+  const listingRules = listingGuideItems(listing, 'house_rules')
+    // The PDF prints plain text; the rule's description may be rich text.
+    .map(item => item.text ? { title: item.title, description: richTextToPlainText(item.text) } : { title: item.title })
+  if (listingRules.length)
+    return { rules: listingRules, source: 'listing' }
+
   const guide = sources.guides.find(g => g.status === 'active' && g.assignedListingIds.includes(reservation.listingId))
   const section = guide?.sections.find(s => s.type === 'house_rules' && s.enabled)
   const guideRules = normalizeHouseRules(section?.data?.rules)
   if (guideRules.length)
     return { rules: guideRules, source: 'guest_guide' }
-
-  const listing = sources.listings.find(l => l.id === reservation.listingId)
-  const listingRules = normalizeHouseRules(listing?.resources?.basics?.houseRules?.split('\n'))
-  if (listingRules.length)
-    return { rules: listingRules, source: 'listing' }
 
   return { rules: DEFAULT_HOUSE_RULES.map(r => ({ ...r })), source: 'default' }
 }

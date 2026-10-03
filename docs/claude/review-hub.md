@@ -132,3 +132,7 @@ interface ReviewRecord {
 - 3 Airbnb (1 double-blind hidden, 2 visible), 3 Booking.com (1 replied, 2 host_review_pending), 2 Direct (1 replied, 1 no review), 2 past Airbnb (>14d, auto-revealed)
 - All scores in 0-10 Channex format, realistic tags on Airbnb records
 - 10 SOR records with cleaning_score 2-5, house_rule_flags 0-3, communication_score 3-5
+
+### Used by the listing detail page
+The listing Reviews and Overview tabs read `feedItems` for one listing (`app/components/listings/data/listing-reviews.ts`) and reuse `FeedTable` + `DetailDrawer`. `sortFeedItems` is exported so they order rows like the hub. Changing `FeedTable` / `DetailDrawer` props or emits affects `ListingReviewsTab.vue` too.
+

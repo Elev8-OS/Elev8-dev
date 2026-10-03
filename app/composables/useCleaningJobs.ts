@@ -1,6 +1,8 @@
 import type { CleaningFilters, CleaningJob, CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { cleanerOptions, cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
 import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
+import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { allStays } from '~/components/operations-calendar/data/calendar-stays'
 import { useNotifications } from '~/composables/useNotifications'
@@ -19,8 +21,39 @@ function stayIdFor(job: Pick<CleaningJob, 'listingId' | 'unitId' | 'scheduledAt'
   return resolveStayForCleaning(job, stays)?.id ?? null
 }
 
+/**
+ * ⚠️ The cleaning-steps gate: a listing with no cleaning steps gets no new
+ * cleaning, from any path. A listing id this app does not hold has nothing to
+ * check against and passes.
+ */
+export function listingHasCleaningSteps(listingId: string): boolean {
+  const listing = listings.value.find(l => l.id === listingId)
+  return !listing || hasCleaningSteps(listing)
+}
+
+/**
+ * A fresh copy of the listing's cleaning steps for a job's checklist, or
+ * undefined when the listing has none. A copy, never the listing's own array:
+ * the job's checklist is a snapshot (`CleaningJob.steps`).
+ */
+export function cleaningStepsSnapshot(listingId: string): CleaningStepSection[] | undefined {
+  const steps = listings.value.find(l => l.id === listingId)?.maintenance?.cleaningSteps
+  return steps?.length ? JSON.parse(JSON.stringify(steps)) : undefined
+}
+
+/**
+ * Seeds are linked to their stay on load, by the same rule a new job is. Seeds
+ * not yet done also get the listing's steps as their checklist, as if they had
+ * been created after the steps were set up; a done seed keeps only its report.
+ */
 function linkSeed(seed: CleaningJob[]): CleaningJob[] {
-  return seed.map(job => (job.reservationId ? job : { ...job, reservationId: stayIdFor(job) }))
+  return seed.map((job) => {
+    const linked = job.reservationId ? job : { ...job, reservationId: stayIdFor(job) }
+    if (linked.steps || linked.status === 'done')
+      return linked
+    const steps = cleaningStepsSnapshot(linked.listingId)
+    return steps ? { ...linked, steps } : linked
+  })
 }
 
 export function useCleaningJobs() {
@@ -88,10 +121,17 @@ export function useCleaningJobs() {
    * (the calendar, a listing's maintenance tab, an owner stay). A caller that
    * already knows the stay (a reservation's own schedule) passes it and is
    * trusted. A date with no stay creates the job unlinked.
+   *
+   * Returns null, creating nothing, for a listing with no cleaning steps
+   * (`listingHasCleaningSteps`). Screens disable their buttons first; this is
+   * the backstop for the automatic paths.
    */
-  function createJob(input: CleaningJobInput) {
+  function createJob(input: CleaningJobInput): CleaningJob | null {
+    if (!listingHasCleaningSteps(input.listingId))
+      return null
     const job: CleaningJob = {
       ...input,
+      steps: input.steps ?? cleaningStepsSnapshot(input.listingId),
       reservationId: input.reservationId || stayIdFor(input),
       id: `cln-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     }
@@ -117,8 +157,13 @@ export function useCleaningJobs() {
         return next
       const movedPlace = next.listingId !== job.listingId || (next.unitId ?? null) !== (job.unitId ?? null)
       const movedDate = next.scheduledAt !== job.scheduledAt
-      if (movedPlace)
-        return { ...next, reservationId: stayIdFor(next) }
+      if (movedPlace) {
+        // A job moved to another listing before it starts takes that listing's steps.
+        const notStarted = next.status !== 'in_progress' && next.status !== 'done'
+        const recopy = next.listingId !== job.listingId && notStarted && !('steps' in patch)
+        const steps = recopy ? cleaningStepsSnapshot(next.listingId) : next.steps
+        return { ...next, steps, reservationId: stayIdFor(next) }
+      }
       if (movedDate)
         return { ...next, reservationId: stayIdFor(next) ?? job.reservationId ?? null }
       return next
@@ -131,8 +176,11 @@ export function useCleaningJobs() {
 
   function applyReservationSchedule(reservationId: string, newJobs: CleaningJobInput[]) {
     const preserved = jobs.value.filter(j => !(j.reservationId === reservationId && j.status !== 'done'))
-    const added: CleaningJob[] = newJobs.map((input, idx) => ({
+    // A listing with no cleaning steps gets no jobs (`listingHasCleaningSteps`).
+    const allowed = newJobs.filter(input => listingHasCleaningSteps(input.listingId))
+    const added: CleaningJob[] = allowed.map((input, idx) => ({
       ...input,
+      steps: input.steps ?? cleaningStepsSnapshot(input.listingId),
       id: `cln-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
     }))
     jobs.value = [...preserved, ...added]
@@ -203,5 +251,6 @@ export function useCleaningJobs() {
     resolveCleanerNames,
     joinCleanerNames,
     resolveListingName,
+    listingHasCleaningSteps,
   }
 }

@@ -21,6 +21,7 @@ const sectionTypeIcons: Record<string, string> = {
   checkin: 'log-in',
   checkout: 'log-out',
   house_rules: 'scroll',
+  good_to_know: 'info',
   amenities: 'star',
   wifi: 'wifi',
   local_tips: 'map-pin',

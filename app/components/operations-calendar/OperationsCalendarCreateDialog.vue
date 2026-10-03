@@ -3,6 +3,7 @@ import type { CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
 import { toast } from 'vue-sonner'
 import { useTaskStore } from '@/composables/useTaskStore'
 import DatePicker from '~/components/base/DatePicker.vue'
+import { CLEANING_STEPS_REQUIRED_MESSAGE } from '~/components/cleaning/data/cleaning-steps'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
 import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
@@ -12,6 +13,12 @@ const props = defineProps<{
   open: boolean
   listingId?: string
   dayKey?: string
+  /**
+   * Show one form without the Cleaning | Task tabs, e.g. the listing
+   * Maintenance tab's "New cleaning" and "New task". Absent: both tabs, as on
+   * the Operations Calendar.
+   */
+  only?: 'cleaning' | 'task'
 }>()
 
 const emit = defineEmits<{
@@ -22,6 +29,19 @@ const { addTask } = useTaskStore()
 const { createJob, resolveCleanerNames, resolveListingName } = useCleaningJobs()
 
 const activeTab = ref<'cleaning' | 'task'>('cleaning')
+
+// Every open starts on the requested form, else Cleaning, whichever tab was left open last time.
+watch(() => props.open, (isOpen) => {
+  if (isOpen)
+    activeTab.value = props.only ?? 'cleaning'
+}, { immediate: true })
+
+const sheetTitle = computed(() => props.only === 'cleaning' ? 'New cleaning' : props.only === 'task' ? 'New task' : 'Create operation')
+const sheetDescription = computed(() => {
+  const where = props.listingId ? resolveListingName(props.listingId) : 'the selected listing'
+  const what = props.only === 'cleaning' ? 'a cleaning job' : props.only === 'task' ? 'a task' : 'a cleaning job or task'
+  return props.dayKey ? `Add ${what} for ${where} on ${props.dayKey}.` : `Add ${what} for ${where}.`
+})
 
 const taskInstructions = ref('')
 const taskPriority = ref('medium')
@@ -166,12 +186,17 @@ function removeImage(index: number) {
 }
 
 function handleCleaningSave(input: CleaningJobInput) {
-  createJob({
+  const job = createJob({
     ...input,
     scheduledAt: toBaliDateTime(input.scheduledAt),
     cleanerNames: resolveCleanerNames(input.cleanerIds ?? []),
     listingName: input.listingId ? resolveListingName(input.listingId) : input.listingName,
   })
+  // Null when the listing has no cleaning steps (`listingHasCleaningSteps`); the form blocks this first.
+  if (!job) {
+    toast.error(CLEANING_STEPS_REQUIRED_MESSAGE)
+    return
+  }
   toast.success('Cleaning job created')
   close()
 }
@@ -198,16 +223,16 @@ function handleCreateTask() {
   <Sheet :open="open" @update:open="$event ? emit('update:open', true) : close()">
     <SheetContent side="right" class="flex w-full flex-col gap-0 overflow-hidden sm:max-w-xl">
       <SheetHeader class="shrink-0 border-b px-6 py-4">
-        <SheetTitle>Create operation</SheetTitle>
+        <SheetTitle>{{ sheetTitle }}</SheetTitle>
         <SheetDescription>
-          Add a new cleaning job or task for {{ listingId ? resolveListingName(listingId) : 'selected listing' }} on {{ dayKey }}.
+          {{ sheetDescription }}
         </SheetDescription>
       </SheetHeader>
 
       <ScrollArea class="min-h-0 flex-1 overflow-y-auto">
         <div class="flex flex-col gap-5 p-6">
-          <Tabs v-model="activeTab" class="mt-2">
-            <TabsList class="grid w-full grid-cols-2">
+          <Tabs v-model="activeTab" :class="only ? '' : 'mt-2'">
+            <TabsList v-if="!only" class="grid w-full grid-cols-2" data-testid="create-tabs">
               <TabsTrigger value="cleaning">
                 Cleaning
               </TabsTrigger>
@@ -216,7 +241,7 @@ function handleCreateTask() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="cleaning" class="mt-4">
+            <TabsContent value="cleaning" :class="only ? 'mt-0' : 'mt-4'">
               <CleaningJobForm
                 v-if="open"
                 mode="create"
@@ -227,7 +252,7 @@ function handleCreateTask() {
               />
             </TabsContent>
 
-            <TabsContent value="task" class="mt-4">
+            <TabsContent value="task" :class="only ? 'mt-0' : 'mt-4'">
               <div class="flex flex-col gap-4">
                 <p class="text-xs text-muted-foreground">
                   Fields marked with <span class="text-destructive">*</span> are required.

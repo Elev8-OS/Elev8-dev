@@ -5,6 +5,7 @@ import { NuxtLink } from '#components'
 import { toast } from 'vue-sonner'
 import DatePicker from '~/components/base/DatePicker.vue'
 import TimePicker from '~/components/base/TimePicker.vue'
+import CleaningJobChecklist from '~/components/cleaning/CleaningJobChecklist.vue'
 import { cleanerOptions, cleaningDisplayStatus, cleaningDisplayStatusMeta, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { bookingStatusMeta, listings } from '~/components/listings/data/listings'
 import CleaningReportPanel from '~/components/operations-calendar/CleaningReportPanel.vue'
@@ -828,6 +829,8 @@ const cleaningTimeRange = computed(() => {
                 </p>
               </div>
             </div>
+            <!-- The listing's steps as copied onto this job; the report replaces it once done. -->
+            <CleaningJobChecklist :steps="cleaningJob.steps" />
           </template>
 
           <!-- Task details -->

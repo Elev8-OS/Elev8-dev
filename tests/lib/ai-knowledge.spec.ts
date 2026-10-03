@@ -30,8 +30,19 @@ describe('reading what ElevAI answered from', () => {
     expect(readAiKnowledge(listing(), 'checkInTime')).toBe('14:00')
   })
 
-  it('reads a top-level listing field', () => {
-    expect(readAiKnowledge(listing(), 'checkInInstructions')).toBe('Meet at the gate.')
+  it('reads old free-text check-in instructions as a single step', () => {
+    expect(readAiKnowledge(listing(), 'checkInInstructions')).toBe('1. On arrival: Meet at the gate.')
+  })
+
+  it('reads the listing\'s guest guide steps and rules as one line each', () => {
+    const l = listing({
+      guestGuide: {
+        checkin: [{ id: 'a', title: 'Park at the gate' }, { id: 'b', title: 'Ring the bell', text: 'Staff answer within a minute.' }],
+        house_rules: [{ id: 'r', title: 'No smoking inside' }],
+      },
+    })
+    expect(readAiKnowledge(l, 'checkInInstructions')).toBe('1. Park at the gate\n2. Ring the bell: Staff answer within a minute.')
+    expect(readAiKnowledge(l, 'houseRules')).toBe('No smoking inside')
   })
 
   it('renders amenities as a comma list, because that is how they are edited', () => {
@@ -41,6 +52,15 @@ describe('reading what ElevAI answered from', () => {
   it('reads an unset field as empty rather than undefined', () => {
     expect(readAiKnowledge(listing(), 'houseRules')).toBe('')
     expect(readAiKnowledge(listing({ checkOutInstructions: undefined }), 'checkOutInstructions')).toBe('')
+  })
+})
+
+describe('correcting guest guide content from the reasoning dialog', () => {
+  it('rewrites the steps, keeping the photo of a step whose title did not change', () => {
+    const before = listing({ guestGuide: { checkin: [{ id: 'a', title: 'Park at the gate', photoUrl: 'data:image/png;base64,A' }] } })
+    const [after] = applyAiKnowledge([before], { listingId: 'lst-1', field: 'checkInInstructions' }, '1. Park at the gate: North side\n2. Ring the bell')
+    expect(after!.guestGuide!.checkin!.map(i => i.title)).toEqual(['Park at the gate', 'Ring the bell'])
+    expect(after!.guestGuide!.checkin![0]).toMatchObject({ id: 'a', text: 'North side', photoUrl: 'data:image/png;base64,A' })
   })
 })
 
@@ -88,7 +108,8 @@ describe('the editable field allowlist', () => {
   it('gives every field a label, a section and an input kind', () => {
     for (const [field, spec] of Object.entries(aiKnowledgeFields)) {
       expect(spec.label, field).toBeTruthy()
-      expect(spec.section, field).toContain('Listing Setup')
+      // Where the host finds it: Listing Setup, or the listing's Guest Guide tab for guide content.
+      expect(spec.section, field).toMatch(/^Listing (Setup|→ Guest Guide)/)
       expect(['text', 'textarea', 'list'], field).toContain(spec.input)
     }
   })

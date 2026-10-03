@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { GuideSectionType } from '../data/types'
-import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 
 const props = defineProps<{ open: boolean }>()
@@ -9,12 +8,13 @@ const emit = defineEmits<{
   'select': [type: GuideSectionType]
 }>()
 
-const sectionTypes: Array<{ type: GuideSectionType; label: string; icon: string; description: string }> = [
+const sectionTypes: Array<{ type: GuideSectionType, label: string, icon: string, description: string }> = [
   { type: 'hero', label: 'Hero', icon: 'image', description: 'Welcome banner with property photo' },
   { type: 'welcome', label: 'Welcome Message', icon: 'message-circle', description: 'Auto-translated greeting' },
   { type: 'checkin', label: 'Check-in', icon: 'log-in', description: 'Check-in time + instructions' },
   { type: 'checkout', label: 'Check-out', icon: 'log-out', description: 'Check-out time + instructions' },
   { type: 'house_rules', label: 'House Rules', icon: 'scroll', description: 'Rules with a title and description' },
+  { type: 'good_to_know', label: 'Good to Know', icon: 'info', description: 'Practical tips from each listing' },
   { type: 'amenities', label: 'Amenities', icon: 'star', description: 'Icon grid of features' },
   { type: 'wifi', label: 'Wi-Fi', icon: 'wifi', description: 'Network name + password' },
   { type: 'local_tips', label: 'Local Tips', icon: 'map-pin', description: 'Restaurants, beaches, transport' },

@@ -2,6 +2,7 @@
 import type { Listing } from '~/components/listings/data/listings'
 import { getUnitById, listings } from '~/components/listings/data/listings'
 import ListingCalendarTab from '~/components/listings/ListingCalendarTab.vue'
+import ListingGuestGuideTab from '~/components/listings/ListingGuestGuideTab.vue'
 import ListingHeroCompact from '~/components/listings/ListingHeroCompact.vue'
 import ListingMaintenanceTab from '~/components/listings/ListingMaintenanceTab.vue'
 import ListingOverviewTab from '~/components/listings/ListingOverviewTab.vue'
@@ -29,9 +30,19 @@ function updateListing(updated: Listing) {
 const activeUnitId = computed(() => listing.value?.activeUnitId ?? null)
 const activeUnit = computed(() => listing.value ? getUnitById(listing.value, activeUnitId.value ?? '') : null)
 
-const activeTab = ref('overview')
+const TABS = ['overview', 'pricing', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'protection', 'settings']
+// `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up steps" link.
+const activeTab = ref(TABS.includes(String(route.query.tab)) ? String(route.query.tab) : 'overview')
 
 const showSetup = ref(false)
+// A link to `?tab=…` from inside the page (e.g. Listing Setup's "Edit in the
+// Guest Guide tab") switches the tab and closes the setup overlay over it.
+watch(() => route.query.tab, (tab) => {
+  if (TABS.includes(String(tab))) {
+    activeTab.value = String(tab)
+    showSetup.value = false
+  }
+})
 const showTestAi = ref(false)
 const openSchedule = ref(false)
 
@@ -86,6 +97,10 @@ function handleOpenSchedule() {
             <Icon name="lucide:wrench" class="mr-1.5 size-3.5" />
             Maintenance
           </TabsTrigger>
+          <TabsTrigger value="guest-guide">
+            <Icon name="lucide:book-open" class="mr-1.5 size-3.5" />
+            Guest Guide
+          </TabsTrigger>
           <TabsTrigger value="protection">
             <Icon name="lucide:shield-check" class="mr-1.5 size-3.5" />
             Protection
@@ -115,6 +130,10 @@ function handleOpenSchedule() {
 
       <TabsContent value="maintenance" class="mt-6">
         <ListingMaintenanceTab :listing="listing" :active-unit="activeUnit" @update="updateListing" />
+      </TabsContent>
+
+      <TabsContent value="guest-guide" class="mt-6">
+        <ListingGuestGuideTab :listing="listing" @update="updateListing" />
       </TabsContent>
 
       <TabsContent value="protection" class="mt-6">

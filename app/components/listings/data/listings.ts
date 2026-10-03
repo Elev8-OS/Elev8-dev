@@ -1,5 +1,10 @@
+import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
+import type { ListingGuideContent } from '~/components/listings/data/guest-guide-content'
+import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
+import type { PetPolicy } from '~/components/listings/data/pet-policy'
 import type { ListingCleaningConfig } from '~/components/reservations/data/cleaning-schedule'
 import { computed, ref } from 'vue'
+import { cleaningStepTemplate } from '~/components/cleaning/data/cleaning-steps'
 
 export type OverrideAudience = 'future' | 'current' | 'inquiry'
 
@@ -229,6 +234,11 @@ export interface MaintenanceTask {
 export interface ListingMaintenance {
   cleaningSchedule: Array<{ task: string, frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' }>
   defaultCleaningSchedule?: ListingCleaningConfig
+  /**
+   * What housekeeping works through on every clean. ⚠️ Empty or absent means
+   * no cleaning can be scheduled for the listing (see `cleaning-steps.ts`).
+   */
+  cleaningSteps?: CleaningStepSection[]
   tasks: MaintenanceTask[]
 }
 
@@ -250,6 +260,7 @@ export interface ListingResources {
   documents: ListingDocument[]
   basics: {
     description?: string
+    /** @deprecated Replaced by `guestGuide.house_rules`. Read only as a fallback by `listingGuideItems`. */
     houseRules?: string
     neighborhood?: string
     checkInTime?: string
@@ -549,7 +560,19 @@ export interface Listing {
   // not "resource documents")
   wifiSsid?: string
   wifiPassword?: string
+  /**
+   * Check-in/out steps, house rules and Good to Know, edited in the listing's
+   * Guest Guide tab. The listing owns this; the guide only shows or hides
+   * sections. Read through `listingGuideItems` (`guest-guide-content.ts`).
+   */
+  guestGuide?: ListingGuideContent
+  /** Pre-arrival guest verification, set in the Guest Guide tab. Read through `listingGuestVerification`. */
+  guestVerification?: GuestVerificationSettings
+  /** Pets allowed, and the pet packages (Pet upsells) offered. Read through `listingPetPolicy`. */
+  petPolicy?: PetPolicy
+  /** @deprecated Replaced by `guestGuide.checkin`. Read only as a fallback by `listingGuideItems`. */
   checkInInstructions?: string
+  /** @deprecated Replaced by `guestGuide.checkout`. Read only as a fallback by `listingGuideItems`. */
   checkOutInstructions?: string
 }
 
@@ -777,6 +800,7 @@ export const listings = ref<Listing[]>([
       { id: 'rv-3', guestName: 'Anna Chen', date: '2026-04-28', rating: 5, text: 'Absolutely stunning property. The garden is beautiful and the rooms are spacious and clean.', categories: { cleanliness: 5, communication: 5, location: 5, value: 5 } },
     ],
     maintenance: {
+      cleaningSteps: cleaningStepTemplate(),
       cleaningSchedule: [
         { task: 'Pool cleaning', frequency: 'daily' },
         { task: 'Garden maintenance', frequency: 'weekly' },
@@ -804,15 +828,36 @@ export const listings = ref<Listing[]>([
         description: 'A serene 5-bedroom villa with private pool near Canggu beach. Perfect for families and groups seeking a luxurious Bali experience with modern amenities and traditional Balinese architecture.',
         checkInTime: '14:00',
         checkOutTime: '11:00',
-        houseRules: 'No smoking inside\nNo parties or events\nQuiet hours after 22:00\nCheck-out by 11:00',
       },
       topicsToAvoid: ['competitor pricing', 'refund disputes'],
       propertyUpsells: [],
     },
     wifiSsid: 'VillaBali_5G',
     wifiPassword: 'serenity2026',
-    checkInInstructions: 'Our staff will meet you at the gate. Look for the welcome sign with your name.',
-    checkOutInstructions: 'Leave the keys on the kitchen counter. Safe travels!',
+    guestVerification: { mode: 'group', requireAddress: true, askBedConfiguration: true },
+    petPolicy: { allowed: true, packageIds: [] },
+    guestGuide: {
+      checkin: [
+        { id: 'lst1-ci-1', title: 'Arrive at the main gate', text: 'Our staff will meet you at the gate. Look for the welcome sign with your name.' },
+        { id: 'lst1-ci-2', title: 'Walk-through with the host', text: 'We show you the pool, the AC remotes and the safe, and hand over the keys.' },
+        { id: 'lst1-ci-3', title: 'Connect to the Wi-Fi', text: 'Network and password are on the card in the living room.' },
+      ],
+      checkout: [
+        { id: 'lst1-co-1', title: 'Check out by 11:00', text: 'Need longer? Ask us the day before; late check-out depends on the next booking.' },
+        { id: 'lst1-co-2', title: 'Leave the keys on the kitchen counter' },
+        { id: 'lst1-co-3', title: 'Close the windows and switch off the AC' },
+      ],
+      house_rules: [
+        { id: 'lst1-hr-1', title: 'No smoking inside', text: 'Smoking is fine on the terrace. A cleaning fee applies for smoke inside.' },
+        { id: 'lst1-hr-2', title: 'No parties or events' },
+        { id: 'lst1-hr-3', title: 'Quiet hours after 22:00', text: 'The neighbours are close; please keep music and pool noise down.' },
+      ],
+      good_to_know: [
+        { id: 'lst1-gk-1', icon: 'lucide:waves', title: 'Pool', text: 'Cleaned every morning at 08:00. No glass by the pool.' },
+        { id: 'lst1-gk-2', icon: 'lucide:trash-2', title: 'Rubbish', text: 'Bins by the side gate; staff collect them daily.' },
+        { id: 'lst1-gk-3', icon: 'lucide:droplets', title: 'Drinking water', text: 'Tap water is not drinkable. Refill bottles from the water dispenser.' },
+      ],
+    },
   },
   {
     id: 'lst-2',
@@ -844,6 +889,7 @@ export const listings = ref<Listing[]>([
     blockedDates: [],
     reviews: [],
     maintenance: {
+      cleaningSteps: cleaningStepTemplate(),
       cleaningSchedule: [],
       defaultCleaningSchedule: {
         type: 'checkout',
@@ -881,6 +927,7 @@ export const listings = ref<Listing[]>([
     blockedDates: [],
     reviews: [],
     maintenance: {
+      cleaningSteps: cleaningStepTemplate(),
       cleaningSchedule: [],
       defaultCleaningSchedule: {
         type: 'custom',
@@ -922,6 +969,7 @@ export const listings = ref<Listing[]>([
     blockedDates: [],
     reviews: [],
     maintenance: {
+      cleaningSteps: cleaningStepTemplate(),
       cleaningSchedule: [],
       defaultCleaningSchedule: {
         type: 'custom',
@@ -962,7 +1010,7 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: { cleaningSchedule: [], cleaningSteps: cleaningStepTemplate(), tasks: [] },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -991,7 +1039,7 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: { cleaningSchedule: [], cleaningSteps: cleaningStepTemplate(), tasks: [] },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -1023,7 +1071,7 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: { cleaningSchedule: [], cleaningSteps: cleaningStepTemplate(), tasks: [] },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {
@@ -1051,7 +1099,7 @@ export const listings = ref<Listing[]>([
     ],
     blockedDates: [],
     reviews: [],
-    maintenance: { cleaningSchedule: [], tasks: [] },
+    maintenance: { cleaningSchedule: [], cleaningSteps: cleaningStepTemplate(), tasks: [] },
     resources: { documents: [], basics: {}, topicsToAvoid: [], propertyUpsells: [] },
   },
   {

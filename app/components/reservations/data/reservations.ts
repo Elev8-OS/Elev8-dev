@@ -429,6 +429,14 @@ export interface ReservationEntry {
   companyVatId?: string
   /** Multi-room booking: one line per booked unit. */
   rooms?: ReservationRoomLine[]
+  /**
+   * Rooms the stay is PUT IN when it has no priced room lines, set from the
+   * listing calendar's rooms timeline. ⚠️ Placement only, never pricing: a
+   * room line would switch the folio total to the room lines (plus charges
+   * and card fee), so assigning a room must not add one. Ignored when `rooms`
+   * is set. Counted by the unit conflict checks so a room is not double-booked.
+   */
+  assignedUnitIds?: string[]
   bookingMode?: BookingMode
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number

@@ -1,9 +1,11 @@
 import { createError, defineEventHandler, getRouterParam } from 'h3'
-import { findGuideByToken, findLinkByToken } from '../../../utils/guest-guide-store'
-import { getTenantBranding } from '../../../utils/tenant-branding-store'
-import { buildGuestGuideCssVariables } from '../../../../app/lib/branding-colors'
 import { conversations } from '../../../../app/components/inbox/data/conversations'
+import { listingGuideContent } from '../../../../app/components/listings/data/guest-guide-content'
 import { listings } from '../../../../app/components/listings/data/listings'
+import { buildGuestGuideCssVariables } from '../../../../app/lib/branding-colors'
+import { findGuideByToken, findLinkByToken } from '../../../utils/guest-guide-store'
+import { sanitizeRichTextForGuests } from '../../../utils/rich-text-sanitize'
+import { getTenantBranding } from '../../../utils/tenant-branding-store'
 
 export default defineEventHandler(async (event) => {
   const token = getRouterParam(event, 'token')
@@ -50,5 +52,13 @@ export default defineEventHandler(async (event) => {
     cssVariables: buildGuestGuideCssVariables(tenantBranding.guestGuideColors),
   }
 
-  return { link, guide, listing, checkIn, checkOut, branding }
+  // The listing owns check-in/out steps, house rules and Good to Know; the guide
+  // only shows or hides those sections (`guest-guide-content.ts`).
+  // Item text is rich text written by the host: sanitized here, so guide-app can render it as HTML.
+  const guideContent = Object.fromEntries(Object.entries(listingGuideContent(listing)).map(([kind, items]) => [
+    kind,
+    items.map(item => item.text ? { ...item, text: sanitizeRichTextForGuests(item.text) } : item),
+  ]))
+
+  return { link, guide, listing, guideContent, checkIn, checkOut, branding }
 })
