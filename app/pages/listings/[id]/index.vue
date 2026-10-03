@@ -10,7 +10,6 @@ import ListingPricingTab from '~/components/listings/ListingPricingTab.vue'
 import ListingProtectionTab from '~/components/listings/ListingProtectionTab.vue'
 import ListingReviewsTab from '~/components/listings/ListingReviewsTab.vue'
 import ListingSettingsTab from '~/components/listings/ListingSettingsTab.vue'
-import ListingSetupOverlay from '~/components/listings/ListingSetupOverlay.vue'
 import ListingTestAIDialog from '~/components/listings/ListingTestAIDialog.vue'
 
 definePageMeta({ layout: 'default' })
@@ -34,14 +33,10 @@ const TABS = ['overview', 'pricing', 'calendar', 'reviews', 'maintenance', 'gues
 // `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up steps" link.
 const activeTab = ref(TABS.includes(String(route.query.tab)) ? String(route.query.tab) : 'overview')
 
-const showSetup = ref(false)
-// A link to `?tab=…` from inside the page (e.g. Listing Setup's "Edit in the
-// Guest Guide tab") switches the tab and closes the setup overlay over it.
+// A link to `?tab=…` from inside the page switches the tab.
 watch(() => route.query.tab, (tab) => {
-  if (TABS.includes(String(tab))) {
+  if (TABS.includes(String(tab)))
     activeTab.value = String(tab)
-    showSetup.value = false
-  }
 })
 const showTestAi = ref(false)
 const openSchedule = ref(false)
@@ -69,7 +64,6 @@ function handleOpenSchedule() {
       :listing="listing"
       :open-schedule="openSchedule"
       @update="updateListing"
-      @open-setup="showSetup = true"
       @open-test-ai="showTestAi = true"
       @open-schedule="handleOpenSchedule"
     />
@@ -144,14 +138,6 @@ function handleOpenSchedule() {
         <ListingSettingsTab :listing="listing" @update="updateListing" />
       </TabsContent>
     </Tabs>
-
-    <ListingSetupOverlay
-      v-if="showSetup"
-      :listing="listing"
-      :open="showSetup"
-      @update:open="showSetup = $event"
-      @update="updateListing"
-    />
 
     <ListingTestAIDialog
       :listing="listing"

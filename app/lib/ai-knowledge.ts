@@ -67,7 +67,7 @@ function guideField(kind: GuideContentKind, label: string, placeholder: string):
 export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> = {
   description: {
     label: 'Property description',
-    section: 'Listing Setup → Basics',
+    section: 'Listing Setup → Listing Details',
     input: 'textarea',
     placeholder: 'Describe the property the way you want ElevAI to describe it.',
     read: l => l.resources.basics.description ?? '',
@@ -76,7 +76,7 @@ export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> =
   houseRules: guideField('house_rules', 'House rules', 'One rule per line. "Rule: why" adds a description.'),
   neighborhood: {
     label: 'Neighbourhood',
-    section: 'Listing Setup → Basics',
+    section: 'Listing Setup → Listing Details',
     input: 'textarea',
     placeholder: 'What is nearby, and how far.',
     read: l => l.resources.basics.neighborhood ?? '',
@@ -84,7 +84,7 @@ export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> =
   },
   checkInTime: {
     label: 'Check-in time',
-    section: 'Listing Setup → Basics',
+    section: 'Listing Setup → Listing Details',
     input: 'text',
     placeholder: '14:00',
     read: l => l.resources.basics.checkInTime ?? '',
@@ -92,7 +92,7 @@ export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> =
   },
   checkOutTime: {
     label: 'Check-out time',
-    section: 'Listing Setup → Basics',
+    section: 'Listing Setup → Listing Details',
     input: 'text',
     placeholder: '11:00',
     read: l => l.resources.basics.checkOutTime ?? '',

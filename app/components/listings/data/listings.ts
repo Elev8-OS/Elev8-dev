@@ -1,6 +1,10 @@
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import type { ListingGuideContent } from '~/components/listings/data/guest-guide-content'
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
+import type { ListingAddress } from '~/components/listings/data/listing-address'
+import type { AvoidTopic } from '~/components/listings/data/listing-avoid-topics'
+import type { ListingDetailsInfo } from '~/components/listings/data/listing-details'
+import type { ListingSops } from '~/components/listings/data/listing-sops'
 import type { PetPolicy } from '~/components/listings/data/pet-policy'
 import type { ListingCleaningConfig } from '~/components/reservations/data/cleaning-schedule'
 import { computed, ref } from 'vue'
@@ -252,6 +256,13 @@ export interface ListingDocument {
 
 export type ReservationStage = 'future' | 'inquiry_past' | 'current'
 
+/** The reservation stages a setting can apply to, in display order. */
+export const RESERVATION_STAGES: { value: ReservationStage, label: string }[] = [
+  { value: 'future', label: 'Future' },
+  { value: 'inquiry_past', label: 'Inquiry / Past' },
+  { value: 'current', label: 'Current' },
+]
+
 export interface FieldConfig {
   stages: ReservationStage[]
 }
@@ -268,7 +279,10 @@ export interface ListingResources {
   }
   listingDetails?: string
   sops?: string
+  /** @deprecated Plain topic names. Replaced by `avoidTopics`; read only as a fallback by `listingAvoidTopics`. */
   topicsToAvoid?: string[]
+  /** Topics ElevAI handles in a set way (defer, answer as host...). Read through `listingAvoidTopics`. */
+  avoidTopics?: AvoidTopic[]
   propertyUpsells?: string[]
   fieldConfig?: Record<string, FieldConfig>
 }
@@ -529,6 +543,8 @@ export interface UnitType {
   photos: string[]
   pricing: UnitTypePricing
   aiStatus?: 'active' | 'paused' | 'not_set'
+  /** Room amenities (`ROOM_AMENITIES` in `listing-amenities.ts`), shared by every room of this type. */
+  amenities?: string[]
   units: Unit[]
 }
 
@@ -556,6 +572,18 @@ export interface Listing {
   reviews: Review[]
   maintenance: ListingMaintenance
   resources: ListingResources
+  /** IANA zone, e.g. `Asia/Makassar`. Read through `listingTimeZone` (`listing-address.ts`). */
+  timeZone?: string
+  /** One of `PROPERTY_TYPES`. Read through `listingPropertyType`. */
+  propertyType?: string
+  /** Structured address, edited in Listing Setup > Basics. Read through `listingAddress`; `location` stays the display label. */
+  address?: ListingAddress
+  /** Listing Setup > Listing Details answers (booking, arrival, property). Fields come from `LISTING_DETAIL_GROUPS`. */
+  details?: ListingDetailsInfo
+  /** Listing Setup > SOPs answers. Fields come from `SOP_GROUPS`; the free-text "General procedures" stays `resources.sops`. */
+  sops?: ListingSops
+  /** Room amenities of a listing with no room types. With room types they live on `UnitType.amenities`. */
+  roomAmenities?: string[]
   // Guest guide fallback fields (top-level because they are property facts,
   // not "resource documents")
   wifiSsid?: string
@@ -600,6 +628,9 @@ function alwaysOn(): AiSchedule {
   }
 }
 
+/** The R Villa Luwa's room amenities, shared by both of its room types. */
+const LST1_ROOM_AMENITIES = ['TV', 'Air Conditioning', 'WiFi', 'Washer', 'Single level home', 'Smoke detector', 'Essentials', 'Baby high chair', 'Hair dryer', 'Crockery and cutlery', 'Pots and pans', 'Oven', 'Microwave', 'Water kettle', 'Coffee maker', 'Dishwasher', 'Fridge', 'Dining table', 'Closet/drawers', 'Iron', 'Shampoo', 'Conditioner', 'Hangers', 'Laptop friendly', 'Stove', 'Linens provided', 'Towels provided', 'Hot water', 'Cooking basics', 'Sound system']
+
 export const listings = ref<Listing[]>([
   {
     id: 'lst-1',
@@ -608,12 +639,13 @@ export const listings = ref<Listing[]>([
     location: 'Canggu, Bali',
     tags: ['Canggu', 'Pool', '4BR'],
     otaConnected: ['Airbnb'],
-    amenities: ['Pool', 'WiFi', 'AC', 'Kitchen', 'Parking', 'Garden'],
+    amenities: ['Pool', 'Free parking on premises', 'Free parking on street', 'Barbecue', 'Garden', 'Deck/patio', 'Private entrance', 'Bathtub', 'Pack n Play or travel crib', 'Room darkening shades', 'Beach front', 'Water front'],
     room: 'Master Suite',
     unitTypes: [
       {
         id: 'ut-1',
         name: 'Kingbed',
+        amenities: [...LST1_ROOM_AMENITIES],
         identifier: 'king',
         description: 'Spacious room with king-size bed and garden view',
         quantity: 2,
@@ -681,6 +713,7 @@ export const listings = ref<Listing[]>([
       {
         id: 'ut-2',
         name: 'Single Bed',
+        amenities: [...LST1_ROOM_AMENITIES],
         identifier: 'single',
         description: 'Cozy room with single beds',
         quantity: 2,
@@ -828,12 +861,43 @@ export const listings = ref<Listing[]>([
         description: 'A serene 5-bedroom villa with private pool near Canggu beach. Perfect for families and groups seeking a luxurious Bali experience with modern amenities and traditional Balinese architecture.',
         checkInTime: '14:00',
         checkOutTime: '11:00',
+        neighborhood: 'The villa is in the quiet Luwa area near Canggu, about 45–60 minutes by car from Ngurah Rai Airport (DPS), and close to Jl. Raya Canggu and Jl. Pantai Pererenan.',
       },
-      topicsToAvoid: ['competitor pricing', 'refund disputes'],
+      avoidTopics: [
+        { id: 'topic-1', topic: 'Refund requests', description: 'The guest asks for money back for all or part of the stay.', action: 'defer_host' },
+        { id: 'topic-2', topic: 'Discount requests', description: 'The guest asks for a lower price, a deal or a discount.', action: 'embody_host' },
+      ],
       propertyUpsells: [],
     },
     wifiSsid: 'VillaBali_5G',
     wifiPassword: 'serenity2026',
+    timeZone: 'Asia/Makassar',
+    propertyType: 'Villa',
+    address: {
+      street: 'The R Villa Luwa, Jl. Jantuk Angsa, Pererenan, Kec. Mengwi, Kabupaten Badung, Bali 80351',
+      unitNumber: '',
+      city: 'Pererenan',
+      state: 'Bali',
+      postalCode: '80351',
+      country: 'ID',
+    },
+    details: {
+      directBookingChanges: 'Please contact us through the chat in the guest guide. All prices in the calendar are in CHF.',
+      supportHours: 'Support is available before, during, and after the stay. Guests can contact the team via the provided email or phone.',
+      checkInUntil: '00:00',
+      howToFind: 'From Ngurah Rai Airport (DPS) to The R Villa Luwa – Pererenan: about 45–60 minutes by car. Take Sunset Road → Jl. Raya Canggu → Jl. Pantai Pererenan. The villa is in the Luwa area (we will send you a Google Maps pin). Taxi/Grab/Gojek available, or we can arrange an airport pickup.',
+      parking: 'Yes, free parking is available on the premises and on the street.',
+      extraParking: 'Additional vehicles can park on the street near the villa.',
+      access: 'Access to Villa Luwa begins through the entrance gate. Guests are greeted by our staff, and a discreet check-in area is available to ensure a seamless arrival.',
+      backupAccess: 'In case of any access issues, please contact our service team for immediate assistance. Backup keys or alternative access methods will be arranged promptly.',
+      accessTroubleshooting: 'Guests can contact the team via the provided chat for any access issues. The team is available before, during, and after the stay.',
+      earlyLateCheck: 'Early check-in or late check-out may be allowed upon request and subject to availability, with early check-in available for an additional charge of USD 6.00 per person per hour.',
+      trash: 'Trash bins are located outside the villa. Guests are requested to dispose of waste properly to maintain cleanliness.',
+      minStay: '1',
+      maxStay: '365',
+      bedrooms: 'The property has 5 bedrooms. Four of the bedrooms have king-sized beds, and one has a queen-sized bed. Each bedroom has its own private bathroom, with the master bedroom including a freestanding bathtub.',
+      bathrooms: '5 bathrooms, each attached to a bedroom. The master bathroom includes a freestanding bathtub.',
+    },
     guestVerification: { mode: 'group', requireAddress: true, askBedConfiguration: true },
     petPolicy: { allowed: true, packageIds: [] },
     guestGuide: {

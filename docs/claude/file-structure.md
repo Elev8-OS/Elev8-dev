@@ -44,8 +44,7 @@ app/
 │   │   ├── ListingMaintenanceTab.vue ← Cleaning schedule + tasks + add-task dialog
 │   │   ├── ListingSettingsTab.vue ← Property details form + amenities + distribution channels
 │   │   ├── ListingFloatingMenu.vue ← Fixed floating pill bar (Listing Setup / Test AI / AI Schedule)
-│   │   ├── ListingSetupOverlay.vue ← Full-screen overlay shell (Property/Rooms tabs + two-panel)
-│   │   ├── ListingSetupFieldPanel.vue ← Left panel: 6 tabs + pencil config icons per field
+│   │   ├── ListingSetupFieldPanel.vue ← Setup fields (5 sections, pencil config per field); shell is pages/listings/[id]/setup.vue
 │   │   ├── ListingSetupResourcePanel.vue ← Right panel: documents (incl. AI Generate) + Elev8 AI + auto-fill + copy
 │   │   ├── LockRow.vue            ← Reusable per-lock row: brand pill, name (inline rename), battery, Unlock/Swap/Unpair actions
 │   │   ├── RoomsPanel.vue         ← Rooms tab: sidebar of rooms grouped by type + room editor (reuses FieldPanel)
