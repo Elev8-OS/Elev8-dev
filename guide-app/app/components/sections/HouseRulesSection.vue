@@ -1,44 +1,21 @@
 <script setup lang="ts">
-// Each rule is a title with an optional description; older guides stored
-// plain strings, which read as a title only.
-interface HouseRule {
+import ExpandableText from '~/../app/components/shared/ExpandableText.vue'
+// The listing owns its rules (the dashboard's listing Guest Guide tab), sent by
+// the guide endpoint as `guideContent.house_rules`: a title and optional text.
+interface HouseRuleItem {
+  id: string
   title: string
-  description?: string
+  text?: string
 }
 
 const props = defineProps<{
-  data: {
-    rules?: Array<string | HouseRule>
-  }
-  listing?: {
-    resources?: {
-      basics?: {
-        houseRules?: string
-      }
-    }
-  }
+  data: Record<string, unknown>
+  listing?: unknown
+  content?: HouseRuleItem[]
   token?: string
 }>()
 
-function normalize(entries: unknown[]): HouseRule[] {
-  return entries.flatMap((entry): HouseRule[] => {
-    if (typeof entry === 'string')
-      return entry.trim() ? [{ title: entry.trim() }] : []
-    if (entry && typeof entry === 'object') {
-      const title = String((entry as HouseRule).title ?? '').trim()
-      const description = String((entry as HouseRule).description ?? '').trim()
-      return title ? [{ title, description: description || undefined }] : []
-    }
-    return []
-  })
-}
-
-const rules = computed<HouseRule[]>(() => {
-  const fromGuide = normalize(props.data?.rules ?? [])
-  if (fromGuide.length)
-    return fromGuide
-  return normalize(props.listing?.resources?.basics?.houseRules?.split('\n') ?? [])
-})
+const rules = computed(() => (props.content ?? []).map(item => ({ title: item.title, description: item.text })))
 
 const { translate } = useAutoTranslate()
 </script>
@@ -64,9 +41,11 @@ const { translate } = useAutoTranslate()
           <p class="font-medium">
             {{ translate(rule.title) }}
           </p>
-          <p v-if="rule.description" class="mt-0.5 text-sm text-muted-foreground">
-            {{ translate(rule.description) }}
-          </p>
+          <ExpandableText
+            v-if="rule.description"
+            :html="rule.description"
+            class="mt-0.5 text-sm text-muted-foreground"
+          />
         </div>
       </li>
     </ul>

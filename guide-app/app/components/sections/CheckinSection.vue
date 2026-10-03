@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import type { GuideStep } from '~/components/GuideStepsList.vue'
+import GuideStepsList from '~/components/GuideStepsList.vue'
+
+// The listing owns the time and the steps; the guide only adds the early check-in note.
 const props = defineProps<{
   data: {
-    time?: string
-    instructions?: string
     earlyCheckinAvailable?: boolean
   }
   listing?: {
@@ -11,13 +13,13 @@ const props = defineProps<{
         checkInTime?: string
       }
     }
-    checkInInstructions?: string
   }
+  content?: GuideStep[]
   token?: string
 }>()
 
-const time = computed(() => props.data?.time ?? props.listing?.resources?.basics?.checkInTime ?? '14:00')
-const instructions = computed(() => props.data?.instructions ?? props.listing?.checkInInstructions ?? null)
+const time = computed(() => props.listing?.resources?.basics?.checkInTime ?? '14:00')
+const steps = computed(() => props.content ?? [])
 
 const { translate } = useAutoTranslate()
 </script>
@@ -32,13 +34,11 @@ const { translate } = useAutoTranslate()
         {{ translate('Check-in') }}
       </h2>
     </div>
-    <div class="mb-2 text-2xl font-bold text-primary">
-      {{ time }}
+    <div class="mb-4 text-2xl font-bold text-primary">
+      {{ translate('From') }} {{ time }}
     </div>
-    <p v-if="instructions" class="text-sm leading-relaxed text-muted-foreground md:text-base">
-      {{ translate(instructions) }}
-    </p>
-    <p v-if="data.earlyCheckinAvailable" class="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
+    <GuideStepsList v-if="steps.length" :steps="steps" />
+    <p v-if="data.earlyCheckinAvailable" class="mt-4 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
       <Icon name="lucide:check" class="size-3" />
       {{ translate('Early check-in available') }}
     </p>

@@ -26,6 +26,32 @@ export type HubFilterStatus = 'all' | ReplyStatus
 export type HubFilterChannel = 'all' | ReviewSource
 export type HubSortKey = 'checkout_date' | 'guest_name' | 'rating' | 'source'
 
+/**
+ * The Review Hub feed order, shared with the listing Reviews tab so a sort
+ * picked in one reads the same in the other. Sorts in place.
+ */
+export function sortFeedItems(items: ReviewFeedItem[], key: HubSortKey, direction: 'asc' | 'desc'): ReviewFeedItem[] {
+  const dir = direction === 'asc' ? 1 : -1
+  return items.sort((a, b) => {
+    const ra = a.review_record
+    const rb = b.review_record
+    let cmp = 0
+    if (key === 'checkout_date') {
+      cmp = new Date(ra.checkout_date).getTime() - new Date(rb.checkout_date).getTime()
+    }
+    else if (key === 'guest_name') {
+      cmp = ra.guest_name.localeCompare(rb.guest_name)
+    }
+    else if (key === 'rating') {
+      cmp = (ra.guest_rating_overall ?? -1) - (rb.guest_rating_overall ?? -1)
+    }
+    else if (key === 'source') {
+      cmp = ra.source.localeCompare(rb.source)
+    }
+    return cmp * dir
+  })
+}
+
 export function useReviewHub() {
   const reviewRecords = useState<ReviewRecord[]>('review-hub-records', () => JSON.parse(JSON.stringify(mockReviewRecords)))
   const sorRecords = useState<StayOperationalRecord[]>('review-hub-sor', () => JSON.parse(JSON.stringify(mockSorRecords)))
@@ -187,26 +213,7 @@ export function useReviewHub() {
       return true
     })
 
-    const dir = sortDir.value === 'asc' ? 1 : -1
-    const key = sortBy.value
-    return result.sort((a, b) => {
-      const ra = a.review_record
-      const rb = b.review_record
-      let cmp = 0
-      if (key === 'checkout_date') {
-        cmp = new Date(ra.checkout_date).getTime() - new Date(rb.checkout_date).getTime()
-      }
-      else if (key === 'guest_name') {
-        cmp = ra.guest_name.localeCompare(rb.guest_name)
-      }
-      else if (key === 'rating') {
-        cmp = (ra.guest_rating_overall ?? -1) - (rb.guest_rating_overall ?? -1)
-      }
-      else if (key === 'source') {
-        cmp = ra.source.localeCompare(rb.source)
-      }
-      return cmp * dir
-    })
+    return sortFeedItems(result, sortBy.value, sortDir.value)
   })
 
   // Stats

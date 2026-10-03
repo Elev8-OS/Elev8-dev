@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Listing, Unit } from '~/components/listings/data/listings'
+import { GUIDE_CONTENT_META, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { getUnitById } from '~/components/listings/data/listings'
 import FieldConfigDialog from '~/components/listings/FieldConfigDialog.vue'
 
@@ -21,6 +22,14 @@ function hasConfig(key: string) { return !!props.listing.resources.fieldConfig?.
 
 const activeTab = ref('basics')
 const basics = computed(() => props.listing.resources.basics)
+
+/** Summary of the guide content the Guest Guide tab owns (no editing here). */
+const guideContentRows = computed(() => (['checkin', 'checkout', 'house_rules'] as const).map(kind => ({
+  kind,
+  label: GUIDE_CONTENT_META[kind].label,
+  noun: GUIDE_CONTENT_META[kind].noun,
+  count: listingGuideItems(props.listing, kind).length,
+})))
 
 function updateBasics(patch: Partial<typeof basics.value>) {
   emit('update', { ...props.listing, resources: { ...props.listing.resources, basics: { ...basics.value, ...patch } } })
@@ -203,22 +212,34 @@ const isFilled = (val?: string) => !!val?.trim()
               </h3>
             </div>
 
-            <div class="flex flex-col gap-1.5">
-              <Label>Check-in Instructions</Label>
-              <Textarea
-                :model-value="listing.checkInInstructions ?? ''" rows="3"
-                placeholder="e.g. Our staff will meet you at the gate. Look for the welcome sign with your name."
-                @update:model-value="(v) => updateListingField('checkInInstructions', String(v))"
-              />
-            </div>
-
-            <div class="flex flex-col gap-1.5">
-              <Label>Check-out Instructions</Label>
-              <Textarea
-                :model-value="listing.checkOutInstructions ?? ''" rows="3"
-                placeholder="e.g. Leave the keys on the kitchen counter. Safe travels!"
-                @update:model-value="(v) => updateListingField('checkOutInstructions', String(v))"
-              />
+            <!-- Check-in/out steps and house rules are owned by the listing's Guest Guide tab (`guest-guide-content.ts`). -->
+            <div class="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3" data-testid="setup-guide-content">
+              <div
+                v-for="row in guideContentRows"
+                :key="row.kind"
+                class="flex items-center justify-between gap-2 text-sm"
+              >
+                <span class="flex items-center gap-1.5">
+                  {{ row.label }}
+                  <button
+                    v-if="row.kind === 'house_rules'"
+                    class="relative text-muted-foreground hover:text-foreground"
+                    aria-label="House rules AI settings"
+                    @click="openConfig('houseRules', 'House Rules')"
+                  >
+                    <Icon name="lucide:pencil" class="size-3" />
+                    <span v-if="hasConfig('houseRules')" class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />
+                  </button>
+                </span>
+                <span class="text-xs text-muted-foreground">{{ row.count ? `${row.count} ${row.noun}${row.count === 1 ? '' : 's'}` : 'Not set up' }}</span>
+              </div>
+              <NuxtLink
+                :to="`/listings/${listing.id}?tab=guest-guide`"
+                class="mt-1 inline-flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Edit in the Guest Guide tab
+                <Icon name="lucide:arrow-right" class="size-3" />
+              </NuxtLink>
             </div>
 
             <div class="flex flex-col gap-1.5">
@@ -235,17 +256,6 @@ const isFilled = (val?: string) => !!val?.trim()
                 </span>
               </div>
               <Textarea :model-value="basics.description ?? ''" rows="5" placeholder="Describe your property..." @update:model-value="(v) => updateBasics({ description: String(v) })" />
-            </div>
-
-            <div class="flex flex-col gap-1.5">
-              <div class="flex items-center gap-1.5">
-                <Label>House Rules</Label>
-                <button class="relative text-muted-foreground hover:text-foreground" @click="openConfig('houseRules', 'House Rules')">
-                  <Icon name="lucide:pencil" class="size-3" />
-                  <span v-if="hasConfig('houseRules')" class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />
-                </button>
-              </div>
-              <Textarea :model-value="basics.houseRules ?? ''" rows="3" placeholder="e.g. No smoking, no parties..." @update:model-value="(v) => updateBasics({ houseRules: String(v) })" />
             </div>
 
             <div class="flex flex-col gap-1.5">

@@ -3,16 +3,6 @@ import { getUnits, listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listingId: string }>()
 
-const aiStatusIcon: Record<string, string> = {
-  active: 'lucide:bot',
-  paused: 'lucide:bot-off',
-  not_set: 'lucide:bot-off',
-}
-const aiStatusColor: Record<string, string> = {
-  active: 'text-green-600',
-  paused: 'text-amber-500',
-  not_set: 'text-muted-foreground',
-}
 const aiStatusLabels: Record<string, string> = {
   active: 'Active',
   paused: 'Paused',
@@ -49,7 +39,8 @@ const inactive = computed(() => {
 
 <template>
   <div class="flex items-center gap-1.5" :class="inactive ? 'opacity-40' : ''">
-    <Icon :name="aiStatusIcon[status] || 'lucide:bot'" class="size-4" :class="aiStatusColor[status] || ''" />
+    <!-- The ElevAI mark, greyed out when the AI is not answering (its gradient cannot take a text colour). -->
+    <SharedAiIcon :custom-class="status === 'active' ? 'size-4' : 'size-4 grayscale opacity-50'" />
     <span class="text-sm">{{ aiStatusLabels[status] || status }}</span>
   </div>
 </template>

@@ -2,9 +2,7 @@
 import type { Listing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import ListingChannelsCard from '~/components/channels/ListingChannelsCard.vue'
-import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
 import { reservations as allReservations } from '~/components/inbox/data/conversations'
-import GuideAssignPopover from '~/components/listings/GuideAssignPopover.vue'
 import InvoiceTemplateAssignPopover from '~/components/listings/InvoiceTemplateAssignPopover.vue'
 import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 
@@ -12,10 +10,6 @@ const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
 
 const smartLock = useSmartLock()
-const { guides } = useGuestGuides()
-const assignedGuide = computed(() =>
-  guides.value.find(g => g.assignedListingIds.includes(props.listing.id)),
-)
 
 const { getTemplateForListing } = useInvoiceTemplates()
 const assignedInvoiceTemplate = computed(() => getTemplateForListing(props.listing.id))
@@ -842,46 +836,6 @@ function handleRevokeCode(codeId: string) {
           </div>
         </TabsContent>
       </Tabs>
-    </Card>
-
-    <Card>
-      <CardHeader class="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Guest Guide</CardTitle>
-          <CardDescription>Welcome page auto-sent to guests on booking</CardDescription>
-        </div>
-        <GuideAssignPopover
-          :listing-id="listing.id"
-          :listing-name="listing.name"
-        />
-      </CardHeader>
-      <CardContent>
-        <div v-if="assignedGuide" class="flex items-center justify-between">
-          <div>
-            <div class="font-medium">
-              {{ assignedGuide.title }}
-            </div>
-            <GuideStatusBadge :status="assignedGuide.status" />
-          </div>
-          <div class="flex gap-2">
-            <NuxtLink :to="`/guest-guides/${assignedGuide.id}`">
-              <Button variant="outline" size="sm">
-                Edit
-              </Button>
-            </NuxtLink>
-            <NuxtLink :to="`/guest-guides/${assignedGuide.id}/preview`">
-              <Button variant="outline" size="sm">
-                Preview
-              </Button>
-            </NuxtLink>
-          </div>
-        </div>
-        <div v-else class="text-sm text-muted-foreground">
-          No guide assigned. <NuxtLink to="/guest-guides/new" class="underline">
-            Create one
-          </NuxtLink>.
-        </div>
-      </CardContent>
     </Card>
 
     <!-- Invoice Template Card -->

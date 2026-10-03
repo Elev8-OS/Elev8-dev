@@ -1,4 +1,6 @@
+import type { GuideContentKind } from '~/components/listings/data/guest-guide-content'
 import type { Listing } from '~/components/listings/data/listings'
+import { GUIDE_CONTENT_META, guideItemsAsText, guideItemsFromText, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 
 /**
  * The listing fields ElevAI answers from, and which a host can correct when a
@@ -36,13 +38,29 @@ export interface AiKnowledgeFieldSpec {
   write: (listing: Listing, value: string) => Listing
 }
 
-function writeBasics(listing: Listing, key: 'description' | 'houseRules' | 'neighborhood' | 'checkInTime' | 'checkOutTime', value: string): Listing {
+function writeBasics(listing: Listing, key: 'description' | 'neighborhood' | 'checkInTime' | 'checkOutTime', value: string): Listing {
   return {
     ...listing,
     resources: {
       ...listing.resources,
       basics: { ...listing.resources.basics, [key]: value },
     },
+  }
+}
+
+/**
+ * Guest guide content as text for ElevAI, and back. The listing owns it
+ * (`guest-guide-content.ts`); a host correction rewrites the items line by
+ * line, keeping the photo of any item whose title is unchanged.
+ */
+function guideField(kind: GuideContentKind, label: string, placeholder: string): AiKnowledgeFieldSpec {
+  return {
+    label,
+    section: 'Listing → Guest Guide',
+    input: 'textarea',
+    placeholder,
+    read: l => guideItemsAsText(listingGuideItems(l, kind), GUIDE_CONTENT_META[kind].numbered),
+    write: (l, v) => ({ ...l, guestGuide: { ...l.guestGuide, [kind]: guideItemsFromText(v, listingGuideItems(l, kind)) } }),
   }
 }
 
@@ -55,14 +73,7 @@ export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> =
     read: l => l.resources.basics.description ?? '',
     write: (l, v) => writeBasics(l, 'description', v),
   },
-  houseRules: {
-    label: 'House rules',
-    section: 'Listing Setup → Basics',
-    input: 'textarea',
-    placeholder: 'One rule per line.',
-    read: l => l.resources.basics.houseRules ?? '',
-    write: (l, v) => writeBasics(l, 'houseRules', v),
-  },
+  houseRules: guideField('house_rules', 'House rules', 'One rule per line. "Rule: why" adds a description.'),
   neighborhood: {
     label: 'Neighbourhood',
     section: 'Listing Setup → Basics',
@@ -114,22 +125,8 @@ export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> =
       amenities: v.split(',').map(a => a.trim()).filter(Boolean),
     }),
   },
-  checkInInstructions: {
-    label: 'Check-in instructions',
-    section: 'Listing Setup → Basics',
-    input: 'textarea',
-    placeholder: 'What the guest should do on arrival.',
-    read: l => l.checkInInstructions ?? '',
-    write: (l, v) => ({ ...l, checkInInstructions: v }),
-  },
-  checkOutInstructions: {
-    label: 'Check-out instructions',
-    section: 'Listing Setup → Basics',
-    input: 'textarea',
-    placeholder: 'What the guest should do before leaving.',
-    read: l => l.checkOutInstructions ?? '',
-    write: (l, v) => ({ ...l, checkOutInstructions: v }),
-  },
+  checkInInstructions: guideField('checkin', 'Check-in steps', 'One step per line, in order. "Step: details" adds details.'),
+  checkOutInstructions: guideField('checkout', 'Check-out steps', 'One step per line, in order.'),
 }
 
 export function aiKnowledgeFieldSpec(field: AiKnowledgeField): AiKnowledgeFieldSpec {

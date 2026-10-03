@@ -6,6 +6,11 @@ export interface PublicGuideResponse {
   link: GuestGuideLink
   guide: GuestGuide
   listing?: any // Listing for fallback data (Wi-Fi, check-in/out, house rules, amenities)
+  /**
+   * The listing's own guide content (check-in/out steps, house rules, Good to
+   * Know), keyed by section type. The listing owns it; sections render it.
+   */
+  guideContent?: Record<string, Array<{ id: string, title: string, text?: string, photoUrl?: string, icon?: string }>>
   checkIn: string | null
   checkOut: string | null
   branding: PublicGuestGuideBranding

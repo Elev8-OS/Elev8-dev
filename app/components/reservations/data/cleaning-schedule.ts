@@ -293,6 +293,32 @@ export function formatListingCleaningSummary(config?: ListingCleaningConfig | nu
   return 'Custom cleaning schedule'
 }
 
+/**
+ * A listing's default cleaning as one plain sentence, for the listing
+ * Maintenance tab: "Cleaned every day of the stay at 11:00, from check-in day."
+ * `formatListingCleaningSummary` is the compact form for tight spaces.
+ */
+export function describeListingCleaning(config?: ListingCleaningConfig | null): string {
+  if (!config)
+    return 'Not configured.'
+
+  const at = config.time ? ` at ${config.time}` : ''
+  const from = config.startOffset === 'day_after_check_in' ? 'from the day after check-in' : 'from check-in day'
+
+  if (config.type === 'checkout')
+    return `Cleaned once on check-out day${at}.`
+
+  if (config.type === 'custom' && config.custom?.frequency === 'week' && config.custom.weekDays?.length) {
+    const days = config.custom.weekDays.map(d => DAY_OF_WEEK_OPTIONS.find(o => o.id === d)?.short ?? d)
+    const list = days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]}` : days[0]
+    return `Cleaned every ${list}${at}, ${from}.`
+  }
+
+  const interval = config.type === 'custom' ? (config.custom?.dayInterval ?? 2) : 1
+  const every = interval === 1 ? 'every day of the stay' : `every ${interval} days`
+  return `Cleaned ${every}${at}, ${from}.`
+}
+
 export interface CleaningScheduleReservationTarget {
   id: string
   listingId: string

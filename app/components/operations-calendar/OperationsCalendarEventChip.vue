@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { CleaningDisplayStatus, CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
 import { computed } from 'vue'
-import { cleaningDisplayStatus, cleaningDisplayStatusMeta, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
+import { cleaningDisplayStatus, cleaningDisplayStatusClasses, cleaningDisplayStatusMeta, cleaningJobPriorityLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { cleaningTypeIcons } from '~/components/operations-calendar/data/operations-calendar'
 import { staffMembers } from '~/components/tasks/data/data'
 
@@ -45,14 +45,6 @@ const timeRange = computed(() => {
   return ''
 })
 
-const cleaningStatusClasses: Record<CleaningDisplayStatus, string> = {
-  not_started: 'bg-muted text-muted-foreground',
-  ongoing: 'bg-amber-100 text-amber-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  missed: 'bg-red-100 text-red-700',
-  cancelled: 'bg-red-100 text-red-700',
-}
-
 // Not started / Ongoing / Completed / Missed. A cleaning that has not started
 // shows no badge, so the chip stays light; the detail sheet names it.
 const statusBadge = computed(() => {
@@ -61,7 +53,7 @@ const statusBadge = computed(() => {
   const key = cleaningDisplayStatus(props.event.status as CleaningJobStatus, props.event.start)
   if (key === 'not_started')
     return null
-  return { key, ...cleaningDisplayStatusMeta[key], class: cleaningStatusClasses[key] }
+  return { key, ...cleaningDisplayStatusMeta[key], class: cleaningDisplayStatusClasses[key] }
 })
 
 const priorityConfig = computed(() => {

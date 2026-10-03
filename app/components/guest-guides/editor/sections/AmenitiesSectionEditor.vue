@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, inject, computed, type Ref } from 'vue'
+import type { Ref } from 'vue'
+import { Icon } from '#components'
+import { computed, inject, ref } from 'vue'
+import { listings } from '~/components/listings/data/listings'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
-import { Icon } from '#components'
-import { listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{ modelValue: Record<string, any> }>()
 const emit = defineEmits<{ 'update:modelValue': [v: Record<string, any>] }>()
@@ -21,7 +22,8 @@ const newItem = ref('')
 
 function add() {
   const trimmed = newItem.value.trim()
-  if (!trimmed) return
+  if (!trimmed)
+    return
   items.value = [...items.value, trimmed]
   newItem.value = ''
 }

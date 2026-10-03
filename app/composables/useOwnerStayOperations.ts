@@ -132,7 +132,8 @@ export function useOwnerStayOperations() {
     stays.value = stays.value.map(s => s.id === stay.id
       ? {
           ...s,
-          cleaningTaskIds: { pre: [preJob.id], post: [postJob.id] },
+          // No job when the listing has no cleaning steps (`listingHasCleaningSteps`).
+          cleaningTaskIds: { pre: preJob ? [preJob.id] : [], post: postJob ? [postJob.id] : [] },
           accessCodeId,
           syncState: { cockpit: 'synced', channex: 'synced', notifications: 'synced' },
           updatedAt: nowIso(),

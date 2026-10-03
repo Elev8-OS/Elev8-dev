@@ -57,7 +57,7 @@ Time-based view of guest stays, cleaning jobs, and tasks. Week/day views with hi
   - `OperationsCalendarFilters.vue` — Search input, Tags Popover (multi-select with search, AND logic), Event Types Popover (OR logic), Clear button
   - `OperationsCalendarBoard.vue` — Week/day grid rendering events by listing rows
   - `OperationsCalendarEventChip.vue` — Individual event chip in grid cells
-  - `OperationsCalendarCreateDialog.vue` — New cleaning job / task creation
+  - `OperationsCalendarCreateDialog.vue` — New cleaning job / task creation. `only: 'cleaning' | 'task'` hides the tabs and shows one form ("New cleaning" / "New task"), used by the listing Maintenance tab; every open starts on that form, else Cleaning.
   - `CalendarEventDetailDialog.vue`: the event sheet. For a cleaning, the header shows the date and
     `scheduledAt` + `durationMinutes` range, then a guest card for the stay it belongs to (read
     through `mergedBookingsFor`, so both stay sources count). A check-out cleaning belongs to the
@@ -77,3 +77,5 @@ Time-based view of guest stays, cleaning jobs, and tasks. Week/day views with hi
   - ⚠️ A cleaning event's `end` keeps the start's UTC offset (`addMinutesKeepingOffset`). The chip
     slices the time off the string, so a `toISOString()` end showed a Bali 13:00 as "05:00".
 - **Key fix**: Reka UI `CheckboxRoot` ignores external `:checked` prop changes after initial render. Filter checkboxes use native `<button @click>` for toggle logic + plain `<span>` with reactive Tailwind classes for visual — no Reka UI checkbox component to avoid desync.
+- ⚠️ **Cleaning steps gate**: `createJob` returns `null` (creates nothing) for a listing with no cleaning steps, and `applyReservationSchedule` drops such jobs. The create dialog's `CleaningJobForm` blocks Save first. Rule and data: `docs/claude/listings.md` (Cleaning steps gate), `cleaning/data/cleaning-steps.ts`.
+

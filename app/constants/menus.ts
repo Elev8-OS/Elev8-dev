@@ -314,6 +314,21 @@ export const navMenu: NavMenu[] = [
             link: '/settings/invoice-templates',
           },
           {
+            title: 'Guide Content Templates',
+            icon: 'i-lucide-circle',
+            link: '/settings/guide-templates',
+          },
+          {
+            title: 'Cleaning Templates',
+            icon: 'i-lucide-circle',
+            link: '/settings/cleaning-templates',
+          },
+          {
+            title: 'Guidance',
+            icon: 'i-lucide-circle',
+            link: '/settings/guidance',
+          },
+          {
             title: 'Integrations',
             icon: 'i-lucide-circle',
             link: '/settings/integrations',

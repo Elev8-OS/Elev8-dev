@@ -1,3 +1,4 @@
+import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { staffMembers } from '~/components/inbox/data/conversations'
 import { listings } from '~/components/listings/data/listings'
 import { damageProtectionDemoCleaningJobs } from '~/components/reservations/data/damage-protection-demo'
@@ -143,6 +144,15 @@ export interface CleaningJob {
   recurrence?: CleaningJobRecurrence | null
   feedback?: CleaningFeedback | null
   /**
+   * The listing's cleaning steps, COPIED when the job is created: the checklist
+   * housekeeping works through for this clean. A snapshot, so editing the
+   * listing's steps later never changes a job already scheduled. Re-copied only
+   * when the job moves to another listing before it starts. Absent on jobs
+   * created before the listing had steps. The filled-in result is
+   * `feedback.checklist`.
+   */
+  steps?: CleaningStepSection[]
+  /**
    * Planned-ahead jobs are created as `draft` and stay out of housekeeping's
    * workload until this moment passes, at which point `releaseDueDrafts()`
    * flips them to `scheduled`. Null/undefined means the job was dispatched
@@ -212,6 +222,15 @@ export const cleaningDisplayStatusMeta: Record<CleaningDisplayStatus, { label: s
   completed: { label: 'Completed', icon: 'lucide:check-circle-2' },
   missed: { label: 'Missed', icon: 'lucide:circle-x' },
   cancelled: { label: 'Cancelled', icon: 'lucide:ban' },
+}
+
+/** Badge colours for the status shown to staff, shared by the calendar chip and the listing Maintenance tab. */
+export const cleaningDisplayStatusClasses: Record<CleaningDisplayStatus, string> = {
+  not_started: 'bg-muted text-muted-foreground',
+  ongoing: 'bg-amber-100 text-amber-700',
+  completed: 'bg-emerald-100 text-emerald-700',
+  missed: 'bg-red-100 text-red-700',
+  cancelled: 'bg-red-100 text-red-700',
 }
 
 export function cleaningDisplayStatus(status: CleaningJobStatus, scheduledAt: string, now = new Date()): CleaningDisplayStatus {

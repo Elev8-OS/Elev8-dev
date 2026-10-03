@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, inject, computed } from 'vue'
+import { Icon } from '#components'
+import { computed, inject, ref } from 'vue'
+import { listings } from '~/components/listings/data/listings'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
-import { Textarea } from '~/components/ui/textarea'
 import { Switch } from '~/components/ui/switch'
-import { Icon } from '#components'
-import { listings } from '~/components/listings/data/listings'
+import { Textarea } from '~/components/ui/textarea'
 
 const props = defineProps<{ modelValue: Record<string, any> }>()
 const emit = defineEmits<{ 'update:modelValue': [v: Record<string, any>] }>()
@@ -94,7 +94,9 @@ const defaultPassword = computed(() => singleListing.value?.wifiPassword ?? null
     <div class="flex items-center justify-between rounded-md border p-3">
       <div>
         <Label>Show password by default</Label>
-        <p class="mt-1 text-xs text-muted-foreground">Reveal the password to guests without toggling.</p>
+        <p class="mt-1 text-xs text-muted-foreground">
+          Reveal the password to guests without toggling.
+        </p>
       </div>
       <Switch
         :model-value="!!modelValue.showPasswordByDefault"

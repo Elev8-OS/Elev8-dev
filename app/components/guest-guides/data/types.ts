@@ -3,30 +3,31 @@
 export type GuideStatus = 'draft' | 'active' | 'archived'
 export type LinkStatus = 'pending' | 'opened' | 'submitted' | 'expired' | 'revoked'
 export type LinkChannel = 'whatsapp' | 'email' | 'manual'
-export type PreArrivalField =
-  | 'arrival_time'
-  | 'guests'
-  | 'mobile'
-  | 'id_type'
-  | 'id_number'
-  | 'id_photo'
-  | 'requests'
+export type PreArrivalField
+  = | 'arrival_time'
+    | 'guests'
+    | 'mobile'
+    | 'id_type'
+    | 'id_number'
+    | 'id_photo'
+    | 'requests'
 
-export type GuideSectionType =
-  | 'hero'
-  | 'welcome'
-  | 'checkin'
-  | 'checkout'
-  | 'house_rules'
-  | 'amenities'
-  | 'wifi'
-  | 'local_tips'
-  | 'documents'
-  | 'upsells'
-  | 'smart_lock'
-  | 'pre_arrival'
-  | 'damage_protection'
-  | 'custom_rich'
+export type GuideSectionType
+  = | 'hero'
+    | 'welcome'
+    | 'checkin'
+    | 'checkout'
+    | 'house_rules'
+    | 'good_to_know'
+    | 'amenities'
+    | 'wifi'
+    | 'local_tips'
+    | 'documents'
+    | 'upsells'
+    | 'smart_lock'
+    | 'pre_arrival'
+    | 'damage_protection'
+    | 'custom_rich'
 
 export interface GuideSection {
   id: string
@@ -67,7 +68,7 @@ export interface GuestGuideLink {
   expiresAt: string
   status: LinkStatus
   channel: LinkChannel
-  metadata?: { journeyId?: string; templateId?: string }
+  metadata?: { journeyId?: string, templateId?: string }
 }
 
 export interface GuideSubmission {
@@ -81,7 +82,7 @@ export interface GuideSubmission {
   idNumber?: string
   idPhotoUrl?: string
   requests?: string
-  upsellsAdded?: { serviceId: string; qty: number }[]
+  upsellsAdded?: { serviceId: string, qty: number }[]
   smartLockViewedAt?: string
   protectionChoice?: {
     option: 'waiver' | 'deposit'

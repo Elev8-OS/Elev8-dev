@@ -1,6 +1,7 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
+import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import { generateGuestId, generateReservationId, initialGuests, initialReservations, nightsBetween } from '~/components/reservations/data/reservations'
@@ -21,7 +22,16 @@ export interface UnitConflict {
   guestName: string
   checkIn: string
   checkOut: string
-  roomLine: ReservationRoomLine
+  /** The priced room line booking the unit; absent when the stay was only assigned to it (`assignedUnitIds`). */
+  roomLine?: ReservationRoomLine
+}
+
+/**
+ * The units a reservation occupies: its priced room lines, else the rooms it
+ * was assigned to on the listing calendar (`assignedUnitIds`).
+ */
+export function reservationUnitIds(r: Pick<ReservationEntry, 'rooms' | 'assignedUnitIds'>): string[] {
+  return r.rooms?.length ? r.rooms.map(line => line.unitId) : (r.assignedUnitIds ?? [])
 }
 
 function rangesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): boolean {
@@ -87,22 +97,17 @@ export function useReservationsModule() {
         continue
       if (r.listingId !== listingId)
         continue
-      if (!r.rooms?.length)
+      if (!reservationUnitIds(r).includes(unitId))
         continue
       if (!rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut))
         continue
-      for (const line of r.rooms) {
-        if (line.unitId === unitId) {
-          conflicts.push({
-            reservationId: r.id,
-            guestName: r.guestName,
-            checkIn: r.checkIn,
-            checkOut: r.checkOut,
-            roomLine: line,
-          })
-          break
-        }
-      }
+      conflicts.push({
+        reservationId: r.id,
+        guestName: r.guestName,
+        checkIn: r.checkIn,
+        checkOut: r.checkOut,
+        roomLine: r.rooms?.find(line => line.unitId === unitId),
+      })
     }
     return conflicts
   }
@@ -114,12 +119,12 @@ export function useReservationsModule() {
         continue
       if (r.listingId !== listingId)
         continue
-      if (!r.rooms?.length)
+      if (!reservationUnitIds(r).length)
         continue
       if (!rangesOverlap(checkIn, checkOut, r.checkIn, r.checkOut))
         continue
-      for (const line of r.rooms)
-        ids.add(line.unitId)
+      for (const unitId of reservationUnitIds(r))
+        ids.add(unitId)
     }
     return ids
   }
@@ -224,7 +229,8 @@ export function useReservationsModule() {
     let cleaningSchedule = (draft as any).cleaningSchedule
     if (!cleaningSchedule && !isCalendarBlock && draft.listingId) {
       const listing = listings.value.find(l => l.id === draft.listingId)
-      if (listing?.maintenance?.defaultCleaningSchedule) {
+      // No cleaning steps, no cleaning: the default is not applied (`cleaning-steps.ts`).
+      if (listing?.maintenance?.defaultCleaningSchedule && hasCleaningSteps(listing)) {
         cleaningSchedule = resolveDefaultCleaningSchedule(listing.maintenance.defaultCleaningSchedule, draft.checkIn)
       }
     }
@@ -295,6 +301,34 @@ export function useReservationsModule() {
     // the redemption no longer counts against the code's usage limit.
     if (status === 'cancelled')
       usePromoRedemption().releaseForReservation(id)
+  }
+
+  /**
+   * Puts a stay in a room from the listing calendar, without touching its
+   * price (`assignedUnitIds`, never a room line). Refused for a stay that has
+   * priced room lines (change those in the reservation), for a room of another
+   * listing, and for a room another live stay already holds on those dates.
+   */
+  function assignRoom(reservationId: string, unitId: string): { success: boolean, error?: string } {
+    const r = reservations.value.find(x => x.id === reservationId)
+    if (!r)
+      return { success: false, error: 'Reservation not found.' }
+    if (r.rooms?.length)
+      return { success: false, error: 'This stay has priced rooms. Change them in the reservation.' }
+    const listing = listings.value.find(l => l.id === r.listingId)
+    const unit = listing?.unitTypes?.flatMap(t => t.units).find(u => u.id === unitId)
+    if (!unit)
+      return { success: false, error: 'That room is not part of this listing.' }
+    const taken = getUnitConflicts(unitId, r.listingId, r.checkIn, r.checkOut, r.id)
+      .filter(c => reservations.value.find(x => x.id === c.reservationId)?.status !== 'cancelled')
+    if (taken.length)
+      return { success: false, error: `${unit.name} is taken by ${taken[0]!.guestName} on these dates.` }
+    updateReservation(r.id, { assignedUnitIds: [unitId] })
+    return { success: true }
+  }
+
+  function unassignRoom(reservationId: string) {
+    updateReservation(reservationId, { assignedUnitIds: undefined })
   }
 
   function updateReservation(id: string, patch: Partial<ReservationEntry>) {
@@ -507,6 +541,8 @@ export function useReservationsModule() {
     updateReservationStatus,
     updateReservation,
     getUnitConflicts,
+    assignRoom,
+    unassignRoom,
     getConflictedUnitIds,
     getCheckInTime,
     getListingCheckInTime,

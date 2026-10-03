@@ -14,7 +14,7 @@ const emit = defineEmits<{
     </Button>
     <Separator orientation="vertical" class="h-4" />
     <Button variant="ghost" size="sm" class="rounded-full gap-2 text-xs" @click="emit('openTestAi')">
-      <Icon name="lucide:bot" class="size-3.5" />
+      <SharedAiIcon custom-class="size-3.5" />
       Test AI
     </Button>
     <Separator orientation="vertical" class="h-4" />

@@ -11,7 +11,7 @@ function update(patch: Record<string, any>) {
   emit('update:modelValue', { ...props.modelValue, ...patch })
 }
 
-const fieldDefs: Array<{ key: PreArrivalField; label: string; hint: string }> = [
+const fieldDefs: Array<{ key: PreArrivalField, label: string, hint: string }> = [
   { key: 'arrival_time', label: 'Expected arrival time', hint: 'e.g. 14:30' },
   { key: 'guests', label: 'Number of guests', hint: 'How many are arriving' },
   { key: 'mobile', label: 'Mobile (confirm)', hint: 'For last-minute updates' },
@@ -32,8 +32,10 @@ function isChecked(key: PreArrivalField): boolean {
 
 function toggle(key: PreArrivalField, checked: boolean) {
   if (checked) {
-    if (!isChecked(key)) fields.value = [...fields.value, key]
-  } else {
+    if (!isChecked(key))
+      fields.value = [...fields.value, key]
+  }
+  else {
     fields.value = fields.value.filter(f => f !== key)
   }
 }

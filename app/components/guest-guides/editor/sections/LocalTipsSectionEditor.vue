@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { Icon } from '#components'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
-import { Icon } from '#components'
 
 const props = defineProps<{ modelValue: Record<string, any> }>()
 const emit = defineEmits<{ 'update:modelValue': [v: Record<string, any>] }>()
@@ -11,7 +11,7 @@ function update(patch: Record<string, any>) {
   emit('update:modelValue', { ...props.modelValue, ...patch })
 }
 
-interface Tip { title: string; body: string; icon?: string }
+interface Tip { title: string, body: string, icon?: string }
 
 const tips = computed({
   get: () => (props.modelValue.tips ?? []) as Tip[],

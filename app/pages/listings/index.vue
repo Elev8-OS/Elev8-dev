@@ -44,12 +44,6 @@ const filteredData = computed(() => {
   )
 })
 
-const aiStatusIcon: Record<string, string> = {
-  active: 'lucide:bot',
-  paused: 'lucide:bot-off',
-  not_set: 'lucide:bot-off',
-}
-
 const aiStatusColor: Record<string, string> = {
   active: 'text-green-600',
   paused: 'text-amber-500',
@@ -448,7 +442,7 @@ function handleRenameView(viewId: string, newName: string) {
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <Button variant="outline" size="sm" class="h-9 gap-1.5 text-xs" :class="activeAiFilter ? 'border-primary text-primary' : ''">
-            <Icon :name="(activeAiFilter && aiStatusIcon[activeAiFilter]) || 'lucide:bot'" class="size-3.5" />
+            <SharedAiIcon :custom-class="!activeAiFilter || activeAiFilter === 'active' ? 'size-3.5' : 'size-3.5 grayscale opacity-50'" />
             {{ activeAiFilter ? aiStatusLabels[activeAiFilter] : 'AI Status' }}
           </Button>
         </DropdownMenuTrigger>
@@ -458,7 +452,7 @@ function handleRenameView(viewId: string, newName: string) {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem v-for="opt in aiStatusOptions" :key="opt.value" :class="{ 'bg-accent': activeAiFilter === opt.value }" @click="activeAiFilter = opt.value">
-            <Icon :name="aiStatusIcon[opt.value] || 'lucide:bot'" class="mr-2 size-3.5" />
+            <SharedAiIcon :custom-class="opt.value === 'active' ? 'mr-2 size-3.5' : 'mr-2 size-3.5 grayscale opacity-50'" />
             {{ opt.label }}
           </DropdownMenuItem>
         </DropdownMenuContent>
