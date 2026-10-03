@@ -30,7 +30,7 @@ function getMockResponse(question: string): string {
     return `Check-out is at ${time}. Late check-out can be arranged for an additional fee.`
   }
   if (q.includes('parking')) {
-    const hasParking = props.listing.amenities.includes('Parking')
+    const hasParking = props.listing.amenities.some(a => a.toLowerCase().includes('parking'))
     return hasParking
       ? 'Yes, free private parking is available on the property.'
       : 'Unfortunately there is no dedicated parking on-site. Street parking is available nearby.'

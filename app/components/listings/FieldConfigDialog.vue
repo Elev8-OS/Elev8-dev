@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FieldConfig, Listing, ReservationStage } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
-import { getUnits, listings } from '~/components/listings/data/listings'
+import { getUnits, listings, RESERVATION_STAGES } from '~/components/listings/data/listings'
 
 const props = defineProps<{
   open: boolean
@@ -11,11 +11,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:open': [val: boolean], 'update': [listing: Listing] }>()
 
-const stages: { value: ReservationStage, label: string }[] = [
-  { value: 'future', label: 'Future' },
-  { value: 'inquiry_past', label: 'Inquiry / Past' },
-  { value: 'current', label: 'Current' },
-]
+const stages = RESERVATION_STAGES
 
 const currentConfig = computed<FieldConfig>(() =>
   props.listing.resources.fieldConfig?.[props.fieldKey] ?? { stages: ['future', 'inquiry_past', 'current'] },

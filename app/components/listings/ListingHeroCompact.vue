@@ -5,7 +5,7 @@ import { allTags, getUnitById, getUnits, listings } from '~/components/listings/
 import ListingAssignedUsers from '~/components/listings/ListingAssignedUsers.vue'
 
 const props = defineProps<{ listing: Listing, openSchedule?: boolean }>()
-const emit = defineEmits<{ update: [listing: Listing], openSetup: [], openTestAi: [], openSchedule: [] }>()
+const emit = defineEmits<{ update: [listing: Listing], openTestAi: [], openSchedule: [] }>()
 const router = useRouter()
 
 function otaIcon(ota: string) {
@@ -594,9 +594,11 @@ function toggleAudience(o: DateOverride, value: OverrideAudience) {
         <!-- Action buttons -->
         <div class="flex items-center gap-2 mt-auto self-end">
           <ListingAssignedUsers :listing="listing" />
-          <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" @click="emit('openSetup')">
-            <Icon name="lucide:pencil" class="size-4" />
-            Edit Listing
+          <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" as-child>
+            <NuxtLink :to="`/listings/${listing.id}/setup`">
+              <Icon name="lucide:layout-panel-left" class="size-4" />
+              Listing Setup
+            </NuxtLink>
           </Button>
           <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" @click="emit('openTestAi')">
             <SharedAiIcon custom-class="size-4" />
