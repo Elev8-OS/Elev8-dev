@@ -58,6 +58,8 @@ export interface GuestGuideLink {
   guideId: string
   reservationId: string
   listingId: string
+  /** The rooms of the stay (multi-unit listing); the guide adds their own items and uses a room's own Wi-Fi. */
+  unitIds?: string[]
   guestName: string
   guestEmail?: string
   guestPhone?: string

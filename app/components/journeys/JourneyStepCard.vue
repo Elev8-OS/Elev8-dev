@@ -142,7 +142,7 @@ const isNew = computed(() => !!(props.step as any).isNew)
         >ElevAI</span>
         <span
           v-if="isNew"
-          class="rounded px-1.5 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+          class="rounded px-1.5 py-0.5 text-xs font-medium bg-primary/10 text-foreground"
           title="Added by AI — review before saving"
         >
           New

@@ -2,6 +2,7 @@
 import type { CalendarEvent, CalendarListing, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
 import type { ReservationStatus } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
+import { stayUnitIds } from '~/components/listings/data/calendar-rooms'
 import { bookingReservationStatus } from '~/components/operations-calendar/data/calendar-stays'
 import { assignStayLanes, getCalendarListings, HALF_DAYS_PER_DAY, stayBarSpan } from '~/components/operations-calendar/data/operations-calendar'
 import { reservationStatusClasses, reservationStatusLabels } from '~/components/reservations/data/reservations'
@@ -24,8 +25,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'eventClick': [event: CalendarEvent]
-  'moveEvent': [payload: { id: string, listingId: string, scheduledAt: string, originalEvent: CalendarEvent }]
-  'create': [payload: { listingId: string, dayKey: string }]
+  'moveEvent': [payload: { id: string, listingId: string, unitId: string | null, scheduledAt: string, originalEvent: CalendarEvent }]
+  'create': [payload: { listingId: string, unitId: string | null, dayKey: string }]
   'update:filters': [filters: OperationsFilters]
   'clear': []
   'previousWeek': []
@@ -40,25 +41,41 @@ const allListings = computed(() => getCalendarListings(reservations.value))
 const visibleListingIds = computed(() => new Set(props.eventsByListingAndDay.keys()))
 const visibleListings = computed(() => allListings.value.filter(l => visibleListingIds.value.has(l.id)))
 
-const sortedListings = computed(() => {
-  return [...visibleListings.value].sort((a, b) => {
-    const propertyCompare = a.property.localeCompare(b.property)
-    if (propertyCompare !== 0)
-      return propertyCompare
-    const unitTypeCompare = a.unitTypeLabel.localeCompare(b.unitTypeLabel)
-    if (unitTypeCompare !== 0)
-      return unitTypeCompare
-    return a.roomLabel.localeCompare(b.roomLabel)
-  })
-})
+/** Listings are the top level (a listing is a property); rooms sit under multi-unit ones. */
+const sortedListings = computed(() => [...visibleListings.value].sort((a, b) => a.name.localeCompare(b.name)))
 
 interface ListingTreeNode {
   id: string
-  type: 'property' | 'unitType' | 'room'
+  /** `room` is a listing's row (the property); `unit` is one room of a multi-unit listing, under it. */
+  type: 'room' | 'unit'
   label: string
   listing?: CalendarListing
+  /** `unit` rows: the room. */
+  unitId?: string
+  /** `unit` rows: the room's room type. */
+  sublabel?: string
   depth: number
   eventCount: number
+}
+
+/** A multi-unit listing's rooms are expanded under it unless collapsed. */
+const roomsNodeId = (listingId: string) => `rooms-${listingId}`
+
+/**
+ * Which row a stay or event is drawn on. A listing with rooms: a room row shows
+ * what is in that room; the listing's own row shows what has no room (stays
+ * not assigned yet, common-area cleanings, tasks). A listing without rooms
+ * shows everything on its one row.
+ */
+function onRow(listing: CalendarListing, rowUnitId: string | undefined, itemUnitIds: string[]): boolean {
+  if (!listing.rooms.length)
+    return true
+  return rowUnitId ? itemUnitIds.includes(rowUnitId) : itemUnitIds.length === 0
+}
+
+function rowEvents(listing: CalendarListing, rowUnitId: string | undefined, dayKey: string): CalendarEvent[] {
+  return (props.eventsByListingAndDay.get(listing.id)?.get(dayKey) ?? [])
+    .filter(e => e.type !== 'guest_stay' && onRow(listing, rowUnitId, e.unitId ? [e.unitId] : []))
 }
 
 interface StayBar {
@@ -82,17 +99,6 @@ interface StayLayout {
   laneCount: number
 }
 
-function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>()
-  for (const item of items) {
-    const key = keyFn(item)
-    const list = map.get(key) ?? []
-    list.push(item)
-    map.set(key, list)
-  }
-  return map
-}
-
 const collapsedNodes = ref<Set<string>>(new Set())
 
 function isNodeExpanded(nodeId: string) {
@@ -108,71 +114,33 @@ function toggleNode(nodeId: string) {
   collapsedNodes.value = next
 }
 
-const propertyIds = computed(() => {
-  const ids = new Set<string>()
-  for (const listing of visibleListings.value) {
-    ids.add(`prop-${listing.property}`)
-  }
-  return ids
-})
-
-const unitTypeIds = computed(() => {
-  const ids = new Set<string>()
-  for (const listing of visibleListings.value) {
-    if (!listing.isSingleUnit)
-      ids.add(`unit-${listing.property}-${listing.unitTypeLabel}`)
-  }
-  return ids
-})
-
 function expandAll() {
   collapsedNodes.value = new Set()
 }
 
 function collapseAll() {
-  collapsedNodes.value = new Set([...propertyIds.value, ...unitTypeIds.value])
+  const roomIds = visibleListings.value.filter(l => l.rooms.length).map(l => roomsNodeId(l.id))
+  collapsedNodes.value = new Set(roomIds)
+}
+
+/** A listing's row, then (multi-unit, expanded) one row per room. */
+function pushListingRows(tree: ListingTreeNode[], listing: CalendarListing, depth: number) {
+  tree.push({ id: listing.id, type: 'room', label: listing.roomLabel, listing, depth, eventCount: weeklyEventCount(listing) })
+  if (!listing.rooms.length || !isNodeExpanded(roomsNodeId(listing.id)))
+    return
+  for (const room of listing.rooms) {
+    tree.push({ id: `${listing.id}:${room.id}`, type: 'unit', label: room.name, sublabel: room.typeName, listing, unitId: room.id, depth: depth + 1, eventCount: weeklyEventCount(listing, room.id) })
+  }
 }
 
 const listingTree = computed<ListingTreeNode[]>(() => {
   const tree: ListingTreeNode[] = []
-  const byProperty = groupBy(sortedListings.value, l => l.property)
-
-  for (const [property, propertyListings] of byProperty) {
-    const propertyId = `prop-${property}`
-    const propertyEventCount = propertyListings.reduce((sum, l) => sum + weeklyEventCount(l.id), 0)
-    tree.push({ id: propertyId, type: 'property', label: property, depth: 0, eventCount: propertyEventCount })
-
-    if (!isNodeExpanded(propertyId))
-      continue
-
-    const hasMultiUnit = propertyListings.some(l => !l.isSingleUnit)
-
-    if (!hasMultiUnit) {
-      for (const listing of propertyListings) {
-        tree.push({ id: listing.id, type: 'room', label: listing.roomLabel, listing, depth: 1, eventCount: weeklyEventCount(listing.id) })
-      }
-    }
-    else {
-      const byUnitType = groupBy(propertyListings, l => l.unitTypeLabel)
-      for (const [unitType, unitListings] of byUnitType) {
-        const unitId = `unit-${property}-${unitType}`
-        const unitEventCount = unitListings.reduce((sum, l) => sum + weeklyEventCount(l.id), 0)
-        tree.push({ id: unitId, type: 'unitType', label: unitType, depth: 1, eventCount: unitEventCount })
-
-        if (!isNodeExpanded(unitId))
-          continue
-
-        for (const listing of unitListings) {
-          tree.push({ id: listing.id, type: 'room', label: listing.roomLabel, listing, depth: 2, eventCount: weeklyEventCount(listing.id) })
-        }
-      }
-    }
-  }
-
+  for (const listing of sortedListings.value)
+    pushListingRows(tree, listing, 0)
   return tree
 })
 
-function stayLayoutFor(listing: CalendarListing): StayLayout {
+function stayLayoutFor(listing: CalendarListing, rowUnitId?: string): StayLayout {
   const firstDay = props.weekDays[0]
   const lastDay = props.weekDays[props.weekDays.length - 1]
   if (!firstDay || !lastDay)
@@ -186,6 +154,7 @@ function stayLayoutFor(listing: CalendarListing): StayLayout {
     // calendar's stay events already apply.
     .filter(booking => booking.status !== 'cancelled' && booking.status !== 'inquiry')
     .filter(booking => booking.checkIn <= weekEnd && booking.checkOut >= weekStart)
+    .filter(booking => onRow(listing, rowUnitId, stayUnitIds(booking, reservations.value)))
     .flatMap((booking) => {
       const span = stayBarSpan(booking.checkIn, booking.checkOut, dayKeys)
       if (!span)
@@ -206,11 +175,15 @@ function stayLayoutFor(listing: CalendarListing): StayLayout {
   }
 }
 
-/** Worked out once per visible row rather than once per template read. */
-const stayLayouts = computed(() => new Map(visibleListings.value.map(l => [l.id, stayLayoutFor(l)])))
+/** Worked out once per visible row rather than once per template read; keyed by tree node id. */
+const stayLayouts = computed(() => new Map(
+  listingTree.value
+    .filter(n => n.listing && (n.type === 'room' || n.type === 'unit'))
+    .map(n => [n.id, stayLayoutFor(n.listing!, n.unitId)]),
+))
 
-function layoutOf(listing?: CalendarListing): StayLayout {
-  return (listing && stayLayouts.value.get(listing.id)) || { bars: [], laneCount: 1 }
+function layoutOf(node: ListingTreeNode): StayLayout {
+  return stayLayouts.value.get(node.id) || { bars: [], laneCount: 1 }
 }
 
 function shortDate(iso: string) {
@@ -250,19 +223,18 @@ function formatWeekRangeHeader(_days: typeof props.weekDays) {
   return weekRangeLabel.value
 }
 
-function weeklyEventCount(listingId: string) {
-  const listingMap = props.eventsByListingAndDay.get(listingId)
+function weeklyEventCount(listing: CalendarListing, rowUnitId?: string) {
+  const listingMap = props.eventsByListingAndDay.get(listing.id)
   if (!listingMap)
     return 0
   let count = 0
-  for (const events of listingMap.values()) {
-    count += events.filter(e => e.type !== 'guest_stay').length
-  }
+  for (const dayKey of listingMap.keys())
+    count += rowEvents(listing, rowUnitId, dayKey).length
   return count
 }
 
 const draggedEvent = ref<CalendarEvent | null>(null)
-const pendingMove = ref<{ event: CalendarEvent, listingId: string, dayKey: string } | null>(null)
+const pendingMove = ref<{ event: CalendarEvent, listingId: string, unitId: string | null, dayKey: string } | null>(null)
 const moveConfirmOpen = ref(false)
 
 function isCleaningDraggable(event: CalendarEvent): boolean {
@@ -283,7 +255,7 @@ function onDragStart(event: CalendarEvent) {
   draggedEvent.value = event
 }
 
-function onDrop(listingId: string, dayKey: string) {
+function onDrop(listingId: string, dayKey: string, unitId: string | null = null) {
   if (!draggedEvent.value)
     return
   if (dayKey < todayKey) {
@@ -291,7 +263,7 @@ function onDrop(listingId: string, dayKey: string) {
     draggedEvent.value = null
     return
   }
-  pendingMove.value = { event: draggedEvent.value, listingId, dayKey }
+  pendingMove.value = { event: draggedEvent.value, listingId, unitId, dayKey }
   moveConfirmOpen.value = true
   draggedEvent.value = null
 }
@@ -299,10 +271,10 @@ function onDrop(listingId: string, dayKey: string) {
 function confirmMove() {
   if (!pendingMove.value)
     return
-  const { event, listingId, dayKey } = pendingMove.value
+  const { event, listingId, unitId, dayKey } = pendingMove.value
   const time = event.start.slice(11, 16)
   const scheduledAt = `${dayKey}T${time}:00+08:00`
-  emit('moveEvent', { id: event.id, listingId, scheduledAt, originalEvent: event })
+  emit('moveEvent', { id: event.id, listingId, unitId, scheduledAt, originalEvent: event })
   pendingMove.value = null
   moveConfirmOpen.value = false
 }
@@ -312,8 +284,15 @@ function cancelMove() {
   moveConfirmOpen.value = false
 }
 
-function onCellClick(listingId: string, dayKey: string) {
-  emit('create', { listingId, dayKey })
+function onCellClick(listingId: string, dayKey: string, unitId: string | null = null) {
+  emit('create', { listingId, unitId, dayKey })
+}
+
+/** "The R Villa Luwa · Master Suite" for the reschedule confirmation. */
+function moveTargetLabel(move: { listingId: string, unitId: string | null }) {
+  const listing = allListings.value.find(l => l.id === move.listingId)
+  const room = move.unitId ? listing?.rooms.find(r => r.id === move.unitId)?.name : undefined
+  return room ? `${listing?.name} · ${room}` : (listing?.name ?? '')
 }
 </script>
 
@@ -384,53 +363,35 @@ function onCellClick(listingId: string, dayKey: string) {
         <!-- Tree rows -->
         <div class="flex flex-col">
           <template v-for="node in listingTree" :key="node.id">
-            <!-- Property group header -->
-            <div
-              v-if="node.type === 'property'"
-              class="sticky left-0 z-10 flex cursor-pointer border-t bg-muted/50 px-4 py-2 hover:bg-muted/70"
-              @click="toggleNode(node.id)"
-            >
-              <div class="flex items-center gap-2">
-                <Icon
-                  :name="isNodeExpanded(node.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-                  class="size-3.5 shrink-0 text-muted-foreground"
-                />
-                <p class="truncate text-xs font-semibold text-muted-foreground">
-                  {{ node.label }}
-                </p>
-                <Badge v-if="node.eventCount > 0" variant="outline" class="text-[10px]">
-                  {{ node.eventCount }} events
-                </Badge>
-              </div>
-            </div>
-
-            <!-- Unit type group header -->
-            <div
-              v-else-if="node.type === 'unitType'"
-              class="sticky left-0 z-10 flex cursor-pointer border-t bg-muted/30 px-4 py-2 pl-8 hover:bg-muted/50"
-              @click="toggleNode(node.id)"
-            >
-              <div class="flex items-center gap-2">
-                <Icon
-                  :name="isNodeExpanded(node.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-                  class="size-3.5 shrink-0 text-muted-foreground"
-                />
-                <p class="truncate text-xs font-medium text-foreground">
-                  {{ node.label }}
-                </p>
-                <Badge v-if="node.eventCount > 0" variant="outline" class="text-[10px]">
-                  {{ node.eventCount }} events
-                </Badge>
-              </div>
-            </div>
-
-            <!-- Room row -->
-            <div v-else class="flex border-t">
-              <div class="sticky left-0 z-10 w-[240px] shrink-0 border-r bg-muted/30 px-4 py-3" :class="node.depth === 2 ? 'pl-12' : 'pl-8'">
-                <div class="flex items-start gap-3">
+            <!-- Listing (property) row, or one of its rooms -->
+            <div class="flex border-t">
+              <div
+                class="sticky left-0 z-10 w-[240px] shrink-0 border-r px-4 py-3"
+                :class="node.type === 'unit' ? 'bg-background pl-10' : 'bg-muted/30'"
+                :data-testid="node.type === 'unit' ? 'calendar-room-row' : 'calendar-listing-row'"
+              >
+                <div class="flex items-start gap-2">
+                  <!-- A multi-unit listing's row folds its rooms. -->
+                  <button
+                    v-if="node.type === 'room' && node.listing?.rooms.length"
+                    type="button"
+                    class="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                    :aria-label="isNodeExpanded(roomsNodeId(node.listing.id)) ? `Hide rooms of ${node.label}` : `Show rooms of ${node.label}`"
+                    :aria-expanded="isNodeExpanded(roomsNodeId(node.listing.id))"
+                    @click="toggleNode(roomsNodeId(node.listing.id))"
+                  >
+                    <Icon :name="isNodeExpanded(roomsNodeId(node.listing.id)) ? 'lucide:chevron-down' : 'lucide:chevron-right'" class="size-3.5" />
+                  </button>
+                  <Icon v-else-if="node.type === 'unit'" name="lucide:door-closed" class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                   <div class="min-w-0">
-                    <p class="truncate text-sm font-semibold">
+                    <p class="truncate text-sm" :class="node.type === 'unit' ? 'font-medium' : 'font-semibold'">
                       {{ node.label }}
+                    </p>
+                    <p v-if="node.type === 'unit'" class="truncate text-xs text-muted-foreground">
+                      {{ node.sublabel }}
+                    </p>
+                    <p v-else-if="node.listing?.rooms.length" class="truncate text-xs text-muted-foreground">
+                      Whole property · {{ node.listing.rooms.length }} rooms
                     </p>
                     <Badge variant="outline" class="mt-1 text-[10px]">
                       {{ node.eventCount }} events
@@ -443,7 +404,7 @@ function onCellClick(listingId: string, dayKey: string) {
                 class="relative grid flex-1"
                 :style="{
                   gridTemplateColumns: `repeat(${halfColumns}, minmax(0, 1fr))`,
-                  gridTemplateRows: `repeat(${layoutOf(node.listing).laneCount}, auto) 1fr`,
+                  gridTemplateRows: `repeat(${layoutOf(node).laneCount}, auto) 1fr`,
                 }"
               >
                 <!-- Stay bars, in half days: check-in after 12:00, check-out before it.
@@ -453,7 +414,7 @@ function onCellClick(listingId: string, dayKey: string) {
                      a flat edge. -->
                 <template v-if="node.listing">
                   <div
-                    v-for="stay in layoutOf(node.listing).bars"
+                    v-for="stay in layoutOf(node).bars"
                     :key="stay.id"
                     data-testid="stay-bar"
                     :data-start-half="stay.startHalf"
@@ -477,20 +438,20 @@ function onCellClick(listingId: string, dayKey: string) {
                 <div
                   v-for="(day, index) in weekDays"
                   :key="`${node.id}-${day.key}`"
-                  class="group relative min-h-[132px] cursor-pointer border-l bg-background/70 p-2 transition-colors hover:bg-muted/40"
-                  :class="day.key === todayKey && 'bg-muted/30'"
+                  class="group relative cursor-pointer border-l bg-background/70 p-2 transition-colors hover:bg-muted/40"
+                  :class="[node.type === 'unit' ? 'min-h-[88px]' : 'min-h-[132px]', day.key === todayKey && 'bg-muted/30']"
                   :style="{
                     gridColumn: `${index * HALF_DAYS_PER_DAY + 1} / ${(index + 1) * HALF_DAYS_PER_DAY + 1}`,
-                    gridRow: `${layoutOf(node.listing).laneCount + 1} / ${layoutOf(node.listing).laneCount + 2}`,
+                    gridRow: `${layoutOf(node).laneCount + 1} / ${layoutOf(node).laneCount + 2}`,
                   }"
                   @dragover.prevent
-                  @drop.prevent="onDrop(node.listing?.id ?? '', day.key)"
-                  @click="onCellClick(node.listing?.id ?? '', day.key)"
+                  @drop.prevent="onDrop(node.listing?.id ?? '', day.key, node.unitId ?? null)"
+                  @click="onCellClick(node.listing?.id ?? '', day.key, node.unitId ?? null)"
                 >
                   <Icon name="lucide:plus" class="absolute right-1.5 top-1.5 size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                   <div class="flex h-full flex-col gap-2">
                     <OperationsCalendarEventChip
-                      v-for="event in node.listing ? (eventsByListingAndDay.get(node.listing.id)?.get(day.key) ?? []).filter(e => e.type !== 'guest_stay') : []"
+                      v-for="event in node.listing ? rowEvents(node.listing, node.unitId, day.key) : []"
                       :key="`${day.key}-${event.id}`"
                       :event="event"
                       :draggable="isCleaningDraggable(event)"
@@ -512,7 +473,7 @@ function onCellClick(listingId: string, dayKey: string) {
         <DialogHeader>
           <DialogTitle>Reschedule cleaning?</DialogTitle>
           <DialogDescription>
-            Reschedule <strong>{{ pendingMove?.event.title }}</strong> to {{ pendingMove?.listingId ? allListings.find(l => l.id === pendingMove?.listingId)?.roomLabel : '' }} on {{ pendingMove?.dayKey }}?
+            Reschedule <strong>{{ pendingMove?.event.title }}</strong> to {{ pendingMove ? moveTargetLabel(pendingMove) : '' }} on {{ pendingMove?.dayKey }}?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

@@ -166,7 +166,7 @@ function handleCreate() {
         <div v-if="conversation" class="flex flex-col gap-5 p-6">
           <div class="rounded-md border p-3">
             <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-foreground">
                 {{ conversation.guestInitials }}
               </div>
               <div>

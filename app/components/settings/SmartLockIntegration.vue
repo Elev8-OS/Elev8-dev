@@ -178,7 +178,7 @@ async function handleSync() {
             </div>
             <span
               class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-              :class="device.paired ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
+              :class="device.paired ? 'bg-primary/10 text-foreground' : 'bg-muted text-muted-foreground'"
             >
               {{ device.paired ? 'Paired' : 'Available' }}
             </span>

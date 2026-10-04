@@ -73,7 +73,7 @@ const pickerOpen = ref(false)
 
       <div v-else class="flex flex-col divide-y rounded-lg border" data-testid="pet-packages">
         <div v-for="service in packages" :key="service.id" class="flex items-start gap-3 p-3" data-testid="pet-package">
-          <div class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-primary/10 text-primary">
+          <div class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-primary/10 text-foreground">
             <img v-if="service.image" :src="service.image" alt="" class="size-full object-cover">
             <Icon v-else name="lucide:paw-print" class="size-4" />
           </div>

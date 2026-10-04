@@ -17,7 +17,7 @@ const formatRelative = (iso: string) => {
   <div class="border-b bg-card px-6 py-5">
     <div class="flex items-start justify-between gap-4">
       <div class="flex items-start gap-4">
-        <div class="flex size-14 items-center justify-center rounded-lg bg-primary/10 text-lg font-semibold text-primary">
+        <div class="flex size-14 items-center justify-center rounded-lg bg-primary/10 text-lg font-semibold text-foreground">
           {{ tenant.logoText }}
         </div>
         <div class="space-y-1">

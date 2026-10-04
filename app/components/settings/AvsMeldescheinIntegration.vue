@@ -152,7 +152,7 @@ async function handleSync() {
           :class="activeAccount?.id === account.id ? 'border-primary bg-primary/10 text-foreground' : 'border-border bg-card text-muted-foreground hover:bg-muted'"
           @click="selectAccount(account.id)"
         >
-          <Icon name="lucide:file-badge" class="size-4" :class="activeAccount?.id === account.id ? 'text-primary' : ''" />
+          <Icon name="lucide:file-badge" class="size-4" :class="activeAccount?.id === account.id ? 'text-foreground' : ''" />
           <span class="font-medium">{{ account.avs?.accountName || account.avs?.firmaId }}</span>
         </button>
         <Button variant="outline" size="sm" class="h-9 gap-1.5" @click="connectDialogOpen = true">

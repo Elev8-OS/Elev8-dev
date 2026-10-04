@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import type { GuideContentItem, GuideContentKind } from '~/components/listings/data/guest-guide-content'
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
+import type { RoomGuideKind } from '~/components/listings/data/listing-room-overrides'
 import type { Listing } from '~/components/listings/data/listings'
 import type { PetPolicy } from '~/components/listings/data/pet-policy'
 import { toast } from 'vue-sonner'
 import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
 import { GUIDE_CONTENT_KINDS, GUIDE_CONTENT_META, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { guestVerificationShortLabel, listingGuestVerification } from '~/components/listings/data/guest-verification'
+import { copyGuideItemsToListings, removeGuideItems } from '~/components/listings/data/guide-bulk'
+import { isRoomGuideKind, roomGuideItems, setRoomGuideItems } from '~/components/listings/data/listing-room-overrides'
 import { listingPetPolicy } from '~/components/listings/data/pet-policy'
 import GuestVerificationSettingsCard from '~/components/listings/guest-guide/GuestVerificationSettingsCard.vue'
+import GuideItemRows from '~/components/listings/guest-guide/GuideItemRows.vue'
+import GuideSetupCopyDialog from '~/components/listings/guest-guide/GuideSetupCopyDialog.vue'
 import ListingGuideContentSheet from '~/components/listings/guest-guide/ListingGuideContentSheet.vue'
 import PetPolicySettingsCard from '~/components/listings/guest-guide/PetPolicySettingsCard.vue'
 import GuideAssignPopover from '~/components/listings/GuideAssignPopover.vue'
-import ExpandableText from '~/components/shared/ExpandableText.vue'
+import SetupBulkBar from '~/components/listings/setup/SetupBulkBar.vue'
 import { useGuestGuides } from '~/composables/useGuestGuides'
-import { toSafeHtml } from '~/lib/rich-text-sanitize.client'
 
 /**
  * The listing's guest guide content: which guide it uses, and the content the
@@ -26,6 +30,8 @@ const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
 
 const { guides } = useGuestGuides()
+/** "Copy to listings": this listing's whole guest guide setup. */
+const copyAllOpen = ref(false)
 const assignedGuide = computed(() => guides.value.find(g => g.assignedListingIds.includes(props.listing.id)))
 
 /**
@@ -61,15 +67,38 @@ function saveVerification(settings: GuestVerificationSettings) {
   toast.success('Guest verification updated')
 }
 
+// --- Rooms: a multi-unit listing's rooms each add their own check-in steps and
+// Good to Know after the property's (`listing-room-overrides.ts`). Null = the property.
+const rooms = computed(() => props.listing.unitType === 'multi'
+  ? (props.listing.unitTypes ?? []).flatMap(ut => ut.units.map(u => ({ id: u.id, name: u.name, typeName: ut.name })))
+  : [])
+const roomId = ref<string | null>(null)
+const room = computed(() => rooms.value.find(r => r.id === roomId.value))
+const roomCanAdd = computed(() => isRoomGuideKind(selectedKind.value))
+const roomItems = computed(() => room.value && roomCanAdd.value
+  ? roomGuideItems(props.listing, room.value.id, selectedKind.value as RoomGuideKind)
+  : [])
+
 function countOf(kind: GuideContentKind) {
-  return listingGuideItems(props.listing, kind).length
+  const own = room.value && isRoomGuideKind(kind) ? roomGuideItems(props.listing, room.value.id, kind).length : 0
+  return listingGuideItems(props.listing, kind).length + own
 }
 
 const editingKind = ref<GuideContentKind | null>(null)
+/** Whether the sheet edits the property's items or the selected room's own. */
+const editingRoom = ref(false)
 const sheetOpen = ref(false)
+const editingItems = computed(() => {
+  if (!editingKind.value)
+    return []
+  return editingRoom.value && room.value && isRoomGuideKind(editingKind.value)
+    ? roomGuideItems(props.listing, room.value.id, editingKind.value)
+    : listingGuideItems(props.listing, editingKind.value)
+})
 
-function edit(kind: GuideContentKind) {
+function edit(kind: GuideContentKind, forRoom = false) {
   editingKind.value = kind
+  editingRoom.value = forRoom
   sheetOpen.value = true
 }
 
@@ -77,8 +106,40 @@ function save(items: GuideContentItem[]) {
   const kind = editingKind.value
   if (!kind)
     return
+  if (editingRoom.value && room.value && isRoomGuideKind(kind)) {
+    emit('update', setRoomGuideItems(props.listing, room.value.id, kind, items))
+    toast.success(`${GUIDE_CONTENT_META[kind].label} for ${room.value.name} saved`)
+    return
+  }
   emit('update', { ...props.listing, guestGuide: { ...props.listing.guestGuide, [kind]: items } })
   toast.success(`${GUIDE_CONTENT_META[kind].label} saved`)
+}
+
+// --- Select mode: the list being edited (the property's, or the room's own).
+const selecting = ref(false)
+const selectedIds = ref<string[]>([])
+watch([selected, roomId], () => { selecting.value = false })
+watch(selecting, (on) => {
+  if (!on)
+    selectedIds.value = []
+})
+const editableItems = computed(() => room.value ? roomItems.value : selectedItems.value)
+
+function deleteSelected() {
+  const kind = selectedKind.value
+  const n = selectedIds.value.length
+  if (room.value && isRoomGuideKind(kind))
+    emit('update', setRoomGuideItems(props.listing, room.value.id, kind, roomItems.value.filter(i => !selectedIds.value.includes(i.id))))
+  else
+    emit('update', removeGuideItems(props.listing, kind, selectedIds.value))
+  toast.success(`${n} ${n === 1 ? GUIDE_CONTENT_META[kind].noun : `${GUIDE_CONTENT_META[kind].noun}s`} deleted`)
+}
+
+function copySelected(targetIds: string[]) {
+  const kind = selectedKind.value
+  const items = editableItems.value.filter(i => selectedIds.value.includes(i.id))
+  const count = copyGuideItemsToListings(props.listing.id, kind, items, targetIds)
+  toast.success(`${items.length} ${items.length === 1 ? GUIDE_CONTENT_META[kind].noun : `${GUIDE_CONTENT_META[kind].noun}s`} copied to ${count} ${count === 1 ? 'listing' : 'listings'}`)
 }
 </script>
 
@@ -94,7 +155,13 @@ function save(items: GuideContentItem[]) {
             The welcome page sent to guests. The guide sets the look and which sections show; the content below comes from this listing.
           </p>
         </div>
-        <GuideAssignPopover :listing-id="listing.id" :listing-name="listing.name" />
+        <div class="flex items-center gap-2">
+          <Button variant="outline" size="sm" class="gap-1.5" data-testid="guide-copy-all" @click="copyAllOpen = true">
+            <Icon name="lucide:copy" class="size-3.5" />
+            Copy to listings
+          </Button>
+          <GuideAssignPopover :listing-id="listing.id" :listing-name="listing.name" />
+        </div>
       </div>
       <div v-if="assignedGuide" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
         <div class="flex items-center gap-2">
@@ -122,6 +189,27 @@ function save(items: GuideContentItem[]) {
         </NuxtLink>.
       </p>
     </Card>
+
+    <!-- Multi-unit: show the property's content, or one room (property items + that room's own). -->
+    <div v-if="rooms.length" class="flex flex-wrap items-center gap-3" data-testid="guide-room-picker">
+      <span class="text-sm font-medium">Showing</span>
+      <Select :model-value="roomId ?? 'property'" @update:model-value="(v) => roomId = v === 'property' ? null : String(v)">
+        <SelectTrigger class="h-9 w-64" aria-label="Property or room">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="property">
+            Property (every room)
+          </SelectItem>
+          <SelectItem v-for="r in rooms" :key="r.id" :value="r.id">
+            {{ r.name }} · {{ r.typeName }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <span class="text-xs text-muted-foreground">
+        {{ room ? `Guests in ${room.name} see the property's items, then the ones only for ${room.name}.` : 'Every room gets these. Pick a room to add what is only for it.' }}
+      </span>
+    </div>
 
     <!-- One 4-column grid: the section list in the first column, the selected section across the other three. -->
     <div class="grid gap-4 xl:grid-cols-4">
@@ -213,16 +301,29 @@ function save(items: GuideContentItem[]) {
               {{ selectedMeta.description }}
             </p>
           </div>
-          <Button
-            :variant="selectedItems.length ? 'outline' : 'default'"
-            size="sm"
-            class="shrink-0 gap-1.5"
-            :data-testid="`guide-edit-${selectedKind}`"
-            @click="edit(selectedKind)"
-          >
-            <Icon :name="selectedItems.length ? 'lucide:pencil' : 'lucide:plus'" class="size-3.5" />
-            {{ selectedItems.length ? 'Edit' : 'Set up' }}
-          </Button>
+          <div v-if="!room" class="flex shrink-0 items-center gap-2">
+            <Button
+              v-if="selectedItems.length && !selecting"
+              variant="outline"
+              size="sm"
+              class="gap-1.5"
+              data-testid="guide-select"
+              @click="selecting = true"
+            >
+              <Icon name="lucide:list-checks" class="size-3.5" />
+              Select
+            </Button>
+            <Button
+              :variant="selectedItems.length ? 'outline' : 'default'"
+              size="sm"
+              class="gap-1.5"
+              :data-testid="`guide-edit-${selectedKind}`"
+              @click="edit(selectedKind)"
+            >
+              <Icon :name="selectedItems.length ? 'lucide:pencil' : 'lucide:plus'" class="size-3.5" />
+              {{ selectedItems.length ? 'Edit' : 'Set up' }}
+            </Button>
+          </div>
         </div>
 
         <p v-if="guideGap(selectedKind)" class="flex items-center gap-1.5 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200" :data-testid="`guide-hidden-${selectedKind}`">
@@ -235,42 +336,100 @@ function save(items: GuideContentItem[]) {
           </template>
         </p>
 
-        <!--
-          Every kind is one row list, so a long item or a photo only grows its own row.
-          The marker says what the list is: a number for steps (a sequence), the chosen
-          icon for Good to Know, a check for rules. Photos are a fixed thumbnail.
-        -->
-        <ol v-if="selectedItems.length" class="flex flex-col divide-y rounded-lg border" data-testid="guide-items">
-          <li v-for="(item, i) in selectedItems" :key="item.id" class="flex items-start gap-3 p-3">
-            <span v-if="selectedMeta.numbered" class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{{ i + 1 }}</span>
-            <span v-else-if="selectedMeta.iconPicker" class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <Icon :name="item.icon || 'lucide:info'" class="size-4" />
-            </span>
-            <Icon v-else name="lucide:check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium">
-                {{ item.title }}
-              </p>
-              <ExpandableText v-if="item.text" :html="toSafeHtml(item.text)" class="mt-0.5 text-sm text-muted-foreground" />
-            </div>
-            <img v-if="item.photoUrl" :src="item.photoUrl" alt="" class="aspect-video w-32 shrink-0 rounded-md border object-cover" data-testid="guide-item-thumb">
-          </li>
-        </ol>
+        <!-- Property view: the property's items, editable, with Select mode. -->
+        <template v-if="!room">
+          <SetupBulkBar
+            v-model:selecting="selecting"
+            select-all
+            :listing-id="listing.id"
+            :selected-count="selectedIds.length"
+            :total="selectedItems.length"
+            :noun="selectedMeta.noun"
+            :copy-note="`Copies go to the end of the ${selectedMeta.label.toLowerCase()} of the listings you pick.`"
+            :delete-note="`The selected ${selectedMeta.noun}s are removed from this listing's guest guide.`"
+            @toggle-all="selectedIds = selectedIds.length === selectedItems.length ? [] : selectedItems.map(i => i.id)"
+            @copy="copySelected"
+            @delete="deleteSelected"
+          />
+          <GuideItemRows v-if="selectedItems.length" v-model:selected="selectedIds" :items="selectedItems" :meta="selectedMeta" :selecting="selecting" />
+          <div v-else class="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-10 text-center">
+            <Icon :name="selectedMeta.icon" class="size-8 text-muted-foreground" />
+            <p class="text-sm text-muted-foreground">
+              No {{ selectedMeta.label.toLowerCase() }} yet. Guests see this section empty until you set it up.
+            </p>
+          </div>
+        </template>
 
-        <div v-else class="flex flex-col items-center gap-3 rounded-lg border border-dashed px-4 py-10 text-center">
-          <Icon :name="selectedMeta.icon" class="size-8 text-muted-foreground" />
-          <p class="text-sm text-muted-foreground">
-            No {{ selectedMeta.label.toLowerCase() }} yet. Guests see this section empty until you set it up.
+        <!-- Room view: the property's items (read-only), then the room's own. -->
+        <template v-else>
+          <div class="flex flex-col gap-2" data-testid="guide-room-inherited">
+            <span class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Icon name="lucide:link" class="size-3.5" />
+              From the property ({{ selectedItems.length }})
+            </span>
+            <GuideItemRows v-if="selectedItems.length" :items="selectedItems" :meta="selectedMeta" muted />
+            <p v-else class="rounded-lg border border-dashed px-4 py-4 text-center text-xs text-muted-foreground">
+              The property has none yet.
+            </p>
+          </div>
+
+          <div v-if="roomCanAdd" class="flex flex-col gap-2" data-testid="guide-room-own">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="flex items-center gap-1.5 text-xs font-medium">
+                <Icon name="lucide:door-closed" class="size-3.5 text-muted-foreground" />
+                Only in {{ room.name }} ({{ roomItems.length }})
+              </span>
+              <div class="flex items-center gap-2">
+                <Button
+                  v-if="roomItems.length && !selecting"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 gap-1.5"
+                  data-testid="guide-select"
+                  @click="selecting = true"
+                >
+                  <Icon name="lucide:list-checks" class="size-3.5" />
+                  Select
+                </Button>
+                <Button :variant="roomItems.length ? 'outline' : 'default'" size="sm" class="h-8 gap-1.5" data-testid="guide-room-edit" @click="edit(selectedKind, true)">
+                  <Icon :name="roomItems.length ? 'lucide:pencil' : 'lucide:plus'" class="size-3.5" />
+                  {{ roomItems.length ? 'Edit' : `Add for ${room.name}` }}
+                </Button>
+              </div>
+            </div>
+            <SetupBulkBar
+              v-model:selecting="selecting"
+              select-all
+              :listing-id="listing.id"
+              :selected-count="selectedIds.length"
+              :total="roomItems.length"
+              :noun="selectedMeta.noun"
+              :copy-note="`Copies go to the end of the ${selectedMeta.label.toLowerCase()} of the listings you pick (their property content).`"
+              :delete-note="`The selected ${selectedMeta.noun}s are removed from ${room.name}.`"
+              @toggle-all="selectedIds = selectedIds.length === roomItems.length ? [] : roomItems.map(i => i.id)"
+              @copy="copySelected"
+              @delete="deleteSelected"
+            />
+            <GuideItemRows v-if="roomItems.length" v-model:selected="selectedIds" :items="roomItems" :meta="selectedMeta" :start-at="selectedItems.length" :selecting="selecting" />
+            <p v-else class="rounded-lg border border-dashed px-4 py-4 text-center text-xs text-muted-foreground">
+              Nothing only for {{ room.name }} yet. Guests in this room see the property's {{ selectedMeta.label.toLowerCase() }}.
+            </p>
+          </div>
+          <p v-else class="flex items-center gap-1.5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground" data-testid="guide-room-same">
+            <Icon name="lucide:info" class="size-3.5 shrink-0" />
+            {{ selectedMeta.label }} are the same for every room. Edit them under Property.
           </p>
-        </div>
+        </template>
       </Card>
     </div>
+
+    <GuideSetupCopyDialog v-model:open="copyAllOpen" :listing="listing" />
 
     <ListingGuideContentSheet
       v-if="editingKind"
       v-model:open="sheetOpen"
       :kind="editingKind"
-      :items="listingGuideItems(listing, editingKind)"
+      :items="editingItems"
       :listing-id="listing.id"
       :listing-name="listing.name"
       @save="save"

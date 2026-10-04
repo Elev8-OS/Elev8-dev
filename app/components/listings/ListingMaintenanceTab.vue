@@ -376,7 +376,7 @@ function formatDue(date: string) {
                 data-testid="cleaning-row"
                 @click="openCleaning(job)"
               >
-                <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-foreground">
                   <Icon :name="cleaningTypeIcons[normalizeCleaningType(job.source)]" class="size-4" />
                 </div>
                 <div class="flex min-w-0 flex-1 flex-col gap-0.5">

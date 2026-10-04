@@ -1,6 +1,7 @@
 import type { Task } from '@/components/tasks/data/schema'
 import type { CalendarEvent, CalendarEventType, CalendarListing, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
 import { useTaskStore } from '@/composables/useTaskStore'
+import { listings } from '~/components/listings/data/listings'
 import { buildAllEvents, eventsForDay, getCalendarListings, getWeekDays, groupEventsByListingAndDay } from '~/components/operations-calendar/data/operations-calendar'
 import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
@@ -43,6 +44,8 @@ export function useOperationsCalendar() {
           id: `task-${task.id}`,
           listingId: listing.id,
           listingName: listing.name,
+          // A room task sits on that room's row, if the listing still has the room.
+          unitId: task.unitId && listing.rooms.some(r => r.id === task.unitId) ? task.unitId : null,
           type: 'task' as CalendarEventType,
           title: task.title,
           start: `${task.dueDate}T09:00:00+08:00`,
@@ -166,13 +169,20 @@ export function useOperationsCalendar() {
       : [...current, type]
   }
 
-  function moveCleaning(payload: { id: string, listingId: string, scheduledAt: string }) {
+  /** Moves a cleaning to the row it was dropped on: a room row sets the room, the listing row clears it. */
+  function moveCleaning(payload: { id: string, listingId: string, scheduledAt: string, unitId?: string | null }) {
     const job = cleaningJobs.value.find(item => item.id === payload.id)
     if (!job)
       return
+    const unitId = payload.unitId ?? null
+    const unitName = unitId
+      ? listings.value.find(l => l.id === payload.listingId)?.unitTypes?.flatMap(ut => ut.units).find(u => u.id === unitId)?.name ?? null
+      : null
     updateCleaningJob(job.id, {
       listingId: payload.listingId,
       listingName: resolveListingName(payload.listingId),
+      unitId,
+      unitName,
       scheduledAt: payload.scheduledAt,
     })
   }

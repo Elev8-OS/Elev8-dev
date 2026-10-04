@@ -88,7 +88,7 @@ const stepMeta: Record<string, { icon: string, colorClasses: string }> = {
                     >ElevAI</span>
                     <span
                       v-if="(step as any).isNew"
-                      class="rounded px-1.5 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+                      class="rounded px-1.5 py-0.5 text-xs font-medium bg-primary/10 text-foreground"
                     >
                       New
                     </span>

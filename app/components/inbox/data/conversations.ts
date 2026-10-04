@@ -1478,7 +1478,7 @@ export const messages: Record<string, Message[]> = {
       aiWritten: true,
       aiReasoning: {
         explanation: 'The booking record from Booking.com shows a check-in date of 28 April with no arrival time supplied, and nothing in this thread had answered that yet. The pre-arrival routine for Seminyak Suites asks for the arrival time about four days out, so the reply confirms the date first and then asks for it. Early check-in is mentioned because the listing marks it as available on request, not because a specific room was held.',
-        source: { listingId: 'lst-2', field: 'listingDetails' },
+        source: { listingId: 'lst-2', field: 'checkInTime' },
       },
     },
     {

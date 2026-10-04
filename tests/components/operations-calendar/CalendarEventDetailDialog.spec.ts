@@ -476,4 +476,47 @@ describe('addMinutesKeepingOffset', () => {
     expect(addMinutesKeepingOffset('2026-10-01T23:00:00+08:00', 90)).toBe('2026-10-02T00:30:00+08:00')
     expect(addMinutesKeepingOffset('2026-10-01T11:00:00Z', 30)).toBe('2026-10-01T11:30:00Z')
   })
+
+  describe('room line', () => {
+    const stubs = {
+      Icon: true,
+      Badge: true,
+      Switch: true,
+      Sheet: { template: '<div><slot /></div>' },
+      SheetContent: { template: '<div><slot /></div>' },
+      SheetHeader: { template: '<div><slot /></div>' },
+      SheetTitle: { template: '<div><slot /></div>' },
+      SheetDescription: { template: '<div><slot /></div>' },
+      SheetFooter: { template: '<div><slot /></div>' },
+      ScrollArea: { template: '<div><slot /></div>' },
+      StaffMultiSelectDropdown: true,
+      DatePicker: true,
+      TimePicker: true,
+    }
+    const base: CalendarEvent = {
+      id: 'evt-room',
+      type: 'cleaning',
+      title: 'Cleaning',
+      listingId: 'lst-1',
+      listingName: '5BR Pool Villa',
+      start: '2028-10-15T11:00:00+08:00',
+      end: '2028-10-15T13:00:00+08:00',
+      colorIndex: 0,
+    }
+    const roomLine = (event: CalendarEvent) =>
+      mount(CalendarEventDetailDialog, { props: { open: true, event }, global: { components: { Button }, stubs } }).find('[data-testid="detail-room"]')
+
+    it('names the room of a room cleaning or task', () => {
+      expect(roomLine({ ...base, unitId: 'un-2' }).text()).toBe('Garden Unit')
+      expect(roomLine({ ...base, type: 'task', unitId: 'un-1' }).text()).toBe('Master Suite')
+    })
+
+    it('says whole property when a multi-unit cleaning has no room', () => {
+      expect(roomLine({ ...base, unitId: null }).text()).toBe('Whole property')
+    })
+
+    it('shows nothing for a listing without rooms', () => {
+      expect(roomLine({ ...base, listingId: 'lst-20', unitId: null }).exists()).toBe(false)
+    })
+  })
 })

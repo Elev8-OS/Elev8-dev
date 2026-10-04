@@ -57,6 +57,7 @@ export function listingSetupProgress(listing: Listing): ListingSetupProgress {
       filled(address.state),
       filled(address.postalCode),
       filled(address.country),
+      listing.photos.length > 0,
     ]),
     section('listing-details', 'Listing Details', 'lucide:file-text', groupChecks(listing, LISTING_DETAIL_GROUPS)),
     section('amenities', 'Amenities', 'lucide:sofa', [

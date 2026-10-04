@@ -4,6 +4,7 @@ import { toast } from 'vue-sonner'
 import { buildOccupancyOptions, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
 import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
 import RatePlanRateRules from '~/components/listings/RatePlanRateRules.vue'
+import { BED_TYPES } from '~/components/listings/data/listing-sleeping'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
@@ -16,7 +17,7 @@ const activeTab = ref<'details' | 'pricing'>('details')
 
 const unitTypes = computed(() => props.listing.unitTypes ?? [])
 
-const bedTypes = ['Single Bed', 'Double Bed', 'Queen Bed', 'King Bed', 'Bunk Bed', 'Sofa Bed', 'Futon']
+const bedTypes = BED_TYPES.map(b => b.type)
 const currencies = [
   { code: 'USD', label: 'USD' },
   { code: 'IDR', label: 'IDR' },

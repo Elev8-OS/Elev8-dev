@@ -530,7 +530,7 @@ defineExpose({ focus: () => focusElement(focusRef.value) })
               <button
                 type="button"
                 class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
-                :class="isServiceFullySelected(service) ? 'border-primary bg-primary text-primary-foreground' : isServicePartiallySelected(service) ? 'border-primary bg-primary/20 text-primary' : 'border-input'"
+                :class="isServiceFullySelected(service) ? 'border-primary bg-primary text-primary-foreground' : isServicePartiallySelected(service) ? 'border-primary bg-primary/20 text-foreground' : 'border-input'"
                 role="checkbox"
                 :aria-checked="isServiceFullySelected(service) ? 'true' : isServicePartiallySelected(service) ? 'mixed' : 'false'"
                 :aria-label="`Select every item in ${service.name}`"

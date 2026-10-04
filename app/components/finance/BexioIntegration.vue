@@ -826,7 +826,7 @@ function handleDisconnect() {
 
                 <!-- Active filter chips -->
                 <div v-if="selectedTagFilters.length > 0" class="flex flex-wrap gap-1 border-b px-3 py-1.5">
-                  <span v-for="tag in selectedTagFilters" :key="tag" class="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                  <span v-for="tag in selectedTagFilters" :key="tag" class="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-foreground">
                     {{ tag }}
                     <button class="hover:text-destructive" @click="toggleCityTag(tag)">
                       <Icon name="i-lucide-x" class="h-2.5 w-2.5" />

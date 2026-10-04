@@ -23,7 +23,11 @@ const props = defineProps<{
   selectAll?: boolean
 }>()
 const emit = defineEmits<{ toggleAll: [], copy: [targetIds: string[]], delete: [] }>()
-/** Select mode. Off: just a Select button. Leaving it clears the selection (the parent watches this). */
+/**
+ * Select mode. The bar shows only while it is on; the parent's section header
+ * holds the Select button that turns it on. Leaving it clears the selection
+ * (the parent watches this).
+ */
 const selecting = defineModel<boolean>('selecting', { default: false })
 
 const plural = (n: number) => `${n} ${props.noun}${n === 1 ? '' : 's'}`
@@ -49,13 +53,7 @@ const deleteOpen = ref(false)
 </script>
 
 <template>
-  <div v-if="!selecting" class="flex justify-end">
-    <Button variant="outline" size="sm" class="h-8 gap-1.5" :disabled="!total" data-testid="bulk-select" @click="selecting = true">
-      <Icon name="lucide:list-checks" class="size-3.5" />
-      Select
-    </Button>
-  </div>
-  <div v-else class="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-1.5" data-testid="setup-bulk-bar">
+  <div v-if="selecting" class="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-1.5" data-testid="setup-bulk-bar">
     <SetupSelectBox
       v-if="selectAll"
       :checked="total > 0 && selectedCount === total"

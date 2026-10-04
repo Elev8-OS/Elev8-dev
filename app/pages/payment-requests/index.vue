@@ -271,7 +271,7 @@ const dateFilterLabel = computed(() => {
           <Button
             variant="outline"
             class="h-9 gap-1.5 px-3"
-            :class="filters.listings.length ? 'border-primary text-primary hover:bg-primary/10' : ''"
+            :class="filters.listings.length ? 'border-primary text-foreground hover:bg-primary/10' : ''"
           >
             <Icon name="lucide:building-2" class="size-4" />
             Listings
@@ -293,7 +293,7 @@ const dateFilterLabel = computed(() => {
                       variant="ghost"
                       size="sm"
                       class="h-7 gap-1 px-2 text-xs"
-                      :class="selectedListingTags.length ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'text-muted-foreground'"
+                      :class="selectedListingTags.length ? 'bg-primary/10 text-foreground hover:bg-primary/20' : 'text-muted-foreground'"
                     >
                       <Icon name="lucide:tags" class="size-3.5" />
                       Tags
@@ -383,7 +383,7 @@ const dateFilterLabel = computed(() => {
           <Button
             variant="outline"
             class="h-9 gap-1.5 px-3"
-            :class="filters.dateFrom ? 'border-primary text-primary hover:bg-primary/10' : ''"
+            :class="filters.dateFrom ? 'border-primary text-foreground hover:bg-primary/10' : ''"
           >
             <Icon name="lucide:calendar" class="size-4" />
             <span class="max-w-[160px] truncate">{{ dateFilterLabel }}</span>

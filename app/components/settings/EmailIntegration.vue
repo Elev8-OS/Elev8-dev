@@ -340,7 +340,7 @@ function copyRecord(record: { host: string, value: string }) {
         <div class="space-y-4">
           <div class="space-y-2">
             <div class="flex items-center gap-2">
-              <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">1</span>
+              <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-foreground">1</span>
               <span class="text-sm font-medium">Add DNS records</span>
             </div>
             <div class="space-y-2">
@@ -376,7 +376,7 @@ function copyRecord(record: { host: string, value: string }) {
 
           <div class="space-y-2">
             <div class="flex items-center gap-2">
-              <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">2</span>
+              <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-foreground">2</span>
               <span class="text-sm font-medium">Verify</span>
             </div>
             <p class="text-[11px] text-muted-foreground">

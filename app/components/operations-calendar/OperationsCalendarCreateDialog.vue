@@ -4,6 +4,7 @@ import { toast } from 'vue-sonner'
 import { useTaskStore } from '@/composables/useTaskStore'
 import DatePicker from '~/components/base/DatePicker.vue'
 import { CLEANING_STEPS_REQUIRED_MESSAGE } from '~/components/cleaning/data/cleaning-steps'
+import { listings } from '~/components/listings/data/listings'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
 import { assigneeOptions, assigneeRoles, staffMembers } from '~/components/tasks/data/data'
@@ -12,6 +13,8 @@ import { useCleaningJobs } from '~/composables/useCleaningJobs'
 const props = defineProps<{
   open: boolean
   listingId?: string
+  /** A room of a multi-unit listing (a room row on the board). */
+  unitId?: string | null
   dayKey?: string
   /**
    * Show one form without the Cleaning | Task tabs, e.g. the listing
@@ -48,6 +51,8 @@ const taskPriority = ref('medium')
 const taskDueDate = ref(props.dayKey)
 const taskListingId = ref<string>(props.listingId ?? '')
 const taskListingName = ref<string>(props.listingId ? resolveListingName(props.listingId) : '')
+/** A room of the listing (a room row on the board), or null for the whole property. */
+const taskUnitId = ref<string | null>(props.unitId ?? null)
 const taskImages = ref<string[]>([])
 const taskImageInputRef = ref<HTMLInputElement | null>(null)
 
@@ -68,6 +73,16 @@ watch(() => props.listingId, (id) => {
     taskListingName.value = resolveListingName(id)
   }
 })
+
+watch(() => props.unitId, (id) => {
+  taskUnitId.value = id ?? null
+})
+
+function taskRoomName(): string | undefined {
+  if (!taskUnitId.value)
+    return undefined
+  return listings.value.find(l => l.id === taskListingId.value)?.unitTypes?.flatMap(ut => ut.units).find(u => u.id === taskUnitId.value)?.name
+}
 
 const priorities = [
   { value: 'low', label: 'Low', color: '#16a34a' },
@@ -141,6 +156,7 @@ function resetTaskForm() {
   taskDueDate.value = props.dayKey
   taskListingId.value = props.listingId ?? ''
   taskListingName.value = props.listingId ? resolveListingName(props.listingId) : ''
+  taskUnitId.value = props.unitId ?? null
   taskImages.value = []
   taskAssignee.value = null
   taskAssigneeType.value = null
@@ -209,6 +225,8 @@ function handleCreateTask() {
     status: 'not started',
     priority: taskPriority.value,
     listing: taskListingName.value || (taskListingId.value ? resolveListingName(taskListingId.value) : undefined),
+    unitId: taskRoomName() ? taskUnitId.value ?? undefined : undefined,
+    unitName: taskRoomName(),
     dueDate: taskDueDate.value,
     images: taskImages.value.length ? taskImages.value : undefined,
     assignee: taskAssignee.value ?? undefined,
@@ -246,6 +264,7 @@ function handleCreateTask() {
                 v-if="open"
                 mode="create"
                 :default-listing-id="listingId"
+                :default-unit-id="unitId ?? null"
                 :default-scheduled-at="dayKey ? `${dayKey}T11:00` : undefined"
                 @cancel="close"
                 @save="handleCleaningSave"
@@ -268,8 +287,13 @@ function handleCreateTask() {
                   <ListingPicker
                     v-model="taskListingId"
                     v-model:listing-name="taskListingName"
-                    placeholder="Choose a listing"
+                    v-model:unit-id="taskUnitId"
+                    pick-rooms
+                    placeholder="Choose a listing or room"
                   />
+                  <p v-if="taskRoomName()" class="text-xs text-muted-foreground" data-testid="task-room">
+                    Room: {{ taskRoomName() }}. Leave the room out for the whole property.
+                  </p>
                   <GuestInfoCard v-if="taskListingId" :listing-id="taskListingId" :target-date="taskDueDate" />
                 </div>
 
@@ -442,7 +466,7 @@ function handleCreateTask() {
                                   >
                                     <Icon v-if="taskAssignee === staff.value && taskAssigneeType === 'person'" name="lucide:check" class="h-3 w-3" />
                                   </div>
-                                  <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                                  <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-foreground">
                                     {{ staff.label.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() }}
                                   </div>
                                   <div class="flex min-w-0 flex-col text-left">

@@ -5,6 +5,7 @@ import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Textarea } from '~/components/ui/textarea'
+import { useTaskStore } from '~/composables/useTaskStore'
 
 const passthrough = { template: '<div><slot /></div>' }
 const STUBS = {
@@ -14,6 +15,7 @@ const STUBS = {
   SheetHeader: passthrough,
   SheetTitle: { template: '<h2 data-testid="title"><slot /></h2>' },
   SheetDescription: { template: '<p data-testid="description"><slot /></p>' },
+  SheetFooter: passthrough,
   ScrollArea: passthrough,
   CleaningJobForm: { template: '<div data-testid="cleaning-form" />' },
   ListingPicker: true,
@@ -52,5 +54,13 @@ describe('operationsCalendarCreateDialog', () => {
     expect(wrapper.get('[data-testid="title"]').text()).toBe('New task')
     expect(wrapper.find('[data-testid="cleaning-form"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="description"]').text()).not.toContain(' on ')
+  })
+
+  it('a task started from a room row is saved for that room', async () => {
+    const wrapper = mountDialog({ only: 'task', unitId: 'un-1', dayKey: '2026-10-05' })
+    expect(wrapper.get('[data-testid="task-room"]').text()).toContain('Master Suite')
+    await wrapper.findComponent(Input).setValue('Fix the AC')
+    await wrapper.findAll('button').find(b => b.text() === 'Create Task')!.trigger('click')
+    expect(useTaskStore().tasks.value.find(t => t.title === 'Fix the AC')).toMatchObject({ unitId: 'un-1', unitName: 'Master Suite' })
   })
 })

@@ -95,7 +95,7 @@ function formatCurrency(amount: number, currency: string) {
           <div class="flex flex-col gap-2">
             <Label class="text-xs text-muted-foreground">Guest</Label>
             <div class="flex items-center gap-3">
-              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-foreground">
                 {{ order.guestName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() }}
               </div>
               <div>

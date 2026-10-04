@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Listing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
+import { listingAiStatus, setListingAi } from '~/components/listings/data/listing-ai-status'
 import { getUnits, listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listing: Listing }>()
@@ -8,7 +9,9 @@ const router = useRouter()
 
 const isInactive = computed(() => props.listing.status === 'inactive')
 
-const aiStatusLabel = computed(() => props.listing.aiStatus === 'active' ? 'Pause AI' : 'Activate AI')
+// Multi-unit listings read their AI status from the room types (`listingAiStatus`).
+const aiOn = computed(() => listingAiStatus(props.listing) === 'active')
+const aiStatusLabel = computed(() => aiOn.value ? 'Pause AI' : 'Activate AI')
 
 function viewDetail() {
   router.push(`/listings/${props.listing.id}`)
@@ -43,8 +46,10 @@ function toggleAi() {
   const idx = listings.value.findIndex(l => l.id === props.listing.id)
   if (idx === -1)
     return
-  const aiStatus = listings.value[idx]!.aiStatus === 'active' ? 'paused' : 'active'
-  listings.value[idx] = { ...listings.value[idx]!, aiStatus }
+  // Pauses or activates every room type of a multi-unit listing too.
+  const turnOn = !aiOn.value
+  listings.value = listings.value.map(l => l.id === props.listing.id ? setListingAi(l, turnOn) : l)
+  toast.success(turnOn ? 'ElevAI activated' : 'ElevAI paused')
 }
 </script>
 
@@ -68,7 +73,7 @@ function toggleAi() {
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem class="gap-2" @click="toggleAi">
-        <SharedAiIcon :custom-class="listing.aiStatus === 'active' ? 'size-4' : 'size-4 grayscale opacity-50'" />
+        <SharedAiIcon :custom-class="aiOn ? 'size-4' : 'size-4 grayscale opacity-50'" />
         {{ aiStatusLabel }}
       </DropdownMenuItem>
     </DropdownMenuContent>

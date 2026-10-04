@@ -15,6 +15,8 @@ const props = withDefaults(defineProps<{
   modelValue?: Partial<CleaningJob> | null
   defaultListingId?: string | null
   defaultListingName?: string | null
+  /** A room of a multi-unit listing (e.g. from a room row on the Operations Calendar). */
+  defaultUnitId?: string | null
   defaultScheduledAt?: string | null
   defaultScheduledAtTo?: string | null
   mode?: 'create' | 'edit'
@@ -22,6 +24,7 @@ const props = withDefaults(defineProps<{
   modelValue: null,
   defaultListingId: null,
   defaultListingName: null,
+  defaultUnitId: null,
   defaultScheduledAt: null,
   defaultScheduledAtTo: null,
   mode: 'edit',
@@ -71,6 +74,8 @@ function diffMinutes(from: string, to: string) {
 const form = reactive<CleaningJobInput>({
   listingId: props.modelValue?.listingId ?? props.defaultListingId ?? '',
   listingName: props.modelValue?.listingName ?? props.defaultListingName ?? '',
+  unitId: props.modelValue?.unitId ?? props.defaultUnitId ?? null,
+  unitName: props.modelValue?.unitName ?? null,
   scheduledAt: props.modelValue?.scheduledAt ?? props.defaultScheduledAt ?? '',
   cleanerIds: props.modelValue?.cleanerIds ?? [],
   cleanerNames: props.modelValue?.cleanerNames ?? [],
@@ -302,6 +307,7 @@ watch(() => props.modelValue, (next) => {
     return
   form.listingId = next.listingId ?? props.defaultListingId ?? ''
   form.listingName = next.listingName ?? props.defaultListingName ?? ''
+  form.unitId = next.unitId ?? props.defaultUnitId ?? null
   form.scheduledAt = next.scheduledAt ?? props.defaultScheduledAt ?? ''
   form.cleanerIds = next.cleanerIds ?? []
   form.cleanerNames = next.cleanerNames ?? []
@@ -328,6 +334,20 @@ watch(() => props.defaultListingId, (next) => {
     form.listingId = next
   }
 })
+
+watch(() => props.defaultUnitId, (next) => {
+  if (isCreate.value)
+    form.unitId = next ?? null
+})
+
+// The room's name rides along with its id (`CleaningJob.unitName`).
+watch(() => [form.listingId, form.unitId], () => {
+  const units = listings.value.find(l => l.id === form.listingId)?.unitTypes?.flatMap(ut => ut.units) ?? []
+  const unit = units.find(u => u.id === form.unitId)
+  if (form.unitId && !unit)
+    form.unitId = null
+  form.unitName = unit?.name ?? null
+}, { immediate: true })
 
 watch(() => props.defaultScheduledAt, (next) => {
   if (isCreate.value && next !== undefined && next !== null) {
@@ -367,8 +387,13 @@ function submit() {
       <ListingPicker
         v-model="form.listingId"
         v-model:listing-name="form.listingName"
-        placeholder="Choose a listing"
+        v-model:unit-id="form.unitId"
+        pick-rooms
+        placeholder="Choose a listing or room"
       />
+      <p v-if="form.unitName" class="text-xs text-muted-foreground" data-testid="cleaning-room">
+        Room: {{ form.unitName }}. Leave the room out to clean the whole property (common areas).
+      </p>
       <Input v-if="!isCreate" v-model="form.listingName" placeholder="Listing name" class="mt-2" />
       <GuestInfoCard v-if="form.listingId" :listing-id="form.listingId" :target-date="cleaningDate" />
       <div

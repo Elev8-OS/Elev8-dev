@@ -172,7 +172,7 @@ const formatRelative = (iso: string) => {
             >
               <TableCell>
                 <div class="flex items-center gap-2">
-                  <div class="flex size-8 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                  <div class="flex size-8 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-foreground">
                     {{ t.logoText }}
                   </div>
                   <div>

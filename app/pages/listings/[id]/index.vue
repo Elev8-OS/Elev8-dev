@@ -10,7 +10,6 @@ import ListingPricingTab from '~/components/listings/ListingPricingTab.vue'
 import ListingProtectionTab from '~/components/listings/ListingProtectionTab.vue'
 import ListingReviewsTab from '~/components/listings/ListingReviewsTab.vue'
 import ListingSettingsTab from '~/components/listings/ListingSettingsTab.vue'
-import ListingTestAIDialog from '~/components/listings/ListingTestAIDialog.vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -38,13 +37,6 @@ watch(() => route.query.tab, (tab) => {
   if (TABS.includes(String(tab)))
     activeTab.value = String(tab)
 })
-const showTestAi = ref(false)
-const openSchedule = ref(false)
-
-function handleOpenSchedule() {
-  openSchedule.value = true
-  nextTick(() => { openSchedule.value = false })
-}
 </script>
 
 <template>
@@ -60,13 +52,7 @@ function handleOpenSchedule() {
   </div>
 
   <div v-else class="flex flex-col gap-6">
-    <ListingHeroCompact
-      :listing="listing"
-      :open-schedule="openSchedule"
-      @update="updateListing"
-      @open-test-ai="showTestAi = true"
-      @open-schedule="handleOpenSchedule"
-    />
+    <ListingHeroCompact :listing="listing" @update="updateListing" />
 
     <Tabs :key="activeUnitId ?? 'no-unit'" v-model="activeTab">
       <div class="overflow-x-auto">
@@ -138,11 +124,5 @@ function handleOpenSchedule() {
         <ListingSettingsTab :listing="listing" @update="updateListing" />
       </TabsContent>
     </Tabs>
-
-    <ListingTestAIDialog
-      :listing="listing"
-      :open="showTestAi"
-      @update:open="showTestAi = $event"
-    />
   </div>
 </template>

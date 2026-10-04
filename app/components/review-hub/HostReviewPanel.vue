@@ -244,7 +244,7 @@ defineExpose({ autoGenerate })
           <div v-if="isGenerating" class="space-y-4">
             <div class="flex flex-col items-center justify-center gap-3 rounded-lg border bg-gradient-to-b from-primary/5 to-transparent p-8 text-center">
               <div class="flex size-10 items-center justify-center rounded-full bg-primary/15">
-                <Icon name="lucide:loader-circle" class="size-6 animate-spin text-primary" />
+                <Icon name="lucide:loader-circle" class="size-6 animate-spin text-foreground" />
               </div>
               <div class="space-y-1">
                 <p class="text-sm font-medium">
@@ -445,7 +445,7 @@ defineExpose({ autoGenerate })
                   type="button"
                   class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors"
                   :class="selectedHostTags.includes(option.code)
-                    ? 'bg-primary/10 text-primary border-primary/30'
+                    ? 'bg-primary/10 text-foreground border-primary/30'
                     : 'bg-muted/50 text-muted-foreground border-transparent hover:border-muted-foreground/30'"
                   :disabled="isSubmitted"
                   @click="toggleHostTag(option.code)"

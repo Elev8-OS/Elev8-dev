@@ -187,7 +187,7 @@ const attendanceInsights = computed(() => {
       <!-- Hero -->
       <div class="flex items-start gap-4">
         <Avatar class="size-16">
-          <AvatarFallback class="bg-primary/10 text-primary text-xl">
+          <AvatarFallback class="bg-primary/10 text-foreground text-xl">
             {{ user.initials }}
           </AvatarFallback>
         </Avatar>

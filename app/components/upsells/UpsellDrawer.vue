@@ -61,7 +61,7 @@ function stepCircleClass(stepId: number) {
   if (currentStep.value === stepId)
     return 'bg-primary text-primary-foreground'
   if (visitedSteps.value.has(stepId))
-    return 'bg-primary/20 text-primary'
+    return 'bg-primary/20 text-foreground'
   return 'bg-muted text-muted-foreground'
 }
 

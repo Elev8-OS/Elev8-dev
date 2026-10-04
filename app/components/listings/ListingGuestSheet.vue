@@ -57,7 +57,7 @@ function initials(name: string) {
           <div class="flex items-center gap-3">
             <div
               class="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-              :class="isBlock ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'"
+              :class="isBlock ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-foreground'"
             >
               <Icon v-if="isBlock" name="lucide:ban" class="size-5" />
               <span v-else>{{ initials(booking.guestName) }}</span>

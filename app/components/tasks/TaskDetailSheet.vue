@@ -6,6 +6,7 @@ import { progressKindFor, timelineSentence } from '@/components/tasks/data/timel
 import { useCurrentDashboardUser } from '@/composables/useCurrentDashboardUser'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskStore } from '@/composables/useTaskStore'
+import { listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{
   task: Task | null
@@ -17,6 +18,12 @@ const emit = defineEmits<{
 }>()
 
 const { addStatusUpdate, addImage } = useTaskStore()
+
+/** Tasks store the listing NAME; a listing with rooms shows the task's room (or "Whole property"). */
+const taskListingHasRooms = computed(() => {
+  const listing = listings.value.find(l => l.name === props.task?.listing)
+  return listing?.unitType === 'multi' && (listing.unitTypes ?? []).some(ut => ut.units.length)
+})
 const { currentUser } = useCurrentDashboardUser()
 const { isBlockedOnOwner, startBlockedReason, completeWithReceipt } = useTaskOwnerApproval()
 
@@ -288,6 +295,16 @@ function formatDate(iso: string): string {
                 </p>
                 <p class="font-medium">
                   {{ task.listing || '—' }}
+                </p>
+              </div>
+              <!-- Room, for a multi-unit listing; none means the whole property. -->
+              <div v-if="taskListingHasRooms" data-testid="task-detail-room">
+                <p class="text-xs text-muted-foreground">
+                  Room
+                </p>
+                <p class="flex items-center gap-1.5 font-medium">
+                  <Icon :name="task.unitName ? 'lucide:door-closed' : 'lucide:house'" class="size-3.5 text-muted-foreground" />
+                  {{ task.unitName || 'Whole property' }}
                 </p>
               </div>
               <div>

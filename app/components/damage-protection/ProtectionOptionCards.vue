@@ -54,7 +54,7 @@ function pick(option: ProtectionOption) {
         </div>
         <span
           v-if="view.isDefault"
-          class="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-primary uppercase"
+          class="rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-foreground uppercase"
         >
           Recommended
         </span>

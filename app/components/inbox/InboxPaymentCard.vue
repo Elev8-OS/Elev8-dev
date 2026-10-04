@@ -139,7 +139,7 @@ const formattedExpiry = computed(() => {
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border/60 bg-muted/40 px-3.5 py-2.5">
       <div class="flex items-center gap-2">
-        <div class="flex size-7 items-center justify-center rounded-lg" :class="isCityTax ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-primary/10 text-primary'">
+        <div class="flex size-7 items-center justify-center rounded-lg" :class="isCityTax ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-primary/10 text-foreground'">
           <Icon :name="isCityTax ? 'lucide:landmark' : 'lucide:credit-card'" class="size-4" />
         </div>
         <div>

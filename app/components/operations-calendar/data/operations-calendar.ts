@@ -4,6 +4,7 @@ import type { OwnerStay } from '~/components/owners/data/owner-stays'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
 import { cleaningDateKey } from '~/components/cleaning/data/cleaning-link'
+import { stayUnitIds } from '~/components/listings/data/calendar-rooms'
 import { listings } from '~/components/listings/data/listings'
 import { mergedBookingsFor } from '~/components/operations-calendar/data/calendar-stays'
 import { mockUpsellOrders } from '~/components/upsells/data/upsell-orders'
@@ -46,6 +47,8 @@ export interface CalendarEvent {
   id: string
   listingId: string
   listingName: string
+  /** The room it belongs to, for a multi-unit listing; missing = the whole property (e.g. common areas). */
+  unitId?: string | null
   type: CalendarEventType
   title: string
   start: string // ISO datetime
@@ -103,6 +106,14 @@ export interface CalendarListing {
   isSingleUnit: boolean
   tags: string[]
   bookings: Booking[]
+  /** A multi-unit listing's rooms, each drawn as its own row under the listing. Empty otherwise. */
+  rooms: CalendarRoom[]
+}
+
+export interface CalendarRoom {
+  id: string
+  name: string
+  typeName: string
 }
 
 /**
@@ -146,6 +157,9 @@ export function getCalendarListings(reservations: ReservationEntry[] = []): Cale
     isSingleUnit: listing.unitType === 'single',
     tags: listing.tags,
     bookings: mergedBookingsFor(listing.id, listing.bookings, reservations),
+    rooms: listing.unitType === 'multi'
+      ? (listing.unitTypes ?? []).flatMap(ut => ut.units.map(u => ({ id: u.id, name: u.name, typeName: ut.name })))
+      : [],
   }))
 }
 
@@ -380,6 +394,7 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
       id: job.id,
       listingId: job.listingId,
       listingName: listing?.name ?? job.listingName,
+      unitId: job.unitId ?? null,
       type: 'cleaning' as CalendarEventType,
       title: `Cleaning${guestSuffix}`,
       start: job.scheduledAt,
@@ -398,7 +413,12 @@ export function buildCleaningEvents(listingMap?: Map<string, CalendarListing>, j
   })
 }
 
-export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>, jobs?: CleaningJob[]): CalendarEvent[] {
+/**
+ * A check-out cleaning for every stay that has no cleaning job that day. A stay
+ * in rooms gets one per room it occupied (`stayUnitIds`), on that room's row;
+ * a stay with no room gets one for the whole listing.
+ */
+export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>, jobs?: CleaningJob[], reservations: ReservationEntry[] = []): CalendarEvent[] {
   const existingKeys = new Set((jobs ?? cleaningJobs.value).map(job => `${job.listingId}:${cleaningDateKey(job.scheduledAt)}`))
   const events: CalendarEvent[] = []
 
@@ -412,22 +432,27 @@ export function buildCheckoutCleanings(listingMap?: Map<string, CalendarListing>
       if (existingKeys.has(key))
         continue
       const start = toLocalDateTime(booking.checkOut, checkOutTime)
-      events.push({
-        id: `checkout-cleaning-${booking.id}`,
-        listingId: listing.id,
-        listingName: listingMap?.get(listing.id)?.name ?? listing.name,
-        type: 'cleaning' as CalendarEventType,
-        title: `Cleaning · ${booking.guestName}`,
-        start,
-        end: new Date(new Date(start).getTime() + 120 * 60000).toISOString(),
-        guestName: booking.guestName,
-        hasPet: booking.hasPet ?? false,
-        cleaningType: 'check_out',
-        cleaningTypeLabel: cleaningTypeLabels.check_out,
-        priority: 'high',
-        source: booking.source,
-        colorIndex: listingMap?.get(listing.id)?.colorIndex ?? listing.colorIndex,
-      })
+      const rooms = listing.rooms?.length ? stayUnitIds(booking, reservations) : []
+      for (const unitId of rooms.length ? rooms : [null]) {
+        events.push({
+          id: unitId && rooms.length > 1 ? `checkout-cleaning-${booking.id}-${unitId}` : `checkout-cleaning-${booking.id}`,
+          listingId: listing.id,
+          listingName: listingMap?.get(listing.id)?.name ?? listing.name,
+          unitId,
+          type: 'cleaning' as CalendarEventType,
+          title: `Cleaning · ${booking.guestName}`,
+          start,
+          // Keep the start's offset: a toISOString() end showed a Bali 13:00 as "05:00".
+          end: addMinutesKeepingOffset(start, 120),
+          guestName: booking.guestName,
+          hasPet: booking.hasPet ?? false,
+          cleaningType: 'check_out',
+          cleaningTypeLabel: cleaningTypeLabels.check_out,
+          priority: 'high',
+          source: booking.source,
+          colorIndex: listingMap?.get(listing.id)?.colorIndex ?? listing.colorIndex,
+        })
+      }
     }
   }
 
@@ -453,7 +478,7 @@ export function buildAllEvents(jobs?: CleaningJob[], reservations: ReservationEn
   }
 
   events.push(...buildCleaningEvents(listingMap, jobs))
-  events.push(...buildCheckoutCleanings(listingMap, jobs))
+  events.push(...buildCheckoutCleanings(listingMap, jobs, reservations))
   events.push(...buildMockTaskEvents(calendarListings))
   events.push(...buildUpsellEvents(calendarListings))
   return events

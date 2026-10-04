@@ -1,6 +1,8 @@
+import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { describe, expect, it } from 'vitest'
 import {
   buildAllEvents,
+  buildCheckoutCleanings,
   eventsForDay,
   formatLocalDateKey,
   getCalendarListings,
@@ -81,5 +83,39 @@ describe('operations-calendar data', () => {
       expect(listingMap!.has(day.key)).toBe(true)
       expect(Array.isArray(listingMap!.get(day.key))).toBe(true)
     }
+  })
+})
+
+describe('rooms on the operations calendar', () => {
+  it('a multi-unit listing carries its rooms; a single-unit one has none', () => {
+    const calendar = getCalendarListings([])
+    expect(calendar.find(l => l.id === 'lst-1')!.rooms.map(r => r.name)).toEqual(['Master Suite', 'Garden Unit', 'Pool Unit', 'Loft Unit'])
+    const single = calendar.find(l => l.isSingleUnit)
+    if (single)
+      expect(single.rooms).toEqual([])
+  })
+
+  it('a stay in two rooms gets a check-out cleaning per room, ending in local time', () => {
+    const reservation = {
+      id: 'r-two-rooms',
+      listingId: 'lst-1',
+      listingName: 'x',
+      guestName: 'Two Rooms Guest',
+      checkIn: '2030-01-10',
+      checkOut: '2030-01-12',
+      nights: 2,
+      status: 'verified',
+      channel: 'Direct',
+      totalPrice: 0,
+      assignedUnitIds: ['un-1', 'un-3'],
+    } as ReservationEntry
+    const calendar = getCalendarListings([reservation])
+    const map = new Map(calendar.map(l => [l.id, l]))
+    const cleanings = buildCheckoutCleanings(map, [], [reservation]).filter(e => e.guestName === 'Two Rooms Guest')
+    expect(cleanings.map(c => c.unitId)).toEqual(['un-1', 'un-3'])
+    expect(new Set(cleanings.map(c => c.id)).size).toBe(2)
+    // 2 hours after the listing's check-out time, still in +08:00.
+    expect(cleanings[0]!.end).toMatch(/\+08:00$/)
+    expect(cleanings[0]!.end.slice(11, 16)).toBe(`${String(Number(cleanings[0]!.start.slice(11, 13)) + 2).padStart(2, '0')}:${cleanings[0]!.start.slice(14, 16)}`)
   })
 })

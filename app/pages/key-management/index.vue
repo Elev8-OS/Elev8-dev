@@ -276,7 +276,7 @@ const activeTab = ref('keys')
               <Button
                 variant="outline"
                 class="h-9 gap-1.5 px-3"
-                :class="filters.listings.length ? 'border-primary text-primary hover:bg-primary/10' : ''"
+                :class="filters.listings.length ? 'border-primary text-foreground hover:bg-primary/10' : ''"
               >
                 <Icon name="lucide:building-2" class="size-4" />
                 Listings

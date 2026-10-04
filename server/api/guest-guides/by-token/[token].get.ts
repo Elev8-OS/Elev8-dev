@@ -1,6 +1,6 @@
 import { createError, defineEventHandler, getRouterParam } from 'h3'
 import { conversations } from '../../../../app/components/inbox/data/conversations'
-import { listingGuideContent } from '../../../../app/components/listings/data/guest-guide-content'
+import { findUnit, guideContentForRooms, roomAsProperty } from '../../../../app/components/listings/data/listing-room-overrides'
 import { listings } from '../../../../app/components/listings/data/listings'
 import { buildGuestGuideCssVariables } from '../../../../app/lib/branding-colors'
 import { findGuideByToken, findLinkByToken } from '../../../utils/guest-guide-store'
@@ -52,13 +52,22 @@ export default defineEventHandler(async (event) => {
     cssVariables: buildGuestGuideCssVariables(tenantBranding.guestGuideColors),
   }
 
+  // The stay's rooms (multi-unit listing). Their own guide items are added after
+  // the property's, and a single room's own values (e.g. Wi-Fi) replace the
+  // property's; the property name stays (`listing-room-overrides.ts`).
+  const unitIds = listing ? (link.unitIds ?? []).filter(id => findUnit(listing!, id)) : []
+  const rooms = unitIds.map(id => findUnit(listing!, id)!.name)
+  if (listing && unitIds.length === 1)
+    listing = { ...roomAsProperty(listing, unitIds[0]!), name: listing.name }
+
   // The listing owns check-in/out steps, house rules and Good to Know; the guide
   // only shows or hides those sections (`guest-guide-content.ts`).
   // Item text is rich text written by the host: sanitized here, so guide-app can render it as HTML.
-  const guideContent = Object.fromEntries(Object.entries(listingGuideContent(listing)).map(([kind, items]) => [
+  const content = listing ? guideContentForRooms(listing, unitIds.length === 1 ? [] : unitIds) : { checkin: [], checkout: [], house_rules: [], good_to_know: [] }
+  const guideContent = Object.fromEntries(Object.entries(content).map(([kind, items]) => [
     kind,
     items.map(item => item.text ? { ...item, text: sanitizeRichTextForGuests(item.text) } : item),
   ]))
 
-  return { link, guide, listing, guideContent, checkIn, checkOut, branding }
+  return { link, guide, listing, guideContent, rooms, checkIn, checkOut, branding }
 })
