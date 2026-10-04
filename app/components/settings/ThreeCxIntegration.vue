@@ -182,7 +182,7 @@ function assignExtensionLocal(staffId: string, value: string) {
               <tr v-for="staff in filteredStaff" :key="staff.id" class="border-t">
                 <td class="px-3 py-2">
                   <div class="flex items-center gap-2">
-                    <div class="flex size-7 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">{{ staff.initials }}</div>
+                    <div class="flex size-7 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-foreground">{{ staff.initials }}</div>
                     <span class="font-medium">{{ staff.name }}</span>
                   </div>
                 </td>

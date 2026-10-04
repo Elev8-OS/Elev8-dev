@@ -2,6 +2,7 @@
 import type { Listing, Unit, UnitType } from '~/components/listings/data/listings'
 import { reservations as allReservations } from '~/components/inbox/data/conversations'
 import { toast } from 'vue-sonner'
+import { roomCustomCount } from '~/components/listings/data/listing-room-overrides'
 import { getUnits } from '~/components/listings/data/listings'
 import ListingSetupFieldPanel from '~/components/listings/ListingSetupFieldPanel.vue'
 import UnitTypeManager from '~/components/listings/UnitTypeManager.vue'
@@ -274,7 +275,8 @@ const availableDevices = computed(() => smartLock.availableDevices.value)
   <div class="flex h-full min-h-0">
     <!-- Sidebar: rooms grouped by type -->
     <div class="w-[280px] flex-shrink-0 border-r flex flex-col bg-muted/20">
-      <div class="px-4 py-3 border-b flex-shrink-0">
+      <!-- Same height as the room editor's header (h-24), so the two bottom borders meet. -->
+      <div class="flex h-24 flex-shrink-0 flex-col justify-center border-b px-4">
         <h3 class="text-base font-semibold">
           Rooms
         </h3>
@@ -322,10 +324,19 @@ const availableDevices = computed(() => smartLock.availableDevices.value)
                 <Icon
                   :name="activeUnitId === unit.id ? 'lucide:door-open' : 'lucide:door-closed'"
                   class="size-3.5 shrink-0"
-                  :class="activeUnitId === unit.id ? 'text-primary' : 'text-muted-foreground'"
+                  :class="activeUnitId === unit.id ? 'text-foreground' : 'text-muted-foreground'"
                 />
                 <span class="flex-1 truncate" :class="unit.status === 'inactive' ? 'text-muted-foreground line-through' : ''">
                   {{ unit.name }}
+                </span>
+                <!-- How many settings this room sets for itself (the rest come from the property). -->
+                <span
+                  v-if="roomCustomCount(unit)"
+                  class="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                  :title="`${roomCustomCount(unit)} custom for this room`"
+                  data-testid="room-custom-count"
+                >
+                  {{ roomCustomCount(unit) }} custom
                 </span>
                 <button
                   v-if="getRoomLockCount(unit.id) > 0"
@@ -458,7 +469,7 @@ const availableDevices = computed(() => smartLock.availableDevices.value)
 
     <!-- Manage Room Types Dialog -->
     <Dialog v-model:open="showTypesDialog">
-      <DialogContent class="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent class="h-[85vh] max-h-[85vh] w-[calc(100vw-2rem)] max-w-5xl sm:max-w-5xl flex flex-col p-0 gap-0">
         <DialogHeader class="px-6 py-4 border-b flex-shrink-0">
           <DialogTitle class="flex items-center gap-2">
             <Icon name="lucide:settings-2" class="size-4" />

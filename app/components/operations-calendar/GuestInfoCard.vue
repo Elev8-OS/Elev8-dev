@@ -66,7 +66,7 @@ function formatDate(value: string) {
   >
     <div
       class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
-      :class="isBlock ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'"
+      :class="isBlock ? 'bg-white/20 text-white' : 'bg-primary/10 text-foreground'"
     >
       <Icon
         v-if="isBlock"

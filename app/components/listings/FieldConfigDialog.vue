@@ -98,7 +98,7 @@ const unitCount = computed(() => getUnits(props.listing).length)
               v-for="stage in stages"
               :key="stage.value"
               class="rounded-full border px-3 py-1 text-xs transition-colors"
-              :class="localStages.includes(stage.value) ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'"
+              :class="localStages.includes(stage.value) ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground'"
               @click="toggleStage(stage.value)"
             >
               {{ stage.label }}

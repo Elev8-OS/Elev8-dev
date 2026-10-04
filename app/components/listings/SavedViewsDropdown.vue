@@ -136,7 +136,7 @@ function handleLoadView(viewId: string) {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent class="w-72" align="start">
+      <DropdownMenuContent class="w-72" align="end">
         <DropdownMenuItem
           v-if="canUpdateActiveView"
           @click="emit('update')"

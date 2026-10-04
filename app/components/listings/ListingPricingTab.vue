@@ -1208,7 +1208,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                       class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
                       :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
                     >
-                      <span class="text-[10px] font-medium" :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
+                      <span class="text-[10px] font-medium" :class="boolDayChecked(addRatePlanDraft, row.field, d) ? 'text-foreground' : 'text-muted-foreground'">
                         {{ label }}
                       </span>
                       <Checkbox
@@ -1577,7 +1577,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                       class="flex flex-col items-center gap-1 rounded-md border py-1.5 cursor-pointer transition-colors"
                       :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'border-primary bg-primary/5' : 'hover:bg-accent/50'"
                     >
-                      <span class="text-[10px] font-medium" :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'text-primary' : 'text-muted-foreground'">
+                      <span class="text-[10px] font-medium" :class="boolDayChecked(editRatePlanDraft, row.field, d) ? 'text-foreground' : 'text-muted-foreground'">
                         {{ label }}
                       </span>
                       <Checkbox

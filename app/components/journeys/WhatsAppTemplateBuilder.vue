@@ -323,7 +323,7 @@ const statusBanner = computed(() => {
                     {{ variableMapping[positional] }}
                   </code>
                   <Icon name="i-lucide-arrow-right" class="h-3 w-3 text-muted-foreground" />
-                  <code class="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                  <code class="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-foreground">
                     &#123;&#123;{{ positional }}&#125;&#125;
                   </code>
                 </div>

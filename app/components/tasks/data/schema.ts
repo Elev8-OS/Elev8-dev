@@ -67,6 +67,9 @@ export const taskSchema = z.object({
   assigneeType: z.enum(['role', 'person']).optional(),
   priority: z.string(),
   listing: z.string().optional(),
+  /** A room of a multi-unit listing; missing = the whole property. `unitName` rides along for display. */
+  unitId: z.string().optional(),
+  unitName: z.string().optional(),
   description: z.string().optional(),
   dueDate: z.string().optional(),
   progress: z.number().min(0).max(100).optional(),

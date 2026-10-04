@@ -196,7 +196,7 @@ function uploadPhoto(id: string, event: Event) {
               :aria-checked="(item.icon || 'lucide:info') === icon"
               :aria-label="icon.replace('lucide:', '')"
               class="flex size-8 items-center justify-center rounded-md border transition-colors"
-              :class="(item.icon || 'lucide:info') === icon ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted'"
+              :class="(item.icon || 'lucide:info') === icon ? 'border-primary bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted'"
               data-testid="guide-item-icon"
               @click="update(item.id, { icon })"
             >

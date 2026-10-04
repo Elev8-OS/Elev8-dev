@@ -1,20 +1,29 @@
 <script setup lang="ts">
-import type { ListingAddress } from '~/components/listings/data/listing-address'
+import type { LatLng, ListingAddress, PlaceSuggestion } from '~/components/listings/data/listing-address'
 import type { AvoidTopic } from '~/components/listings/data/listing-avoid-topics'
 import type { ListingSetupSection } from '~/components/listings/data/listing-setup-progress'
 import type { Listing, Unit } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import AvoidTopicDialog from '~/components/listings/AvoidTopicDialog.vue'
-import { countryName, LISTING_COUNTRIES, listingAddress, listingPropertyType, listingTimeZone, locationLabel, PROPERTY_TYPES, timeZoneOptions } from '~/components/listings/data/listing-address'
+import { countryName, LISTING_COUNTRIES, listingAddress, listingPin, listingPropertyType, listingTimeZone, locationLabel, PROPERTY_TYPES, reverseGeocode, timeZoneOptions } from '~/components/listings/data/listing-address'
 import { amenityConfigKey, LISTING_ROOMS_TARGET, PROPERTY_AMENITY_GROUPS, propertyAmenityGroups, ROOM_AMENITY_GROUPS, roomAmenityTargets, setRoomAmenities, toggleAmenity } from '~/components/listings/data/listing-amenities'
 import { AVOID_TOPIC_ACTIONS, avoidTopicActionLabel, avoidTopicStagesLabel, copyAvoidTopicsToListings, listingAvoidTopics, removeAvoidTopic, removeAvoidTopics, saveAvoidTopic } from '~/components/listings/data/listing-avoid-topics'
 import { LISTING_DETAIL_GROUPS } from '~/components/listings/data/listing-details'
+import { roomCustomCount } from '~/components/listings/data/listing-room-overrides'
 import { addCustomSop, copySopsToListings, customSopConfigKey, customSopCounts, customSopSelectionId, customSopsIn, deleteSops, removeCustomSop, removedSopFieldsIn, restoreSopGroup, selectableSopIds, SOP_GROUPS, updateCustomSop, visibleSopGroups } from '~/components/listings/data/listing-sops'
 import { getUnitById } from '~/components/listings/data/listings'
 import FieldConfigDialog from '~/components/listings/FieldConfigDialog.vue'
+import ListingPhotosEditor from '~/components/listings/ListingPhotosEditor.vue'
 import ListingSetupFieldGroups from '~/components/listings/ListingSetupFieldGroups.vue'
+import LocationPinMap from '~/components/listings/setup/LocationPinMap.vue'
+import PlaceSearch from '~/components/listings/setup/PlaceSearch.vue'
+import RoomPhotosCard from '~/components/listings/setup/RoomPhotosCard.vue'
+import RoomSettingsCard from '~/components/listings/setup/RoomSettingsCard.vue'
+import RoomSopsCard from '~/components/listings/setup/RoomSopsCard.vue'
 import SetupBulkBar from '~/components/listings/setup/SetupBulkBar.vue'
 import SetupSelectBox from '~/components/listings/setup/SetupSelectBox.vue'
+import SleepingArrangementCard from '~/components/listings/setup/SleepingArrangementCard.vue'
+import SopAiDialog from '~/components/listings/SopAiDialog.vue'
 
 const props = defineProps<{
   listing: Listing
@@ -40,9 +49,6 @@ function hasConfig(key: string) { return !!props.listing.resources.fieldConfig?.
 
 const activeTab = defineModel<ListingSetupSection>('section', { default: 'basics' })
 
-function updateResources(patch: Partial<Listing['resources']>) {
-  emit('update', { ...props.listing, resources: { ...props.listing.resources, ...patch } })
-}
 const address = computed(() => listingAddress(props.listing))
 const timeZone = computed(() => listingTimeZone(props.listing))
 const propertyType = computed(() => listingPropertyType(props.listing))
@@ -53,10 +59,41 @@ function updateAddress(patch: Partial<ListingAddress>) {
   const next = { ...address.value, ...patch }
   emit('update', { ...props.listing, address: next, location: locationLabel(next, props.listing.location) })
 }
+
+// Pinpoint. Moving the pin saves it, then fills the address from it (mock
+// reverse geocoding, `reverseGeocode`). The unit number is kept; a newer move
+// wins over a lookup still running.
+const pin = computed(() => listingPin(props.listing))
+const pinLookup = ref<'idle' | 'loading' | 'none'>('idle')
+let pinRequest = 0
+async function movePin(next: LatLng) {
+  emit('update', { ...props.listing, coordinates: next })
+  const request = ++pinRequest
+  pinLookup.value = 'loading'
+  const found = await reverseGeocode(next)
+  if (request !== pinRequest)
+    return
+  if (!found) {
+    pinLookup.value = 'none'
+    return
+  }
+  pinLookup.value = 'idle'
+  updateAddress(found)
+  toast.success(`Address filled from the pin: ${found.city}, ${found.state}`)
+}
+/** A search suggestion: move the pin and fill the address in one update. */
+function choosePlace(place: PlaceSuggestion) {
+  pinRequest++ // a lookup still running for an older pin is dropped
+  pinLookup.value = 'idle'
+  const next = { ...address.value, ...place.address }
+  emit('update', { ...props.listing, coordinates: place.pin, address: next, location: locationLabel(next, props.listing.location) })
+  toast.success(`Pin moved to ${place.label}`)
+}
 const locationComplete = computed(() => !!propertyType.value && (['street', 'city', 'state', 'postalCode', 'country'] as const).every(k => !!address.value[k].trim()))
 // Unfinished cards start open, finished ones collapsed. Set once, so a card
 // does not snap shut the moment its last field is filled in.
 const openLocation = ref(locationComplete.value ? [] : ['location'])
+const openPhotos = ref(props.listing.photos.length ? [] : ['photos'])
 
 function updateListingField<K extends keyof Listing>(key: K, value: Listing[K]) {
   emit('update', { ...props.listing, [key]: value })
@@ -68,6 +105,8 @@ const amenityKind = ref<'property' | 'room'>('property')
 const amenitySearch = ref('')
 const roomTargets = computed(() => roomAmenityTargets(props.listing))
 const roomTargetId = ref(roomTargets.value[0]?.id ?? LISTING_ROOMS_TARGET)
+const activeUnitTypeName = computed(() => props.listing.unitTypes?.find(ut => ut.units.some(u => u.id === props.activeUnitId))?.name)
+const activeUnitCustom = computed(() => roomCustomCount(activeUnit.value))
 const activeUnitTypeId = computed(() => props.listing.unitTypes?.find(ut => ut.units.some(u => u.id === props.activeUnitId))?.id)
 const shownKind = computed(() => props.viewMode === 'unit' ? 'room' : amenityKind.value)
 const roomTarget = computed(() => {
@@ -127,6 +166,28 @@ function deleteSelectedSops() {
   toast.success(`${n} ${n === 1 ? 'SOP' : 'SOPs'} deleted`)
 }
 
+// Create with AI: which SOP the dialog writes to (a default question, or a custom SOP).
+const sopAi = ref<{ fieldKey: string | null, title: string, customId?: string } | null>(null)
+function openSopAi(target: { fieldKey: string | null, title: string, customId?: string }) {
+  sopAi.value = target
+}
+const sopAiField = computed(() => sopAi.value?.fieldKey ? SOP_GROUPS.flatMap(g => g.fields).find(f => f.key === sopAi.value!.fieldKey) : undefined)
+const sopAiCurrentText = computed(() => {
+  if (sopAiField.value)
+    return sopAiField.value.read(props.listing)
+  return props.listing.sops?.custom?.find(c => c.id === sopAi.value?.customId)?.text ?? ''
+})
+function applySopAi(text: string) {
+  const target = sopAi.value
+  if (!target)
+    return
+  if (sopAiField.value)
+    emit('update', sopAiField.value.write(props.listing, text))
+  else if (target.customId)
+    emit('update', updateCustomSop(props.listing, target.customId, { text }))
+  toast.success('SOP created with ElevAI')
+}
+
 const selectingTopics = ref(false)
 const selectedTopics = ref<string[]>([])
 watch(selectingTopics, (on) => {
@@ -163,8 +224,19 @@ function actionIcon(topic: AvoidTopic) {
   <div class="flex flex-col h-full overflow-hidden">
     <Tabs v-model="activeTab" class="flex flex-col h-full overflow-hidden">
       <!-- Tab bar -->
-      <div v-if="!hideNav" class="flex-shrink-0 border-b py-3 overflow-x-auto">
-        <div class="flex justify-center min-w-max px-6">
+      <div v-if="!hideNav" class="flex-shrink-0 border-b overflow-x-auto" :class="viewMode === 'unit' ? 'flex h-24 flex-col justify-center' : 'py-3'">
+        <!-- Rooms view: which room this is, then its sections. -->
+        <div v-if="viewMode === 'unit' && activeUnit" class="mx-auto mb-3 flex w-full max-w-2xl flex-wrap items-center gap-x-3 gap-y-1 px-6" data-testid="room-editor-header">
+          <h2 class="text-base font-semibold">
+            {{ activeUnit.name }}
+          </h2>
+          <span v-if="activeUnitTypeName" class="text-sm text-muted-foreground">{{ activeUnitTypeName }} room type</span>
+          <span class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+            <Icon name="lucide:link" class="size-3" />
+            {{ activeUnitCustom ? `${activeUnitCustom} custom, the rest from the property` : 'Everything from the property' }}
+          </span>
+        </div>
+        <div class="flex min-w-max px-6" :class="viewMode === 'unit' ? 'mx-auto w-full max-w-2xl justify-start' : 'justify-center'">
           <TabsList class="shrink-0">
             <TabsTrigger value="basics">
               Basics
@@ -194,12 +266,13 @@ function actionIcon(topic: AvoidTopic) {
               <Label>Unit Name</Label>
               <Input :model-value="activeUnit.name" @update:model-value="(v) => updateUnit({ name: String(v) })" />
             </div>
-            <p class="text-xs text-muted-foreground">
-              Guest capacity is configured at the room type level.
-              <button class="text-foreground underline underline-offset-2" @click="emit('update', { ...listing })">
-                Edit room type settings
-              </button>
-            </p>
+            <RoomPhotosCard v-if="activeUnitId" :listing="listing" :unit-id="activeUnitId" @update="emit('update', $event)" />
+            <SleepingArrangementCard
+              v-if="activeUnitTypeId"
+              :listing="listing"
+              :unit-type-id="activeUnitTypeId"
+              @update="emit('update', $event)"
+            />
           </template>
 
           <!-- Property view: property-level fields -->
@@ -247,6 +320,35 @@ function actionIcon(topic: AvoidTopic) {
                   </button>
                 </div>
                 <AccordionContent class="flex flex-col gap-4 px-0.5">
+                  <!-- Pinpoint: drag the pin or click the map; the address below fills in from it. -->
+                  <div class="flex flex-col gap-1.5" data-testid="setup-pinpoint">
+                    <div class="flex items-center justify-between gap-2">
+                      <Label>Pinpoint</Label>
+                      <span class="text-xs tabular-nums text-muted-foreground">{{ pin.lat.toFixed(5) }}, {{ pin.lng.toFixed(5) }}</span>
+                    </div>
+                    <PlaceSearch @select="choosePlace" />
+                    <ClientOnly>
+                      <LocationPinMap :pin="pin" @move="movePin" />
+                      <template #fallback>
+                        <div class="h-56 w-full animate-pulse rounded-md border bg-muted" />
+                      </template>
+                    </ClientOnly>
+                    <p class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite" data-testid="setup-pinpoint-status">
+                      <template v-if="pinLookup === 'loading'">
+                        <Icon name="lucide:loader-circle" class="size-3.5 animate-spin" />
+                        Finding the address at this pin...
+                      </template>
+                      <template v-else-if="pinLookup === 'none'">
+                        <Icon name="lucide:map-pin-off" class="size-3.5" />
+                        No address found near this pin. Fill it in below.
+                      </template>
+                      <template v-else>
+                        <Icon name="lucide:info" class="size-3.5" />
+                        Search, drag the pin or click the map. The address below fills in from the pin.
+                      </template>
+                    </p>
+                  </div>
+
                   <div class="flex flex-col gap-1.5">
                     <Label for="setup-property-type">Property Type</Label>
                     <Select :model-value="propertyType" @update:model-value="(v) => updateListingField('propertyType', String(v))">
@@ -301,6 +403,27 @@ function actionIcon(topic: AvoidTopic) {
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
+
+            <Accordion v-model="openPhotos" type="multiple" class="rounded-lg border px-4" data-testid="setup-photos">
+              <AccordionItem value="photos">
+                <AccordionTrigger class="items-center hover:no-underline">
+                  <span class="flex flex-1 items-center gap-2">
+                    Photos
+                    <Icon v-if="listing.photos.length" name="lucide:circle-check" class="size-4 text-green-600 dark:text-green-400" aria-label="Complete" />
+                  </span>
+                  <span class="text-xs font-normal text-muted-foreground">{{ listing.photos.length }} {{ listing.photos.length === 1 ? 'photo' : 'photos' }}</span>
+                </AccordionTrigger>
+                <AccordionContent class="flex flex-col gap-3 px-0.5">
+                  <p class="text-xs text-muted-foreground">
+                    Drag to reorder. The first photo is the thumbnail. Max 20 photos, 10MB each (JPEG, PNG, WebP).
+                  </p>
+                  <ListingPhotosEditor
+                    :photos="listing.photos"
+                    @update:photos="(photos) => emit('update', { ...listing, photos })"
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </template>
         </div>
       </TabsContent>
@@ -317,17 +440,7 @@ function actionIcon(topic: AvoidTopic) {
               @configure="openConfig"
             />
           </template>
-
-          <!-- Not one of the three groups, but ElevAI reads it and host corrections write it (`ai-knowledge.ts`). -->
-          <div class="flex flex-col gap-1.5">
-            <Label for="setup-listing-details">Anything else ElevAI should know</Label>
-            <Textarea
-              id="setup-listing-details"
-              :model-value="listing.resources.listingDetails ?? ''" rows="4"
-              placeholder="Anything not covered above."
-              @update:model-value="(v) => updateResources({ listingDetails: String(v) })"
-            />
-          </div>
+          <RoomSettingsCard v-else-if="activeUnitId" :listing="listing" :unit-id="activeUnitId" @update="emit('update', $event)" />
         </div>
       </TabsContent>
 
@@ -439,171 +552,240 @@ function actionIcon(topic: AvoidTopic) {
       <!-- SOPs -->
       <TabsContent value="sops" class="flex-1 overflow-y-auto mt-0">
         <div class="mx-auto w-full max-w-2xl px-6 py-5 flex flex-col gap-4">
-          <SetupBulkBar
-            v-model:selecting="selectingSops"
-            :listing-id="listing.id"
-            :selected-count="selectedSops.length"
-            :total="sopSelectable.length"
-            noun="SOP"
-            copy-note="The listings you pick get these answers, replacing their own answers to the same questions. Unanswered questions are skipped. Custom SOPs are added."
-            delete-note="The selected questions and custom SOPs are removed from this listing. Their sections stay, and deleted default questions can be restored."
-            @copy="copySelectedSops"
-            @delete="deleteSelectedSops"
-          />
-          <ListingSetupFieldGroups
-            v-model:selected="selectedSops"
-            :listing="listing"
-            :groups="visibleSopGroups(listing)"
-            :selectable="sopSelectable"
-            :selecting="selectingSops"
-            :extra-selectable="customSopSelectable"
-            testid-prefix="setup-sops"
-            :extra-counts="customSopCounts(listing)"
-            @update="emit('update', $event)"
-            @configure="openConfig"
-          >
-            <template #extra="{ group }">
-              <!-- SOPs the host names and writes, in every group. Not counted in the setup progress. -->
-              <div class="flex flex-col gap-3" :data-testid="`setup-custom-sops-${group.key}`">
-                <div v-for="item in customSopsIn(listing, group.key)" :key="item.id" class="flex flex-col gap-2 rounded-md border p-3">
-                  <div class="flex items-center gap-2">
-                    <SetupSelectBox
-                      v-if="selectingSops"
-                      class="mr-1"
-                      :checked="selectedSops.includes(customSopSelectionId(item.id))"
-                      :label="`Select ${item.title || 'custom SOP'}`"
-                      @toggle="toggleSop(customSopSelectionId(item.id))"
+          <template v-if="viewMode !== 'unit'">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex flex-col gap-1">
+                <Label>SOPs</Label>
+                <p class="text-xs text-muted-foreground">
+                  How your team and ElevAI handle each situation.
+                </p>
+              </div>
+              <Button
+                v-if="!selectingSops"
+                variant="outline"
+                size="sm"
+                class="shrink-0 gap-1.5"
+                :disabled="!sopSelectable.length"
+                data-testid="bulk-select"
+                @click="selectingSops = true"
+              >
+                <Icon name="lucide:list-checks" class="size-3.5" />
+                Select
+              </Button>
+            </div>
+            <SetupBulkBar
+              v-model:selecting="selectingSops"
+              :listing-id="listing.id"
+              :selected-count="selectedSops.length"
+              :total="sopSelectable.length"
+              noun="SOP"
+              copy-note="The listings you pick get these answers, replacing their own answers to the same questions. Unanswered questions are skipped. Custom SOPs are added."
+              delete-note="The selected questions and custom SOPs are removed from this listing. Their sections stay, and deleted default questions can be restored."
+              @copy="copySelectedSops"
+              @delete="deleteSelectedSops"
+            />
+            <ListingSetupFieldGroups
+              v-model:selected="selectedSops"
+              :listing="listing"
+              :groups="visibleSopGroups(listing)"
+              :selectable="sopSelectable"
+              :selecting="selectingSops"
+              :extra-selectable="customSopSelectable"
+              testid-prefix="setup-sops"
+              :extra-counts="customSopCounts(listing)"
+              ai-assist
+              @ai="(key, label) => openSopAi({ fieldKey: key, title: label })"
+              @update="emit('update', $event)"
+              @configure="openConfig"
+            >
+              <template #extra="{ group }">
+                <!-- SOPs the host names and writes, in every group. Not counted in the setup progress. -->
+                <div class="flex flex-col gap-3" :data-testid="`setup-custom-sops-${group.key}`">
+                  <div v-for="item in customSopsIn(listing, group.key)" :key="item.id" class="flex flex-col gap-2 rounded-md border p-3">
+                    <div class="flex items-center gap-2">
+                      <SetupSelectBox
+                        v-if="selectingSops"
+                        class="mr-1"
+                        :checked="selectedSops.includes(customSopSelectionId(item.id))"
+                        :label="`Select ${item.title || 'custom SOP'}`"
+                        @toggle="toggleSop(customSopSelectionId(item.id))"
+                      />
+                      <Input
+                        :model-value="item.title"
+                        placeholder="SOP title, e.g. Pool cleaning"
+                        aria-label="SOP title"
+                        class="h-8"
+                        @update:model-value="(v) => emit('update', updateCustomSop(listing, item.id, { title: String(v) }))"
+                      />
+                      <button
+                        class="relative shrink-0 px-1 text-muted-foreground hover:text-foreground"
+                        :aria-label="`${item.title || 'Custom SOP'} AI settings`"
+                        @click="openConfig(customSopConfigKey(item.id), item.title || 'Custom SOP')"
+                      >
+                        <Icon name="lucide:pencil" class="size-3.5" />
+                        <span v-if="hasConfig(customSopConfigKey(item.id))" class="absolute -top-0.5 right-0 size-1.5 rounded-full bg-primary" />
+                      </button>
+                      <Button
+                        v-if="!selectingSops"
+                        variant="ghost"
+                        size="sm"
+                        class="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                        :aria-label="`Create with AI: ${item.title || 'custom SOP'}`"
+                        data-testid="sop-ai-button"
+                        @click="openSopAi({ fieldKey: null, title: item.title, customId: item.id })"
+                      >
+                        <SharedAiIcon custom-class="size-3.5" />
+                        <span class="hidden sm:inline">Create with AI</span>
+                      </Button>
+                      <Button variant="ghost" size="icon" class="size-8 shrink-0" :aria-label="`Remove ${item.title || 'SOP'}`" @click="emit('update', removeCustomSop(listing, item.id))">
+                        <Icon name="lucide:trash-2" class="size-4" />
+                      </Button>
+                    </div>
+                    <Textarea
+                      :model-value="item.text"
+                      rows="3"
+                      placeholder="What should the team do?"
+                      aria-label="SOP text"
+                      @update:model-value="(v) => emit('update', updateCustomSop(listing, item.id, { text: String(v) }))"
                     />
-                    <Input
-                      :model-value="item.title"
-                      placeholder="SOP title, e.g. Pool cleaning"
-                      aria-label="SOP title"
-                      class="h-8"
-                      @update:model-value="(v) => emit('update', updateCustomSop(listing, item.id, { title: String(v) }))"
-                    />
-                    <button
-                      class="relative shrink-0 px-1 text-muted-foreground hover:text-foreground"
-                      :aria-label="`${item.title || 'Custom SOP'} AI settings`"
-                      @click="openConfig(customSopConfigKey(item.id), item.title || 'Custom SOP')"
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" class="w-fit gap-1.5" @click="emit('update', addCustomSop(listing, group.key))">
+                      <Icon name="lucide:plus" class="size-3.5" />
+                      Add SOP
+                    </Button>
+                    <Button
+                      v-if="removedSopFieldsIn(listing, group.key).length"
+                      variant="ghost"
+                      size="sm"
+                      class="w-fit gap-1.5 text-muted-foreground"
+                      :data-testid="`restore-sops-${group.key}`"
+                      @click="emit('update', restoreSopGroup(listing, group.key))"
                     >
-                      <Icon name="lucide:pencil" class="size-3.5" />
-                      <span v-if="hasConfig(customSopConfigKey(item.id))" class="absolute -top-0.5 right-0 size-1.5 rounded-full bg-primary" />
-                    </button>
-                    <Button variant="ghost" size="icon" class="size-8 shrink-0" :aria-label="`Remove ${item.title || 'SOP'}`" @click="emit('update', removeCustomSop(listing, item.id))">
-                      <Icon name="lucide:trash-2" class="size-4" />
+                      <Icon name="lucide:rotate-ccw" class="size-3.5" />
+                      Restore default questions ({{ removedSopFieldsIn(listing, group.key).length }})
                     </Button>
                   </div>
-                  <Textarea
-                    :model-value="item.text"
-                    rows="3"
-                    placeholder="What should the team do?"
-                    aria-label="SOP text"
-                    @update:model-value="(v) => emit('update', updateCustomSop(listing, item.id, { text: String(v) }))"
-                  />
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" class="w-fit gap-1.5" @click="emit('update', addCustomSop(listing, group.key))">
-                    <Icon name="lucide:plus" class="size-3.5" />
-                    Add SOP
-                  </Button>
-                  <Button
-                    v-if="removedSopFieldsIn(listing, group.key).length"
-                    variant="ghost"
-                    size="sm"
-                    class="w-fit gap-1.5 text-muted-foreground"
-                    :data-testid="`restore-sops-${group.key}`"
-                    @click="emit('update', restoreSopGroup(listing, group.key))"
-                  >
-                    <Icon name="lucide:rotate-ccw" class="size-3.5" />
-                    Restore default questions ({{ removedSopFieldsIn(listing, group.key).length }})
-                  </Button>
-                </div>
-              </div>
-            </template>
-          </ListingSetupFieldGroups>
+              </template>
+            </ListingSetupFieldGroups>
+          </template>
+          <RoomSopsCard v-else-if="activeUnitId" :listing="listing" :unit-id="activeUnitId" @update="emit('update', $event)" />
         </div>
       </TabsContent>
 
       <!-- Topics to Avoid -->
       <TabsContent value="topics" class="flex-1 overflow-y-auto mt-0">
         <div class="mx-auto w-full max-w-2xl px-6 py-5 flex flex-col gap-4">
-          <div class="flex items-start justify-between gap-3">
-            <div class="flex flex-col gap-1">
-              <Label>Topics to Avoid</Label>
+          <template v-if="viewMode !== 'unit'">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex flex-col gap-1">
+                <Label>Topics to Avoid</Label>
+                <p class="text-xs text-muted-foreground">
+                  Topics ElevAI should not answer on its own, and what it does instead.
+                </p>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <Button
+                  v-if="avoidTopics.length && !selectingTopics"
+                  variant="outline"
+                  size="sm"
+                  class="gap-1.5"
+                  data-testid="bulk-select"
+                  @click="selectingTopics = true"
+                >
+                  <Icon name="lucide:list-checks" class="size-3.5" />
+                  Select
+                </Button>
+                <Button size="sm" class="gap-1.5" @click="openTopicDialog()">
+                  <Icon name="lucide:plus" class="size-3.5" />
+                  Add topic
+                </Button>
+              </div>
+            </div>
+
+            <SetupBulkBar
+              v-if="avoidTopics.length"
+              v-model:selecting="selectingTopics"
+              select-all
+              :listing-id="listing.id"
+              :selected-count="selectedTopics.length"
+              :total="avoidTopics.length"
+              noun="topic"
+              copy-note="The topics are added to the listings you pick, with their action and stages. A topic with the same name there is replaced."
+              delete-note="The selected topics are removed from this listing."
+              @toggle-all="selectedTopics = selectedTopics.length === avoidTopics.length ? [] : avoidTopics.map(t => t.id)"
+              @copy="copySelectedTopics"
+              @delete="deleteSelectedTopics"
+            />
+            <div v-if="avoidTopics.length" class="flex flex-col gap-2" data-testid="setup-avoid-topics">
+              <div
+                v-for="t in avoidTopics"
+                :key="t.id"
+                class="flex items-center gap-3 rounded-lg border px-4 py-3"
+                :class="{ 'border-foreground/40 bg-muted/30': selectedTopics.includes(t.id) }"
+              >
+                <SetupSelectBox
+                  v-if="selectingTopics"
+                  :checked="selectedTopics.includes(t.id)"
+                  :label="`Select ${t.topic}`"
+                  @toggle="selectedTopics = selectedTopics.includes(t.id) ? selectedTopics.filter(id => id !== t.id) : [...selectedTopics, t.id]"
+                />
+                <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span class="text-sm font-medium">{{ t.topic }}</span>
+                  <p v-if="t.description" class="line-clamp-2 text-xs text-muted-foreground">
+                    {{ t.description }}
+                  </p>
+                  <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                    <span class="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-0.5">
+                      <Icon :name="actionIcon(t)" class="size-3.5 text-muted-foreground" />
+                      {{ avoidTopicActionLabel(t) }}
+                      <span v-if="t.action === 'share_contact' && t.contact" class="text-muted-foreground">· {{ t.contact }}</span>
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-muted-foreground">
+                      <Icon name="lucide:calendar-range" class="size-3.5" />
+                      {{ avoidTopicStagesLabel(t) }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="!selectingTopics" class="flex shrink-0 items-center">
+                  <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-foreground" :aria-label="`Edit ${t.topic}`" @click="openTopicDialog(t)">
+                    <Icon name="lucide:pencil" class="size-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-destructive" :aria-label="`Remove ${t.topic}`" @click="emit('update', removeAvoidTopic(listing, t.id))">
+                    <Icon name="lucide:trash-2" class="size-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-10 text-center">
+              <Icon name="lucide:message-circle-off" class="size-6 text-muted-foreground" />
+              <p class="text-sm font-medium">
+                No topics yet
+              </p>
               <p class="text-xs text-muted-foreground">
-                Topics ElevAI should not answer on its own, and what it does instead.
+                Add early check-in, refund or discount requests, or your own topic.
               </p>
             </div>
-            <Button size="sm" class="shrink-0 gap-1.5" @click="openTopicDialog()">
-              <Icon name="lucide:plus" class="size-3.5" />
-              Add topic
-            </Button>
-          </div>
-
-          <SetupBulkBar
-            v-if="avoidTopics.length"
-            v-model:selecting="selectingTopics"
-            select-all
-            :listing-id="listing.id"
-            :selected-count="selectedTopics.length"
-            :total="avoidTopics.length"
-            noun="topic"
-            copy-note="The topics are added to the listings you pick, with their action and stages. A topic with the same name there is replaced."
-            delete-note="The selected topics are removed from this listing."
-            @toggle-all="selectedTopics = selectedTopics.length === avoidTopics.length ? [] : avoidTopics.map(t => t.id)"
-            @copy="copySelectedTopics"
-            @delete="deleteSelectedTopics"
-          />
-          <div v-if="avoidTopics.length" class="flex flex-col gap-2" data-testid="setup-avoid-topics">
-            <div
-              v-for="t in avoidTopics"
-              :key="t.id"
-              class="flex items-start gap-3 rounded-lg border p-3"
-              :class="{ 'border-foreground/40 bg-muted/30': selectedTopics.includes(t.id) }"
-            >
-              <SetupSelectBox
-                v-if="selectingTopics"
-                class="mt-0.5"
-                :checked="selectedTopics.includes(t.id)"
-                :label="`Select ${t.topic}`"
-                @toggle="selectedTopics = selectedTopics.includes(t.id) ? selectedTopics.filter(id => id !== t.id) : [...selectedTopics, t.id]"
-              />
-              <div class="flex min-w-0 flex-1 flex-col gap-1">
-                <span class="text-sm font-medium">{{ t.topic }}</span>
-                <span v-if="t.description" class="text-xs text-muted-foreground">{{ t.description }}</span>
-                <span class="mt-1 inline-flex w-fit items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-0.5 text-xs">
-                  <Icon :name="actionIcon(t)" class="size-3.5 text-muted-foreground" />
-                  {{ avoidTopicActionLabel(t) }}
-                  <span v-if="t.action === 'share_contact' && t.contact" class="text-muted-foreground">· {{ t.contact }}</span>
-                </span>
-                <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Icon name="lucide:calendar-range" class="size-3.5" />
-                  {{ avoidTopicStagesLabel(t) }}
-                </span>
-              </div>
-              <div class="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="icon" class="size-8" :aria-label="`Edit ${t.topic}`" @click="openTopicDialog(t)">
-                  <Icon name="lucide:pencil" class="size-4" />
-                </Button>
-                <Button variant="ghost" size="icon" class="size-8" :aria-label="`Remove ${t.topic}`" @click="emit('update', removeAvoidTopic(listing, t.id))">
-                  <Icon name="lucide:trash-2" class="size-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          <div v-else class="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-10 text-center">
-            <Icon name="lucide:message-circle-off" class="size-6 text-muted-foreground" />
-            <p class="text-sm font-medium">
-              No topics yet
-            </p>
-            <p class="text-xs text-muted-foreground">
-              Add early check-in, refund or discount requests, or your own topic.
-            </p>
-          </div>
+          </template>
+          <p v-else class="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground" data-testid="room-topics-note">
+            Topics to Avoid are set for the whole property and apply to every room.
+          </p>
         </div>
       </TabsContent>
     </Tabs>
   </div>
+
+  <SopAiDialog
+    v-if="sopAi"
+    :open="!!sopAi"
+    :listing="listing"
+    :field-key="sopAi.fieldKey"
+    :title="sopAi.title"
+    :current-text="sopAiCurrentText"
+    @update:open="(v) => { if (!v) sopAi = null }"
+    @apply="applySopAi"
+  />
 
   <AvoidTopicDialog
     v-model:open="topicDialogOpen"

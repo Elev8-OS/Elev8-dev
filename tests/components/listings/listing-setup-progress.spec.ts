@@ -1,7 +1,7 @@
 import type { Listing } from '~/components/listings/data/listings'
 import { describe, expect, it } from 'vitest'
 import { toRaw } from 'vue'
-import { listingAddress, listingTimeZone, locationLabel } from '~/components/listings/data/listing-address'
+import { listingAddress, listingPin, listingTimeZone, locationLabel, nearestAddress, searchPlaces } from '~/components/listings/data/listing-address'
 import { LISTING_ROOMS_TARGET, ROOM_AMENITIES, roomAmenityTargets, setRoomAmenities, toggleAmenity } from '~/components/listings/data/listing-amenities'
 import { LISTING_DETAIL_GROUPS } from '~/components/listings/data/listing-details'
 import { listingSetupProgress } from '~/components/listings/data/listing-setup-progress'
@@ -27,22 +27,23 @@ function empty(l: Listing): Listing {
     wifiSsid: undefined,
     wifiPassword: undefined,
     amenities: [],
+    photos: [],
     roomAmenities: undefined,
     unitTypes: l.unitTypes?.map(ut => ({ ...ut, amenities: [] })),
-    resources: { ...l.resources, basics: {}, listingDetails: '', sops: '  ', topicsToAvoid: [], avoidTopics: undefined },
+    resources: { ...l.resources, basics: {}, sops: '  ', topicsToAvoid: [], avoidTopics: undefined },
   }
 }
 
 describe('listingSetupProgress', () => {
   it('reads city, state, country and time zone from the location label of a listing with no address', () => {
     const p = listingSetupProgress(withListing(empty))
-    // Name, time zone, city, state, country: no type, street or area code.
-    expect(p.sections.find(s => s.key === 'basics')).toMatchObject({ done: 5, total: 8, complete: false })
+    // Name, time zone, city, state, country: no type, street, area code or photos.
+    expect(p.sections.find(s => s.key === 'basics')).toMatchObject({ done: 5, total: 9, complete: false })
     // Only the default check-in/out times; Additional Sleeping Arrangements is optional (29 fields, 28 counted).
     expect(p.sections.find(s => s.key === 'listing-details')).toMatchObject({ done: 2, total: 28 })
     expect(p.completeSections).toBe(0)
-    // (5/8 + 2/28) / 5
-    expect(p.percent).toBe(14)
+    // (5/9 + 2/28) / 5
+    expect(p.percent).toBe(13)
   })
 
   it('treats whitespace-only text as empty', () => {
@@ -57,6 +58,7 @@ describe('listingSetupProgress', () => {
       propertyType: 'Villa',
       address: { street: 'Jl. Jantuk Angsa', unitNumber: '', city: 'Pererenan', state: 'Bali', postalCode: '80351', country: 'ID' },
       amenities: ['Pool'],
+      photos: ['data:image/png;base64,AAAA'],
       unitTypes: l.unitTypes?.map(ut => ({ ...ut, amenities: ['TV'] })),
       resources: { ...l.resources, basics: {}, sops: 'Steps', topicsToAvoid: ['pricing'] },
     }))
@@ -166,5 +168,42 @@ describe('listing address', () => {
     expect(locationLabel({ ...base, city: 'Pererenan', state: 'Bali', country: 'ID' }, 'x')).toBe('Pererenan, Bali')
     expect(locationLabel({ ...base, city: 'Potsdam', state: 'Brandenburg', country: 'DE' }, 'x')).toBe('Potsdam, Brandenburg, Germany')
     expect(locationLabel({ ...base, city: ' ', state: '', country: 'ID' }, 'Canggu, Bali')).toBe('Canggu, Bali')
+  })
+})
+
+describe('pinpoint', () => {
+  it('a pin takes the nearest known area\'s address', () => {
+    expect(nearestAddress({ lat: -8.6900, lng: 115.1700 })).toMatchObject({ city: 'Seminyak', state: 'Bali', postalCode: '80361', country: 'ID' })
+    expect(nearestAddress({ lat: -8.6630, lng: 115.1903 })).toMatchObject({ city: 'Denpasar' })
+    expect(nearestAddress({ lat: 52.40, lng: 13.07 })).toMatchObject({ city: 'Potsdam', country: 'DE' })
+  })
+
+  it('a pin far from every known area finds nothing', () => {
+    expect(nearestAddress({ lat: 1.35, lng: 103.82 })).toBeNull()
+  })
+
+  it('the pin starts at the saved point, else the listing\'s city, else central Bali', () => {
+    const l = { ...withListing(empty), coordinates: undefined }
+    expect(listingPin({ ...l, coordinates: { lat: -8.1, lng: 115.1 } })).toEqual({ lat: -8.1, lng: 115.1 })
+    expect(listingPin({ ...l, location: 'Ubud, Bali' })).toMatchObject({ lat: -8.5069 })
+    expect(listingPin({ ...l, location: 'Nowhere' })).toEqual({ lat: -8.6705, lng: 115.2126 })
+  })
+})
+
+describe('place search', () => {
+  it('matches every typed word against city, street, state and postal code', () => {
+    expect(searchPlaces('canggu').map(p => p.address.city)).toEqual(['Canggu'])
+    expect(searchPlaces('pantai').map(p => p.address.city)).toEqual(expect.arrayContaining(['Pererenan', 'Canggu', 'Kuta', 'Nusa Dua']))
+    expect(searchPlaces('80361 seminyak').map(p => p.address.city)).toEqual(['Seminyak'])
+    expect(searchPlaces('potsdam')[0]).toMatchObject({ label: 'Friedrich-Ebert-Straße, Potsdam', detail: 'Brandenburg, Germany' })
+  })
+
+  it('puts places whose city starts with the query first', () => {
+    expect(searchPlaces('u')[0]!.address.city).toMatch(/^U/)
+  })
+
+  it('returns nothing for an empty or unknown query', () => {
+    expect(searchPlaces('  ')).toEqual([])
+    expect(searchPlaces('tokyo')).toEqual([])
   })
 })

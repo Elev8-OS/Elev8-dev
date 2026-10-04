@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
+import { listings } from '~/components/listings/data/listings'
 import { useTaskStore } from '~/composables/useTaskStore'
 import { toast } from 'vue-sonner'
 
@@ -20,6 +21,12 @@ const task = computed(() => {
     return null
   const taskId = props.event.id.replace(/^task-/, '')
   return taskStore.value.find(t => t.id === taskId) ?? null
+})
+
+/** Tasks store the listing NAME; a listing with rooms shows the task's room (or "Whole property"). */
+const taskListingHasRooms = computed(() => {
+  const listing = listings.value.find(l => l.name === task.value?.listing)
+  return listing?.unitType === 'multi' && (listing.unitTypes ?? []).some(ut => ut.units.length)
 })
 
 const statusUpdates = computed(() => {
@@ -155,6 +162,11 @@ function handleDelete() {
             <Icon name="lucide:home" class="h-3.5 w-3.5" />
             {{ task.listing }}
           </SheetDescription>
+          <!-- Which room it is for; none means the whole property. -->
+          <p v-if="taskListingHasRooms" class="mt-1 flex items-center gap-1.5 text-sm" :class="task.unitName ? 'text-foreground' : 'text-muted-foreground'" data-testid="task-event-room">
+            <Icon :name="task.unitName ? 'lucide:door-closed' : 'lucide:house'" class="h-3.5 w-3.5" />
+            {{ task.unitName || 'Whole property' }}
+          </p>
           <div class="mt-3 flex flex-wrap items-center gap-1.5">
             <Badge :variant="priorityBadge.variant" class="gap-1 text-[10px] font-medium">
               <Icon :name="priorityBadge.icon" class="h-3 w-3" :style="{ color: priorityBadge.iconColor }" />

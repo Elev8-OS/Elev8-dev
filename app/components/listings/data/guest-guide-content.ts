@@ -27,6 +27,11 @@ export interface GuideContentItem {
   photoUrl?: string
   /** Good to Know: a lucide icon name, e.g. `lucide:wifi`. */
   icon?: string
+  /**
+   * Set only on items a room adds to the guest guide (`guideContentForRooms`),
+   * so the guest page can label them "Your room: …". Never stored.
+   */
+  roomName?: string
 }
 
 export type ListingGuideContent = Partial<Record<GuideContentKind, GuideContentItem[]>>

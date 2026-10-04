@@ -102,7 +102,7 @@ function formatTime(value?: string) {
               v-for="g in resolveGuidance(item.guidanceIds)"
               :key="g.id"
               type="button"
-              class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+              class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-primary/20"
               :aria-label="`Open guidance: ${g.title}`"
               @click="openGuidance(g)"
             >

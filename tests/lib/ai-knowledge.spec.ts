@@ -16,7 +16,7 @@ function listing(overrides: Partial<Listing> = {}): Listing {
     resources: {
       documents: [],
       basics: { description: 'A serene villa.', checkInTime: '14:00' },
-      listingDetails: 'Two floors.',
+      sops: 'Two floors.',
       topicsToAvoid: [],
       propertyUpsells: [],
     },
@@ -71,7 +71,7 @@ describe('correcting a listing from the reasoning dialog', () => {
 
     expect(after[0]!.resources.basics.description).toBe('A heated-pool villa.')
     expect(after[0]!.resources.basics.checkInTime).toBe('14:00')
-    expect(after[0]!.resources.listingDetails).toBe('Two floors.')
+    expect(after[0]!.resources.sops).toBe('Two floors.')
   })
 
   it('never mutates the listing it was given', () => {

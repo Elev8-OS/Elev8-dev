@@ -15,7 +15,11 @@ describe('gET /api/guest-guides/by-token/:token guide content', () => {
     const result = await invoke('abc123def456') as any
     const listing = listings.value.find(l => l.id === result.listing?.id)
     const expected = listingGuideContent(listing)
-    expect(result.guideContent.checkin.map((i: { title: string }) => i.title)).toEqual(expected.checkin.map(i => i.title))
+    // The demo link is a Master Suite stay: the property's steps, then the room's own, labelled.
+    const titles = result.guideContent.checkin.map((i: { title: string }) => i.title)
+    expect(titles.slice(0, expected.checkin.length)).toEqual(expected.checkin.map(i => i.title))
+    expect(result.guideContent.checkin.at(-1)).toMatchObject({ title: 'Find the Master Suite', roomName: 'Master Suite' })
+    expect(result.rooms).toEqual(['Master Suite'])
     // Item text goes out as sanitized HTML: plain text becomes paragraphs.
     const withText = result.guideContent.checkin.find((i: { text?: string }) => i.text)
     if (withText)
@@ -39,5 +43,15 @@ describe('gET /api/guest-guides/by-token/:token rich text', () => {
     finally {
       listings.value[index] = original
     }
+  })
+})
+
+describe('gET /api/guest-guides/by-token/:token rooms', () => {
+  it('adds the guest\'s room items after the property\'s and keeps the property name', async () => {
+    const result = await invoke('abc123def456') as any
+    expect(result.listing.name).toBe(listings.value.find(l => l.id === 'lst-1')!.name)
+    expect(result.guideContent.good_to_know.map((i: { roomName?: string }) => i.roomName ?? null)).toContain('Master Suite')
+    // Check-out steps and house rules stay the property's.
+    expect(result.guideContent.checkout.some((i: { roomName?: string }) => i.roomName)).toBe(false)
   })
 })

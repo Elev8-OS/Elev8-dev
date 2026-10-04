@@ -522,7 +522,7 @@ function barStyle(bar: WeekBar) {
             >
               <div
                 class="flex size-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-                :class="booking.type === 'block' ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'"
+                :class="booking.type === 'block' ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-foreground'"
               >
                 <Icon v-if="booking.type === 'block'" name="lucide:ban" class="size-4" />
                 <span v-else>{{ initials(booking.guestName) }}</span>

@@ -1,32 +1,13 @@
 <script setup lang="ts">
+import { AI_STATUS_LABELS as aiStatusLabels, listingAiStatus } from '~/components/listings/data/listing-ai-status'
 import { getUnits, listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{ listingId: string }>()
 
-const aiStatusLabels: Record<string, string> = {
-  active: 'Active',
-  paused: 'Paused',
-  not_set: 'Not Set',
-}
-
 const live = computed(() => listings.value.find(l => l.id === props.listingId))
 
-// For multi-unit listings, aggregate AI status from unit types (any active = active, all paused = paused).
-// For single-unit listings, use the listing-level aiStatus directly.
-const status = computed(() => {
-  if (!live.value)
-    return 'not_set'
-  if (live.value.unitType !== 'multi' || !live.value.unitTypes?.length)
-    return live.value.aiStatus
-  const types = live.value.unitTypes
-  const allPaused = types.every(ut => (ut.aiStatus ?? 'active') === 'paused')
-  if (allPaused)
-    return 'paused'
-  const anyActive = types.some(ut => (ut.aiStatus ?? 'active') === 'active')
-  if (anyActive)
-    return 'active'
-  return live.value.aiStatus
-})
+// Multi-unit listings aggregate from their room types (`listingAiStatus`).
+const status = computed(() => live.value ? listingAiStatus(live.value) : 'not_set')
 
 const inactive = computed(() => {
   if (!live.value)

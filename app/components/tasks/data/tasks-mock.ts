@@ -1,5 +1,12 @@
 import type { Task } from './schema'
 
+/** `YYYY-MM-DD` for a day relative to today (local date), so a demo task shows this week. */
+function demoDay(offsetDays: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export const mockTasks: Task[] = [
   // --- Owner maintenance mirrors (PRD 5.4.3) --------------------------------
   // One task per seeded MaintenanceRecord, linked by MaintenanceRecord.taskId.
@@ -248,5 +255,34 @@ export const mockTasks: Task[] = [
       { date: '2026-06-23T09:00:00Z', actor: { name: 'Wayan Adi', kind: 'staff' }, kind: 'progress', note: 'Shower head baru sudah dibeli di Ace Hardware', progress: 30 },
     ],
     createdAt: '2026-06-22T15:00:00Z',
+  },
+  // Room tasks at The R Villa Luwa, dated from today so they show on this week's calendar.
+  {
+    id: 'TASK-ROOM-001',
+    title: 'Fix the AC in the Master Suite',
+    status: 'not started',
+    assignee: 'maintenance',
+    assigneeType: 'role',
+    priority: 'high',
+    listing: '5BR Pool the R Villa Luwa – Serene near Canggu',
+    unitId: 'un-1',
+    unitName: 'Master Suite',
+    description: 'Guests report the AC is not cooling. Check the filter and the gas.',
+    dueDate: demoDay(1),
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TASK-ROOM-002',
+    title: 'Replace the shower head in the Pool Unit',
+    status: 'not started',
+    assignee: 'maintenance',
+    assigneeType: 'role',
+    priority: 'medium',
+    listing: '5BR Pool the R Villa Luwa – Serene near Canggu',
+    unitId: 'un-3',
+    unitName: 'Pool Unit',
+    description: 'Low pressure from the rain shower; replace the head.',
+    dueDate: demoDay(3),
+    createdAt: new Date().toISOString(),
   },
 ]

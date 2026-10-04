@@ -14,7 +14,6 @@ export type AiKnowledgeField
     | 'neighborhood'
     | 'checkInTime'
     | 'checkOutTime'
-    | 'listingDetails'
     | 'sops'
     | 'amenities'
     | 'checkInInstructions'
@@ -97,14 +96,6 @@ export const aiKnowledgeFields: Record<AiKnowledgeField, AiKnowledgeFieldSpec> =
     placeholder: '11:00',
     read: l => l.resources.basics.checkOutTime ?? '',
     write: (l, v) => writeBasics(l, 'checkOutTime', v),
-  },
-  listingDetails: {
-    label: 'Listing details',
-    section: 'Listing Setup → Listing Details',
-    input: 'textarea',
-    placeholder: 'Anything ElevAI should know that is not in the basics.',
-    read: l => l.resources.listingDetails ?? '',
-    write: (l, v) => ({ ...l, resources: { ...l.resources, listingDetails: v } }),
   },
   sops: {
     label: 'SOPs',

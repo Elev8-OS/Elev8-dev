@@ -464,7 +464,7 @@ function handleLogout(): void {
       <div v-if="showWelcome" data-testid="onboarding-welcome" class="mx-auto w-full max-w-xl">
         <Card class="rounded-2xl border-border/80 shadow-xs">
           <CardHeader>
-            <div class="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2">
+            <div class="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-foreground mb-2">
               <Icon name="lucide:mail-check" class="size-6" />
             </div>
             <CardTitle class="text-xl">

@@ -30,7 +30,7 @@ const users = computed(() => {
       <div class="divide-y">
         <div v-for="u in users" :key="u.id" class="flex items-center gap-3 p-4">
           <Avatar class="size-9">
-            <AvatarFallback class="bg-primary/10 text-primary text-xs">{{ u.name.split(' ').map(p => p[0]).join('') }}</AvatarFallback>
+            <AvatarFallback class="bg-primary/10 text-foreground text-xs">{{ u.name.split(' ').map(p => p[0]).join('') }}</AvatarFallback>
           </Avatar>
           <div class="flex-1">
             <div class="text-sm font-medium">{{ u.name }}</div>

@@ -42,7 +42,7 @@ const sb = computed(() => statusConfig[props.offer.status] ?? statusConfig.pendi
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <div class="flex size-7 items-center justify-center rounded-md bg-primary/10">
-            <Icon name="lucide:shopping-bag" class="size-3.5 text-primary" />
+            <Icon name="lucide:shopping-bag" class="size-3.5 text-foreground" />
           </div>
           <div>
             <p class="text-xs font-semibold">

@@ -232,7 +232,7 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
         <span
           v-for="tag in selectedTags"
           :key="tag"
-          class="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+          class="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-foreground"
         >
           {{ tag }}
           <button class="hover:text-destructive" @click="toggleTag(tag)">

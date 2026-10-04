@@ -261,7 +261,7 @@ const displaySummary = computed(() => {
         v-for="staff in selectedOptions"
         :key="staff.id"
         data-testid="staff-chip"
-        class="staff-chip inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 pl-1 pr-1.5 py-0.5 text-xs text-primary font-medium"
+        class="staff-chip inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 pl-1 pr-1.5 py-0.5 text-xs text-foreground font-medium"
       >
         <BasePersonAvatar
           :name="staff.name"

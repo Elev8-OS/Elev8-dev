@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import type { CalendarListing } from '~/components/operations-calendar/data/operations-calendar'
-import { getCalendarListings } from '~/components/operations-calendar/data/operations-calendar'
 import { allTags, listings } from '~/components/listings/data/listings'
+import { getCalendarListings } from '~/components/operations-calendar/data/operations-calendar'
 
 const props = defineProps<{
   modelValue: string
   listingName?: string | null
   placeholder?: string
   inDialog?: boolean
+  /** With `pickRooms`: the chosen room of a multi-unit listing; null = the whole property. */
+  unitId?: string | null
+  /** Offer each multi-unit listing's rooms under it (the cleaning form). */
+  pickRooms?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'update:listingName': [value: string]
+  'update:unitId': [value: string | null]
 }>()
 
 const open = ref(false)
@@ -42,30 +47,23 @@ const filteredListings = computed<CalendarListing[]>(() => {
   if (isSearching.value) {
     const q = search.value.toLowerCase()
     list = list.filter(l =>
-      `${l.property} ${l.unitTypeLabel} ${l.roomLabel}`.toLowerCase().includes(q),
+      `${l.name} ${l.rooms.map(r => r.name).join(' ')}`.toLowerCase().includes(q),
     )
   }
-  return list
+  return [...list].sort((a, b) => a.name.localeCompare(b.name))
 })
 
 const selectedListing = computed(() => listings.value.find(l => l.id === props.modelValue) ?? null)
 
+const selectedRoom = computed(() => props.unitId
+  ? calendarListings.value.find(l => l.id === props.modelValue)?.rooms.find(r => r.id === props.unitId)
+  : undefined)
+
 const displayLabel = computed(() => {
   if (selectedListing.value)
-    return selectedListing.value.name
+    return selectedRoom.value ? `${selectedListing.value.name} · ${selectedRoom.value.name}` : selectedListing.value.name
   return props.listingName || props.placeholder || 'Choose a listing'
 })
-
-function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>()
-  for (const item of items) {
-    const key = keyFn(item)
-    const list = map.get(key) ?? []
-    list.push(item)
-    map.set(key, list)
-  }
-  return map
-}
 
 function isNodeExpanded(nodeId: string) {
   return isSearching.value || !collapsedNodes.value.has(nodeId)
@@ -85,60 +83,34 @@ function expandAll() {
 }
 
 function collapseAll() {
-  const ids = new Set<string>()
-  for (const listing of filteredListings.value)
-    ids.add(`prop-${listing.property}`)
-  for (const listing of filteredListings.value) {
-    if (!listing.isSingleUnit)
-      ids.add(`unit-${listing.property}-${listing.unitTypeLabel}`)
-  }
-  collapsedNodes.value = ids
+  collapsedNodes.value = new Set(filteredListings.value.filter(l => l.rooms.length).map(l => l.id))
 }
 
+/** Listings first (a listing is a property); with `pickRooms`, a multi-unit listing's rooms under it. */
 interface PickerTreeNode {
   id: string
-  type: 'property' | 'unitType' | 'room'
+  type: 'listing' | 'room'
   label: string
-  listing?: CalendarListing
-  depth: number
+  sublabel?: string
+  listing: CalendarListing
+  unitId?: string
 }
 
 const listingTree = computed<PickerTreeNode[]>(() => {
   const tree: PickerTreeNode[] = []
-  const byProperty = groupBy(filteredListings.value, l => l.property)
-
-  for (const [property, propertyListings] of byProperty) {
-    const propertyId = `prop-${property}`
-    tree.push({ id: propertyId, type: 'property', label: property, depth: 0 })
-
-    if (!isNodeExpanded(propertyId))
+  for (const listing of filteredListings.value) {
+    tree.push({ id: listing.id, type: 'listing', label: listing.name, sublabel: props.pickRooms && listing.rooms.length ? 'Whole property' : undefined, listing })
+    if (!props.pickRooms || !listing.rooms.length || !isNodeExpanded(listing.id))
       continue
-
-    const hasMultiUnit = propertyListings.some(l => !l.isSingleUnit)
-
-    if (!hasMultiUnit) {
-      for (const listing of propertyListings) {
-        tree.push({ id: listing.id, type: 'room', label: listing.roomLabel, listing, depth: 1 })
-      }
-    }
-    else {
-      const byUnitType = groupBy(propertyListings, l => l.unitTypeLabel)
-      for (const [unitType, unitListings] of byUnitType) {
-        const unitId = `unit-${property}-${unitType}`
-        tree.push({ id: unitId, type: 'unitType', label: unitType, depth: 1 })
-
-        if (!isNodeExpanded(unitId))
-          continue
-
-        for (const listing of unitListings) {
-          tree.push({ id: listing.id, type: 'room', label: listing.roomLabel, listing, depth: 2 })
-        }
-      }
-    }
+    for (const room of listing.rooms)
+      tree.push({ id: `${listing.id}:${room.id}`, type: 'room', label: room.name, sublabel: room.typeName, listing, unitId: room.id })
   }
-
   return tree
 })
+
+function isPicked(node: PickerTreeNode) {
+  return props.modelValue === node.listing.id && (node.unitId ?? null) === (props.unitId ?? null)
+}
 
 function toggleTag(tag: string) {
   const idx = selectedTags.value.indexOf(tag)
@@ -151,15 +123,17 @@ function clearTags() {
   selectedTags.value = []
 }
 
-function pick(listingId: string, listingName: string) {
-  emit('update:modelValue', listingId)
-  emit('update:listingName', listingName)
+function pick(node: PickerTreeNode) {
+  emit('update:modelValue', node.listing.id)
+  emit('update:listingName', node.listing.name)
+  emit('update:unitId', node.unitId ?? null)
   open.value = false
 }
 
 function clearSelection() {
   emit('update:modelValue', '')
   emit('update:listingName', '')
+  emit('update:unitId', null)
 }
 </script>
 
@@ -168,8 +142,7 @@ function clearSelection() {
     <PopoverTrigger as-child>
       <Button
         variant="outline"
-        :class="[
-          'h-9 w-full justify-start gap-1.5 px-3 text-sm font-normal',
+        class="h-9 w-full justify-start gap-1.5 px-3 text-sm font-normal" :class="[
           !modelValue ? 'text-muted-foreground' : '',
         ]"
       >
@@ -186,7 +159,7 @@ function clearSelection() {
         <input
           v-model="search"
           class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          placeholder="Search rooms…"
+          placeholder="Search listings…"
         >
         <button v-if="search" class="shrink-0 text-muted-foreground hover:text-foreground" @click="search = ''">
           <Icon name="lucide:x" class="h-3.5 w-3.5" />
@@ -255,7 +228,7 @@ function clearSelection() {
         <span
           v-for="tag in selectedTags"
           :key="tag"
-          class="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+          class="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-foreground"
         >
           {{ tag }}
           <button class="hover:text-destructive" @click="toggleTag(tag)">
@@ -264,14 +237,14 @@ function clearSelection() {
         </span>
       </div>
 
-      <!-- Property → Unit type → Room tree -->
+      <!-- Listings, and (pickRooms) their rooms -->
       <div class="flex items-center justify-between border-b px-3 py-1.5">
-        <span class="text-xs font-medium text-muted-foreground">Rooms by property</span>
-        <div class="flex items-center gap-1">
-          <button class="text-muted-foreground hover:text-foreground transition-colors" title="Expand all" @click="expandAll">
+        <span class="text-xs font-medium text-muted-foreground">{{ pickRooms ? 'Listings and rooms' : 'Listings' }}</span>
+        <div v-if="pickRooms" class="flex items-center gap-1">
+          <button class="text-muted-foreground hover:text-foreground transition-colors" title="Show all rooms" aria-label="Show all rooms" @click="expandAll">
             <Icon name="lucide:chevrons-down" class="size-3.5" />
           </button>
-          <button class="text-muted-foreground hover:text-foreground transition-colors" title="Collapse all" @click="collapseAll">
+          <button class="text-muted-foreground hover:text-foreground transition-colors" title="Hide all rooms" aria-label="Hide all rooms" @click="collapseAll">
             <Icon name="lucide:chevrons-up" class="size-3.5" />
           </button>
         </div>
@@ -280,55 +253,43 @@ function clearSelection() {
       <ScrollArea class="h-56">
         <div class="p-1">
           <template v-if="listingTree.length > 0">
-            <template v-for="node in listingTree" :key="node.id">
-              <!-- Property group header -->
-              <div
-                v-if="node.type === 'property'"
-                class="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                @click="toggleNode(node.id)"
-              >
-                <Icon
-                  :name="isNodeExpanded(node.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-                  class="size-3.5 shrink-0 text-muted-foreground"
-                />
-                <Icon name="lucide:building-2" class="size-3.5 shrink-0 text-muted-foreground" />
-                <span class="truncate text-xs font-semibold text-muted-foreground">{{ node.label }}</span>
-              </div>
-
-              <!-- Unit type group header -->
-              <div
-                v-else-if="node.type === 'unitType'"
-                class="flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pl-6 pr-2 text-left transition-colors hover:bg-muted"
-                @click="toggleNode(node.id)"
-              >
-                <Icon
-                  :name="isNodeExpanded(node.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-                  class="size-3.5 shrink-0 text-muted-foreground"
-                />
-                <span class="truncate text-xs font-medium">{{ node.label }}</span>
-              </div>
-
-              <!-- Room row (selectable) -->
+            <div
+              v-for="node in listingTree"
+              :key="node.id"
+              class="flex items-center gap-1 rounded-md transition-colors hover:bg-muted"
+              :class="[node.type === 'room' ? 'pl-6' : '', isPicked(node) ? 'bg-accent' : '']"
+            >
               <button
-                v-else
+                v-if="node.type === 'listing' && pickRooms && node.listing.rooms.length"
                 type="button"
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                :class="[node.depth === 2 ? 'pl-12' : 'pl-8', modelValue === node.listing?.id ? 'bg-accent' : '']"
-                @click="node.listing && pick(node.listing.id, node.listing.name)"
+                class="ml-1 shrink-0 text-muted-foreground hover:text-foreground"
+                :aria-label="isNodeExpanded(node.id) ? `Hide rooms of ${node.label}` : `Show rooms of ${node.label}`"
+                @click="toggleNode(node.id)"
+              >
+                <Icon :name="isNodeExpanded(node.id) ? 'lucide:chevron-down' : 'lucide:chevron-right'" class="size-3.5" />
+              </button>
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+                :data-testid="node.type === 'room' ? 'picker-room' : 'picker-listing'"
+                @click="pick(node)"
               >
                 <div
-                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border" :class="[
-                    modelValue === node.listing?.id ? 'border-primary bg-primary text-primary-foreground' : 'border-input',
-                  ]"
+                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border"
+                  :class="isPicked(node) ? 'border-foreground bg-foreground text-background' : 'border-input'"
                 >
-                  <Icon v-if="modelValue === node.listing?.id" name="lucide:check" class="h-3 w-3" />
+                  <Icon v-if="isPicked(node)" name="lucide:check" class="h-3 w-3" />
                 </div>
-                <span class="truncate text-sm leading-tight">{{ node.label }}</span>
+                <Icon v-if="node.type === 'room'" name="lucide:door-closed" class="size-3.5 shrink-0 text-muted-foreground" />
+                <span class="flex min-w-0 flex-col">
+                  <span class="truncate text-sm leading-tight">{{ node.label }}</span>
+                  <span v-if="node.sublabel" class="truncate text-[11px] text-muted-foreground">{{ node.sublabel }}</span>
+                </span>
               </button>
-            </template>
+            </div>
           </template>
           <p v-else class="py-6 text-center text-sm text-muted-foreground">
-            No rooms found
+            No listings found
           </p>
         </div>
       </ScrollArea>
@@ -336,7 +297,7 @@ function clearSelection() {
       <!-- Footer -->
       <div class="flex items-center justify-between border-t px-3 py-2">
         <span class="text-xs text-muted-foreground">
-          {{ filteredListings.length }} rooms
+          {{ filteredListings.length }} {{ filteredListings.length === 1 ? 'listing' : 'listings' }}
         </span>
         <button
           v-if="modelValue"

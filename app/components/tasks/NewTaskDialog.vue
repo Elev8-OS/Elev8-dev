@@ -281,7 +281,7 @@ const todayDate = formatDate(new Date())
                           variant="ghost"
                           size="sm"
                           class="h-7 gap-1 px-2 text-xs"
-                          :class="selectedListingTags.length ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'text-muted-foreground'"
+                          :class="selectedListingTags.length ? 'bg-primary/10 text-foreground hover:bg-primary/20' : 'text-muted-foreground'"
                         >
                           <Icon name="lucide:tags" class="size-3.5" />
                           Tags

@@ -11,14 +11,14 @@ function stay(id: string, guestName: string, checkIn: string, checkOut: string, 
   return { id, listingId: 'lst-1', listingName: 'The R Villa Merapi', guestName, checkIn, checkOut, nights: 1, status, channel: 'Direct', totalPrice: 0 } as ReservationEntry
 }
 
-function mountBoard() {
+function mountBoard(eventsByListingAndDay: Map<string, Map<string, unknown[]>> = new Map([['lst-1', new Map()]])) {
   return mount(OperationsCalendarBoard, {
     props: {
       events: [],
       eventsByDay: new Map(),
       eventsByDayAndListing: new Map(),
       // A listing only renders a row when it has an entry here.
-      eventsByListingAndDay: new Map([['lst-1', new Map()]]),
+      eventsByListingAndDay: eventsByListingAndDay as never,
       weekDays: WEEK.map(key => ({ key, label: key, date: new Date(`${key}T00:00:00`) })),
       filters: { listingSearch: '', listingTags: [], eventTypes: [] },
     },
@@ -110,5 +110,65 @@ describe('operationsCalendarBoard stay bars', () => {
       for (const cls of reservationStatusClasses[status].split(' '))
         expect(bar(name).classes(), `${name} ${cls}`).toContain(cls)
     }
+  })
+})
+
+describe('operationsCalendarBoard rooms', () => {
+  // lst-1 has four rooms: Master Suite (un-1), Garden Unit (un-2), Pool Unit (un-3), Loft Unit (un-4).
+  const rowOf = (w: ReturnType<typeof mountBoard>, label: string) =>
+    w.findAll('[data-testid="calendar-listing-row"], [data-testid="calendar-room-row"]').find(r => r.text().includes(label))!.element.parentElement!
+
+  it('starts at the listing (no group headers) and lists its rooms under it', () => {
+    useReservationsModule().reservations.value = []
+    const w = mountBoard()
+    expect(w.findAll('[data-testid="calendar-listing-row"]')).toHaveLength(1)
+    expect(w.find('[data-testid="calendar-listing-row"]').text()).toContain('Whole property · 4 rooms')
+    const rooms = w.findAll('[data-testid="calendar-room-row"]').map(r => r.text())
+    expect(rooms).toHaveLength(4)
+    for (const [i, [name, type]] of [['Master Suite', 'Kingbed'], ['Garden Unit', 'Kingbed'], ['Pool Unit', 'Single Bed'], ['Loft Unit', 'Single Bed']].entries()) {
+      expect(rooms[i]).toContain(name)
+      expect(rooms[i]).toContain(type)
+    }
+  })
+
+  it('draws a stay on the room it is assigned to, and an unassigned one on the listing row', () => {
+    useReservationsModule().reservations.value = [
+      { ...stay('r-room', 'Room Guest', '2027-03-02', '2027-03-04'), assignedUnitIds: ['un-1'] },
+      stay('r-none', 'No Room Guest', '2027-03-02', '2027-03-04'),
+    ]
+    const w = mountBoard()
+    const bars = (label: string) => [...rowOf(w, label).querySelectorAll('[data-testid="stay-bar"]')].map(b => b.textContent?.trim())
+    expect(bars('Master Suite')).toEqual(['Room Guest'])
+    expect(bars('Whole property')).toEqual(['No Room Guest'])
+    expect(bars('Garden Unit')).toEqual([])
+  })
+
+  it('puts a room\'s cleaning on its row and a common-area cleaning on the listing row', () => {
+    useReservationsModule().reservations.value = []
+    const day = new Map([[WEEK[1]!, [
+      { id: 'c-room', type: 'cleaning', unitId: 'un-2', listingId: 'lst-1', start: `${WEEK[1]}T11:00:00+08:00` },
+      { id: 'c-common', type: 'cleaning', unitId: null, listingId: 'lst-1', start: `${WEEK[1]}T09:00:00+08:00` },
+    ]]])
+    const w = mountBoard(new Map([['lst-1', day]]))
+    const chips = (label: string) => rowOf(w, label).querySelectorAll('operations-calendar-event-chip-stub').length
+    expect(chips('Garden Unit')).toBe(1)
+    expect(chips('Whole property')).toBe(1)
+    expect(chips('Master Suite')).toBe(0)
+  })
+
+  it('clicking a day on a room row creates for that room', async () => {
+    useReservationsModule().reservations.value = []
+    const w = mountBoard()
+    const cell = rowOf(w, 'Pool Unit').querySelector('.cursor-pointer') as HTMLElement
+    cell.click()
+    await w.vm.$nextTick()
+    expect(w.emitted('create')![0]![0]).toEqual({ listingId: 'lst-1', unitId: 'un-3', dayKey: WEEK[0] })
+  })
+
+  it('folds a listing\'s rooms', async () => {
+    useReservationsModule().reservations.value = []
+    const w = mountBoard()
+    await w.find('[aria-label^="Hide rooms of"]').trigger('click')
+    expect(w.findAll('[data-testid="calendar-room-row"]')).toHaveLength(0)
   })
 })

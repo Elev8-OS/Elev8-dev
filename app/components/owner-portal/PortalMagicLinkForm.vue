@@ -80,7 +80,7 @@ async function openDemoSecureLink() {
     </div>
 
     <div v-else data-testid="magic-link-sent" class="space-y-6 text-center">
-      <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-foreground">
         <Icon name="lucide:mail-check" class="size-6" aria-hidden="true" />
       </div>
       <div class="space-y-2">

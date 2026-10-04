@@ -310,6 +310,16 @@ export const cleanerOptions = staffMembers
     },
   ])
 
+/** `YYYY-MM-DDTHH:MM:00+08:00` for a day relative to today (local date), so a demo job shows this week. */
+function demoAt(offsetDays: number, time: string): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${key}T${time}:00+08:00`
+}
+
+const VILLA_LUWA = '5BR Pool the R Villa Luwa – Serene near Canggu'
+
 export const cleaningJobs = ref<CleaningJob[]>([
   // --- June 22 (past) ---
   {
@@ -1948,6 +1958,61 @@ export const cleaningJobs = ref<CleaningJob[]>([
       cleaningDurationMinutes: 165,
       housekeeperNotes: 'Pet-heavy stay. Required 2x normal cleaning time. Recommend adding pet fee or requiring professional cleaning for pet stays.',
     },
+  },
+  // --- Rooms of The R Villa Luwa (lst-1), dated from today so they show on this week's calendar ---
+  {
+    id: 'cln-room-garden',
+    listingId: 'lst-1',
+    listingName: VILLA_LUWA,
+    unitId: 'un-2',
+    unitName: 'Garden Unit',
+    scheduledAt: demoAt(1, '11:00'),
+    cleanerIds: ['staff-3'],
+    cleanerNames: ['Made Surya'],
+    teamName: 'Housekeeping',
+    status: 'scheduled',
+    priority: 'normal',
+    durationMinutes: 90,
+    notes: 'Turn over the Garden Unit for the next guest.',
+    source: 'manual',
+    reservationId: null,
+    recurrence: null,
+  },
+  {
+    id: 'cln-room-master',
+    listingId: 'lst-1',
+    listingName: VILLA_LUWA,
+    unitId: 'un-1',
+    unitName: 'Master Suite',
+    scheduledAt: demoAt(2, '10:00'),
+    cleanerIds: ['staff-4'],
+    cleanerNames: ['Wayan Adi'],
+    teamName: 'Housekeeping',
+    status: 'scheduled',
+    priority: 'high',
+    durationMinutes: 120,
+    notes: 'Deep clean of the Master Suite, including the bathtub.',
+    source: 'manual',
+    reservationId: null,
+    recurrence: null,
+  },
+  {
+    id: 'cln-room-common',
+    listingId: 'lst-1',
+    listingName: VILLA_LUWA,
+    unitId: null,
+    unitName: null,
+    scheduledAt: demoAt(1, '08:00'),
+    cleanerIds: ['staff-3'],
+    cleanerNames: ['Made Surya'],
+    teamName: 'Housekeeping',
+    status: 'scheduled',
+    priority: 'normal',
+    durationMinutes: 60,
+    notes: 'Common areas: pool, garden and living room.',
+    source: 'daily',
+    reservationId: null,
+    recurrence: null,
   },
 ])
 

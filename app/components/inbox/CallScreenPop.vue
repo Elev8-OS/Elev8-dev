@@ -39,7 +39,7 @@ function dismiss() {
       </div>
       <div class="p-3 space-y-2">
         <div class="flex items-center gap-3">
-          <div class="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+          <div class="flex size-10 items-center justify-center rounded-full bg-primary/10 text-foreground font-semibold">
             {{ activePop.guestName.split(' ').map(n => n[0]).join('').slice(0, 2) }}
           </div>
           <div class="min-w-0 flex-1">

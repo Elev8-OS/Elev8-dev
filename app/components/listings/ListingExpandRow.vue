@@ -1,29 +1,25 @@
 <script setup lang="ts">
+import type { UnitType } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import { otaIcon } from '~/components/channels/data/channels'
-import { getUnits, getUnitTypes, listings } from '~/components/listings/data/listings'
+import { roomAiStatus, setRoomAi } from '~/components/listings/data/listing-ai-status'
+import { listings } from '~/components/listings/data/listings'
 
-const props = defineProps<{ listingId: string }>()
+/**
+ * A multi-unit listing's rooms as rows of the listings table, under the
+ * listing and lined up with its columns: a row per room type (how many of its
+ * rooms have ElevAI on), then a row per room (its on/off switch in the status
+ * column, its ElevAI switch in the AI Status column, its channels in the OTA
+ * column). Turning a room off also pauses its ElevAI. The listing's own switch
+ * already turns every room on or off.
+ */
+const props = defineProps<{
+  listingId: string
+  /** The table's visible column ids, in order, so the cells line up. */
+  columnIds: string[]
+}>()
 
 const listing = computed(() => listings.value.find(l => l.id === props.listingId)!)
-
-function toggleProperty() {
-  const idx = listings.value.findIndex(l => l.id === props.listingId)
-  if (idx === -1)
-    return
-  const currentListing = listings.value[idx]!
-  const allOff = getUnits(currentListing).every(u => u.status === 'inactive')
-  // if all off → turn all on; if any on → turn all off
-  const newUnitStatus = allOff ? 'active' : 'inactive'
-  const unitTypes = currentListing.unitTypes?.map(ut => ({
-    ...ut,
-    units: ut.units.map(u => ({ ...u, status: newUnitStatus as 'active' | 'inactive' })),
-    aiStatus: (newUnitStatus === 'inactive' ? 'paused' : 'active') as 'paused' | 'active',
-  }))
-  const newStatus = newUnitStatus === 'inactive' ? 'inactive' : 'active'
-  listings.value[idx] = { ...currentListing, status: newStatus, aiStatus: newStatus === 'inactive' ? 'paused' : 'active', unitTypes }
-  toast[newStatus === 'inactive' ? 'info' : 'success'](`All units ${newStatus === 'inactive' ? 'deactivated' : 'activated'}`)
-}
 
 function toggleUnit(unitId: string) {
   const idx = listings.value.findIndex(l => l.id === props.listingId)
@@ -36,92 +32,89 @@ function toggleUnit(unitId: string) {
       if (u.id !== unitId)
         return u
       const deactivating = u.status !== 'inactive'
-      return { ...u, status: (deactivating ? 'inactive' : 'active') as 'active' | 'inactive' }
+      return { ...u, status: (deactivating ? 'inactive' : 'active') as 'active' | 'inactive', aiStatus: (deactivating ? 'paused' : 'active') as 'active' | 'paused' }
     }),
   }))
   // derive property status from units
   const allUnits = unitTypes?.flatMap(ut => ut.units) ?? []
   const allOff = allUnits.every(u => u.status === 'inactive')
   const newStatus = allOff ? 'inactive' : 'active'
-  listings.value[idx] = { ...currentListing, status: newStatus, aiStatus: allOff ? 'paused' : 'active', unitTypes }
+  const anyAi = allUnits.some(u => u.aiStatus === 'active' || (u.aiStatus === undefined && u.status !== 'inactive'))
+  listings.value[idx] = { ...currentListing, status: newStatus, aiStatus: anyAi ? 'active' : 'paused', unitTypes }
   const toggled = allUnits.find(u => u.id === unitId)
   toast[toggled?.status === 'inactive' ? 'info' : 'success'](`${toggled?.name} ${toggled?.status === 'inactive' ? 'deactivated' : 'activated'}`)
 }
 
-function toggleUnitTypeAi(unitTypeId: string) {
+function toggleRoomAi(unitId: string, name: string, on: boolean) {
   const idx = listings.value.findIndex(l => l.id === props.listingId)
   if (idx === -1)
     return
-  const currentListing = listings.value[idx]!
-  const unitTypes = currentListing.unitTypes?.map((ut) => {
-    if (ut.id !== unitTypeId)
-      return ut
-    const current = ut.aiStatus ?? 'active'
-    return { ...ut, aiStatus: (current === 'active' ? 'paused' : 'active') as 'active' | 'paused' }
-  })
-  // derive listing-level aiStatus from unit types
-  const allUnitTypes = getUnitTypes({ ...currentListing, unitTypes })
-  const allOff = allUnitTypes.every(ut => ut.aiStatus === 'paused')
-  const anyOn = allUnitTypes.some(ut => (ut.aiStatus ?? 'active') === 'active')
-  const derivedAi: 'active' | 'paused' | 'not_set' = allOff ? 'paused' : (anyOn ? 'active' : 'not_set')
-  listings.value[idx] = { ...currentListing, aiStatus: derivedAi, unitTypes }
-  const toggled = allUnitTypes.find(ut => ut.id === unitTypeId)
-  toast[derivedAi === 'paused' ? 'info' : 'success'](`${toggled?.name} AI ${toggled?.aiStatus === 'paused' ? 'paused' : 'activated'}`)
+  listings.value[idx] = setRoomAi(listings.value[idx]!, unitId, on)
+  toast[on ? 'success' : 'info'](`ElevAI ${on ? 'activated' : 'paused'} for ${name}`)
+}
+
+function roomsAiOn(unitType: UnitType) {
+  return unitType.units.filter(u => roomAiStatus(unitType, u) === 'active').length
 }
 </script>
 
 <template>
-  <div v-if="listing" class="mt-2 border-l-2 border-muted ml-1 pl-3 space-y-1">
-    <!-- Property-level toggle -->
-    <div class="flex items-center justify-between gap-2 py-1">
-      <span class="text-xs font-medium text-muted-foreground">Property</span>
-      <Switch
-        :model-value="getUnits(listing).some(u => u.status !== 'inactive')"
-        @update:model-value="toggleProperty"
-      />
-    </div>
-    <div class="border-t border-muted" />
-
-    <!-- Per unit type -->
+  <template v-if="listing">
     <template v-for="unitType in listing.unitTypes" :key="unitType.id">
-      <!-- Unit type header (AI toggle lives here) -->
-      <div class="flex items-center justify-between gap-2 py-1">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <Icon name="lucide:layers" class="size-3 shrink-0 text-muted-foreground" />
-          <span class="text-xs font-medium text-muted-foreground truncate">{{ unitType.name }}</span>
-        </div>
-        <button
-          type="button"
-          class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
-          :class="(unitType.aiStatus ?? 'active') === 'active' ? 'bg-[#C8A84B]/15 text-[#C8A84B]' : 'bg-muted text-muted-foreground'"
-          @click.stop="toggleUnitTypeAi(unitType.id)"
-        >
-          {{ (unitType.aiStatus ?? 'active') === 'active' ? 'AI On' : 'AI Off' }}
-        </button>
-      </div>
+      <!-- Room type -->
+      <TableRow class="bg-muted/30 hover:bg-muted/40" data-testid="listing-rooms-type">
+        <TableCell v-for="col in columnIds" :key="col" :class="col === 'status' ? 'w-12 pr-1' : 'py-2'">
+          <div v-if="col === 'name'" class="flex items-center gap-2 pl-5">
+            <Icon name="lucide:layers" class="size-3.5 shrink-0 text-muted-foreground" />
+            <span class="text-xs font-medium">{{ unitType.name }}</span>
+            <span class="text-xs text-muted-foreground">· {{ unitType.units.length }} {{ unitType.units.length === 1 ? 'room' : 'rooms' }}</span>
+          </div>
+          <span v-else-if="col === 'aiStatus'" class="text-xs text-muted-foreground" data-testid="listing-rooms-type-ai">
+            ElevAI on {{ roomsAiOn(unitType) }} of {{ unitType.units.length }}
+          </span>
+        </TableCell>
+      </TableRow>
 
-      <!-- Per-unit rows -->
-      <div
-        v-for="unit in unitType.units"
-        :key="unit.id"
-        class="flex items-center justify-between gap-2 py-1 pl-3"
-      >
-        <div class="flex items-center gap-1.5 min-w-0 flex-1">
-          <Icon name="lucide:door-open" class="size-3 shrink-0" :class="unit.status === 'inactive' ? 'text-muted-foreground/40' : 'text-muted-foreground'" />
-          <span class="text-xs truncate" :class="unit.status === 'inactive' ? 'text-muted-foreground/50 line-through' : ''">{{ unit.name }}</span>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <!-- OTA icons -->
-          <template v-for="ota in (unit.otaConnected ?? listing.otaConnected)" :key="ota">
-            <Icon :name="otaIcon(ota)" class="size-3" :class="unit.status === 'inactive' ? 'opacity-30' : ''" />
-          </template>
-          <!-- Unit toggle -->
+      <!-- Rooms of that type -->
+      <TableRow v-for="unit in unitType.units" :key="unit.id" class="hover:bg-muted/20" data-testid="listing-rooms-room">
+        <TableCell v-for="col in columnIds" :key="col" :class="col === 'status' ? 'w-12 pr-1' : 'py-2'">
           <Switch
+            v-if="col === 'status'"
+            class="ml-0.5"
             :model-value="unit.status !== 'inactive'"
+            :aria-label="`${unit.name} active`"
             @update:model-value="toggleUnit(unit.id)"
           />
-        </div>
-      </div>
+          <div v-else-if="col === 'name'" class="flex items-center gap-2 pl-10">
+            <Icon name="lucide:door-closed" class="size-3.5 shrink-0" :class="unit.status === 'inactive' ? 'text-muted-foreground/50' : 'text-muted-foreground'" />
+            <span class="text-sm" :class="unit.status === 'inactive' ? 'text-muted-foreground' : ''">{{ unit.name }}</span>
+            <Badge v-if="unit.status === 'inactive'" variant="outline" class="px-1.5 py-0 text-[10px] text-muted-foreground">
+              Inactive
+            </Badge>
+          </div>
+          <div v-else-if="col === 'aiStatus'" class="flex items-center gap-2">
+            <Switch
+              :model-value="roomAiStatus(unitType, unit) === 'active'"
+              :aria-label="`ElevAI for ${unit.name}`"
+              data-testid="listing-room-ai"
+              @update:model-value="(v: boolean) => toggleRoomAi(unit.id, unit.name, v)"
+            />
+            <span class="text-xs" :class="roomAiStatus(unitType, unit) === 'active' ? 'text-foreground' : 'text-muted-foreground'">
+              {{ roomAiStatus(unitType, unit) === 'active' ? 'ElevAI on' : 'ElevAI off' }}
+            </span>
+          </div>
+          <div v-else-if="col === 'otaConnected'" class="flex items-center gap-1.5">
+            <Icon
+              v-for="ota in (unit.otaConnected ?? listing.otaConnected)"
+              :key="ota"
+              :name="otaIcon(ota)"
+              class="size-4"
+              :class="unit.status === 'inactive' ? 'opacity-30' : ''"
+              :aria-label="ota"
+            />
+          </div>
+        </TableCell>
+      </TableRow>
     </template>
-  </div>
+  </template>
 </template>

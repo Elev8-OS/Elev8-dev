@@ -22,6 +22,7 @@ const {
 
 const createOpen = ref(false)
 const createListingId = ref<string>()
+const createUnitId = ref<string | null>(null)
 const createDayKey = ref<string>()
 
 const detailOpen = ref(false)
@@ -38,19 +39,21 @@ function handleEventClick(event: CalendarEvent) {
   }
 }
 
-function handleCreate(payload: { listingId: string, dayKey: string }) {
+function handleCreate(payload: { listingId: string, dayKey: string, unitId?: string | null }) {
   createListingId.value = payload.listingId
+  createUnitId.value = payload.unitId ?? null
   createDayKey.value = payload.dayKey
   createOpen.value = true
 }
 
 function openCreateOperation() {
   createListingId.value = undefined
+  createUnitId.value = null
   createDayKey.value = undefined
   createOpen.value = true
 }
 
-function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: string }) {
+function handleMoveEvent(payload: { id: string, listingId: string, scheduledAt: string, unitId?: string | null }) {
   moveCleaning(payload)
   toast.success('Cleaning job rescheduled')
 }
@@ -104,6 +107,7 @@ watch(filteredEvents, (eventsList) => {
       <OperationsCalendarCreateDialog
         :open="createOpen"
         :listing-id="createListingId"
+        :unit-id="createUnitId"
         :day-key="createDayKey"
         @update:open="createOpen = $event"
       />

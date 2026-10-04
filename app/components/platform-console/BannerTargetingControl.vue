@@ -133,7 +133,7 @@ const tenantOptions = computed(() => candidateTenants.value.filter(t =>
               <button v-for="p in (['per_booking','per_property'] as TenantPlan[])" :key="p"
                 type="button"
                 class="rounded-md border px-2 py-1 text-xs"
-                :class="segmentPlans.includes(p) ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted'"
+                :class="segmentPlans.includes(p) ? 'border-primary bg-primary/10 text-foreground' : 'hover:bg-muted'"
                 @click="togglePlan(p)">
                 {{ TENANT_PLAN_LABEL[p] }}
               </button>
@@ -145,7 +145,7 @@ const tenantOptions = computed(() => candidateTenants.value.filter(t =>
               <button v-for="t in (Object.keys(TIER_LABEL) as PackageTier[])" :key="t"
                 type="button"
                 class="rounded-md border px-2 py-1 text-xs"
-                :class="segmentTiers.includes(t) ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted'"
+                :class="segmentTiers.includes(t) ? 'border-primary bg-primary/10 text-foreground' : 'hover:bg-muted'"
                 @click="toggleTier(t)">
                 {{ TIER_LABEL[t] }}
               </button>
@@ -157,7 +157,7 @@ const tenantOptions = computed(() => candidateTenants.value.filter(t =>
               <button v-for="r in (Object.keys(REGION_LABEL) as Region[])" :key="r"
                 type="button"
                 class="rounded-md border px-2 py-1 text-xs"
-                :class="segmentRegions.includes(r) ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted'"
+                :class="segmentRegions.includes(r) ? 'border-primary bg-primary/10 text-foreground' : 'hover:bg-muted'"
                 @click="toggleRegion(r)">
                 {{ REGION_LABEL[r] }}
               </button>
@@ -224,7 +224,7 @@ const tenantOptions = computed(() => candidateTenants.value.filter(t =>
         <button v-for="r in ALL_STAFF_ROLES" :key="r"
           type="button"
           class="rounded-md border px-2 py-1 text-xs"
-          :class="visibleRolesLocal.includes(r) ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-muted'"
+          :class="visibleRolesLocal.includes(r) ? 'border-primary bg-primary/10 text-foreground' : 'hover:bg-muted'"
           @click="toggleRole(r)">
           {{ r }}
         </button>

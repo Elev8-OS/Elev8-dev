@@ -27,6 +27,10 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
   'deleted': [event: CalendarEvent]
 }>()
+/** The room of a cleaning or task on a multi-unit listing (`CalendarEvent.unitId`). */
+const eventListingRooms = computed(() => listings.value.find(l => l.id === props.event?.listingId)?.unitTypes?.flatMap(ut => ut.units) ?? [])
+const eventHasRooms = computed(() => eventListingRooms.value.length > 0)
+const eventRoomName = computed(() => props.event?.unitId ? eventListingRooms.value.find(u => u.id === props.event!.unitId)?.name : undefined)
 
 const { jobs: cleaningJobs, updateJob, deleteJob, resolveCleanerNames } = useCleaningJobs()
 const { tasks: taskStore, deleteTask } = useTaskStore()
@@ -420,6 +424,16 @@ const cleaningTimeRange = computed(() => {
         <SheetDescription v-if="event?.listingName" class="mt-0.5 text-sm">
           {{ event.listingName }}
         </SheetDescription>
+        <!-- Which room it is for; none means the whole property (common areas). -->
+        <p
+          v-if="(event?.type === 'cleaning' || event?.type === 'task') && eventHasRooms"
+          class="mt-1.5 flex items-center gap-1.5 text-sm"
+          :class="eventRoomName ? 'text-foreground' : 'text-muted-foreground'"
+          data-testid="detail-room"
+        >
+          <Icon :name="eventRoomName ? 'lucide:door-closed' : 'lucide:house'" class="size-3.5" />
+          {{ eventRoomName ?? 'Whole property' }}
+        </p>
         <p
           v-if="cleaningTimeRange"
           class="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground"

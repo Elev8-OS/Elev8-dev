@@ -320,7 +320,7 @@ function taskStatusDisplay(status: string | undefined) {
               <span class="text-[11px] text-muted-foreground">Convert to action</span>
               <button
                 type="button"
-                class="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                class="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 :data-testid="`finding-create-task-${f.id}`"
                 @click.stop="handleCreateTask(f)"
               >

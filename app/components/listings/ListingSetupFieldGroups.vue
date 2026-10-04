@@ -22,8 +22,10 @@ const props = defineProps<{
   selecting?: boolean
   /** Selectable ids the `extra` slot shows per group (e.g. custom SOPs), so the group's select-all covers them. */
   extraSelectable?: Record<string, string[]>
+  /** Show "Create with AI" on each field (SOPs). */
+  aiAssist?: boolean
 }>()
-const emit = defineEmits<{ update: [listing: Listing], configure: [key: string, label: string] }>()
+const emit = defineEmits<{ update: [listing: Listing], configure: [key: string, label: string], ai: [key: string, label: string] }>()
 /** Selected field keys, when `selectable` is set. */
 const selected = defineModel<string[]>('selected', { default: () => [] })
 function toggleSelected(key: string) {
@@ -126,6 +128,18 @@ function write(field: ListingDetailField, value: unknown) {
                 <Icon name="lucide:pencil" class="size-3" />
                 <span v-if="hasConfig(field.key)" class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" />
               </button>
+              <Button
+                v-if="aiAssist && !selecting"
+                variant="ghost"
+                size="sm"
+                class="-my-1 ml-auto h-7 shrink-0 gap-1.5 px-2 text-xs"
+                :aria-label="`Create with AI: ${field.label}`"
+                data-testid="sop-ai-button"
+                @click="emit('ai', field.key, field.label)"
+              >
+                <SharedAiIcon custom-class="size-3.5" />
+                Create with AI
+              </Button>
             </div>
 
             <Select

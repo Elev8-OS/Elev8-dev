@@ -54,7 +54,7 @@ const expandedRows = ref<Set<string>>(new Set())
 
 const listingsKey = computed(() =>
   listings.value.map((l) => {
-    const unitTypes = l.unitTypes?.map(ut => `${ut.id}:${ut.aiStatus ?? '-'}:${ut.units.map(u => `${u.id}:${u.status}`).join(',')}`).join('|') ?? ''
+    const unitTypes = l.unitTypes?.map(ut => `${ut.id}:${ut.aiStatus ?? '-'}:${ut.units.map(u => `${u.id}:${u.status}:${u.aiStatus ?? '-'}`).join(',')}`).join('|') ?? ''
     return `${l.id}:${l.status}:${l.aiStatus}:${unitTypes}`
   }).join('||'),
 )
@@ -107,7 +107,6 @@ const columns: ColumnDef<Listing, any>[] = [
           h('div', { class: 'flex items-center gap-1 mt-0.5' }, [
             h('span', { class: 'text-[11px] text-muted-foreground' }, isMulti ? `Multi-unit · ${getUnits(listing).length} units` : 'Single unit'),
           ]),
-          isExpanded && isMulti && h(ListingExpandRow, { listingId: listing.id }),
         ]),
       ])
     },
@@ -457,23 +456,24 @@ function handleRenameView(viewId: string, newName: string) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
 
-    <SavedViewsDropdown
-      :saved-views="savedViews"
-      :active-view="activeView"
-      :is-dirty="isDirty"
-      :is-loading="savedViewsLoading"
-      :can-update-active-view="canUpdateActiveView"
-      :pending-view-id="pendingViewId"
-      @load-view="handleLoadView"
-      @save-as="handleSaveAs"
-      @update="handleUpdateView"
-      @delete="handleDeleteView"
-      @rename="handleRenameView"
-      @reset="handleResetView"
-      @confirm-load="handleConfirmLoadView"
-    />
+      <SavedViewsDropdown
+        class="ml-auto"
+        :saved-views="savedViews"
+        :active-view="activeView"
+        :is-dirty="isDirty"
+        :is-loading="savedViewsLoading"
+        :can-update-active-view="canUpdateActiveView"
+        :pending-view-id="pendingViewId"
+        @load-view="handleLoadView"
+        @save-as="handleSaveAs"
+        @update="handleUpdateView"
+        @delete="handleDeleteView"
+        @rename="handleRenameView"
+        @reset="handleResetView"
+        @confirm-load="handleConfirmLoadView"
+      />
+    </div>
 
     <div v-if="activeTagFilter.length > 0 || activeAiFilter" class="flex flex-wrap items-center gap-1.5">
       <Badge
@@ -535,13 +535,21 @@ function handleRenameView(viewId: string, newName: string) {
           </TableHeader>
           <TableBody>
             <template v-if="table.getRowModel().rows?.length">
-              <TableRow v-for="row in table.getRowModel().rows" :key="row.id">
-                <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id" :class="cell.column.id === 'status' ? 'w-12 pr-1' : ''">
-                  <ListingAiStatusCell v-if="cell.column.id === 'aiStatus'" :key="`ai-${row.original.id}`" :listing-id="row.original.id" />
-                  <ListingOtaCell v-else-if="cell.column.id === 'otaConnected'" :key="`ota-${row.original.id}`" :listing-id="row.original.id" />
-                  <FlexRender v-else :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-                </TableCell>
-              </TableRow>
+              <template v-for="row in table.getRowModel().rows" :key="row.id">
+                <TableRow>
+                  <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id" :class="cell.column.id === 'status' ? 'w-12 pr-1' : ''">
+                    <ListingAiStatusCell v-if="cell.column.id === 'aiStatus'" :key="`ai-${row.original.id}`" :listing-id="row.original.id" />
+                    <ListingOtaCell v-else-if="cell.column.id === 'otaConnected'" :key="`ota-${row.original.id}`" :listing-id="row.original.id" />
+                    <FlexRender v-else :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+                  </TableCell>
+                </TableRow>
+                <!-- A multi-unit listing's room types and rooms, as rows lined up with the columns. -->
+                <ListingExpandRow
+                  v-if="expandedRows.has(row.original.id) && row.original.unitType === 'multi'"
+                  :listing-id="row.original.id"
+                  :column-ids="row.getVisibleCells().map(c => c.column.id)"
+                />
+              </template>
             </template>
             <TableRow v-else>
               <TableCell :colspan="columns.length" class="h-24 text-center">

@@ -782,7 +782,7 @@ function formatCallDate(timestamp: string): string {
             <!-- Call back button -->
             <div v-if="selectedReservation?.guestDetails?.phone" class="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
               <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                <Icon name="lucide:phone" class="size-4 text-primary" />
+                <Icon name="lucide:phone" class="size-4 text-foreground" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium truncate">

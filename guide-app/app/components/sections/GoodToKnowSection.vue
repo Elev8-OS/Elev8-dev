@@ -8,6 +8,8 @@ interface GoodToKnowItem {
   text?: string
   icon?: string
   photoUrl?: string
+  /** Set only on a tip for the guest's room. */
+  roomName?: string
 }
 
 const props = defineProps<{
@@ -34,22 +36,28 @@ const { translate } = useAutoTranslate()
     </div>
     <!-- One row per tip, like the check-in steps: a photo only grows its own row. -->
     <ul class="divide-y">
-      <li v-for="item in items" :key="item.id" class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-        <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon :name="item.icon || 'lucide:info'" class="size-5" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <p class="font-medium">
-            {{ translate(item.title) }}
-          </p>
-          <ExpandableText
-            v-if="item.text"
-            :html="item.text"
-            class="mt-0.5 text-sm text-muted-foreground"
-          />
-        </div>
-        <img v-if="item.photoUrl" :src="item.photoUrl" alt="" class="aspect-[4/3] w-24 shrink-0 rounded-lg border object-cover sm:w-32">
-      </li>
+      <template v-for="(item, i) in items" :key="item.id">
+        <li v-if="item.roomName && item.roomName !== items[i - 1]?.roomName" class="flex items-center gap-2 py-2 text-sm font-semibold" data-testid="guide-room-heading">
+          <Icon name="lucide:door-closed" class="size-4 text-muted-foreground" />
+          Your room: {{ item.roomName }}
+        </li>
+        <li class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+          <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Icon :name="item.icon || 'lucide:info'" class="size-5" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="font-medium">
+              {{ translate(item.title) }}
+            </p>
+            <ExpandableText
+              v-if="item.text"
+              :html="item.text"
+              class="mt-0.5 text-sm text-muted-foreground"
+            />
+          </div>
+          <img v-if="item.photoUrl" :src="item.photoUrl" alt="" class="aspect-[4/3] w-24 shrink-0 rounded-lg border object-cover sm:w-32">
+        </li>
+      </template>
     </ul>
   </section>
 </template>

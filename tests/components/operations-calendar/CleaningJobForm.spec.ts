@@ -93,6 +93,29 @@ describe('cleaningJobForm in create operation', () => {
     wrapper.unmount()
   })
 
+  it('a cleaning started from a room row is saved for that room', async () => {
+    const wrapper = mount(CleaningJobForm, {
+      props: { mode: 'create', defaultListingId: 'lst-1', defaultUnitId: 'un-2', defaultScheduledAt: '2026-06-23T11:00' },
+      global: {
+        components: { Button, Popover, PopoverContent, PopoverTrigger },
+        stubs: { Icon: true, Switch: true, Select: true, SelectTrigger: true, SelectValue: true, SelectContent: true, SelectItem: true, ScrollArea: { template: '<div><slot /></div>' } },
+      },
+      attachTo: document.body,
+    })
+    await nextTick()
+    expect(wrapper.find('[data-testid="cleaning-room"]').text()).toContain('Garden Unit')
+    await wrapper.findAllComponents(Button).find(b => b.text().includes('Assign housekeeping'))!.trigger('click')
+    await nextTick()
+    await nextTick()
+    const madeSurya = Array.from(document.querySelectorAll('[data-slot="popover-content"] button')).find(b => b.textContent?.includes('Made Surya')) as HTMLButtonElement
+    madeSurya.click()
+    await nextTick()
+    await nextTick()
+    await wrapper.findAllComponents(Button).find(b => b.text().includes('Save Cleaning Job'))!.trigger('click')
+    expect(wrapper.emitted('save')![0]![0]).toMatchObject({ listingId: 'lst-1', unitId: 'un-2', unitName: 'Garden Unit' })
+    wrapper.unmount()
+  })
+
   it('filters staff when searching "housekeeping"', async () => {
     const wrapper = mount(CleaningJobForm, {
       props: {

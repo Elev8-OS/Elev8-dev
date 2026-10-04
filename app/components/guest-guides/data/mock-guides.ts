@@ -71,6 +71,7 @@ export const mockGuestGuideLinks: GuestGuideLink[] = [
     guideId: 'gg-mock-001',
     reservationId: 'res-mock-001',
     listingId: 'lst-1',
+    unitIds: ['un-1'],
     guestName: 'Anna Schmidt',
     guestEmail: 'anna@example.com',
     guestPhone: '+4912345678',

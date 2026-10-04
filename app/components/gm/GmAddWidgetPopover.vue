@@ -47,7 +47,7 @@ function handleAdd(id: GmWidgetId) {
           <span v-if="props.showLabel">Add Widget</span>
           <span
             v-if="availableWidgets.length > 0"
-            class="ml-1 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-primary"
+            class="ml-1 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-semibold text-foreground"
           >
             {{ availableWidgets.length }}
           </span>
@@ -75,7 +75,7 @@ function handleAdd(id: GmWidgetId) {
           class="group flex items-start gap-2.5 rounded-lg border border-transparent p-2 text-left transition-colors hover:border-border hover:bg-accent/60"
           @click="handleAdd(widget.id)"
         >
-          <div class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <div class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-foreground">
             <Icon :name="widget.icon" class="size-3.5" />
           </div>
           <div class="min-w-0 flex-1">

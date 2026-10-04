@@ -166,10 +166,10 @@ function sendRequest(): void {
               <span class="truncate text-sm font-medium text-foreground">{{ provider.name }}</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
-              <span v-if="selected === provider.id && secretKey" class="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+              <span v-if="selected === provider.id && secretKey" class="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-foreground">
                 Configured
               </span>
-              <Icon v-if="selected === provider.id" name="lucide:check" class="size-4 text-primary" />
+              <Icon v-if="selected === provider.id" name="lucide:check" class="size-4 text-foreground" />
             </div>
           </button>
         </div>
@@ -199,10 +199,10 @@ function sendRequest(): void {
                 <span class="truncate text-sm font-medium text-foreground">{{ provider.name }}</span>
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
-                <span v-if="selected === provider.id && secretKey" class="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <span v-if="selected === provider.id && secretKey" class="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-foreground">
                   Configured
                 </span>
-                <Icon v-if="selected === provider.id" name="lucide:check" class="size-4 text-primary" />
+                <Icon v-if="selected === provider.id" name="lucide:check" class="size-4 text-foreground" />
               </div>
             </button>
           </div>

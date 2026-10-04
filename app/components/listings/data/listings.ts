@@ -4,6 +4,8 @@ import type { GuestVerificationSettings } from '~/components/listings/data/guest
 import type { ListingAddress } from '~/components/listings/data/listing-address'
 import type { AvoidTopic } from '~/components/listings/data/listing-avoid-topics'
 import type { ListingDetailsInfo } from '~/components/listings/data/listing-details'
+import type { RoomOverrides } from '~/components/listings/data/listing-room-overrides'
+import type { SleepingExtras } from '~/components/listings/data/listing-sleeping'
 import type { ListingSops } from '~/components/listings/data/listing-sops'
 import type { PetPolicy } from '~/components/listings/data/pet-policy'
 import type { ListingCleaningConfig } from '~/components/reservations/data/cleaning-schedule'
@@ -277,7 +279,6 @@ export interface ListingResources {
     checkInTime?: string
     checkOutTime?: string
   }
-  listingDetails?: string
   sops?: string
   /** @deprecated Plain topic names. Replaced by `avoidTopics`; read only as a fallback by `listingAvoidTopics`. */
   topicsToAvoid?: string[]
@@ -293,12 +294,18 @@ export interface Unit {
   identifier?: string
   status?: 'active' | 'inactive'
   otaConnected?: string[]
+  /** ElevAI for this room. Missing = its room type's `aiStatus` (older data), else on. Read through `roomAiStatus`. */
+  aiStatus?: 'active' | 'paused' | 'not_set'
+  /** What this room sets differently from the property (`listing-room-overrides.ts`). Missing = all inherited. */
+  overrides?: RoomOverrides
 }
 
 export interface Bed {
   id: string
   type: string
   count: number
+  /** Which bedroom it is in (1-based); 0 = another sleeping area (e.g. the living room). Missing means bedroom 1. */
+  room?: number
 }
 
 export type RateSellMode = 'per_room' | 'per_person'
@@ -540,6 +547,8 @@ export interface UnitType {
   bedrooms: number
   bathrooms: number
   beds: Bed[]
+  /** Extra bed / baby cot on request (`listing-sleeping.ts`). */
+  sleepingExtras?: SleepingExtras
   photos: string[]
   pricing: UnitTypePricing
   aiStatus?: 'active' | 'paused' | 'not_set'
@@ -578,6 +587,8 @@ export interface Listing {
   propertyType?: string
   /** Structured address, edited in Listing Setup > Basics. Read through `listingAddress`; `location` stays the display label. */
   address?: ListingAddress
+  /** The pinpoint set in Listing Setup > Basics > Location. Read through `listingPin`. */
+  coordinates?: { lat: number, lng: number }
   /** Listing Setup > Listing Details answers (booking, arrival, property). Fields come from `LISTING_DETAIL_GROUPS`. */
   details?: ListingDetailsInfo
   /** Listing Setup > SOPs answers. Fields come from `SOP_GROUPS`; the free-text "General procedures" stays `resources.sops`. */
@@ -706,7 +717,17 @@ export const listings = ref<Listing[]>([
         },
         aiStatus: 'active',
         units: [
-          { id: 'un-1', name: 'Master Suite', identifier: 'K1' },
+          {
+            id: 'un-1',
+            name: 'Master Suite',
+            identifier: 'K1',
+            overrides: {
+              guide: {
+                checkin: [{ id: 'gci-room-ms-1', title: 'Find the Master Suite', text: 'Upstairs, the second door on the left. The door code is sent on the morning of arrival.' }],
+                good_to_know: [{ id: 'gci-room-ms-2', title: 'Freestanding bathtub', text: 'Fill it to the line only; the overflow is slow.', icon: 'lucide:bath' }],
+              },
+            },
+          },
           { id: 'un-2', name: 'Garden Unit', identifier: 'K2' },
         ],
       },
@@ -881,6 +902,7 @@ export const listings = ref<Listing[]>([
       postalCode: '80351',
       country: 'ID',
     },
+    coordinates: { lat: -8.6442, lng: 115.1199 },
     details: {
       directBookingChanges: 'Please contact us through the chat in the guest guide. All prices in the calendar are in CHF.',
       supportHours: 'Support is available before, during, and after the stay. Guests can contact the team via the provided email or phone.',

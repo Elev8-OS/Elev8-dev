@@ -85,7 +85,7 @@ const assignedStaff = computed(() => {
       name,
       isExtrasauber: name.toLowerCase() === 'extrasauber' || name.toLowerCase() === 'extrasauber.com',
       initials: member?.label.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() ?? name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-      color: member ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+      color: member ? 'bg-primary/10 text-foreground' : 'bg-muted text-muted-foreground',
     }
   })
 })
