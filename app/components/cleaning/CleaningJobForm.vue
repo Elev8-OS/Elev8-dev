@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import type { CleaningJob, CleaningJobInput, CleaningJobPriority, CleaningJobRecurrence, CleaningJobSource, CleaningJobStatus } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import DatePicker from '~/components/base/DatePicker.vue'
 import { cleanerOptions, CLEANING_SOURCE_OPTIONS, cleaningJobSourceLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
-import { CLEANING_STEPS_REQUIRED_MESSAGE } from '~/components/cleaning/data/cleaning-steps'
+import { CLEANING_STEPS_REQUIRED_MESSAGE, cloneCleaningSteps, countCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { allStays } from '~/components/operations-calendar/data/calendar-stays'
 import GuestInfoCard from '~/components/operations-calendar/GuestInfoCard.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
 import { listingHasCleaningSteps } from '~/composables/useCleaningJobs'
+import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = withDefaults(defineProps<{
@@ -211,6 +213,31 @@ const isValidTimeRange = computed(() => {
 const isNewJob = computed(() => !props.modelValue?.id)
 const stepsMissing = computed(() => isNewJob.value && Boolean(form.listingId) && !listingHasCleaningSteps(form.listingId))
 
+// --- Checklist (new jobs only) ---
+// A new job copies the listing's steps by default; picking a template written
+// for this cleaning type copies the template's steps instead (`CleaningJob.steps`).
+const LISTING_CHECKLIST = 'listing'
+const LEGACY_SOURCE_TYPES: Partial<Record<CleaningJobSource, CleaningTemplateType>> = { manual: 'custom', checkout: 'check_out' }
+const { sortedTemplates, getTemplate } = useCleaningStepTemplates()
+const checklistId = ref<string>(LISTING_CHECKLIST)
+
+const templateType = computed<CleaningTemplateType>(() => LEGACY_SOURCE_TYPES[form.source] ?? form.source as CleaningTemplateType)
+const checklistTemplates = computed(() => sortedTemplates.value.filter(t => t.cleaningTypes.includes(templateType.value)))
+const checklistTemplate = computed(() => checklistId.value === LISTING_CHECKLIST ? null : getTemplate(checklistId.value) ?? null)
+
+const listingStepCount = computed(() =>
+  countCleaningSteps(listings.value.find(l => l.id === form.listingId)?.maintenance?.cleaningSteps),
+)
+const checklistSummary = computed(() => checklistTemplate.value
+  ? `${checklistTemplate.value.name} (${countCleaningSteps(checklistTemplate.value.sections)} steps)`
+  : `Listing's cleaning steps (${listingStepCount.value} steps)`)
+
+// A template not written for the new type is dropped back to the listing's steps.
+watch(templateType, (type) => {
+  if (checklistTemplate.value && !checklistTemplate.value.cleaningTypes.includes(type))
+    checklistId.value = LISTING_CHECKLIST
+})
+
 const canSubmit = computed(() =>
   Boolean(form.listingId)
   && !stepsMissing.value
@@ -372,6 +399,7 @@ function submit() {
     ...form,
     teamName: 'Housekeeping',
     recurrence: recurrenceModel.value,
+    ...(isNewJob.value && checklistTemplate.value ? { steps: cloneCleaningSteps(checklistTemplate.value.sections) } : {}),
   })
 }
 </script>
@@ -540,7 +568,7 @@ function submit() {
       </div>
       <div class="grid gap-1.5">
         <Label>Cleaning type</Label>
-        <Select :model-value="form.source" @update:model-value="value => { form.source = value as CleaningJobSource }">
+        <Select :model-value="form.source" data-testid="cleaning-type" @update:model-value="value => { form.source = value as CleaningJobSource }">
           <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
           <SelectContent>
             <SelectItem v-for="option in CLEANING_SOURCE_OPTIONS" :key="option.value" :value="option.value">
@@ -549,6 +577,32 @@ function submit() {
           </SelectContent>
         </Select>
       </div>
+    </div>
+
+    <div v-if="isNewJob" class="grid gap-1.5">
+      <Label>Checklist</Label>
+      <Select :model-value="checklistId" data-testid="cleaning-checklist" @update:model-value="value => { checklistId = String(value) }">
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="LISTING_CHECKLIST">
+            Listing's cleaning steps
+          </SelectItem>
+          <SelectItem v-for="t in checklistTemplates" :key="t.id" :value="t.id">
+            {{ t.name }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <p class="text-xs text-muted-foreground" data-testid="cleaning-checklist-hint">
+        <template v-if="checklistTemplates.length">
+          Templates for {{ cleaningJobSourceLabels[form.source].toLowerCase() }}. The job keeps its own copy of the steps.
+        </template>
+        <template v-else>
+          No template is set up for {{ cleaningJobSourceLabels[form.source].toLowerCase() }}.
+          <NuxtLink to="/settings/cleaning-templates" class="font-medium underline">
+            Manage templates
+          </NuxtLink>
+        </template>
+      </p>
     </div>
 
     <div class="rounded-lg border bg-muted/30 p-4">
@@ -662,6 +716,14 @@ function submit() {
           </dt>
           <dd class="mt-0.5 font-medium">
             {{ cleaningJobSourceLabels[form.source] }}
+          </dd>
+        </div>
+        <div v-if="isNewJob" class="col-span-2">
+          <dt class="text-xs uppercase tracking-wide text-muted-foreground">
+            Checklist
+          </dt>
+          <dd class="mt-0.5 font-medium" data-testid="cleaning-checklist-summary">
+            {{ checklistSummary }}
           </dd>
         </div>
         <div v-if="summaryRecurrence">

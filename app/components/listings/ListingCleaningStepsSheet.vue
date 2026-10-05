@@ -3,6 +3,7 @@ import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-st
 import type { PropertyPickerOption } from '~/components/shared/PropertyPicker.vue'
 import { toast } from 'vue-sonner'
 import CleaningStepsEditor from '~/components/cleaning/CleaningStepsEditor.vue'
+import { CLEANING_SOURCE_LABELS } from '~/components/cleaning/data/cleaning-jobs'
 import { cleanCleaningSteps, cloneCleaningSteps, countCleaningSteps, parseCleaningStepsFile } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import PropertyPicker from '~/components/shared/PropertyPicker.vue'
@@ -57,6 +58,9 @@ const importOpen = ref(false)
 const importSource = ref<ImportSource>('template')
 const importMode = ref<'replace' | 'append'>('replace')
 const importTemplateId = ref('')
+const importTemplateTypes = computed(() =>
+  (getTemplate(importTemplateId.value)?.cleaningTypes ?? []).map(type => CLEANING_SOURCE_LABELS[type]).join(', '),
+)
 const importListingId = ref('')
 const importFile = ref<{ name: string, sections: CleaningStepSection[] } | null>(null)
 const importError = ref('')
@@ -223,6 +227,9 @@ function save() {
                 </SelectItem>
               </SelectContent>
             </Select>
+            <p v-if="importTemplateTypes" class="text-xs text-muted-foreground" data-testid="import-template-types">
+              For: {{ importTemplateTypes }}
+            </p>
             <p class="text-xs text-muted-foreground">
               Manage templates in
               <NuxtLink to="/settings/cleaning-templates" class="font-medium underline">

@@ -72,4 +72,11 @@ describe('cleaningTemplatesSettingsPanel', () => {
     await wrapper.get('[data-testid="template-delete-confirm"]').trigger('click')
     expect(wrapper.findAll('[data-testid="template-card"]')).toHaveLength(before - 1)
   })
+
+  it('shows each template\'s cleaning types', () => {
+    const cards = mountPanel().findAll('[data-testid="template-card"]')
+    const daily = cards.find(c => c.get('h3').text() === 'Daily refresh')!
+    expect(daily.get('[data-testid="template-types"]').text()).toContain('Daily cleaning')
+    expect(daily.get('[data-testid="template-types"]').text()).toContain('Mid-stay cleaning')
+  })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CleaningStepTemplate } from '~/components/cleaning/data/cleaning-step-templates'
 import { toast } from 'vue-sonner'
+import { CLEANING_SOURCE_ICONS, CLEANING_SOURCE_LABELS } from '~/components/cleaning/data/cleaning-jobs'
 import { countCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import CleaningTemplateSheet from '~/components/settings/CleaningTemplateSheet.vue'
 import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
@@ -112,6 +113,13 @@ function confirmDelete() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5" data-testid="template-types">
+          <Badge v-for="type in tmpl.cleaningTypes" :key="type" variant="outline" class="gap-1 text-[11px] font-medium">
+            <Icon :name="CLEANING_SOURCE_ICONS[type]" class="size-3" />
+            {{ CLEANING_SOURCE_LABELS[type] }}
+          </Badge>
         </div>
 
         <p class="text-xs text-muted-foreground">

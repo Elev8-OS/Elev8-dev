@@ -1,8 +1,10 @@
+import type { CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import CleaningJobForm from '~/components/cleaning/CleaningJobForm.vue'
+import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import Button from '~/components/ui/button/Button.vue'
 import Popover from '~/components/ui/popover/Popover.vue'
 import PopoverContent from '~/components/ui/popover/PopoverContent.vue'
@@ -219,5 +221,77 @@ describe('cleaningJobForm linked stay', () => {
     })
     await nextTick()
     expect(wrapper.find('[data-testid="cleaning-linked-stay"]').text()).toContain('Anna Schmidt')
+  })
+})
+
+describe('cleaningJobForm checklist template', () => {
+  function mountNew() {
+    return mount(CleaningJobForm, {
+      props: {
+        mode: 'create',
+        modelValue: { listingId: 'lst-1', scheduledAt: '2026-06-23T11:00:00+08:00', cleanerIds: [cleanerOptions[0]!.id], source: 'check_out' },
+      },
+      global: {
+        components: { Button },
+        stubs: {
+          Icon: true,
+          Switch: true,
+          Select: { name: 'Select', props: ['modelValue'], emits: ['update:modelValue'], template: '<div><slot /></div>' },
+          SelectTrigger: true,
+          SelectValue: true,
+          SelectContent: { template: '<div><slot /></div>' },
+          SelectItem: { name: 'SelectItem', props: ['value'], template: '<div :data-value="value"><slot /></div>' },
+          NuxtLink: true,
+          GuestInfoCard: true,
+          ListingPicker: true,
+          Popover: true,
+          PopoverTrigger: true,
+          PopoverContent: true,
+        },
+      },
+    })
+  }
+
+  function selectNamed(wrapper: ReturnType<typeof mountNew>, testid: string) {
+    return wrapper.findAllComponents({ name: 'Select' }).find(s => s.attributes('data-testid') === testid)!
+  }
+
+  async function save(wrapper: ReturnType<typeof mountNew>) {
+    await wrapper.findAllComponents(Button).find(b => b.text().includes('Save Cleaning Job'))!.trigger('click')
+    return wrapper.emitted('save')![0]![0] as CleaningJobInput
+  }
+
+  it('offers only the templates written for the cleaning type', async () => {
+    const wrapper = mountNew()
+    await nextTick()
+    const items = () => selectNamed(wrapper, 'cleaning-checklist').findAll('[data-value]').map(i => i.attributes('data-value'))
+    expect(items()).toContain('cst-villa')
+    expect(items()).not.toContain('cst-daily')
+    selectNamed(wrapper, 'cleaning-type').vm.$emit('update:modelValue', 'daily')
+    await nextTick()
+    expect(items()).toContain('cst-daily')
+    expect(items()).not.toContain('cst-villa')
+  })
+
+  it('saves a copy of the picked template\'s steps', async () => {
+    const wrapper = mountNew()
+    await nextTick()
+    selectNamed(wrapper, 'cleaning-checklist').vm.$emit('update:modelValue', 'cst-studio')
+    await nextTick()
+    expect(wrapper.get('[data-testid="cleaning-checklist-summary"]').text()).toContain('Studio / apartment')
+    const input = await save(wrapper)
+    expect(input.steps!.map(s => s.title)).toEqual(['Room', 'Kitchenette', 'Bathroom'])
+    expect(input.steps![0]!.id).not.toBe('studio-room')
+  })
+
+  it('leaves the listing\'s steps to createJob by default, and drops a template the new type does not fit', async () => {
+    const wrapper = mountNew()
+    await nextTick()
+    selectNamed(wrapper, 'cleaning-checklist').vm.$emit('update:modelValue', 'cst-villa')
+    await nextTick()
+    selectNamed(wrapper, 'cleaning-type').vm.$emit('update:modelValue', 'daily')
+    await nextTick()
+    expect(wrapper.get('[data-testid="cleaning-checklist-summary"]').text()).toContain('Listing\'s cleaning steps')
+    expect('steps' in await save(wrapper)).toBe(false)
   })
 })

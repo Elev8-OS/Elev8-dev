@@ -1,15 +1,27 @@
-import type { CleaningStepTemplate } from '~/components/cleaning/data/cleaning-step-templates'
+import type { CleaningStepTemplate, CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { computed } from 'vue'
-import { CLEANING_STEP_TEMPLATES_STORAGE_KEY, SEED_CLEANING_STEP_TEMPLATES } from '~/components/cleaning/data/cleaning-step-templates'
+import { CLEANING_STEP_TEMPLATES_STORAGE_KEY, normalizeCleaningTypes, SEED_CLEANING_STEP_TEMPLATES } from '~/components/cleaning/data/cleaning-step-templates'
 import { cloneCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+
+/**
+ * Templates saved before cleaning types existed have none: a seed gets its
+ * seeded types back, any other a check-out clean (what every template was).
+ */
+function withCleaningTypes(template: CleaningStepTemplate): CleaningStepTemplate {
+  const types = normalizeCleaningTypes(template.cleaningTypes)
+  if (types.length)
+    return { ...template, cleaningTypes: types }
+  const seed = SEED_CLEANING_STEP_TEMPLATES.find(t => t.id === template.id)
+  return { ...template, cleaningTypes: seed ? [...seed.cleaningTypes] : ['check_out'] }
+}
 
 function loadInitialTemplates(): CleaningStepTemplate[] {
   if (typeof localStorage !== 'undefined') {
     try {
       const parsed = JSON.parse(localStorage.getItem(CLEANING_STEP_TEMPLATES_STORAGE_KEY) ?? 'null')
       if (Array.isArray(parsed) && parsed.length > 0)
-        return parsed
+        return parsed.map(withCleaningTypes)
     }
     catch {
       // Unreadable storage: fall back to the seed.
@@ -53,13 +65,15 @@ export function useCleaningStepTemplates() {
     return templates.value.find(t => t.id === id)
   }
 
-  function createTemplate(input: { name: string, description?: string, sections: CleaningStepSection[], isDefault?: boolean }): CleaningStepTemplate {
+  function createTemplate(input: { name: string, description?: string, cleaningTypes?: CleaningTemplateType[], sections: CleaningStepSection[], isDefault?: boolean }): CleaningStepTemplate {
+    const cleaningTypes = normalizeCleaningTypes(input.cleaningTypes)
     const now = new Date().toISOString()
     const isDefault = Boolean(input.isDefault) || templates.value.length === 0
     const template: CleaningStepTemplate = {
       id: newTemplateId(),
       name: input.name.trim() || 'Untitled template',
       description: input.description?.trim() || undefined,
+      cleaningTypes: cleaningTypes.length ? cleaningTypes : ['check_out'],
       isDefault,
       sections: cloneCleaningSteps(input.sections),
       createdAt: now,
@@ -71,7 +85,7 @@ export function useCleaningStepTemplates() {
     return template
   }
 
-  function updateTemplate(id: string, patch: Partial<Pick<CleaningStepTemplate, 'name' | 'description' | 'sections'>>) {
+  function updateTemplate(id: string, patch: Partial<Pick<CleaningStepTemplate, 'name' | 'description' | 'cleaningTypes' | 'sections'>>) {
     const now = new Date().toISOString()
     templates.value = templates.value.map(t => t.id === id
       ? {
@@ -79,6 +93,8 @@ export function useCleaningStepTemplates() {
           ...patch,
           name: patch.name !== undefined ? (patch.name.trim() || 'Untitled template') : t.name,
           description: patch.description !== undefined ? (patch.description.trim() || undefined) : t.description,
+          // An empty pick keeps what the template had: at least one type, always.
+          cleaningTypes: normalizeCleaningTypes(patch.cleaningTypes).length ? normalizeCleaningTypes(patch.cleaningTypes) : t.cleaningTypes,
           updatedAt: now,
         }
       : t)
@@ -96,7 +112,7 @@ export function useCleaningStepTemplates() {
     const source = getTemplate(id)
     if (!source)
       return null
-    return createTemplate({ name: `${source.name} (copy)`, description: source.description, sections: source.sections })
+    return createTemplate({ name: `${source.name} (copy)`, description: source.description, cleaningTypes: source.cleaningTypes, sections: source.sections })
   }
 
   /** False, deleting nothing, for the last remaining template. */
