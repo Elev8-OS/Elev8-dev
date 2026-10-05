@@ -3,6 +3,7 @@ import type { ListingGuideContent } from '~/components/listings/data/guest-guide
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
 import type { ListingAddress } from '~/components/listings/data/listing-address'
 import type { AvoidTopic } from '~/components/listings/data/listing-avoid-topics'
+import type { ListingCustomTab } from '~/components/listings/data/listing-custom-tabs'
 import type { ListingDetailsInfo } from '~/components/listings/data/listing-details'
 import type { RoomOverrides } from '~/components/listings/data/listing-room-overrides'
 import type { SleepingExtras } from '~/components/listings/data/listing-sleeping'
@@ -609,6 +610,8 @@ export interface Listing {
   guestVerification?: GuestVerificationSettings
   /** Pets allowed, and the pet packages (Pet upsells) offered. Read through `listingPetPolicy`. */
   petPolicy?: PetPolicy
+  /** Extra tabs on the listing detail page, each a web page shown in a frame. Read through `listingCustomTabs`. */
+  customTabs?: ListingCustomTab[]
   /** @deprecated Replaced by `guestGuide.checkin`. Read only as a fallback by `listingGuideItems`. */
   checkInInstructions?: string
   /** @deprecated Replaced by `guestGuide.checkout`. Read only as a fallback by `listingGuideItems`. */

@@ -354,9 +354,11 @@ export function useReviewAnalytics() {
           return -Math.max(1, Math.round((to.getTime() - from.getTime()) / 86400000))
         })()
 
-    // Only bucket "current" series for weeks inside the selected date window,
-    // and "comparison" series for the offset week (so the comparison line aligns
-    // with the current window even when the date filter changes).
+    // Both series are keyed by the week of the SELECTED window: a record counts
+    // for the current line at its own week, and for the comparison line at the
+    // window week it is compared against (its week shifted forward by the offset).
+    // Keying the comparison by its own (earlier) week put last year's points
+    // before this year's on one axis, so the two lines ran one after the other.
     const push = (key: string, isCmp: boolean, rating: number | null) => {
       let w = weekMap.get(key)
       if (!w) {
@@ -379,20 +381,29 @@ export function useReviewAnalytics() {
       }
     }
 
-    reviewRecords.value.forEach((r) => {
+    const records = reviewRecords.value.filter((r) => {
       if (channelFilter.value !== 'all' && r.source !== channelFilter.value)
-        return
+        return false
       if (listingFilter.value.length > 0 && !listingFilter.value.includes('All Properties') && !listingFilter.value.includes(r.listing_name))
-        return
+        return false
+      return true
+    })
+    if (records.length === 0 && (!dateFrom.value || !dateTo.value))
+      return []
+
+    // Window in week keys; with no date filter it spans the records.
+    const weeks = records.map(r => getWeek(r.checkout_date)).sort()
+    const fromWeek = dateFrom.value ? getWeek(dateFrom.value) : weeks[0]!
+    const toWeek = dateTo.value ? getWeek(dateTo.value) : weeks[weeks.length - 1]!
+    const inWindow = (week: string) => week >= fromWeek && week <= toWeek
+
+    records.forEach((r) => {
       const week = getWeek(r.checkout_date)
-      // Only include weeks within the selected date window for the current series
-      if (dateFrom.value && week < dateFrom.value)
-        return
-      if (dateTo.value && week > dateTo.value)
-        return
-      const cmpWeek = dayKey(addDays(new Date(week), cmpOffsetDays))
-      push(week, false, r.guest_rating_overall)
-      push(cmpWeek, true, r.guest_rating_overall)
+      if (inWindow(week))
+        push(week, false, r.guest_rating_overall)
+      const targetWeek = getWeek(dayKey(addDays(new Date(week), -cmpOffsetDays)))
+      if (inWindow(targetWeek))
+        push(targetWeek, true, r.guest_rating_overall)
     })
 
     // Fill gaps so the comparison line stays aligned week-by-week across the window

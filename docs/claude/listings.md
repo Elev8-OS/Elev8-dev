@@ -26,6 +26,7 @@
 
 #### Page (`app/pages/listings/[id]/index.vue`)
 - 8-tab layout: Overview | Pricing | Calendar | Reviews | Maintenance | Guest Guide | Protection | Settings. `?tab=<value>` opens a tab, and a link to it from inside the page switches the tab
+- **Custom tabs** (`listings/data/listing-custom-tabs.ts`, `Listing.customTabs`, read via `listingCustomTabs`): after Settings, one tab per entry (globe icon, the name) and an **Add tab** button at the end of the tab list. `ListingCustomTabDialog.vue` takes a name (max 30) and a link; `normalizeTabUrl` adds `https://` when missing and rejects anything not http(s) (no `javascript:` in the frame). The tab shows `ListingCustomTabFrame.vue`: toolbar (name, host, reload, open in new tab, menu with Edit / Move left / Move right / Remove, remove asks first), then a sandboxed `iframe`. ⚠️ A site that refuses framing (`X-Frame-Options` / CSP `frame-ancestors`, e.g. most Google pages other than published or `/preview` links) cannot be detected from a cross-origin frame (the browser still fires `load`), so "Open in new tab" sits in the toolbar and a footer line, and a frame with no `load` after 6s gets the same pointer. Tab values are `custom:<id>`, so `?tab=custom:<id>` opens one. Per listing, not shared across listings.
 - Imports child components explicitly (not auto-imported)
 - `ListingHeroCompact` emits `update`; tabs emit `update`/`switchTab` (Overview links to Calendar/Reviews tabs)
 
