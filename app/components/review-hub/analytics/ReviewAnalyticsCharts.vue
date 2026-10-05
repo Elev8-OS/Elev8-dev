@@ -23,6 +23,12 @@ const comparisonHint = computed(() => comparisonMode.value === 'previous_year'
 // Explicit chart colors (indigo + slate) so charts stay readable regardless of theme
 const CHART_PRIMARY = '#6366f1'
 const CHART_COMPARISON = '#94a3b8'
+
+// The x value is the point's index; Unovis can place ticks between points, which get no label.
+function weekLabel(tick: number | Date): string {
+  const i = Number(tick)
+  return Number.isInteger(i) ? String(trendPoints.value[i]?.period ?? '').slice(5) : ''
+}
 </script>
 
 <template>
@@ -46,7 +52,7 @@ const CHART_COMPARISON = '#94a3b8'
           index="period"
           :colors="[CHART_PRIMARY, CHART_COMPARISON]"
           :y-formatter="(tick: number | Date) => Number(tick).toFixed(1)"
-          :x-formatter="(tick: number | Date, i: number) => String(trendPoints[i]?.period ?? '').slice(5)"
+          :x-formatter="weekLabel"
           show-legend
         />
       </CardContent>
@@ -71,7 +77,7 @@ const CHART_COMPARISON = '#94a3b8'
           index="period"
           :colors="[CHART_PRIMARY, CHART_COMPARISON]"
           :y-formatter="(tick: number | Date) => `${Number(tick).toFixed(0)}%`"
-          :x-formatter="(tick: number | Date, i: number) => String(trendPoints[i]?.period ?? '').slice(5)"
+          :x-formatter="weekLabel"
           show-legend
         />
       </CardContent>
