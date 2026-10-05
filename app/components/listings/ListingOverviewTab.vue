@@ -1,8 +1,14 @@
 <script setup lang="ts">
+import type { OverviewPeriod } from '~/components/listings/data/listing-overview-charts'
 import type { Listing, Unit } from '~/components/listings/data/listings'
+import { listingCurrency, listingRoomCount, OVERVIEW_PERIODS, overviewStays, staysInPeriod } from '~/components/listings/data/listing-overview-charts'
 import { averageOverallScore, listingFeedItems } from '~/components/listings/data/listing-reviews'
 import { bookingStatusMeta, getUnitTypeForUnit } from '~/components/listings/data/listings'
+import ListingBookingSourcesChart from '~/components/listings/overview/ListingBookingSourcesChart.vue'
+import ListingRevenueOccupancyChart from '~/components/listings/overview/ListingRevenueOccupancyChart.vue'
+import ListingStayLengthChart from '~/components/listings/overview/ListingStayLengthChart.vue'
 import { getDisplayMax, getDisplayScore } from '~/components/review-hub/data/types'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useReviewHub } from '~/composables/useReviewHub'
 
 const props = defineProps<{ listing: Listing, activeUnit?: Unit | null }>()
@@ -12,6 +18,15 @@ const emit = defineEmits<{ switchTab: [tab: string] }>()
 const { feedItems, isGuestReviewHidden } = useReviewHub()
 const reviewItems = computed(() => listingFeedItems(feedItems.value, props.listing.id, props.activeUnit?.id))
 const averageScore = computed(() => averageOverallScore(reviewItems.value.map(item => item.review_record), isGuestReviewHidden))
+
+// Charts read the same stays as the Calendar tab: both sources, one room when one is picked.
+const { reservations } = useReservationsModule()
+const today = new Date()
+const chartStays = computed(() => overviewStays(props.listing, reservations.value, props.activeUnit?.id))
+const chartRooms = computed(() => props.activeUnit ? 1 : listingRoomCount(props.listing))
+const chartPeriod = ref<OverviewPeriod>('12m')
+const chartPeriodLabel = computed(() => OVERVIEW_PERIODS.find(p => p.value === chartPeriod.value)!.label.toLowerCase())
+const periodStays = computed(() => staysInPeriod(chartStays.value, chartPeriod.value, today))
 
 const activeUnitType = computed(() => {
   if (!props.activeUnit)
@@ -66,6 +81,35 @@ function formatDateRange(checkIn: string, checkOut: string) {
           </div>
         </div>
       </Card>
+    </div>
+
+    <ListingRevenueOccupancyChart
+      :stays="chartStays"
+      :currency="listingCurrency(listing)"
+      :rooms="chartRooms"
+      :today="today"
+    />
+
+    <div class="flex flex-col gap-4">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-sm font-semibold">
+          Booking insights
+        </h3>
+        <Select v-model="chartPeriod">
+          <SelectTrigger size="sm" class="w-[150px]" aria-label="Chart period">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="p in OVERVIEW_PERIODS" :key="p.value" :value="p.value">
+              {{ p.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ListingBookingSourcesChart :stays="periodStays" :period-label="chartPeriodLabel" />
+        <ListingStayLengthChart :stays="periodStays" :period-label="chartPeriodLabel" />
+      </div>
     </div>
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">

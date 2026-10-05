@@ -110,6 +110,13 @@
   --surface: oklch(0.98 0 0);
   --surface-foreground: var(--foreground);
 
+  /* Categorical series colours, fixed order (blue, orange, aqua), validated for
+     colour-blind separation. The --chart-* ramp is one theme hue, so a chart
+     that tells series apart reads these instead. */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+
   --vis-primary-color: var(--primary);
   /* change to any hsl value you want */
   --vis-secondary-color: var(--primary);
@@ -148,6 +155,9 @@
   --chart-3: var(--color-blue-600);
   --chart-4: var(--color-blue-700);
   --chart-5: var(--color-blue-800);
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
