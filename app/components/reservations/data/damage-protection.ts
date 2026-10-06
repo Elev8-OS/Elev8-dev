@@ -761,7 +761,7 @@ export function protectionActivityEvent(
     partner_update: { title: 'Insurance claim update', description: detail ?? '', colorDot: 'blue' },
     host_covered: {
       title: 'Covered by the host',
-      description: `Damage waiver up to ${formatProtectionAmount(protection.coverageCap ?? 0, protection.currency)}, the guest is not asked to pay`,
+      description: detail ?? `Damage waiver up to ${formatProtectionAmount(protection.coverageCap ?? 0, protection.currency)}, the guest is not asked to pay`,
       colorDot: 'blue',
     },
     host_cover_removed: {

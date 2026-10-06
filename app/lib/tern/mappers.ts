@@ -1,7 +1,7 @@
-import type { TernBooking, TernClaim, TernClaimNote, TernClaimStatus } from './types'
+import type { TernBooking, TernClaim, TernClaimNote, TernClaimStatus, TernProductSpec } from './types'
 import type { PartnerEventPayload } from '~/components/reservations/data/partner-claims'
 import type { DamageProtection, PartnerClaim, PartnerClaimStatus, ProtectionClaim, ReservationEntry } from '~/components/reservations/data/reservations'
-import type { TernTier } from '~/components/reservations/data/tern-products'
+import type { TernCoverage, TernTier } from '~/components/reservations/data/tern-products'
 
 /**
  * Elev8 ⇄ Tern, framework-free. The ONLY place our model meets Tern's: the rest
@@ -18,6 +18,24 @@ export const TERN_EXTERNAL_SYSTEM = 'Elev8'
  */
 export const TERN_PRODUCT_IDS: Record<TernTier, number> = { bronze: 101, silver: 102, gold: 103, bronze_plus: 104, silver_plus: 105, gold_plus: 106 }
 export const TERN_POLICY_ID = 1
+
+/**
+ * A Tern product into our coverage model, for when Tern hands over its
+ * products: each tier's placeholder `coverage` in `tern-products.ts` is then
+ * replaced by this. A missing figure reads as 0, never invented.
+ */
+export function ternCoverageFromSpec(spec: TernProductSpec): TernCoverage {
+  return {
+    productCode: spec.productCode,
+    unit: { limit: spec.unitLimit ?? 0, maxPerItem: spec.unitMaxPerItem, deductible: spec.unitDeductible ?? 0 },
+    personal: { limit: spec.personalLimit ?? 0, maxPerItem: spec.personalMaxPerItem, deductible: spec.personalDeductible ?? 0 },
+    realProperty: { limit: spec.realPropertyLimit ?? 0, deductible: spec.realPropertyDeductible ?? 0 },
+    liability: { type: spec.liabilityType ?? '', limit: spec.liabilityLimit ?? 0, aggregate: spec.liabilityAggregate ?? 0, deductible: spec.liabilityDeductible ?? 0 },
+    bedBug: { type: spec.bedBugType ?? '', limit: spec.bedBugLimit ?? 0, deductible: spec.bedBugDeductible ?? 0 },
+    smokingEndorsement: spec.smokingEndorsement ?? false,
+    pets: spec.pets ?? false,
+  }
+}
 
 const day = (iso: string) => iso.slice(0, 10)
 

@@ -217,7 +217,7 @@ function undo() {
                 {{ protection.option !== 'waiver' ? 'Card may be charged up to' : hostPaid ? 'Paid by' : 'Guest paid' }}
               </p>
               <p class="text-lg font-semibold" :class="hostPaid ? '' : 'tabular-nums'" data-testid="protection-paid-by">
-                {{ hostPaid ? 'The host' : money(protection.amount) }}
+                {{ hostPaid ? (protection.autoHostCover ? 'The host (the guest did not buy it)' : 'The host') : money(protection.amount) }}
               </p>
               <p v-if="protection.option === 'waiver' && protection.elev8Fee !== undefined" class="text-xs text-muted-foreground tabular-nums">
                 Elev8 charges {{ money(protection.elev8Fee) }}<template v-if="(protection.packages ?? 1) > 1">

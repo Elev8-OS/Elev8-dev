@@ -801,7 +801,7 @@ export const mockUpsellServices: UpsellService[] = [
     servicePercent: 0,
     // ONE package per protection upsell: Bronze and Silver are two services.
     items: [
-      { id: 'itm-dp-bronze-plus', name: 'Bronze+', description: 'Higher cover, for properties up to 4 guests.', price: 59, coverTier: 'bronze_plus' },
+      { id: 'itm-dp-bronze-plus', name: 'Bronze+', description: 'Higher liability cover, for properties up to 4 guests.', price: 59, coverTier: 'bronze_plus' },
     ],
     // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
     assignedListings: [],
@@ -826,7 +826,7 @@ export const mockUpsellServices: UpsellService[] = [
     servicePercent: 0,
     // ONE package per protection upsell: Bronze and Silver are two services.
     items: [
-      { id: 'itm-dp-silver-plus', name: 'Silver+', description: 'Higher cover, for properties of 5 to 8 guests.', price: 89, coverTier: 'silver_plus' },
+      { id: 'itm-dp-silver-plus', name: 'Silver+', description: 'Higher liability cover, for properties of 5 to 8 guests.', price: 89, coverTier: 'silver_plus' },
     ],
     // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
     assignedListings: [],
@@ -851,7 +851,7 @@ export const mockUpsellServices: UpsellService[] = [
     servicePercent: 0,
     // ONE package per protection upsell: Bronze and Silver are two services.
     items: [
-      { id: 'itm-dp-gold-plus', name: 'Gold+', description: 'Higher cover, for properties of 9 guests and more.', price: 129, coverTier: 'gold_plus' },
+      { id: 'itm-dp-gold-plus', name: 'Gold+', description: 'Higher liability cover, for properties of 9 guests and more.', price: 129, coverTier: 'gold_plus' },
     ],
     // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
     assignedListings: [],

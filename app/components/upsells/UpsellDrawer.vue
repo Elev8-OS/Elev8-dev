@@ -33,6 +33,7 @@ import {
   summarizeVisibility,
 } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
+import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
 import { payoutAccounts } from '~/components/settings/data/payouts'
@@ -813,6 +814,14 @@ function onOpenChange(val: boolean) {
               </span>
               <span
                 v-if="ternPriceFor(product.tier, formCurrency)"
+                class="text-xs"
+                :class="product.tier !== product.baseTier ? 'font-medium text-foreground' : 'text-muted-foreground'"
+                :data-testid="`upsell-tier-liability-${product.tier}`"
+              >
+                Liability up to {{ formatProtectionAmount(ternPriceFor(product.tier, formCurrency)!.coverage.liability.limit, formCurrency) }}
+              </span>
+              <span
+                v-if="ternPriceFor(product.tier, formCurrency)"
                 class="text-xs font-medium"
                 :data-testid="`upsell-tier-fee-${product.tier}`"
               >
@@ -820,6 +829,7 @@ function onOpenChange(val: boolean) {
               </span>
             </button>
           </div>
+          <CoverageBreakdown :tier="packageTier" :currency="formCurrency" />
           <div class="flex flex-col gap-2">
             <Label for="upsell-package-price">Guest pays, per 30 nights</Label>
             <div class="relative">

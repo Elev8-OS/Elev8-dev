@@ -293,3 +293,52 @@ export interface TernUploadParams {
   notes?: string
   visibility?: TernVisibility
 }
+
+/**
+ * A Tern product: what a booking points to (`productCode`) and what it covers.
+ *
+ * ⚠️ From Tern's product field reference (shared 2026-10-06), NOT the swagger
+ * read on 2026-09-29, which had no product schema or catalogue endpoint. Field
+ * names follow that reference; the value types are inferred from the
+ * descriptions and must be checked against the real payload.
+ */
+export interface TernProductSpec {
+  /** Unique code identifying the product. This is what a booking points to. */
+  productCode: string
+  name: string
+  /** The same kind of label policies use. Matching labels do NOT create a link. */
+  program?: string
+  /** The tier of coverage this product provides. */
+  coverageLevel?: string
+  rate?: number
+  rateCurrency?: string
+  rateFrequency?: string
+  adminFee?: number
+  taxesIncluded?: boolean
+  /** The rental unit and its contents. */
+  unitLimit?: number
+  unitMinimum?: number
+  unitMaxPerItem?: number
+  unitDeductible?: number
+  /** The guest's personal belongings. */
+  personalLimit?: number
+  personalMinimum?: number
+  personalMaxPerItem?: number
+  personalDeductible?: number
+  personalSubLimits?: Record<string, number>
+  /** The building / real property. */
+  realPropertyLimit?: number
+  realPropertyMinimum?: number
+  realPropertyDeductible?: number
+  liabilityType?: string
+  liabilityAggregate?: number
+  liabilityLimit?: number
+  liabilityDeductible?: number
+  bedBugType?: string
+  bedBugLimit?: number
+  bedBugDeductible?: number
+  /** Endorsements that adjust what is covered. */
+  smokingEndorsement?: boolean
+  pets?: boolean
+  notes?: string
+}

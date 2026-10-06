@@ -64,7 +64,8 @@ non-refundable **damage waiver** and a **security deposit, which is a card kept 
   reservations and pay nothing, so an owner stay is never protected, on either payer.
 - ⚠️ **The tenant never writes a coverage amount or an exclusion.** The waiver's cover comes
   from a **Tern tier** (`data/tern-products.ts`: Bronze / Silver / Gold plus Bronze+ / Silver+ / Gold+
-  (2026-10-06): a "+" tier has its base tier's size (`baseTier`) and a higher cover and fee, so
+  (2026-10-06): a "+" tier has its base tier's size (`baseTier`) and the SAME damage cover (`coverageCap`); only its
+  liability limit is higher (`PLUS_LIABILITY_FACTOR`, placeholder) and it costs more, so
   `recommendedTier` only ever names a base tier and `tierTooSmall` compares sizes, never cover. Seeded
   as three unassigned upsells `svc-dp-*-plus`. Sized by
   `Listing.capacity`, each with a `coverageCap`, a fixed `perStayFee` Elev8 charges the tenant
@@ -281,8 +282,18 @@ Waiver only / Deposit only) with **Turn off** while on, a `block` sentence when 
   drawer is mounted only while open, so its form-filling watch runs `immediate`.
 - **Deposit** switch (disabled without Stripe or where the host pays): card limit and decision days
   (saved on blur) and **Booking channels** chips.
-- **Who pays** (only while on): Guest pays / Host pays, Host pays disabled until activation or while
-  the waiver is off. Then **Protected stays**, paged 10 to a page.
+- **Who pays** sits INSIDE the waiver box (it only exists while the waiver is on; a deposit-only
+  listing has none): Guest pays / Host pays, Host pays disabled until activation.
+- **Auto-activate host-paid protection if the guest doesn't buy the upsell** (Guest pays only):
+  `ListingProtectionSetup.hostFallback` + `hostFallbackDays` (1, 2, 3, 5, 7 or 14; default 1).
+  `syncHostCover` covers a guest stay with no choice yet (or only `awaiting_choice`) once
+  `hostFallbackDue` says the cut-off has come, with the same `hostCoverProtection` plus
+  `autoHostCover: true` and an activity line saying the guest did not buy. ⚠️ From then on the guest
+  is not asked (`isOfferedFor` is false for a stay the host covers). A deposit card or a bought waiver
+  is never overridden. Turning the setting off removes the cover from a stay not started yet, as for
+  a host-paid listing. Needs the waiver on and the service activated. No scheduler: it runs on
+  `hydrate()` and every setup change, like the rest of `syncHostCover`. Labelled "Host pays, guest did
+  not buy" on the worklist and the listing's stays, "The host (the guest did not buy it)" on the stay. Then **Protected stays**, paged 10 to a page.
 - **The Elev8 Cover pitch** (`TernPromoDialog.vue`): opening the tab while the activation is
   `not_activated` or `registration_failed` opens a promo dialog (never while `registering`, never
   once active). It shows **every visit**: reka's `TabsContent` unmounts a hidden tab, so each
@@ -630,6 +641,15 @@ The demo is a frontend mock, built so the real Tern API drops in. Spec: Tern API
   move `bookingIds` and `seenStamps` into the database; run `pollPartnerUpdates` from a scheduled
   job; upload evidence as the **original bytes** (Tern reads EXIF/GPS and flags edited or AI
   photos, `getDocumentMetadata`), which the housekeeping app must preserve.
+- **Products and coverage** (2026-10-06): `TernProductSpec` (`lib/tern/types.ts`) follows Tern's product
+  field reference (`productCode`, `rate*`, `unit*`, `personal*`, `realProperty*`, `liability*`, `bedBug*`,
+  `smokingEndorsement`, `pets`), shared after the swagger read, so its value types are inferred.
+  Each tier's price carries a `coverage` (`TernCoverage`, with its `productCode`), shown by
+  `CoverageBreakdown.vue` under the upsell form's tier cards and behind "What's covered" in the listing's
+  waiver box. ⚠️ The figures are `placeholderCoverage`, scaled from the tier's cap (the unit limit IS the
+  cap); `ternCoverageFromSpec` reads a real product in once Tern sends them. ⚠️ Tern's reference says a
+  booking points to a `productCode`; `toTernBooking` still sends the numeric `productId`
+  (`TERN_PRODUCT_IDS`), to be confirmed with Tern.
 - **Open with Tern**: organization onboarding and the payout bank account (no endpoint); webhooks
   or a `modStampFrom` on claims; product and policy ids per tier, and IDR pricing; how a stay over
   30 nights is billed (we send one booking with the multiplied `insuranceCost`); whether a booking

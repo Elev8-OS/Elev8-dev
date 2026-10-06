@@ -346,6 +346,12 @@ export interface DamageProtection {
   acceptedAt: string
   /** 'host_cover': written automatically on a host-paid listing, nobody accepted anything. */
   acceptedVia: 'guest_guide' | 'staff' | 'host_cover'
+  /**
+   * A host cover written because the guest had not bought the waiver by the
+   * listing's cut-off (`ListingProtectionSetup.hostFallback`), not because the
+   * listing is host-paid. Frozen with the cover; provenance for the screens.
+   */
+  autoHostCover?: true
 
   /** Deposit: the card the guest saved. Required in every deposit state. */
   card?: SavedCard

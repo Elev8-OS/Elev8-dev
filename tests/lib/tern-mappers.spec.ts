@@ -125,3 +125,30 @@ describe('tern statuses onto ours', () => {
     expect(ternClaimCorrections(ternClaim(), partnerClaim())).not.toHaveProperty('claimedAmount')
   })
 })
+
+describe('ternCoverageFromSpec', () => {
+  it('reads a Tern product into our coverage model, and never invents a missing figure', async () => {
+    const { ternCoverageFromSpec } = await import('~/lib/tern/mappers')
+    const coverage = ternCoverageFromSpec({
+      productCode: 'TERN-STD-1',
+      name: 'Standard',
+      unitLimit: 2000,
+      unitMaxPerItem: 1000,
+      unitDeductible: 100,
+      personalLimit: 500,
+      liabilityType: 'Per occurrence',
+      liabilityLimit: 1000000,
+      liabilityAggregate: 2000000,
+      pets: true,
+    })
+    expect(coverage).toMatchObject({
+      productCode: 'TERN-STD-1',
+      unit: { limit: 2000, maxPerItem: 1000, deductible: 100 },
+      personal: { limit: 500, deductible: 0 },
+      realProperty: { limit: 0, deductible: 0 },
+      liability: { type: 'Per occurrence', limit: 1000000, aggregate: 2000000 },
+      smokingEndorsement: false,
+      pets: true,
+    })
+  })
+})

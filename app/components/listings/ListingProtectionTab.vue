@@ -5,6 +5,7 @@ import type { TernTier } from '~/components/reservations/data/tern-products'
 import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import type { ProtectionRow } from '~/composables/useDamageProtection'
 import { toast } from 'vue-sonner'
+import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
 import {
   blockText,
@@ -15,7 +16,7 @@ import {
   undersizedText,
   waiverSummary,
 } from '~/components/damage-protection/data/listing-protection'
-import { depositChannelsOf, moveListingUpdates } from '~/components/damage-protection/data/listing-protection-setup'
+import { DEFAULT_HOST_FALLBACK_DAYS, depositChannelsOf, HOST_FALLBACK_DAY_OPTIONS, moveListingUpdates } from '~/components/damage-protection/data/listing-protection-setup'
 import TernActivationWizard from '~/components/damage-protection/TernActivationWizard.vue'
 import TernPromoDialog from '~/components/damage-protection/TernPromoDialog.vue'
 import { BOOKING_CHANNELS } from '~/components/listings/data/listings'
@@ -59,7 +60,6 @@ function startActivation() {
 
 const state = computed(() => dp.listingProtection(props.listing.id))
 const setup = computed(() => state.value.setup)
-const mode = computed(() => dp.listingMode(props.listing.id))
 const payer = computed<ProtectionPayer>(() => dp.payerFor(props.listing.id))
 /** The waiver runs only where a protection upsell sells its package. */
 const protectedByUpsell = computed(() => state.value.services.length > 0)
@@ -198,6 +198,7 @@ function elev8FeeFor(pkg: { tier: TernTier, currency: string }): number | null {
  * "Not now" leaves the switch off. Switching OFF needs no pitch.
  */
 const waiverPending = ref(false)
+const coverageOpen = ref(false)
 
 function onWaiverSwitch(on: boolean) {
   if (!on) {
@@ -223,6 +224,29 @@ watch(promoOpen, (isOpen) => {
   if (!isOpen)
     setTimeout(() => { waiverPending.value = false }, 0)
 })
+
+// ---------------------------------- host cover when the guest does not buy
+
+/** The fallback is Elev8 Cover bought by the host, so it needs the waiver and the activated service. */
+const fallbackBlocked = computed<string | null>(() => {
+  if (!waiverOn.value)
+    return 'Turn on the damage waiver first: the host cover is the same package.'
+  if (!dp.waiverServiceActive.value)
+    return 'Activate the damage waiver first.'
+  return null
+})
+
+function setHostFallback(on: boolean) {
+  apply({ hostFallback: on }, on
+    ? 'Stays without a waiver or deposit by the cut-off will be covered by you'
+    : 'Automatic host cover turned off')
+}
+
+function setHostFallbackDays(value: unknown) {
+  const days = Number(value)
+  if (Number.isFinite(days) && days > 0)
+    apply({ hostFallbackDays: days })
+}
 
 function setPackage(value: unknown) {
   if (typeof value !== 'string' || value === shownPackage.value?.serviceId)
@@ -298,8 +322,11 @@ function optionLabel(row: ProtectionRow): string {
   const protection = row.protection
   if (!protection)
     return 'Not chosen yet'
-  if (protection.option === 'waiver')
-    return protection.paidBy === 'host' ? 'Waiver, host pays' : 'Waiver'
+  if (protection.option === 'waiver') {
+    return protection.paidBy === 'host'
+      ? (protection.autoHostCover ? 'Waiver, host pays (guest did not buy)' : 'Waiver, host pays')
+      : 'Waiver'
+  }
   return protection.card ? `Deposit, card •••• ${protection.card.last4}` : 'Deposit'
 }
 
@@ -429,6 +456,19 @@ function claimCount(row: ProtectionRow): number {
                 {{ state.policy?.offers.includes('waiver') ? waiverSummary(state.policy) : packageSummary(shownPackage) }}.
                 Each package is a Damage Protection upsell.
               </p>
+              <Button
+                v-if="shownPackage"
+                variant="ghost"
+                size="sm"
+                class="h-7 w-fit px-2 text-xs"
+                :aria-expanded="coverageOpen"
+                data-testid="protection-coverage-toggle"
+                @click="coverageOpen = !coverageOpen"
+              >
+                <Icon :name="coverageOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="mr-1 size-3.5" />
+                What's covered
+              </Button>
+              <CoverageBreakdown v-if="coverageOpen && shownPackage" :tier="shownPackage.tier" :currency="shownPackage.currency" />
             </div>
             <p v-if="undersized" class="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400" data-testid="protection-undersized">
               <Icon name="lucide:alert-triangle" class="mt-0.5 size-3.5 shrink-0" />
@@ -438,6 +478,81 @@ function claimCount(row: ProtectionRow): number {
               <Icon name="lucide:pause-circle" class="mt-0.5 size-3.5 shrink-0" />
               Guests are not asked yet: the damage waiver is not activated.
             </p>
+            <!-- Who pays: the waiver is what the host can buy on the guest's behalf. -->
+            <div class="flex flex-col gap-2 border-t pt-3" data-testid="protection-payer">
+              <p class="text-sm font-medium">
+                Who pays
+              </p>
+              <div class="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Who pays for damage protection">
+                <button
+                  v-for="value in PAYERS"
+                  :key="value"
+                  type="button"
+                  role="radio"
+                  :aria-checked="payer === value"
+                  :disabled="Boolean(payerBlocked(value))"
+                  class="flex flex-col gap-1.5 rounded-lg border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  :class="payer === value ? 'border-primary ring-1 ring-primary' : 'hover:border-primary/60'"
+                  :data-testid="`protection-mode-${PAYER_META[value].mode}`"
+                  @click="setPayer(value)"
+                >
+                  <span class="flex items-center gap-2 text-sm font-medium">
+                    <Icon :name="PAYER_META[value].icon" class="size-4" />
+                    {{ PROTECTION_MODE_LABELS[PAYER_META[value].mode] }}
+                    <Icon v-if="payer === value" name="lucide:check" class="ml-auto size-4 text-primary" />
+                  </span>
+                  <span class="text-xs text-muted-foreground">
+                    {{ payerBlocked(value) ?? PAYER_META[value].text }}
+                  </span>
+                </button>
+              </div>
+
+              <!-- Guest pays, with the host as the safety net. -->
+              <div
+                v-if="payer === 'guest'"
+                class="mt-4 flex flex-col gap-3 rounded-lg border p-4"
+                data-testid="protection-host-fallback"
+              >
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-sm font-medium">
+                      Auto-activate host-paid protection if the guest doesn't buy the upsell
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ fallbackBlocked ?? 'A stay with no waiver and no deposit card by then is covered by you, and Elev8 charges you the cover fee for it. The guest is no longer asked.' }}
+                    </p>
+                  </div>
+                  <Switch
+                    :model-value="Boolean(setup.hostFallback) && !fallbackBlocked"
+                    :disabled="Boolean(fallbackBlocked)"
+                    aria-label="Auto-activate host-paid protection"
+                    data-testid="protection-host-fallback-switch"
+                    @update:model-value="(v: boolean) => setHostFallback(v)"
+                  />
+                </div>
+                <div v-if="setup.hostFallback && !fallbackBlocked" class="flex flex-wrap items-center gap-2 text-sm">
+                  <span>Activate protection</span>
+                  <Select :model-value="String(setup.hostFallbackDays ?? DEFAULT_HOST_FALLBACK_DAYS)" @update:model-value="setHostFallbackDays">
+                    <SelectTrigger class="h-8 w-28" data-testid="protection-host-fallback-days">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="days in HOST_FALLBACK_DAY_OPTIONS" :key="days" :value="String(days)">
+                        {{ days }} {{ days === 1 ? 'day' : 'days' }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span>before check-in</span>
+                </div>
+                <p
+                  v-if="setup.hostFallback && !fallbackBlocked && shownPackage && elev8FeeFor(shownPackage)"
+                  class="text-xs text-muted-foreground"
+                >
+                  Elev8 charges you {{ formatProtectionAmount(elev8FeeFor(shownPackage)!, shownPackage.currency) }} per covered
+                  stay of up to 30 nights, billed on the 1st of the month after check-out.
+                </p>
+              </div>
+            </div>
           </template>
         </div>
 
@@ -557,39 +672,6 @@ function claimCount(row: ProtectionRow): number {
           <Icon name="lucide:info" class="mt-0.5 size-3.5 shrink-0" />
           Protection is set for the whole property: every room uses the same setup.
         </p>
-      </CardContent>
-    </Card>
-
-    <!-- Who pays -->
-    <Card v-if="isOn" data-testid="protection-payer">
-      <CardHeader>
-        <CardTitle>Who pays</CardTitle>
-        <CardDescription>Currently: {{ PROTECTION_MODE_LABELS[mode] }}.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div class="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Who pays for damage protection">
-          <button
-            v-for="value in PAYERS"
-            :key="value"
-            type="button"
-            role="radio"
-            :aria-checked="payer === value"
-            :disabled="Boolean(payerBlocked(value))"
-            class="flex flex-col gap-1.5 rounded-lg border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            :class="payer === value ? 'border-primary ring-1 ring-primary' : 'hover:border-primary/60'"
-            :data-testid="`protection-mode-${PAYER_META[value].mode}`"
-            @click="setPayer(value)"
-          >
-            <span class="flex items-center gap-2 text-sm font-medium">
-              <Icon :name="PAYER_META[value].icon" class="size-4" />
-              {{ PROTECTION_MODE_LABELS[PAYER_META[value].mode] }}
-              <Icon v-if="payer === value" name="lucide:check" class="ml-auto size-4 text-primary" />
-            </span>
-            <span class="text-xs text-muted-foreground">
-              {{ payerBlocked(value) ?? PAYER_META[value].text }}
-            </span>
-          </button>
-        </div>
       </CardContent>
     </Card>
 

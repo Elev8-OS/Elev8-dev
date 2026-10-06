@@ -13,7 +13,7 @@ import type {
 } from '~/components/reservations/data/damage-protection'
 import type { DamageProtection, ProtectionClaim, ProtectionPayer, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
-import { defaultListingSetup, listingPackage, listingPolicy, protectionPackageOptions, protectionServicesFor } from '~/components/damage-protection/data/listing-protection-setup'
+import { defaultListingSetup, hostFallbackDue, listingPackage, listingPolicy, protectionPackageOptions, protectionServicesFor } from '~/components/damage-protection/data/listing-protection-setup'
 import { listings } from '~/components/listings/data/listings'
 import {
   assignmentForStay,
@@ -281,6 +281,9 @@ export function useDamageProtection() {
       return false
     if (payerFor(reservation.listingId) === 'host')
       return false
+    // Covered by the host once the guest missed the cut-off: no longer theirs to choose.
+    if (reservation.damageProtection?.paidBy === 'host')
+      return false
     const policy = policyFor(reservation.listingId, reservation.nights)
     if (!policy || !protectionOffered(policy, reservation.channel) || pausedUntilActivation(policy))
       return false
@@ -411,7 +414,11 @@ export function useDamageProtection() {
       const existing = reservation.damageProtection
       const isHostCover = existing?.paidBy === 'host'
       const policy = policyFor(reservation.listingId, reservation.nights)
-      const hostPaid = payerFor(reservation.listingId) === 'host' && Boolean(policy?.offers.includes('waiver'))
+      const offersWaiver = Boolean(policy?.offers.includes('waiver'))
+      const hostPaid = payerFor(reservation.listingId) === 'host' && offersWaiver
+      // Guest-paid, but the guest missed the listing's cut-off: the host covers it instead.
+      const fallback = !hostPaid && offersWaiver && payerFor(reservation.listingId) === 'guest'
+        && hostFallbackDue(setupFor(reservation.listingId), reservation.checkIn, today)
 
       if (isHostCover && existing) {
         const noClaims = (existing.claims ?? []).length === 0
@@ -420,7 +427,7 @@ export function useDamageProtection() {
           commit(reservation, closed, protectionActivityEvent('cancelled', closed, actor.value, 'Stay cancelled, nothing to refund: the host paid for the cover'))
           continue
         }
-        if (!hostPaid && noClaims && dayOf(reservation.checkIn) > today.getTime() && existing.state === 'waiver_active') {
+        if (!hostPaid && !fallback && noClaims && dayOf(reservation.checkIn) > today.getTime() && existing.state === 'waiver_active') {
           updateReservation(reservation.id, {
             damageProtection: undefined,
             activity: [...reservation.activity, protectionActivityEvent('host_cover_removed', existing, actor.value)],
@@ -430,15 +437,19 @@ export function useDamageProtection() {
         continue
       }
 
-      if (!hostPaid || !policy || !isGuestStay(reservation.status) || !waiverServiceActive.value)
+      if (!(hostPaid || fallback) || !policy || !isGuestStay(reservation.status) || !waiverServiceActive.value)
         continue
       if (existing && existing.state !== 'awaiting_choice')
         continue
       if (dayOf(reservation.checkOut) <= today.getTime())
         continue
-      const cover = hostCoverProtection(policy, now, reservation.nights)
-      if (cover)
-        commit(reservation, cover, protectionActivityEvent('host_covered', cover, actor.value))
+      const built = hostCoverProtection(policy, now, reservation.nights)
+      if (!built)
+        continue
+      const cover: DamageProtection = fallback ? { ...built, autoHostCover: true } : built
+      commit(reservation, cover, protectionActivityEvent('host_covered', cover, actor.value, fallback
+        ? `The guest had not bought the damage waiver by the cut-off, so the host covers the stay up to ${formatProtectionAmount(cover.coverageCap ?? 0, cover.currency)}`
+        : undefined))
     }
   }
 

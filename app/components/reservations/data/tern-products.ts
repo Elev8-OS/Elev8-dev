@@ -14,7 +14,8 @@
 export type TernBaseTier = 'bronze' | 'silver' | 'gold'
 /**
  * Each size has a "+" tier (owner's decision, 2026-10-06): the same property
- * size, a higher cover, a higher Elev8 fee.
+ * size and the same damage cover, a HIGHER LIABILITY limit, a higher Elev8 fee.
+ * Liability is the only difference between a tier and its "+".
  */
 export type TernTier = TernBaseTier | 'bronze_plus' | 'silver_plus' | 'gold_plus'
 
@@ -26,6 +27,58 @@ export interface TernPrice {
   coverageCap: number
   /** What Elev8 charges the tenant for one package, i.e. up to `COVER_PACKAGE_NIGHTS` of a covered stay. */
   perStayFee: number
+  /** The breakdown behind the cap, in the same currency (Tern's product fields, `TernProductSpec`). */
+  coverage: TernCoverage
+}
+
+/** One covered area: the most paid, the most per item, and the guest's share of each claim. */
+export interface CoverageLine {
+  limit: number
+  maxPerItem?: number
+  deductible: number
+}
+
+/**
+ * What a tier covers, area by area. Mirrors Tern's product fields (`unit*`,
+ * `personal*`, `realProperty*`, `liability*`, `bedBug*`, the endorsements);
+ * `ternCoverageFromSpec` in `lib/tern/mappers.ts` reads a real product into it.
+ */
+export interface TernCoverage {
+  /** Tern's `productCode`: what a booking points to. */
+  productCode: string
+  /** The rental unit and its contents. Its limit is the tier's `coverageCap`. */
+  unit: CoverageLine
+  /** The guest's own belongings. */
+  personal: CoverageLine
+  /** The building itself. */
+  realProperty: CoverageLine
+  liability: CoverageLine & { type: string, aggregate: number }
+  bedBug: CoverageLine & { type: string }
+  /** Endorsements: damage from smoking, and from pets. */
+  smokingEndorsement: boolean
+  pets: boolean
+}
+
+/**
+ * ⚠️ PLACEHOLDER breakdown until Tern hands over its products: scaled from the
+ * tier's cap so the figures at least agree with each other and with the cap
+ * shown everywhere. Replace each tier's `coverage` with Tern's own figures.
+ */
+/** How much higher a "+" tier's liability is than its base tier's. Placeholder, like the rest. */
+const PLUS_LIABILITY_FACTOR = 5
+
+function placeholderCoverage(productCode: string, cap: number, plus = false): TernCoverage {
+  const liability = plus ? PLUS_LIABILITY_FACTOR : 1
+  return {
+    productCode,
+    unit: { limit: cap, maxPerItem: cap / 2, deductible: 100 },
+    personal: { limit: cap / 4, maxPerItem: cap / 20, deductible: 100 },
+    realProperty: { limit: cap, deductible: 250 },
+    liability: { type: 'Per occurrence', limit: cap * 50 * liability, aggregate: cap * 100 * liability, deductible: 0 },
+    bedBug: { type: 'Per occurrence', limit: cap / 2, deductible: 100 },
+    smokingEndorsement: false,
+    pets: false,
+  }
 }
 
 /**
@@ -68,7 +121,7 @@ export const TERN_PRODUCTS: TernProduct[] = [
     name: 'Bronze',
     minGuests: 1,
     maxGuests: 4,
-    prices: { USD: { coverageCap: 2000, perStayFee: 9 } },
+    prices: { USD: { coverageCap: 2000, perStayFee: 9, coverage: placeholderCoverage('E8C-BRZ', 2000) } },
     exclusions: TERN_EXCLUSIONS,
   },
   {
@@ -77,7 +130,7 @@ export const TERN_PRODUCTS: TernProduct[] = [
     name: 'Bronze+',
     minGuests: 1,
     maxGuests: 4,
-    prices: { USD: { coverageCap: 4000, perStayFee: 14 } },
+    prices: { USD: { coverageCap: 2000, perStayFee: 14, coverage: placeholderCoverage('E8C-BRZ-PLUS', 2000, true) } },
     exclusions: TERN_EXCLUSIONS,
   },
   {
@@ -86,7 +139,7 @@ export const TERN_PRODUCTS: TernProduct[] = [
     name: 'Silver',
     minGuests: 5,
     maxGuests: 8,
-    prices: { USD: { coverageCap: 5000, perStayFee: 15 } },
+    prices: { USD: { coverageCap: 5000, perStayFee: 15, coverage: placeholderCoverage('E8C-SLV', 5000) } },
     exclusions: TERN_EXCLUSIONS,
   },
   {
@@ -95,7 +148,7 @@ export const TERN_PRODUCTS: TernProduct[] = [
     name: 'Silver+',
     minGuests: 5,
     maxGuests: 8,
-    prices: { USD: { coverageCap: 10000, perStayFee: 24 } },
+    prices: { USD: { coverageCap: 5000, perStayFee: 24, coverage: placeholderCoverage('E8C-SLV-PLUS', 5000, true) } },
     exclusions: TERN_EXCLUSIONS,
   },
   {
@@ -104,7 +157,7 @@ export const TERN_PRODUCTS: TernProduct[] = [
     name: 'Gold',
     minGuests: 9,
     maxGuests: null,
-    prices: { USD: { coverageCap: 10000, perStayFee: 25 } },
+    prices: { USD: { coverageCap: 10000, perStayFee: 25, coverage: placeholderCoverage('E8C-GLD', 10000) } },
     exclusions: TERN_EXCLUSIONS,
   },
   {
@@ -113,7 +166,7 @@ export const TERN_PRODUCTS: TernProduct[] = [
     name: 'Gold+',
     minGuests: 9,
     maxGuests: null,
-    prices: { USD: { coverageCap: 20000, perStayFee: 39 } },
+    prices: { USD: { coverageCap: 10000, perStayFee: 39, coverage: placeholderCoverage('E8C-GLD-PLUS', 10000, true) } },
     exclusions: TERN_EXCLUSIONS,
   },
 ]

@@ -39,7 +39,37 @@ export interface ListingProtectionSetup {
    * covers every channel, and the deposit rides along beside it.
    */
   depositChannels?: BookingChannel[]
+  /**
+   * Guest-paid listings only: when the guest has not bought the waiver (nor
+   * left a deposit card) by `hostFallbackDays` before check-in, the host covers
+   * the stay and Elev8 charges the host the cover fee. Absent means off.
+   */
+  hostFallback?: boolean
+  /** Days before check-in at which the host cover kicks in. Absent means 1. */
+  hostFallbackDays?: number
   updatedAt: string
+}
+
+export const DEFAULT_HOST_FALLBACK_DAYS = 1
+export const HOST_FALLBACK_DAY_OPTIONS = [1, 2, 3, 5, 7, 14]
+
+/**
+ * Whether a guest stay with no choice yet is due its automatic host cover on
+ * `today`: the setting is on and the cut-off (N days before check-in) has come.
+ * Day strings are local `YYYY-MM-DD`.
+ */
+export function hostFallbackDue(
+  setup: Pick<ListingProtectionSetup, 'hostFallback' | 'hostFallbackDays'>,
+  checkIn: string,
+  today: Date,
+): boolean {
+  if (!setup.hostFallback)
+    return false
+  const cutoff = new Date(`${checkIn}T00:00:00`)
+  cutoff.setDate(cutoff.getDate() - (setup.hostFallbackDays ?? DEFAULT_HOST_FALLBACK_DAYS))
+  const day = new Date(today)
+  day.setHours(0, 0, 0, 0)
+  return day.getTime() >= cutoff.getTime()
 }
 
 export const DEFAULT_DEPOSIT_LIMIT = 500

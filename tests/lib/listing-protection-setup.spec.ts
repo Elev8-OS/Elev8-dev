@@ -1,6 +1,6 @@
 import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import { describe, expect, it } from 'vitest'
-import { defaultListingSetup, listingPolicy, moveListingUpdates, protectionPackageOptions, setupTermsText } from '~/components/damage-protection/data/listing-protection-setup'
+import { defaultListingSetup, hostFallbackDue, listingPolicy, moveListingUpdates, protectionPackageOptions, setupTermsText } from '~/components/damage-protection/data/listing-protection-setup'
 import { DEPOSIT_TERMS, WAIVER_TERMS } from '~/components/reservations/data/damage-protection'
 import { mockUpsellServices } from '~/components/upsells/data/upsell-services'
 
@@ -12,13 +12,20 @@ function service(patch: Partial<UpsellService> = {}): UpsellService {
 }
 
 describe('packages', () => {
-  it('sizes a "+" tier like its base tier: more cover, never a bigger property', async () => {
+  it('sizes a "+" tier like its base tier and covers the same damage, with a higher liability', async () => {
     const { recommendedTier, tierTooSmall, ternPriceFor } = await import('~/components/reservations/data/tern-products')
     expect(recommendedTier(3)).toBe('bronze')
     expect(tierTooSmall('bronze_plus', 6)).toBe(true)
     expect(tierTooSmall('silver_plus', 6)).toBe(false)
     expect(tierTooSmall('gold_plus', 2)).toBe(false)
-    expect(ternPriceFor('silver_plus', 'USD')!.coverageCap).toBeGreaterThan(ternPriceFor('silver', 'USD')!.coverageCap)
+    // A "+" tier differs in liability only: same damage cover, higher liability, higher fee.
+    const silver = ternPriceFor('silver', 'USD')!
+    const silverPlus = ternPriceFor('silver_plus', 'USD')!
+    expect(silverPlus.coverageCap).toBe(silver.coverageCap)
+    expect(silverPlus.coverage.unit).toEqual(silver.coverage.unit)
+    expect(silverPlus.coverage.personal).toEqual(silver.coverage.personal)
+    expect(silverPlus.coverage.liability.limit).toBeGreaterThan(silver.coverage.liability.limit)
+    expect(silverPlus.perStayFee).toBeGreaterThan(silver.perStayFee)
   })
 
   it('lists one package per active protection upsell, and skips one without a cover tier', () => {
@@ -98,5 +105,20 @@ describe('setupTermsText', () => {
     expect(setupTermsText({ waiver: true, deposit: false })).toBe(WAIVER_TERMS)
     expect(setupTermsText({ waiver: false, deposit: true })).toBe(DEPOSIT_TERMS)
     expect(setupTermsText({ waiver: true, deposit: true })).toBe(`${WAIVER_TERMS} ${DEPOSIT_TERMS}`)
+  })
+})
+
+describe('hostFallbackDue', () => {
+  const today = new Date(2026, 9, 6, 15, 0)
+  it('is due from N days before check-in, default one', () => {
+    expect(hostFallbackDue({ hostFallback: true }, '2026-10-07', today)).toBe(true)
+    expect(hostFallbackDue({ hostFallback: true }, '2026-10-08', today)).toBe(false)
+    expect(hostFallbackDue({ hostFallback: true, hostFallbackDays: 3 }, '2026-10-09', today)).toBe(true)
+    expect(hostFallbackDue({ hostFallback: true, hostFallbackDays: 3 }, '2026-10-10', today)).toBe(false)
+  })
+
+  it('is never due while the setting is off', () => {
+    expect(hostFallbackDue({}, '2026-10-06', today)).toBe(false)
+    expect(hostFallbackDue({ hostFallback: false, hostFallbackDays: 14 }, '2026-10-07', today)).toBe(false)
   })
 })

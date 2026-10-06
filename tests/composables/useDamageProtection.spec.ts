@@ -922,6 +922,56 @@ describe('host-paid listings', () => {
   })
 })
 
+describe('host cover when the guest does not buy', () => {
+  it('covers a guest stay with no choice once the cut-off comes, and stops asking the guest', () => {
+    // Check-in tomorrow: inside a 1-day cut-off.
+    seedReservation({ checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
+    const dp = useDamageProtection()
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+    expect(dp.setListingSetup('lst-1', { hostFallback: true, hostFallbackDays: 1 })).toEqual({ ok: true })
+    expect(protectionOf()).toMatchObject({ paidBy: 'host', amount: 0, autoHostCover: true, tier: 'bronze', elev8Fee: 9 })
+    expect(reservationOf().activity.at(-1)!.description).toContain('had not bought the damage waiver')
+    expect(dp.isOfferedFor('res-dp-1')).toBe(false)
+    // Still a guest-paid listing: only this stay is covered by the host.
+    expect(dp.listingMode('lst-1')).toBe('guest_paid')
+  })
+
+  it('waits until the cut-off, and never overrides a guest\'s own choice', () => {
+    seedReservation({ id: 'res-later', checkIn: isoDaysFromNow(5), checkOut: isoDaysFromNow(8), nights: 3 })
+    seedReservation({ checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
+    const dp = useDamageProtection()
+    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
+    dp.setListingSetup('lst-1', { hostFallback: true, hostFallbackDays: 2 })
+    expect(reservationOf('res-later').damageProtection).toBeUndefined()
+    expect(protectionOf()).toMatchObject({ option: 'deposit', state: 'card_on_file' })
+    expect(protectionOf().paidBy).not.toBe('host')
+    // Moving the cut-off out to a week takes the later stay too.
+    dp.setListingSetup('lst-1', { hostFallbackDays: 7 })
+    expect(reservationOf('res-later').damageProtection).toMatchObject({ paidBy: 'host', autoHostCover: true })
+  })
+
+  it('removes the cover from a stay not started yet when the setting goes off', () => {
+    seedReservation({ checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
+    const dp = useDamageProtection()
+    dp.setListingSetup('lst-1', { hostFallback: true })
+    dp.setListingSetup('lst-1', { hostFallback: false })
+    expect(reservationOf().damageProtection).toBeUndefined()
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+  })
+
+  it('writes nothing without the waiver on the listing or before activation', () => {
+    seedReservation({ listingId: 'lst-2', checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
+    const dp = useDamageProtection()
+    // lst-2 takes a deposit only: there is no cover for the host to buy.
+    dp.setListingSetup('lst-2', { hostFallback: true })
+    expect(reservationOf().damageProtection).toBeUndefined()
+    useTernActivation().replayActivation()
+    seedReservation({ id: 'res-x', checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
+    dp.setListingSetup('lst-1', { hostFallback: true })
+    expect(reservationOf('res-x').damageProtection).toBeUndefined()
+  })
+})
+
 describe('before the damage waiver is activated', () => {
   it('pauses a policy that offers the waiver, deposit included, and keeps deposit-only running', () => {
     useTernActivation().replayActivation()

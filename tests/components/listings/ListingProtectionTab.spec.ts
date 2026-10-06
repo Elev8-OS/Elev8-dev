@@ -134,6 +134,30 @@ describe('listing protection tab', () => {
     expect(useDamageProtection().listingMode('lst-17')).toBe('off')
   })
 
+  it('sets the automatic host cover and its cut-off where the guest pays', async () => {
+    const wrapper = mountTab('lst-1')
+    const box = wrapper.find('[data-testid="protection-host-fallback"]')
+    expect(box.text()).toContain('Auto-activate host-paid protection if the guest doesn\'t buy the upsell')
+    flip(wrapper, 'protection-host-fallback-switch', true)
+    await nextTick()
+    expect(useDamageProtection().setupFor('lst-1').hostFallback).toBe(true)
+    expect(wrapper.find('[data-testid="protection-host-fallback"]').text()).toContain('before check-in')
+    const days = wrapper.findAllComponents({ name: 'SelectStub' }).find(c => c.find('[data-testid="protection-host-fallback-days"]').exists())!
+    expect(days.attributes('data-value')).toBe('1')
+    days.vm.$emit('update:modelValue', '3')
+    await nextTick()
+    expect(useDamageProtection().setupFor('lst-1').hostFallbackDays).toBe(3)
+  })
+
+  it('offers no automatic host cover without the waiver, or where the host already pays', async () => {
+    // Who pays, and its fallback, live in the waiver box: a deposit-only listing has neither.
+    expect(mountTab('lst-2').find('[data-testid="protection-payer"]').exists()).toBe(false)
+    const wrapper = mountTab('lst-1')
+    await wrapper.find('[data-testid="protection-mode-host_paid"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="protection-host-fallback"]').exists()).toBe(false)
+  })
+
   it('takes a deposit only with the deposit switch, no upsell needed', async () => {
     // lst-18 is on Stripe; out of the Silver upsell, it is off.
     const { services, updateService } = useUpsellServices()
@@ -227,10 +251,9 @@ describe('listing protection tab', () => {
     expect(wrapper.find('[data-testid="protection-deposit-switch"]').attributes('disabled')).toBeDefined()
   })
 
-  it('refuses "Host pays" on a deposit-only listing', () => {
-    const wrapper = mountTab('lst-2')
-    expect(wrapper.find('[data-testid="protection-mode-host_paid"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-testid="protection-mode-host_paid"]').text()).toContain('Turn on the damage waiver first')
+  it('shows "Who pays" inside the damage waiver, so a deposit-only listing has none', () => {
+    expect(mountTab('lst-1').find('[data-testid="protection-waiver"] [data-testid="protection-payer"]').exists()).toBe(true)
+    expect(mountTab('lst-2').find('[data-testid="protection-mode-host_paid"]').exists()).toBe(false)
   })
 
   it('disables "Host pays" until the damage waiver is activated', async () => {

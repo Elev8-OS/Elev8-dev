@@ -130,7 +130,7 @@ function failureLabel(row: ProtectionRow): string {
             <td class="px-4 py-3">
               <span class="capitalize">{{ row.protection?.option ?? '—' }}</span>
               <span v-if="row.protection?.paidBy === 'host'" class="ml-1.5 text-xs text-muted-foreground" data-testid="row-host-paid">
-                Host pays
+                {{ row.protection.autoHostCover ? 'Host pays, guest did not buy' : 'Host pays' }}
               </span>
             </td>
             <td class="px-4 py-3 text-right tabular-nums">

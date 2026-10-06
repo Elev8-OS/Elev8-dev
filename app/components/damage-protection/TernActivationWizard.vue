@@ -229,6 +229,9 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                       Covers up to
                     </th>
                     <th class="px-3 py-2 text-right font-medium">
+                      Liability up to
+                    </th>
+                    <th class="px-3 py-2 text-right font-medium">
                       Elev8 charges per 30 nights
                     </th>
                   </tr>
@@ -243,6 +246,9 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                     </td>
                     <td class="px-3 py-2 text-right tabular-nums">
                       {{ product.prices.USD ? formatProtectionAmount(product.prices.USD.coverageCap, 'USD') : 'Not priced' }}
+                    </td>
+                    <td class="px-3 py-2 text-right tabular-nums">
+                      {{ product.prices.USD ? formatProtectionAmount(product.prices.USD.coverage.liability.limit, 'USD') : 'Not priced' }}
                     </td>
                     <td class="px-3 py-2 text-right tabular-nums">
                       {{ product.prices.USD ? formatProtectionAmount(product.prices.USD.perStayFee, 'USD') : 'Not priced' }}
