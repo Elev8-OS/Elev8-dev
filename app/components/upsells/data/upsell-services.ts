@@ -1,4 +1,5 @@
 import type { LockAccessConfig } from './lock-access'
+import type { TernTier } from '~/components/reservations/data/tern-products'
 
 export type UpsellCategory
   = | 'Vehicle Rental'
@@ -13,6 +14,7 @@ export type UpsellCategory
     | 'Baby'
     | 'Miscellaneous'
     | 'Pet'
+    | 'Damage Protection'
 
 export type BookingStatusFilter
   = | 'inquiry'
@@ -228,6 +230,12 @@ export interface UpsellItem {
   description?: string
   price: number
   image?: string
+  /**
+   * Damage Protection services only: the Elev8 Cover tier this package sells.
+   * `price` is what the guest pays per package; the cover cap and Elev8's fee
+   * come from the tier (`tern-products.ts`), never typed here.
+   */
+  coverTier?: TernTier
 }
 
 export interface UpsellService {
@@ -271,7 +279,26 @@ export const UPSPELL_CATEGORIES: UpsellCategory[] = [
   'Baby',
   'Pet',
   'Miscellaneous',
+  'Damage Protection',
 ]
+
+/**
+ * ⚠️ A Damage Protection service is not sold like the other upsells. Its items
+ * are the Elev8 Cover packages, and assigning a listing to it is what turns
+ * damage protection ON for that listing (`useDamageProtection`). The guest
+ * meets it in the guest guide's Damage protection section, never in the upsell
+ * catalog, an inbox offer, the folio or a promo code.
+ */
+export const PROTECTION_CATEGORY: UpsellCategory = 'Damage Protection'
+
+export function isProtectionService(service: Pick<UpsellService, 'category'>): boolean {
+  return service.category === PROTECTION_CATEGORY
+}
+
+/** Upsells sold as upsells: everything except the damage protection packages. */
+export function sellableServices<T extends Pick<UpsellService, 'category'>>(services: T[]): T[] {
+  return services.filter(s => !isProtectionService(s))
+}
 
 export const BALI_LISTINGS = [
   'The R Pererenan Mezzanine Studio + Plunge Pool',
@@ -703,6 +730,131 @@ export const mockUpsellServices: UpsellService[] = [
       { id: 'itm-pet-kit', name: 'Welcome kit', price: 150000 },
     ],
     assignedListings: BALI_LISTINGS,
+    availability: 'always',
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'svc-dp-bronze',
+    name: 'Elev8 Cover Bronze',
+    description: 'Accidental damage during your stay is covered, up to the limit of your package. Nothing more to pay after you leave.',
+    category: 'Damage Protection',
+    currency: 'USD',
+    youtubeLinks: [],
+    internalNotes: 'Listings assigned here offer the Bronze damage waiver. Set the deposit on each listing\'s Protection tab.',
+    notificationUsers: [],
+    pricingEnabled: false,
+    taxPercent: 0,
+    servicePercent: 0,
+    // ONE package per protection upsell: Bronze and Silver are two services.
+    items: [
+      { id: 'itm-dp-bronze', name: 'Bronze', description: 'For properties up to 4 guests.', price: 39, coverTier: 'bronze' },
+    ],
+    // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
+    assignedListings: ['5BR Pool the R Villa Luwa – Serene near Canggu'],
+    availability: 'always',
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'svc-dp-silver',
+    name: 'Elev8 Cover Silver',
+    description: 'Accidental damage during your stay is covered, up to the limit of your package. Nothing more to pay after you leave.',
+    category: 'Damage Protection',
+    currency: 'USD',
+    youtubeLinks: [],
+    internalNotes: 'Listings assigned here offer the Silver damage waiver. Set the deposit on each listing\'s Protection tab.',
+    notificationUsers: [],
+    pricingEnabled: false,
+    taxPercent: 0,
+    servicePercent: 0,
+    // ONE package per protection upsell: Bronze and Silver are two services.
+    items: [
+      { id: 'itm-dp-silver', name: 'Silver', description: 'For properties of 5 to 8 guests.', price: 59, coverTier: 'silver' },
+    ],
+    // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
+    assignedListings: ['Apartments Pool - Room 3'],
+    availability: 'always',
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'svc-dp-bronze-plus',
+    name: 'Elev8 Cover Bronze+',
+    description: 'Accidental damage during your stay is covered, up to the limit of your package. Nothing more to pay after you leave.',
+    category: 'Damage Protection',
+    currency: 'USD',
+    youtubeLinks: [],
+    internalNotes: 'Listings assigned here offer the Bronze+ damage waiver. Set the deposit on each listing\'s Protection tab.',
+    notificationUsers: [],
+    pricingEnabled: false,
+    taxPercent: 0,
+    servicePercent: 0,
+    // ONE package per protection upsell: Bronze and Silver are two services.
+    items: [
+      { id: 'itm-dp-bronze-plus', name: 'Bronze+', description: 'Higher cover, for properties up to 4 guests.', price: 59, coverTier: 'bronze_plus' },
+    ],
+    // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
+    assignedListings: [],
+    availability: 'always',
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'svc-dp-silver-plus',
+    name: 'Elev8 Cover Silver+',
+    description: 'Accidental damage during your stay is covered, up to the limit of your package. Nothing more to pay after you leave.',
+    category: 'Damage Protection',
+    currency: 'USD',
+    youtubeLinks: [],
+    internalNotes: 'Listings assigned here offer the Silver+ damage waiver. Set the deposit on each listing\'s Protection tab.',
+    notificationUsers: [],
+    pricingEnabled: false,
+    taxPercent: 0,
+    servicePercent: 0,
+    // ONE package per protection upsell: Bronze and Silver are two services.
+    items: [
+      { id: 'itm-dp-silver-plus', name: 'Silver+', description: 'Higher cover, for properties of 5 to 8 guests.', price: 89, coverTier: 'silver_plus' },
+    ],
+    // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
+    assignedListings: [],
+    availability: 'always',
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-09-01T08:00:00Z',
+    updatedAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'svc-dp-gold-plus',
+    name: 'Elev8 Cover Gold+',
+    description: 'Accidental damage during your stay is covered, up to the limit of your package. Nothing more to pay after you leave.',
+    category: 'Damage Protection',
+    currency: 'USD',
+    youtubeLinks: [],
+    internalNotes: 'Listings assigned here offer the Gold+ damage waiver. Set the deposit on each listing\'s Protection tab.',
+    notificationUsers: [],
+    pricingEnabled: false,
+    taxPercent: 0,
+    servicePercent: 0,
+    // ONE package per protection upsell: Bronze and Silver are two services.
+    items: [
+      { id: 'itm-dp-gold-plus', name: 'Gold+', description: 'Higher cover, for properties of 9 guests and more.', price: 129, coverTier: 'gold_plus' },
+    ],
+    // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
+    assignedListings: [],
     availability: 'always',
     status: 'active',
     visibility: emptyVisibilityConditions(),

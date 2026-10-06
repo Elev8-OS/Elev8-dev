@@ -3,6 +3,7 @@ import type { Conversation } from '@/components/inbox/data/conversations'
 import type { UpsellOrder } from '@/components/upsells/data/upsell-orders'
 import type { UpsellService } from '@/components/upsells/data/upsell-services'
 import { toast } from 'vue-sonner'
+import { sellableServices } from '@/components/upsells/data/upsell-services'
 import { useInbox } from '@/composables/useInbox'
 import { useUpsellNotifications } from '@/composables/useUpsellNotifications'
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
@@ -27,8 +28,9 @@ const selectedItems = ref<string[]>([])
 const serviceDate = ref('')
 const notes = ref('')
 
+// Damage protection packages are offered in the guest guide, never as an upsell order.
 const filteredServices = computed(() =>
-  services.value.filter(s => s.status === 'active'),
+  sellableServices(services.value).filter(s => s.status === 'active'),
 )
 
 const selectedServiceId = computed({

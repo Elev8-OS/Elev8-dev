@@ -1,6 +1,7 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import type { UpsellItem, UpsellService } from '~/components/upsells/data/upsell-services'
+import { isProtectionService } from '~/components/upsells/data/upsell-services'
 
 export type FolioItemStatus = 'unpaid' | 'partially_paid' | 'paid' | 'voided'
 export type FolioPaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'room'
@@ -290,7 +291,8 @@ export interface FolioCatalogRow {
  */
 export function folioCatalogRows(services: UpsellService[], listingName: string, reservationCurrency: string): FolioCatalogRow[] {
   return services
-    .filter(service => service.status === 'active' && service.assignedListings.includes(listingName))
+    // Damage protection is never a folio line: a waiver or deposit is not revenue posted by staff.
+    .filter(service => service.status === 'active' && !isProtectionService(service) && service.assignedListings.includes(listingName))
     .flatMap(service => service.items.map(item => ({
       serviceId: service.id,
       serviceName: service.name,

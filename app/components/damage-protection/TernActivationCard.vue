@@ -5,7 +5,7 @@ import { useTernActivation } from '~/composables/useTernActivation'
 
 /**
  * Where the damage waiver service stands for this tenant, and the way in to
- * activate it. Sits above the policies: nothing that uses the waiver runs
+ * activate it. Tops the Damage Protection page: nothing that uses the waiver runs
  * until this says active.
  */
 const tern = useTernActivation()
@@ -91,8 +91,8 @@ function when(iso?: string): string {
           </p>
           <p v-else class="text-sm text-muted-foreground">
             The waiver is Elev8 Cover, so it runs once you have signed up: accept the terms and add the bank account
-            your claims are paid into. The cover fees go on the card on your Elev8 subscription. Until then, policies
-            with the waiver are paused and deposit-only policies keep working.
+            your claims are paid into. The cover fees go on the card on your Elev8 subscription. Until then, the
+            waiver is paused on every listing and a deposit on its own keeps working.
           </p>
           <p
             v-if="!tern.hasStripePayout.value"

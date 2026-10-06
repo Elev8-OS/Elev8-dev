@@ -1,7 +1,7 @@
 import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
 import type { DamageProtection, PartnerClaim, PartnerClaimEvent, ProtectionClaim, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
-import { chargeMandateText } from '~/components/reservations/data/damage-protection'
-import { elev8CoverPartner, seedProtectionPolicies } from '~/components/reservations/data/damage-protection-seed'
+import { chargeMandateText, policyTemplate } from '~/components/reservations/data/damage-protection'
+import { elev8CoverPartner } from '~/components/reservations/data/damage-protection-seed'
 
 /**
  * Demo stays that make every damage-protection bucket reachable on first load.
@@ -11,7 +11,7 @@ import { elev8CoverPartner, seedProtectionPolicies } from '~/components/reservat
  * fixed 2026 fixture rots into a stay that already ended.
  *
  * lst-1 and lst-2 are the two USD listings on the Stripe payout account, which
- * is what the seeded USD policies are assigned to. lst-1 is a multi-unit villa,
+ * the seeded USD protection upsells (`svc-dp-bronze`, `svc-dp-silver`) is assigned to. lst-1 is a multi-unit villa,
  * so its stays overlapping one another is normal, not a double booking.
  */
 function day(offset: number): string {
@@ -109,9 +109,14 @@ function card(last4: string, brand = 'visa'): SavedCard {
  * text of the policy it was accepted under: the evidence PDF prints it, so a
  * deposit must not carry the waiver's wording.
  */
+/** The terms a demo stay froze. The ids are the policies those stays were accepted under: provenance only. */
+function termsFor(policyId: string): string {
+  return policyTemplate(policyId === 'dp-deposit-only' ? 'deposit_only' : 'standard_short').termsText
+}
+
 function deposit(amount: number, settleOffset: number, last4: string, policyId = 'dp-standard'): Pick<DamageProtection, 'option' | 'amount'> & Partial<DamageProtection> {
   return {
-    termsText: seedProtectionPolicies.find(p => p.id === policyId)?.termsText ?? TERMS,
+    termsText: termsFor(policyId),
     option: 'deposit',
     amount,
     card: card(last4),
@@ -184,7 +189,7 @@ function waiverStay(id: string, guestName: string, checkIn: number, checkOut: nu
       paidBy: 'guest',
       tier: 'bronze',
       elev8Fee: 9,
-      termsText: seedProtectionPolicies.find(p => p.id === 'dp-standard')!.termsText,
+      termsText: termsFor('dp-standard'),
       acceptedAt: iso(checkIn - 5),
       claims,
     }),

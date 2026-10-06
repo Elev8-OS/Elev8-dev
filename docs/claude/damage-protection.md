@@ -5,50 +5,54 @@
 Something breaks: who pays, and out of what? The guest chooses before arrival between a
 non-refundable **damage waiver** and a **security deposit, which is a card kept on file**.
 
-- ⚠️ **The product name is Elev8 Cover; the insurer is never named** (owner's decision, 2026-09-29).
-  No screen, PDF, toast, seed or error text says "Tern" (or VACATERN): tiers read "Elev8 Cover
-  Bronze", `elev8CoverPartner.name` is `'Elev8 Cover'`, and where the payer of a claim matters the copy
-  says "our insurance partner". Tern is still the partner behind it, so code identifiers keep the
-  `tern*` names (`tern-activation.ts`, `useTernActivation`, `TernTier`) and this doc still says Tern.
-  Mock organization ids are `cover_org_...`.
-- ⚠️ **The deposit is a CARD SAVED WITH STRIPE, charged only if there is damage.** Nothing is
-  charged at booking and nothing is held. It replaced a charge-upfront-and-refund deposit
-  (the owner's call, 2026-09-24). **Not an authorization hold**: a hold lapses in about 7 days
-  (Stripe 7, 30 with extended auth on IC+ pricing only; Xendit ~7 with a single capture), which
-  a stay plus its cleaning report outlasts, while a saved card (a SetupIntent on a Customer)
-  lasts until the card expires. The trade-off is stated, not hidden: nothing is guaranteed, and
-  the charge after check-out **can be declined** (`charge_failed`) or disputed.
-- ⚠️ **Only a Stripe listing can take a deposit** (`railForListing === 'card'`). QRIS, virtual
-  account and e-wallet cannot be saved and charged later, so every other rail, including a
-  listing with no payout account, is offered **the waiver only** (`buildOptions` drops the
-  deposit; a deposit-only policy on such a listing offers nothing and is not asked at all).
-- ⚠️ **The deposit is made the less appealing option, on purpose.** A deposit that costs nothing
-  upfront would otherwise be the obvious pick and empty the waiver pot. So the waiver is
-  **always listed first and pre-selected** (there is no `defaultOption` on a policy any more),
-  its card leads with "Nothing more to pay after you leave" and "No card kept on file", and the
-  deposit states plainly that the card can be charged up to the limit after check-out and asks
-  for more: a card **and** an explicit consent tick. Prices were deliberately not touched.
-- ⚠️ **The consent is frozen onto the protection** (`chargeMandate`, from `chargeMandateText`):
-  the ceiling, only for damage, only after the guest is told, and no later than
-  `settleWithinDays` after check-out. It is the record that answers a chargeback.
-- ⚠️ **No card number is ever stored.** `SavedCard` is the gateway reference
-  (`paymentMethodId`), brand, last four and expiry. `saveCard` (mock SetupIntent, 1.5s) drops
-  the input; in production Stripe Elements owns the fields and the number never reaches this
-  app. The guest-guide endpoint **refuses** a body carrying `number`, `cvc` and the like
-  (`server/utils/protection-choice.ts`) rather than ignoring it.
-- ⚠️ **To the guest it is a waiver, never insurance.** Distributing insurance in Indonesia
-  needs OJK licensing, so nothing guest-facing (the choice cards, the guide form, the claim
-  notice, the terms) says `insurance`. The insurance is the **property manager's master policy**
-  with a partner (see *Insurance partner* below): staff-facing screens may call a partner claim
-  an insurance claim, because to the manager it is one.
-- ⚠️ **Three choices per property, nothing else** (owner's decision, 2026-09-25):
+**Set PER LISTING; the waiver's package comes from a Damage Protection upsell** (owner's decisions,
+2026-10-06). There are no shared policies and no settings page (`/settings/damage-protection` is gone).
+- ⚠️ **One upsell of category `'Damage Protection'` (`PROTECTION_CATEGORY`) sells ONE package**: its
+  single item, `UpsellItem.coverTier` (an Elev8 Cover tier) plus `price`, what the guest pays per 30
+  nights. Bronze and Silver are two upsells. The drawer's Package step is a tier picker and a price,
+  not an item list (`packageOf`, `protectionPackageOptions`).
+- ⚠️ **The waiver is on for a listing assigned to an active protection upsell, and that upsell IS its
+  package.** A listing sits in one at most: `moveListingUpdates(services, listing, targetId)` returns
+  the `assignedListings` writes that put it in one and take it out of every other (the tab's waiver
+  switch and package select, and the drawer's save, all go through that rule). `assignedListings`
+  holds listing **names** like every upsell (an id also matches). Removing the listing, or switching
+  the upsell inactive, turns the waiver off.
+- ⚠️ **A deposit needs NO upsell.** Switching it on protects the listing on its own, charged in the
+  listing's payout currency (`no_payout_currency` without a payout account). Taking a listing out of
+  its upsell keeps its deposit.
+- **The listing's setup** (`ListingProtectionSetup`, `damage-protection/data/listing-protection-setup.ts`,
+  framework-free): `waiver` and `deposit` switches, `depositLimit` (flat), `settleWithinDays`,
+  `depositChannels`. No stored setup means `defaultListingSetup` (waiver on, no deposit). Persisted
+  with the payers to `elev8-damage-protection-v4`.
+- ⚠️ **`policies` and `assignments` are DERIVED** (computed in `useDamageProtection` by `listingPolicy`
+  from the upsells and the setups), never stored: one policy per protected listing, id
+  `lp-<listingId>`, one band 1 to open-ended. Everything downstream (`buildOptions`, freezing, host
+  cover, Tern sync, billing) still reads `DamageProtectionPolicy`, unchanged. No policy, with the
+  reason in `block`: `no_service`, `no_package`, `nothing_offered`, `no_deposit_channel`,
+  `no_payout_currency`, `currency_mismatch` (waiver package currency is not the payout currency; no
+  conversion, ever).
+- ⚠️ **One setup for every stay length.** The 28-night band is gone: extending a stay only adds
+  packages at the frozen price and never re-opens the choice.
+- **Deposit channels**: a deposit ON ITS OWN is asked on `depositChannels` (absent = Direct only),
+  picked on the Protection tab. ⚠️ With the waiver on they are ignored: every channel is covered and
+  the chips show on and locked.
+- ⚠️ **A protection upsell is never sold as an upsell**: `sellableServices` / `isProtectionService`
+  keep it out of the inbox order creator, the folio catalog (`folioCatalogRows`) and the promo picker.
+- Writers: `setListingSetup(listingId, patch)` (refuses `host_needs_waiver`, `deposit_limit_missing`,
+  `settle_days_missing`) and `setListingPayer(listingId, 'guest' | 'host')` (refuses
+  `waiver_not_activated`, `host_needs_waiver` when the waiver is off or no upsell sells it). Both run
+  `syncHostCover`; so does the drawer after saving or deleting a protection upsell.
+  `listingProtection(listingId)` is the read for the Protection tab (`packages` on offer,
+  `assignedPackage`, `policy`, `block`).
+- Seed: `svc-dp-bronze` (USD 39, lst-1) and `svc-dp-silver` (USD 59, lst-18);
+  `seedListingProtectionSetups`: lst-1 waiver + deposit USD 500, lst-2 deposit only USD 750 Direct (no
+  upsell), lst-18 waiver only.
+
+- ⚠️ **Three states per property, nothing else** (owner's decision, 2026-09-25):
   **no protection**, **guest pays** (the guest buys the waiver in the guest guide), or **host
   pays** (the guest is never asked; Elev8 bills the host the Tern per-stay fee and pays Tern).
   `ListingProtectionMode` (`off | guest_paid | host_paid`) is DERIVED: `off` means the listing
-  has no assignment, otherwise `payers[listingId]` (absent = guest) decides. `setListingMode` is
-  the way in; turning a listing on assigns the standard templates in its payout currency (or
-  any usable policy in that currency), never a policy in another currency
-  (`no_policy_in_currency`).
+  has no policy (see above), otherwise `payers[listingId]` (absent = guest) decides.
 - ⚠️ **A waiver covers EVERY channel. There is no OTA-only, and no channel-only waiver.**
   `protectionOffered` answers true for Airbnb and Booking.com whenever the policy offers the
   waiver, and the deposit beside it rides along on every channel too (`channelsSelectable` is
@@ -59,7 +63,10 @@ non-refundable **damage waiver** and a **security deposit, which is a card kept 
   `blocked` and `owner_request`, which are all channel `Direct`. Owners make their own
   reservations and pay nothing, so an owner stay is never protected, on either payer.
 - ⚠️ **The tenant never writes a coverage amount or an exclusion.** The waiver's cover comes
-  from a **Tern tier** (`data/tern-products.ts`: Bronze / Silver / Gold, sized by
+  from a **Tern tier** (`data/tern-products.ts`: Bronze / Silver / Gold plus Bronze+ / Silver+ / Gold+
+  (2026-10-06): a "+" tier has its base tier's size (`baseTier`) and a higher cover and fee, so
+  `recommendedTier` only ever names a base tier and `tierTooSmall` compares sizes, never cover. Seeded
+  as three unassigned upsells `svc-dp-*-plus`. Sized by
   `Listing.capacity`, each with a `coverageCap`, a fixed `perStayFee` Elev8 charges the tenant
   per package, and Tern's exclusions, which include wear and tear). A policy stores only
   `waiver: { tier, guestPrice }`: the one number the tenant types is what they charge the guest
@@ -76,21 +83,22 @@ non-refundable **damage waiver** and a **security deposit, which is a card kept 
   `packagePrice`, and the guest card names them ("2 × USD 39.00, one for every 30 nights of your
   stay") only when there is more than one. The 30-night package and the 28-night long-stay band are
   separate rules: a 29-night stay is a long stay on one package.
-- **Policy templates** (`POLICY_TEMPLATES`: *Standard short-term* waiver + deposit on Bronze,
-  *Standard long-term* 28+ nights waiver-only on Silver, *Deposit only* on Direct) are complete
-  policies a tenant assigns rather than builds; `policyFromTemplate` makes one and records
-  `templateId` as provenance. The seeds are built from them. The long-stay line stays at 28 nights.
+- **Policy templates** (`POLICY_TEMPLATES`) are no longer assigned to anything. They remain the
+  standard starting points for the demo stays' frozen terms, the Elev8 Cover pitch's try-out price
+  and the demo guest guides. `WAIVER_TERMS` / `DEPOSIT_TERMS` word a listing's terms
+  (`setupTermsText`).
 - ⚠️ **A host-paid stay is covered by a real protection record**, written by `syncHostCover()`
   (from `hostCoverProtection`: `paidBy: 'host'`, `amount: 0`, `acceptedVia: 'host_cover'`, tier
   and `elev8Fee` frozen), so claims, the partner claim and the Elev8 fee all hang off something
-  frozen. It runs on `hydrate()` and after every listing change; there is no booking-created hook.
+  frozen. It runs on `hydrate()`, after every setup or payer change and after a protection upsell is
+  saved; there is no booking-created hook.
   It covers a guest stay that has not checked out and has no protection yet (or only an
   unanswered `awaiting_choice`); it never overwrites a guest's own accepted choice; it closes a
   cancelled stay's cover with **nothing to refund**; and it removes the cover from a stay that has
   not started, with no claim, once the listing stops being host-paid. Idempotent.
   `isOfferedFor` is **false** on a host-paid listing: the guest is never asked. A host-paid
-  listing needs no guest guide section (`listingsMissingGuideSection` skips it), and a
-  deposit-only policy cannot be used there (`host_needs_waiver`).
+  listing needs no guest guide section (`listingsMissingGuideSection` skips it), and its waiver
+  switch cannot be turned off (`host_needs_waiver`).
 - **The Elev8 fee** is frozen on every waiver protection as `elev8Fee`, and `elev8FeeTotals`
   reports it per currency, split guest-paid / host-paid, as its own figure on the worklist,
   never netted against what guests paid.
@@ -101,8 +109,9 @@ non-refundable **damage waiver** and a **security deposit, which is a card kept 
   `useReservationFolio.commit()` REPLACES `priceDetails.extras` outright, so a second writer
   of that field is silently wiped by the next posting. Excess damage is posted to the folio
   BY HAND: deciding a guest owes more than they agreed is a judgement call.
-- ⚠️ **No currency conversion, ever.** `assignBand` refuses a policy whose currency differs
-  from the listing's payout account, at assignment time rather than at charge time.
+- ⚠️ **No currency conversion, ever.** A package priced in another currency than the listing's
+  payout account builds no policy (`currency_mismatch`); the upsell drawer marks such listings and
+  refuses a package in a currency Elev8 Cover does not price.
 - **States**: `awaiting_choice` → `waiver_active`, or `card_on_file` → `deposit_released`
   (closed, nothing charged) / `deposit_charged` / `charge_failed` (retryable), plus `cancelled`.
   Buckets (derived): `on_file` until check-out, then `decision_due`, `decision_overdue` past
@@ -235,68 +244,45 @@ held capacity for. A no-show on a non-refundable rate is a folio charge.
 ⚠️ **`charge_failed` keeps its claims and stays open** (`failed` bucket, `DEPOSIT_CHARGE_FAILED`
 alert, Retry charge). A declined charge that read as settled would lose the money silently.
 
-**Long stays are a different product.** `LONG_STAY_THRESHOLD_NIGHTS = 28`. Bands live on the
-**assignment** (`DamageProtectionAssignment`, non-overlapping per listing), not as price
-tiers, because the exclusions, terms, SLA and offered options all differ across the
-threshold. Every policy lookup therefore takes `nights`. Long-stay bands ship **waiver-only**
-pending a per-market legal answer on whether a months-long deposit is a tenancy deposit
-(Bali, Germany, Switzerland differ sharply). Wear and tear must be an explicit exclusion, and
-there is deliberately **no recurring waiver billing**: a renewal failing in month four with a
-guest in the property who believes they are covered is a state nothing else here has.
-`useReservationsModule.extendReservation` calls `reassessOnExtension` (⚠️ through a **dynamic**
-`import()`: `useDamageProtection` imports the reservations composable). It does two things. An
-active waiver that now needs more packages takes them at the prices **frozen on the stay**
-(`withExtraPackages`, per-package price read back as `amount / packages`), never the live policy,
-with a "Cover packages added" activity line; collecting the guest's difference is not modelled, so
-the line says how much is still to collect. Then, extending across a band boundary re-opens the
-choice for the added period, as before, without re-pricing the original.
+**Long stays** (`LONG_STAY_THRESHOLD_NIGHTS = 28`) no longer have their own band: a listing has one
+setup for every length (2026-10-06). Wear and tear stays an explicit exclusion, and there is
+deliberately **no recurring waiver billing**. `useReservationsModule.extendReservation` calls
+`reassessOnExtension` (⚠️ through a **dynamic** `import()`: `useDamageProtection` imports the
+reservations composable). An active waiver that now needs more packages takes them at the prices
+**frozen on the stay** (`withExtraPackages`, per-package price read back as `amount / packages`),
+never the live setup, with a "Cover packages added" activity line; collecting the guest's
+difference is not modelled. Its band-boundary re-ask (`stay_extended_across_band`) cannot fire any
+more while every listing has one policy.
 
-**Settings page** (`/settings/damage-protection`, redesigned for plain use 2026-09-24):
-`DamageProtectionSettingsPanel.vue` has two tabs.
-- **Policies**: a summary card per policy in plain words ("Waiver: Tern Bronze, covers up to ...
-  Guest pays USD 39.00, Elev8 charges you USD 9.00 per stay" / "Deposit: card on file, charged up
-  to ... only for damage, decided within 7 days"), its channels ("All channels" whenever the
-  waiver is on), and where it is used; **Edit**, **New policy**, and delete (disabled while any
-  listing uses it). A read-only line names Tern as the cover partner; there is nothing to set.
-- **Listings**: one row per listing with a **Protection** select (No protection / Guest pays /
-  Host pays) and, unless it is off, two selects, *Stays under 28 nights* and *Stays of 28+
-  nights*, instead of typed night ranges. Where the host pays, a deposit-only policy is disabled
-  in the list. A policy in another currency than the listing's payouts
-  is disabled in the list. Rows flag "Waiver only here" (a deposit policy on a non-Stripe listing)
-  and "Not in the guest guide yet", with a banner counting the latter.
-  - **Assigning many at once**: tick rows (custom boxes, not reka-ui's `Checkbox`, so the header
-    can show "some"), or **Select all shown**, which takes every row the search, **tag** and
-    **No protection / Guest pays / Host pays** filters leave, so a filter is how a group is
-    picked. The bulk bar sets who pays (applied first) and short and/or long stays ("Keep as is" leaves a slot alone, "No protection" clears it) through
-    `setSlotsForListings`, which applies listing by listing and reports what it skipped and why
-    (currency, custom ranges). ⚠️ A listing whose two slots cannot both apply is rolled back
-    whole, never left half-changed, and the skipped ones stay ticked afterwards.
-  - ⚠️ **The two slots are a view over the same bands** (`SLOT_RANGES`: 1-27 and 28+;
-    `listingSlots` reads them). `setListingSlot` replaces exactly one slot's band and still goes
-    through `assignBand` (currency and overlap checks), rolling back on a refusal. A listing with
-    any other range is `custom`, shown read-only with "Switch to short and long stays"
-    (`resetListingBands`); nothing silently rewrites a custom setup.
-- **Editing** is `DamageProtectionPolicySheet.vue`, a side sheet on a **draft** (Save / Cancel;
-  nothing reaches the policy before Save). Sections: name (currency only chosen for a new
-  policy), *Start from a template* (new policies only), *What guests can choose* (the waiver
-  with the Tern tier picker, the guest price, Elev8's fee and the margin, and Tern's exclusions
-  read-only; the deposit with card limit and decision days), booking channels (locked to all
-  while the waiver is on), terms, and a live *What guests see* preview from `buildOptions`.
-  `policyErrors(policy, { longStay, guestPaid })` lists what is missing in plain sentences and
-  blocks the save; it asks for a guest price unless every listing using the policy is host-paid.
-  ⚠️ The sheet's `guestPaid` prop defaults to **true** via `withDefaults`: an absent boolean prop
-  is `false` in Vue, which silently stopped asking a new policy for a guest price.
-  ⚠️ **The terms version bumps itself** (`bumpTermsVersion`) when the terms wording changed, so
-  there is no version field to forget. `newPolicyDraft` is the standard short-term template.
+**Settings page: removed** (2026-10-06). `DamageProtectionSettingsPanel`,
+`DamageProtectionPolicySheet`, `policyErrors`, `listingSlots` / `SLOT_RANGES`, `bumpTermsVersion` and the
+bulk band tools went with it. The activation card (`TernActivationCard`) moved to the top of the
+`/damage-protection` worklist; Billing's "Not activated" link points there.
+
+**Upsells, Damage Protection category** (`UpsellDrawer.vue`): steps Basic Info, **Package** (three tier
+cards with their cover, and the guest price with Elev8's fee and the margin), Listings, Settings (no
+Visibility, availability, lock access, tax/service or WhatsApp users). Priced in USD, the only
+currency Elev8 Cover prices today (the drawer has no currency field). Save refuses an unpriced tier
+or a zero price. The Listings step lists the **real listings** with their payout currency ("Paid out
+in IDR, not covered") and the protection upsell a listing is already in ("Moves here from ...").
 
 **Listing detail, Protection tab** (`ListingProtectionTab.vue`, `/listings/[id]`, between
-Maintenance and Settings): the same per-listing setup as the settings Listings tab, for one
-listing. Who pays as three radio cards (Host pays disabled until activation), the payout line
-(Stripe takes a deposit, anything else is waiver only), the short/long slot selects or the custom
-ranges reset, the undersized / paused flags (the missing guest guide section is flagged on the settings page only, not here, by request), each assigned policy in plain words with
-**Edit policy** (the same `DamageProtectionPolicySheet`, noting how many other listings share it),
-and **Protected stays**: `dp.rows` for this listing, status chip, link to
-`/reservations?reservation=<id>`, paged 10 to a page (10/20/30/50, same footer as the upsell orders table).
+Maintenance and Settings). Always the same card, on or off: a status line (Off / Waiver and deposit /
+Waiver only / Deposit only) with **Turn off** while on, a `block` sentence when nothing can run, then:
+- **Damage waiver** switch: switching it ON first opens the Elev8 Cover benefits (`TernPromoDialog`,
+  `actionLabel` "Turn on damage waiver"); its button puts the listing in its package's upsell (the
+  first on offer if it had none) and, if the service is not activated, opens the activation wizard
+  too. "Not now" leaves it off. Off takes the listing out, no dialog. While on, a **Package** select lists every protection upsell; picking
+  one moves the listing there; each option names the guest price and what Elev8 charges you. Undersized
+  and paused flags. Disabled when no protection upsell exists.
+- **New package** (beside the select, or "Create a package" when there is none) opens the same
+  `UpsellDrawer` in place, on the Damage Protection category with this listing ticked
+  (`initialListings`); saving creates the upsell and moves the listing onto it (`saved` event). The
+  drawer is mounted only while open, so its form-filling watch runs `immediate`.
+- **Deposit** switch (disabled without Stripe or where the host pays): card limit and decision days
+  (saved on blur) and **Booking channels** chips.
+- **Who pays** (only while on): Guest pays / Host pays, Host pays disabled until activation or while
+  the waiver is off. Then **Protected stays**, paged 10 to a page.
 - **The Elev8 Cover pitch** (`TernPromoDialog.vue`): opening the tab while the activation is
   `not_activated` or `registration_failed` opens a promo dialog (never while `registering`, never
   once active). It shows **every visit**: reka's `TabsContent` unmounts a hidden tab, so each
@@ -307,20 +293,15 @@ and **Protected stays**: `dp.rows` for this listing, status chip, link to
   The maths is `damage-protection/data/tern-pitch.ts` (framework-free): `averageStayNights`
   ignores blocks, cancellations and inquiries and falls back to `DEFAULT_STAY_NIGHTS`,
   `estimatedStaysPerYear` caps at a full year, a negative margin reads "You pay". The try-out
-  price starts from the listing's own waiver policy, else the standard template. ⚠️ No pitch in a
+  price starts from the listing's package, else the standard template. ⚠️ No pitch in a
   currency Tern does not price (`ternPitchFor` answers null, nothing converted): the dialog falls
   back to a generic headline with no receipt. Opening focus goes to **Activate damage waiver**
   (`@open-auto-focus`), not the price field. Only the button bar is fixed; on mobile the receipt
   comes before the coverage list. **Activate** and the tab's amber banner both open
   `TernActivationWizard` in place. Staff-facing only, so it may say insurance; it still states the
   guest sees a waiver. Copy follows Tern's PMC product handbook (guest damage, host liability, bed bugs).
-- ⚠️ **Both screens read one helper**, `damage-protection/data/listing-protection.ts`
-  (`listingProtectionView`, `policyUsage`, `waiverSummary` / `depositSummary`, `currencyBlocked`,
-  `hostBlocked`, `protectionRefusalText(reason, 'settings' | 'listing')`). Add a flag or a refusal
-  there, never in one component, or the two pages disagree. The refusal context only changes where
-  the sentence points (the Policies tab vs Settings, Damage protection).
-- `listingProtectionView` reads every band of the listing, so a custom-range listing gets its flags
-  too (the settings row used to read only the two standard slots).
+- Wording lives in `damage-protection/data/listing-protection.ts` (`waiverSummary`, `depositSummary`,
+  `packageSummary`, `undersizedText`, `blockText`, `protectionRefusalText`).
 
 **Permissions**: `damage_protection` is its own `PermissionModule`. `dashboardView` opens the
 worklist, **`dashboardEdit` gates charging or closing a deposit and releasing a cancelled
@@ -339,7 +320,7 @@ alerts **directly**, not through `dismiss()`.
 **Activating the damage waiver** (`data/tern-activation.ts` framework-free,
 `useTernActivation`, owner's decision 2026-09-25). Before any waiver runs, the tenant activates
 the service in a 3-step wizard (`TernActivationWizard.vue`, opened from `TernActivationCard.vue` at
-the top of `/settings/damage-protection`): **Terms** (`TERN_ACTIVATION_TERMS`, the tier table, the
+the top of the `/damage-protection` worklist): **Terms** (`TERN_ACTIVATION_TERMS`, the tier table, the
 deductible) → **Bank account** (where Tern pays claims) → **Review**, then **Activate** registers the
 tenant as an organization on Tern (mock, 1.5s, stores an integer `ternOrganizationId`; a "simulate
 Tern refusing" switch makes it fail). ⚠️ Tern's API v0 has no organization endpoint: in production
@@ -361,17 +342,12 @@ outside the API (`ternRegistrationPayload` has nowhere to go yet).
   the screens say "the card on your Elev8 subscription". Do not add a second card form.
 - ⚠️ **Nothing that uses the waiver works until `status === 'active'`.** `pausedUntilActivation`
   pauses a policy offering the waiver WHOLE (its deposit too, rather than quietly becoming
-  deposit-only on channels nobody picked), `setListingMode('host_paid')` is refused
+  deposit-only on channels nobody picked), `setListingPayer(id, 'host')` is refused
   (`waiver_not_activated`), `syncHostCover` writes nothing, and no claim can be filed with Tern.
-  Deposit-only policies are not Tern's and keep working. The settings page marks paused policies
-  and listings and disables "Host pays".
-- ⚠️ **The waiver cannot be switched ON in a policy before activation.** `savePolicy` refuses a
-  save that turns it on (`turnsWaiverOn`: a new policy offering it, or an existing one that did
-  not) with `waiver_not_activated`, and now returns a `ProtectionWriteResult`. The policy sheet says
-  the same thing first: a new policy starts from the *Deposit only* template, the two waiver
-  templates are disabled ("Needs the damage waiver activated"), and the waiver switch is disabled
-  with a note pointing at activation. A policy that **already** offers the waiver can still be
-  edited, and is marked "Paused until the damage waiver is activated".
+  A deposit on its own is not Tern's and keeps working. The Protection tab marks a paused waiver
+  and disables "Host pays".
+- The waiver switch on a listing is **not** refused before activation (it was on the old policy
+  sheet): it simply stays paused, and the tab says so. A newly protected listing starts with it on.
 - ⚠️ **One bank account per tenant for now.** Whether Tern accepts one per listing is still to be
   confirmed with Tern; one account works either way, and `payoutAccountFor(listingId)` keeps its
   argument so a per-listing account needs no call-site change. The bank step **copies** from an
@@ -538,7 +514,7 @@ the same header and `px-3` content padding as the city tax and folio sections: a
 a mock card form, the consent wording and a "simulate a declined card" switch, and hands the
 card back for the section to save FIRST, so a declined card records nothing),
 `DamageProtectionStatusChip.vue` (shared with `ReservationTable`), the `/damage-protection`
-worklist, `/settings/damage-protection`, the listing detail Protection tab, and in the guide app
+worklist, the Upsells Damage Protection service, the listing detail Protection tab, and in the guide app
 `sections/DamageProtectionSection.vue` + `forms/DamageProtectionForm.vue` behind
 `POST /api/guest-guides/by-token/[token]/protection-choice`.
 
@@ -546,9 +522,9 @@ worklist, `/settings/damage-protection`, the listing detail Protection tab, and 
 reservation. Same access model as `saveForCurrentOwner` in `useOwnerPayoutDetails`.
 ⚠️ **`ProtectionOptionCards` names its prop `selectable`, not `readonly`**: `readonly`
 resolves to Vue's auto-imported `readonly()` inside a template, never to the prop.
-⚠️ A policy assigned to a listing is a **silent no-op** unless that listing's guest guide has
-an enabled `damage_protection` section. `listingsMissingGuideSection()` surfaces the mismatch
-in settings.
+⚠️ A protected listing is a **silent no-op** unless its guest guide has an enabled
+`damage_protection` section. `listingsMissingGuideSection()` still computes the mismatch; with
+the settings page gone, nothing shows it yet.
 ⚠️ **The guide API does not compute the options yet.** `GET /api/guest-guides/by-token/[token]`
 returns the stored section data as-is, and `DamageProtectionForm` renders `section.data.options`,
 `termsText` and `longStay` from it, so nothing shows until the server builds them per stay with
@@ -561,8 +537,8 @@ guide per guest case with `buildOptions`, opened at `http://localhost:3001/<toke
 app's own host and always failed), and repeats the dashboard card's 30-night package line.
 Separately, the guide app has no Tailwind installed, so its pages render unstyled.
 
-**Seeds:** `damage-protection-seed.ts` (three USD policies against the Stripe account that
-covers lst-1/lst-2/lst-18; lst-18 carries only the long-stay band) and `damage-protection-demo.ts`
+**Seeds:** `damage-protection-seed.ts` (`seedListingProtectionSetups` for lst-1/lst-2/lst-18, all
+on the USD Stripe account and assigned by the `svc-dp-cover` upsell) and `damage-protection-demo.ts`
 (nine stays making every bucket reachable on load: awaiting choice, a card on file before
 arrival, an unnotified claim blocking the charge, a decision overdue, a declined charge, a
 cancelled stay whose card must be released, a 60-night waiver-only stay with a claim, plus an
@@ -587,9 +563,8 @@ computed at module load; a fixed fixture rots into a stay that already ended.
 `tests/composables/useInbox-reservation-conversation.spec.ts` (8),
 `tests/lib/claim-evidence-pdf.spec.ts` (18),
 `tests/lib/partner-claims.spec.ts` (21),
-`tests/lib/damage-protection-settings.spec.ts` (15),
-`tests/components/settings/DamageProtectionSettings.spec.ts` (26),
-`tests/components/listings/ListingProtectionTab.spec.ts` (15),
+`tests/lib/listing-protection-setup.spec.ts` (7),
+`tests/components/listings/ListingProtectionTab.spec.ts` (16),
 `tests/lib/tern-pitch.spec.ts` (7),
 `tests/composables/usePartnerClaims.spec.ts` (17),
 `tests/components/damage-protection/PartnerClaimPanel.spec.ts` (9),

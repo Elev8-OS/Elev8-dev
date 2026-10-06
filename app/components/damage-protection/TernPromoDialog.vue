@@ -18,8 +18,10 @@ const props = defineProps<{
   listing: Pick<Listing, 'name' | 'capacity' | 'stats' | 'bookings'>
   /** The listing's payout currency. Tern is only quoted where it prices that currency. */
   currency?: string | null
-  /** The guest price of a waiver policy the listing already uses, if any. */
+  /** The guest price of the package the listing already uses, if any. */
   guestPrice?: number | null
+  /** The main button. "Turn on damage waiver" when it switches a listing on rather than activating the service. */
+  actionLabel?: string
 }>()
 
 const emit = defineEmits<{ activate: [] }>()
@@ -31,7 +33,7 @@ const tern = useTernActivation()
 
 const pitch = computed(() => ternPitchFor(props.listing, props.currency ?? 'USD', props.guestPrice))
 
-/** A price to try out, not a setting: the real one is set on the policy. */
+/** A price to try out, not a setting: the real one is the package's, set in Upsells. */
 const tryPrice = ref<number>(0)
 watch([open, pitch], () => {
   if (open.value && pitch.value)
@@ -202,7 +204,7 @@ function activate() {
               </p>
               <p class="mt-3 text-xs leading-relaxed text-muted-foreground">
                 From about {{ pitch.staysPerYear }} stays a year: {{ pitch.occupancyPct }}% occupancy and
-                {{ nightsLabel(pitch.avgNights) }} stays on average. You set the real price on the policy after activating.
+                {{ nightsLabel(pitch.avgNights) }} stays on average. The real price is the package's, set in Upsells.
               </p>
             </div>
           </section>
@@ -236,7 +238,7 @@ function activate() {
         </NuxtLink>
         <Button v-else ref="activateButton" class="gap-1.5" data-testid="tern-promo-activate" @click="activate">
           <Icon name="lucide:shield-check" class="size-4" />
-          Activate damage waiver
+          {{ actionLabel ?? 'Activate damage waiver' }}
         </Button>
       </DialogFooter>
     </DialogContent>

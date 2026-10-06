@@ -6,6 +6,7 @@ import type { PartnerClaimRow } from '~/composables/usePartnerClaims'
 import { toast } from 'vue-sonner'
 import DamageProtectionTable from '~/components/damage-protection/DamageProtectionTable.vue'
 import PartnerClaimTable from '~/components/damage-protection/PartnerClaimTable.vue'
+import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
 import { useDamageProtection } from '~/composables/useDamageProtection'
@@ -210,6 +211,9 @@ async function bulkClose() {
     </div>
 
     <template v-else>
+      <!-- Moved here with the settings page gone: protection itself is set per listing. -->
+      <TernActivationCard />
+
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div v-for="kpi in kpis" :key="kpi.label" class="rounded-lg border p-4">
           <p class="text-[11px] tracking-wide text-muted-foreground uppercase">

@@ -1,33 +1,22 @@
-import type { DamageProtectionAssignment, DamageProtectionPolicy } from '~/components/reservations/data/damage-protection'
+import type { ListingProtectionSetup } from '~/components/damage-protection/data/listing-protection-setup'
 import type { CoverPartner } from '~/components/reservations/data/partner-claims'
 import type { ProtectionPayer } from '~/components/reservations/data/reservations'
-import { policyFromTemplate } from '~/components/reservations/data/damage-protection'
 
 const SEEDED_AT = '2026-09-01T00:00:00.000Z'
 
 /**
- * Built from the templates, so what a new tenant starts from and what the demo
- * shows are the same policies. Seeded in USD against the Stripe account that covers lst-1, lst-2 and lst-18
- * (`payouts.ts`). Stripe is also what makes the deposit possible there: a
- * deposit is a card saved with Stripe, so a listing on any other gateway is
- * offered the waiver only. Assigning a USD policy to a listing whose payout account
- * settles IDR is refused by `assignBand`, so the demo data has to agree with
- * the gateway it would charge on.
+ * The demo listings' damage protection. Their waiver packages are the
+ * `svc-dp-bronze` (lst-1) and `svc-dp-silver` (lst-18) upsells; lst-2 takes a deposit only, no upsell, USD, all three paid out on the USD
+ * Stripe account (`payouts.ts`): a package in another currency than the
+ * payouts builds no policy, and only Stripe can keep a deposit card on file.
+ * - lst-1: waiver (Bronze) with the deposit as the alternative;
+ * - lst-2: the deposit only, asked on direct bookings;
+ * - lst-18: the waiver only, Silver, carrying the demo's 60-night stay.
  */
-export const seedProtectionPolicies: DamageProtectionPolicy[] = [
-  { ...policyFromTemplate('standard_short', 'USD', new Date(SEEDED_AT), 'dp-standard'), name: 'Standard stay' },
-  policyFromTemplate('deposit_only', 'USD', new Date(SEEDED_AT), 'dp-deposit-only'),
-  { ...policyFromTemplate('standard_long', 'USD', new Date(SEEDED_AT), 'dp-long-stay'), name: 'Long stay (28 nights and over)' },
-]
-
-/** Bands must not overlap on a listing. 1-27 short, 28+ long. */
-export const seedProtectionAssignments: DamageProtectionAssignment[] = [
-  { listingId: 'lst-1', policyId: 'dp-standard', minNights: 1, maxNights: 27 },
-  { listingId: 'lst-1', policyId: 'dp-long-stay', minNights: 28, maxNights: null },
-  { listingId: 'lst-2', policyId: 'dp-deposit-only', minNights: 1, maxNights: 27 },
-  { listingId: 'lst-2', policyId: 'dp-long-stay', minNights: 28, maxNights: null },
-  // Long stays only: Room 3 carries the demo's 60-night stay.
-  { listingId: 'lst-18', policyId: 'dp-long-stay', minNights: 28, maxNights: null },
+export const seedListingProtectionSetups: ListingProtectionSetup[] = [
+  { listingId: 'lst-1', waiver: true, deposit: true, depositLimit: 500, settleWithinDays: 7, updatedAt: SEEDED_AT },
+  { listingId: 'lst-2', waiver: false, deposit: true, depositLimit: 750, settleWithinDays: 7, depositChannels: ['Direct'], updatedAt: SEEDED_AT },
+  { listingId: 'lst-18', waiver: true, deposit: false, depositLimit: 500, settleWithinDays: 7, updatedAt: SEEDED_AT },
 ]
 
 /**

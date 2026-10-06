@@ -786,58 +786,7 @@ export function protectionActivityEvent(
 }
 
 // ---------------------------------------------------------------------------
-// Settings: the two stay-length slots a listing is set up with
-// ---------------------------------------------------------------------------
-
-/**
- * The settings page offers every listing two slots, short stays (under
- * `LONG_STAY_THRESHOLD_NIGHTS`) and long stays (at or over it), instead of
- * free-form night ranges. The data model still stores bands; a listing whose
- * bands are anything other than those two ranges is `custom`, shown read-only
- * until it is reset to the standard slots.
- */
-export type StaySlot = 'short' | 'long'
-
-export const SLOT_RANGES: Record<StaySlot, { minNights: number, maxNights: number | null }> = {
-  short: { minNights: 1, maxNights: LONG_STAY_THRESHOLD_NIGHTS - 1 },
-  long: { minNights: LONG_STAY_THRESHOLD_NIGHTS, maxNights: null },
-}
-
-export interface ListingSlots {
-  short: string | null
-  long: string | null
-  /** The listing's bands are not the two standard ranges. */
-  custom: boolean
-}
-
-export function listingSlots(assignments: DamageProtectionAssignment[], listingId: string): ListingSlots {
-  const bands = assignments.filter(a => a.listingId === listingId)
-  const isRange = (a: DamageProtectionAssignment, slot: StaySlot) =>
-    a.minNights === SLOT_RANGES[slot].minNights && a.maxNights === SLOT_RANGES[slot].maxNights
-  const short = bands.find(a => isRange(a, 'short'))
-  const long = bands.find(a => isRange(a, 'long'))
-  return {
-    short: short?.policyId ?? null,
-    long: long?.policyId ?? null,
-    custom: bands.some(a => !isRange(a, 'short') && !isRange(a, 'long')),
-  }
-}
-
-/**
- * The next terms version when the wording changes, so a booking that accepted
- * the old words stays distinguishable from one that accepted the new ones
- * without anybody having to remember to bump it. `v1` becomes `v2`; a version
- * that does not end in a number gets `-2`.
- */
-export function bumpTermsVersion(version: string): string {
-  const digits = version.match(/\d+$/)?.[0]
-  if (digits)
-    return `${version.slice(0, -digits.length)}${Number(digits) + 1}`
-  return `${version || 'v'}-2`
-}
-
-// ---------------------------------------------------------------------------
-// Templates: complete policies a tenant assigns, rather than builds
+// Templates: the standard starting points (demo stays, the Elev8 Cover pitch, demo guides)
 // ---------------------------------------------------------------------------
 
 export type PolicyTemplateId = 'standard_short' | 'standard_long' | 'deposit_only'
@@ -847,8 +796,6 @@ export interface PolicyTemplate {
   name: string
   /** One line for the template picker. */
   summary: string
-  /** The stay-length slot the template is written for. */
-  slot: StaySlot
   offers: ProtectionOption[]
   tier: TernTier
   /** A starting point, per currency. The tenant sets their own. */
@@ -859,15 +806,14 @@ export interface PolicyTemplate {
   termsText: string
 }
 
-const WAIVER_TERMS = 'The damage waiver is a non-refundable fee. It waives your liability for accidental damage up to the stated cover. It is not insurance.'
-const DEPOSIT_TERMS = 'The security deposit keeps your card on file instead: nothing is charged at booking, and after check-out the card may be charged up to the stated amount for damage recorded during your stay, once we have told you what was found and why.'
+export const WAIVER_TERMS = 'The damage waiver is a non-refundable fee. It waives your liability for accidental damage up to the stated cover. It is not insurance.'
+export const DEPOSIT_TERMS = 'The security deposit keeps your card on file instead: nothing is charged at booking, and after check-out the card may be charged up to the stated amount for damage recorded during your stay, once we have told you what was found and why.'
 
 export const POLICY_TEMPLATES: PolicyTemplate[] = [
   {
     id: 'standard_short',
     name: 'Standard short-term',
     summary: `Stays under ${LONG_STAY_THRESHOLD_NIGHTS} nights. Damage waiver, with a card deposit as the alternative on Stripe listings.`,
-    slot: 'short',
     offers: ['waiver', 'deposit'],
     tier: 'bronze',
     guestPrice: { USD: 39 },
@@ -885,7 +831,6 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     id: 'standard_long',
     name: 'Standard long-term',
     summary: `Stays of ${LONG_STAY_THRESHOLD_NIGHTS} nights and over. Damage waiver only.`,
-    slot: 'long',
     offers: ['waiver'],
     tier: 'silver',
     guestPrice: { USD: 249 },
@@ -898,7 +843,6 @@ export const POLICY_TEMPLATES: PolicyTemplate[] = [
     id: 'deposit_only',
     name: 'Deposit only',
     summary: 'No waiver. A card kept on file, on the channels you choose. Stripe listings only.',
-    slot: 'short',
     offers: ['deposit'],
     tier: 'bronze',
     guestPrice: {},
@@ -936,50 +880,4 @@ export function policyFromTemplate(
     createdAt: stamp,
     updatedAt: stamp,
   }
-}
-
-/** The "New policy" button: the standard short-term template. */
-export function newPolicyDraft(currency: ProtectionCurrency, now: Date = new Date()): DamageProtectionPolicy {
-  return policyFromTemplate('standard_short', currency, now)
-}
-
-export interface PolicyErrorContext {
-  /** Whether any listing uses the policy for long stays. */
-  longStay?: boolean
-  /**
-   * Whether any guest pays for it. False only when every listing using the
-   * policy is host-paid, where the guest price is never charged and so is not
-   * asked for.
-   */
-  guestPaid?: boolean
-}
-
-/** Why a policy cannot be saved as it stands, one plain sentence each. Empty means it can. */
-export function policyErrors(policy: DamageProtectionPolicy, context: PolicyErrorContext = {}): string[] {
-  const { longStay = false, guestPaid = true } = context
-  const errors: string[] = []
-  if (!policy.name.trim())
-    errors.push('Give the policy a name.')
-  if (policy.offers.length === 0)
-    errors.push('Offer at least one option: the waiver, the deposit, or both.')
-  if (policy.offers.includes('waiver')) {
-    if (!waiverCover(policy))
-      errors.push(`The ${ternProduct(policy.waiver.tier).name} cover is not available in ${policy.currency} yet.`)
-    if (guestPaid && !(policy.waiver.guestPrice > 0))
-      errors.push('Set what you charge the guest for the waiver.')
-  }
-  if (policy.offers.includes('deposit')) {
-    if (!(policy.deposit.rate > 0))
-      errors.push('Set the most the guest\'s card may be charged.')
-    if (!(policy.deposit.settleWithinDays >= 1))
-      errors.push('Set how many days after check-out you decide on the deposit.')
-    if (policy.deposit.pricing !== 'flat' && policy.deposit.maxAmount === undefined && longStay)
-      errors.push('Set a maximum deposit: without one, a long stay computes an unbounded amount.')
-  }
-  // With the waiver on, every channel is covered, so there is nothing to pick.
-  if (channelsSelectable(policy) && !Object.values(policy.channelPolicy).includes('offer'))
-    errors.push('Turn on at least one booking channel, or no guest is ever asked.')
-  if (!policy.termsText.trim())
-    errors.push('Write the terms the guest accepts.')
-  return errors
 }

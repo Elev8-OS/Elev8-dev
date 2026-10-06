@@ -13,10 +13,10 @@ import type { TernTier } from '~/components/reservations/data/tern-products'
 export const TERN_EXTERNAL_SYSTEM = 'Elev8'
 
 /**
- * Tern's product and policy ids for our three tiers. ⚠️ PLACEHOLDERS: the spec
+ * Tern's product and policy ids for our six tiers. ⚠️ PLACEHOLDERS: the spec
  * has no catalogue endpoint, so the real ids must come from Tern.
  */
-export const TERN_PRODUCT_IDS: Record<TernTier, number> = { bronze: 101, silver: 102, gold: 103 }
+export const TERN_PRODUCT_IDS: Record<TernTier, number> = { bronze: 101, silver: 102, gold: 103, bronze_plus: 104, silver_plus: 105, gold_plus: 106 }
 export const TERN_POLICY_ID = 1
 
 const day = (iso: string) => iso.slice(0, 10)

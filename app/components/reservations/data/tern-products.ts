@@ -9,11 +9,17 @@
  *
  * ⚠️ Priced per currency, never converted. A tier with no price list in a
  * currency cannot back a waiver in that currency (`ternPriceFor` answers null
- * and `policyErrors` refuses the save), rather than inventing an exchange rate.
+ * and a waiver in that currency covers nothing), rather than inventing an exchange rate.
  */
-export type TernTier = 'bronze' | 'silver' | 'gold'
+export type TernBaseTier = 'bronze' | 'silver' | 'gold'
+/**
+ * Each size has a "+" tier (owner's decision, 2026-10-06): the same property
+ * size, a higher cover, a higher Elev8 fee.
+ */
+export type TernTier = TernBaseTier | 'bronze_plus' | 'silver_plus' | 'gold_plus'
 
-export const TERN_TIERS: TernTier[] = ['bronze', 'silver', 'gold']
+/** Smallest to largest, each base tier followed by its "+". */
+export const TERN_TIERS: TernTier[] = ['bronze', 'bronze_plus', 'silver', 'silver_plus', 'gold', 'gold_plus']
 
 export interface TernPrice {
   /** The most Tern covers on one stay, whatever its length: the cap never multiplies. */
@@ -36,6 +42,8 @@ export function coverPackagesFor(nights: number): number {
 
 export interface TernProduct {
   tier: TernTier
+  /** The size the tier is for: a "+" tier shares its base tier's size and only raises the cover. */
+  baseTier: TernBaseTier
   name: string
   /** The property size the tier is sized for, in guests (`Listing.capacity`). */
   minGuests: number
@@ -56,6 +64,7 @@ const TERN_EXCLUSIONS = [
 export const TERN_PRODUCTS: TernProduct[] = [
   {
     tier: 'bronze',
+    baseTier: 'bronze',
     name: 'Bronze',
     minGuests: 1,
     maxGuests: 4,
@@ -63,7 +72,17 @@ export const TERN_PRODUCTS: TernProduct[] = [
     exclusions: TERN_EXCLUSIONS,
   },
   {
+    tier: 'bronze_plus',
+    baseTier: 'bronze',
+    name: 'Bronze+',
+    minGuests: 1,
+    maxGuests: 4,
+    prices: { USD: { coverageCap: 4000, perStayFee: 14 } },
+    exclusions: TERN_EXCLUSIONS,
+  },
+  {
     tier: 'silver',
+    baseTier: 'silver',
     name: 'Silver',
     minGuests: 5,
     maxGuests: 8,
@@ -71,11 +90,30 @@ export const TERN_PRODUCTS: TernProduct[] = [
     exclusions: TERN_EXCLUSIONS,
   },
   {
+    tier: 'silver_plus',
+    baseTier: 'silver',
+    name: 'Silver+',
+    minGuests: 5,
+    maxGuests: 8,
+    prices: { USD: { coverageCap: 10000, perStayFee: 24 } },
+    exclusions: TERN_EXCLUSIONS,
+  },
+  {
     tier: 'gold',
+    baseTier: 'gold',
     name: 'Gold',
     minGuests: 9,
     maxGuests: null,
     prices: { USD: { coverageCap: 10000, perStayFee: 25 } },
+    exclusions: TERN_EXCLUSIONS,
+  },
+  {
+    tier: 'gold_plus',
+    baseTier: 'gold',
+    name: 'Gold+',
+    minGuests: 9,
+    maxGuests: null,
+    prices: { USD: { coverageCap: 20000, perStayFee: 39 } },
     exclusions: TERN_EXCLUSIONS,
   },
 ]
@@ -90,10 +128,11 @@ export function ternPriceFor(tier: TernTier, currency: string): TernPrice | null
 }
 
 /** The tier sized for a property that sleeps `guests`. */
-export function recommendedTier(guests: number): TernTier {
-  const fit = TERN_PRODUCTS.find(p =>
-    guests >= p.minGuests && (p.maxGuests === null || guests <= p.maxGuests))
-  return fit?.tier ?? 'gold'
+export function recommendedTier(guests: number): TernBaseTier {
+  // Base tiers only: a "+" tier is never what a size calls for, only a choice for more cover.
+  const fit = TERN_PRODUCTS.find(p => p.tier === p.baseTier
+    && guests >= p.minGuests && (p.maxGuests === null || guests <= p.maxGuests))
+  return fit?.baseTier ?? 'gold'
 }
 
 /** "Up to 4 guests" / "5 to 8 guests" / "9 guests and more" */
@@ -111,5 +150,7 @@ export function ternSizeLabel(product: TernProduct): string {
  * cover than the property calls for is the risk worth saying out loud.
  */
 export function tierTooSmall(tier: TernTier, guests: number): boolean {
-  return TERN_TIERS.indexOf(tier) < TERN_TIERS.indexOf(recommendedTier(guests))
+  // Compared by SIZE: Bronze+ is still sized for 4 guests, whatever its cover.
+  const sizes: TernBaseTier[] = ['bronze', 'silver', 'gold']
+  return sizes.indexOf(ternProduct(tier).baseTier) < sizes.indexOf(recommendedTier(guests))
 }

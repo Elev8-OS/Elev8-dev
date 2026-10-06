@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { listings } from '~/components/listings/data/listings'
 import { damageProtectionDemoCleaningJobs, damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
-import { seedProtectionAssignments } from '~/components/reservations/data/damage-protection-seed'
+import { seedListingProtectionSetups } from '~/components/reservations/data/damage-protection-seed'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 
 describe('damage protection demo seeds', () => {
@@ -14,12 +14,12 @@ describe('damage protection demo seeds', () => {
       expect(job.listingName, job.id).toBe(listings.value.find(l => l.id === job.listingId)?.name)
   })
 
-  it('put the 60-night stay where it overlaps no other demo stay, with a long-stay policy and a USD account behind it', () => {
+  it('put the 60-night stay where it overlaps no other demo stay, with the waiver set up and a USD account behind it', () => {
     const long = damageProtectionDemoReservations.find(r => r.id === 'res-dp-long-stay')!
     expect(long.listingId).toBe('lst-18')
     const others = damageProtectionDemoReservations.filter(r => r.id !== long.id && r.listingId === long.listingId && r.status !== 'cancelled')
     expect(others.filter(r => r.checkIn < long.checkOut && r.checkOut > long.checkIn)).toEqual([])
-    expect(seedProtectionAssignments.some(a => a.listingId === 'lst-18' && a.policyId === 'dp-long-stay')).toBe(true)
+    expect(seedListingProtectionSetups.find(s => s.listingId === 'lst-18')?.waiver).toBe(true)
     expect(payoutAccounts.value.find(p => p.listingIds.includes('lst-18'))?.currency).toBe('USD')
   })
 

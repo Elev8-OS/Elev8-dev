@@ -207,7 +207,7 @@ async function simulate(simulation: PartnerSimulation) {
           <Label :for="`partner-fail-${claim.id}`" class="text-xs font-normal text-muted-foreground">Simulate a rejected submission</Label>
         </div>
         <p v-if="!payoutAccount" class="w-full text-xs text-amber-700 dark:text-amber-400" data-testid="partner-claim-no-account">
-          The damage waiver is not activated, so there is no bank account for the partner to pay into. Activate it in Settings, Damage protection.
+          The damage waiver is not activated, so there is no bank account for the partner to pay into. Activate it on the Damage Protection page.
         </p>
       </div>
     </template>

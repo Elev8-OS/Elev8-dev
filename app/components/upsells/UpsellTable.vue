@@ -58,6 +58,7 @@ const categoryBadgeClass: Record<string, string> = {
   'Baby': 'text-rose-700 bg-rose-50',
   'Pet': 'text-lime-700 bg-lime-50',
   'Miscellaneous': 'text-gray-700 bg-gray-100',
+  'Damage Protection': 'text-blue-700 bg-blue-50',
 }
 </script>
 

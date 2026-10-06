@@ -90,7 +90,7 @@ describe('partnerClaimPanel', () => {
     const wrapper = mountPanel(claim())
     const submit = wrapper.findAll('button').find(b => b.text() === 'Submit to partner')!
     expect(submit.attributes('disabled')).toBeDefined()
-    expect(wrapper.find('[data-testid="partner-claim-no-account"]').text()).toContain('Settings, Damage protection')
+    expect(wrapper.find('[data-testid="partner-claim-no-account"]').text()).toContain('Damage Protection page')
   })
 
   it('shows a filed claim\'s status, amounts, reference and timeline', () => {

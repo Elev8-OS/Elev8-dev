@@ -15,6 +15,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useTernActivation } from '~/composables/useTernActivation'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock('vue-sonner', () => ({ toast }))
@@ -40,7 +41,8 @@ const STUBS = {
   SelectValue: true,
   SelectContent: passthrough,
   SelectItem: { props: ['value', 'disabled'], template: '<div :data-disabled="disabled"><slot /></div>' },
-  Switch: { props: ['modelValue', 'id', 'disabled'], emits: ['update:modelValue'], template: '<input type="checkbox" :id="id" :checked="modelValue" :disabled="disabled">' },
+  UpsellDrawer: { name: 'UpsellDrawerStub', props: ['open', 'service', 'initialCategory', 'initialListings'], emits: ['saved', 'update:open'], template: '<div data-testid="upsell-drawer" />' },
+  Switch: { name: 'SwitchStub', props: ['modelValue', 'id', 'disabled'], emits: ['update:modelValue'], template: '<input type="checkbox" :id="id" :checked="modelValue" :disabled="disabled">' },
 }
 const COMPONENTS = { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label, Textarea }
 
@@ -49,8 +51,16 @@ function mountTab(listingId: string) {
   return mount(ListingProtectionTab, { props: { listing }, global: { components: COMPONENTS, stubs: STUBS } })
 }
 
-function slotValue(wrapper: ReturnType<typeof mountTab>, slot: 'short' | 'long') {
-  return wrapper.find(`[data-testid="protection-slot-${slot}"]`).element.parentElement!.getAttribute('data-value')
+/** No Damage Protection upsell at all: the tab's "no package yet" state. */
+function removeAllPackages() {
+  const { services, deleteService } = useUpsellServices()
+  for (const s of services.value.filter(s => s.category === 'Damage Protection'))
+    deleteService(s.id)
+}
+
+function flip(wrapper: ReturnType<typeof mountTab>, testid: string, value: boolean) {
+  const control = wrapper.findAllComponents({ name: 'SwitchStub' }).find(c => c.attributes('data-testid') === testid)!
+  control.vm.$emit('update:modelValue', value)
 }
 
 beforeEach(() => {
@@ -59,15 +69,14 @@ beforeEach(() => {
 })
 
 describe('listing protection tab', () => {
-  it('shows who pays and the policy for short and long stays', () => {
+  it('shows who pays, both options on, and the package from the protection upsell', () => {
     const wrapper = mountTab('lst-1')
     expect(wrapper.find('[data-testid="protection-mode-guest_paid"]').attributes('aria-checked')).toBe('true')
-    expect(slotValue(wrapper, 'short')).toBe('dp-standard')
-    expect(slotValue(wrapper, 'long')).toBe('dp-long-stay')
-    const policies = wrapper.findAll('[data-testid="protection-policy"]')
-    expect(policies.map(p => p.find('p.font-medium').text())).toEqual(['Standard stay', 'Long stay (28 nights and over)'])
-    expect(policies[0]!.text()).toContain('Waiver: Elev8 Cover Bronze')
-    expect(policies[0]!.text()).toContain('Deposit: Card on file, charged up to USD 500.00')
+    expect(wrapper.find('[data-testid="protection-waiver-switch"]').attributes('checked')).toBeDefined()
+    expect(wrapper.find('[data-testid="protection-deposit-switch"]').attributes('checked')).toBeDefined()
+    expect(wrapper.find('[data-testid="protection-package"]').element.parentElement!.getAttribute('data-value')).toBe('svc-dp-bronze')
+    expect(wrapper.find('[data-testid="protection-package-summary"]').text()).toContain('Elev8 Cover Bronze')
+    expect(wrapper.find('[data-testid="protection-options"]').text()).toContain('Card on file, charged up to USD 500.00')
   })
 
   it('flags a Tern tier too small for the property', () => {
@@ -89,39 +98,139 @@ describe('listing protection tab', () => {
       .toEqual(ids.map(id => `/reservations?reservation=${id}`).sort())
   })
 
-  it('turns protection off and hides the policies', async () => {
+  it('turns protection off by taking the listing out of the protection upsell', async () => {
     const wrapper = mountTab('lst-1')
-    await wrapper.find('[data-testid="protection-mode-off"]').trigger('click')
+    await wrapper.find('[data-testid="protection-remove"]').trigger('click')
     await nextTick()
     expect(useDamageProtection().listingMode('lst-1')).toBe('off')
-    expect(wrapper.find('[data-testid="protection-policies"]').exists()).toBe(false)
+    expect(useUpsellServices().services.value.find(s => s.id === 'svc-dp-bronze')!.assignedListings).not.toContain(listings.value.find(l => l.id === 'lst-1')!.name)
+    expect(wrapper.find('[data-testid="protection-status"]').text()).toContain('Off.')
+    expect(wrapper.find('[data-testid="protection-payer"]').exists()).toBe(false)
   })
 
-  it('turns a listing on with the standard policies', async () => {
-    const wrapper = mountTab('lst-6')
-    expect(wrapper.find('[data-testid="protection-mode-off"]').attributes('aria-checked')).toBe('true')
-    await wrapper.find('[data-testid="protection-mode-guest_paid"]').trigger('click')
+  it('turns the waiver on through the Elev8 Cover benefits, adding the listing to the first package\'s upsell', async () => {
+    const wrapper = mountTab('lst-17')
+    expect(wrapper.find('[data-testid="protection-status"]').text()).toContain('Off.')
+    flip(wrapper, 'protection-waiver-switch', true)
     await nextTick()
-    expect(useDamageProtection().listingMode('lst-6')).toBe('guest_paid')
-    expect(wrapper.find('[data-testid="protection-policies"]').exists()).toBe(true)
+    // The benefits come first; nothing changes until the host says yes.
+    expect(wrapper.find('[data-testid="tern-promo"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tern-promo-activate"]').text()).toContain('Turn on damage waiver')
+    expect(useDamageProtection().listingMode('lst-17')).toBe('off')
+    await wrapper.find('[data-testid="tern-promo-activate"]').trigger('click')
+    await nextTick()
+    expect(useUpsellServices().services.value.find(s => s.id === 'svc-dp-bronze')!.assignedListings).toContain('Apartments Pool - Room 2')
+    expect(useDamageProtection().listingMode('lst-17')).toBe('guest_paid')
+    expect(wrapper.find('[data-testid="protection-package"]').exists()).toBe(true)
   })
 
-  it('says the deposit is not asked where the host pays, and blocks a deposit-only policy', async () => {
+  it('leaves the waiver off on "Not now"', async () => {
+    const wrapper = mountTab('lst-17')
+    flip(wrapper, 'protection-waiver-switch', true)
+    await nextTick()
+    await wrapper.find('[data-testid="tern-promo-dismiss"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="tern-promo"]').exists()).toBe(false)
+    expect(useDamageProtection().listingMode('lst-17')).toBe('off')
+  })
+
+  it('takes a deposit only with the deposit switch, no upsell needed', async () => {
+    // lst-18 is on Stripe; out of the Silver upsell, it is off.
+    const { services, updateService } = useUpsellServices()
+    updateService('svc-dp-silver', { assignedListings: services.value.find(s => s.id === 'svc-dp-silver')!.assignedListings.filter(n => n !== 'Apartments Pool - Room 3') })
+    const wrapper = mountTab('lst-18')
+    flip(wrapper, 'protection-deposit-switch', true)
+    await nextTick()
+    expect(useDamageProtection().policyFor('lst-18', 5)?.offers).toEqual(['deposit'])
+    expect(wrapper.find('[data-testid="protection-status"]').text()).toContain('Deposit only.')
+  })
+
+  it('switches the waiver off by taking the listing out of the upsell, keeping the deposit', async () => {
+    const wrapper = mountTab('lst-1')
+    flip(wrapper, 'protection-waiver-switch', false)
+    await nextTick()
+    expect(useUpsellServices().services.value.find(s => s.id === 'svc-dp-bronze')!.assignedListings).not.toContain(listings.value.find(l => l.id === 'lst-1')!.name)
+    expect(useDamageProtection().policyFor('lst-1', 5)?.offers).toEqual(['deposit'])
+    flip(wrapper, 'protection-deposit-switch', false)
+    await nextTick()
+    expect(useDamageProtection().listingMode('lst-1')).toBe('off')
+  })
+
+  it('offers to create a package when there is no protection upsell to switch on', async () => {
+    removeAllPackages()
+    const wrapper = mountTab('lst-17')
+    expect(wrapper.find('[data-testid="protection-waiver-switch"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="protection-waiver-missing"]').text()).toContain('Create a package')
+  })
+
+  it('creates a package from the listing, opening the upsell form on Damage Protection with this listing ticked', async () => {
+    const { addService } = useUpsellServices()
+    removeAllPackages()
+    const wrapper = mountTab('lst-17')
+    expect(wrapper.find('[data-testid="upsell-drawer"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="protection-new-package"]').trigger('click')
+    await nextTick()
+    const drawer = wrapper.findComponent({ name: 'UpsellDrawerStub' })
+    expect(drawer.props('initialCategory')).toBe('Damage Protection')
+    expect(drawer.props('initialListings')).toEqual(['Apartments Pool - Room 2'])
+    // What the drawer does on save: the new upsell, with this listing in it.
+    const created = addService({
+      ...useUpsellServices().services.value[0]!,
+      name: 'Elev8 Cover Gold',
+      category: 'Damage Protection',
+      currency: 'USD',
+      items: [{ id: 'itm-gold', name: 'Gold', price: 99, coverTier: 'gold' }],
+      assignedListings: ['Apartments Pool - Room 2'],
+      status: 'active',
+    })
+    drawer.vm.$emit('saved', created)
+    await nextTick()
+    expect(useDamageProtection().policyFor('lst-17', 5)?.waiver).toEqual({ tier: 'gold', guestPrice: 99 })
+  })
+
+  it('picks the booking channels a deposit on its own is asked on', async () => {
+    // lst-2 offers the deposit only, Direct.
+    const wrapper = mountTab('lst-2')
+    await wrapper.find('[data-testid="protection-deposit-channel-Airbnb"]').trigger('click')
+    await nextTick()
+    expect(useDamageProtection().policyFor('lst-2', 5)?.channelPolicy).toEqual({ Airbnb: 'offer', Direct: 'offer' })
+    await wrapper.find('[data-testid="protection-deposit-channel-Direct"]').trigger('click')
+    await wrapper.find('[data-testid="protection-deposit-channel-Airbnb"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="protection-block"]').text()).toContain('Pick at least one booking channel')
+  })
+
+  it('shows every channel on and locked while the waiver is on', async () => {
+    const wrapper = mountTab('lst-1')
+    const airbnb = wrapper.find('[data-testid="protection-deposit-channel-Airbnb"]')
+    expect(airbnb.attributes('aria-checked')).toBe('true')
+    await airbnb.trigger('click')
+    expect(useDamageProtection().setupFor('lst-1').depositChannels).toBeUndefined()
+  })
+
+  it('changes the package by moving the listing to the other upsell', async () => {
+    const wrapper = mountTab('lst-1')
+    const select = wrapper.findAllComponents({ name: 'SelectStub' }).find(c => c.find('[data-testid="protection-package"]').exists())!
+    select.vm.$emit('update:modelValue', 'svc-dp-silver')
+    await nextTick()
+    expect(useDamageProtection().policyFor('lst-1', 5)?.waiver).toEqual({ tier: 'silver', guestPrice: 59 })
+    const luwa = listings.value.find(l => l.id === 'lst-1')!.name
+    expect(useUpsellServices().services.value.find(s => s.id === 'svc-dp-bronze')!.assignedListings).not.toContain(luwa)
+  })
+
+  it('does not ask for a deposit where the host pays', async () => {
     const wrapper = mountTab('lst-1')
     await wrapper.find('[data-testid="protection-mode-host_paid"]').trigger('click')
     await nextTick()
     expect(useDamageProtection().listingMode('lst-1')).toBe('host_paid')
-    expect(wrapper.find('[data-testid="protection-policy"]').text()).toContain('Deposit: not asked, you pay for the waiver here')
-    expect(wrapper.text()).toContain('(no waiver for you to pay for)')
+    expect(wrapper.find('[data-testid="protection-deposit"]').text()).toContain('Not asked where you pay for the cover')
+    expect(wrapper.find('[data-testid="protection-deposit-switch"]').attributes('disabled')).toBeDefined()
   })
 
-  it('changes a slot through the same write as the settings page', async () => {
-    const wrapper = mountTab('lst-1')
-    const select = wrapper.findAllComponents({ name: 'SelectStub' }).find(c => c.find('[data-testid="protection-slot-long"]').exists())!
-    select.vm.$emit('update:modelValue', 'none')
-    await nextTick()
-    expect(slotValue(wrapper, 'long')).toBe('none')
-    expect(useDamageProtection().assignments.value.some(a => a.listingId === 'lst-1' && a.minNights === 28)).toBe(false)
+  it('refuses "Host pays" on a deposit-only listing', () => {
+    const wrapper = mountTab('lst-2')
+    expect(wrapper.find('[data-testid="protection-mode-host_paid"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="protection-mode-host_paid"]').text()).toContain('Turn on the damage waiver first')
   })
 
   it('disables "Host pays" until the damage waiver is activated', async () => {

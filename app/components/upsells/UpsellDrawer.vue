@@ -10,12 +10,7 @@ import type {
   VisibilityConditions,
   VisibilityMatchMode,
 } from '@/components/upsells/data/upsell-services'
-import {
-  emptyVisibilityConditions,
-  getConditionDefault,
-  getConditionEmpty,
-  summarizeVisibility,
-} from '@/components/upsells/data/upsell-services'
+import type { TernTier } from '~/components/reservations/data/tern-products'
 import { toast } from 'vue-sonner'
 import draggable from 'vuedraggable'
 import { listings as allListings } from '@/components/listings/data/listings'
@@ -28,17 +23,33 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { createDefaultLockAccessConfig } from '@/components/upsells/data/lock-access'
-import { BALI_LISTINGS } from '@/components/upsells/data/upsell-services'
+import {
+  BALI_LISTINGS,
+  emptyVisibilityConditions,
+  getConditionDefault,
+  getConditionEmpty,
+  isProtectionService,
+  PROTECTION_CATEGORY,
+  summarizeVisibility,
+} from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
+import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
+import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
+import { payoutAccounts } from '~/components/settings/data/payouts'
+import { useDamageProtection } from '~/composables/useDamageProtection'
 
 const props = defineProps<{
   service: UpsellService | null
   initialCategory: UpsellCategory | null
   open: boolean
+  /** Listing names ticked when a NEW service opens (a listing's Protection tab passes its own). */
+  initialListings?: string[]
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
+  /** After a save, with the service as stored. */
+  'saved': [service: UpsellService]
 }>()
 
 const { addService, updateService, deleteService } = useUpsellServices()
@@ -49,13 +60,59 @@ const currentStep = ref(1)
 const visitedSteps = ref<Set<number>>(new Set([1]))
 const nameError = ref(false)
 
-const steps = [
-  { id: 1, label: 'Basic Info' },
-  { id: 2, label: 'Items' },
-  { id: 3, label: 'Listings' },
-  { id: 4, label: 'Visibility' },
-  { id: 5, label: 'Settings' },
-]
+const formCategory = ref<UpsellService['category']>('Airport Transport')
+const formCurrency = ref('CHF')
+
+/**
+ * ⚠️ A Damage Protection service is not sold like the others: its items are the
+ * Elev8 Cover packages and its listings are the listings that have protection
+ * ON (`useDamageProtection`). The guest meets it in the guest guide's Damage
+ * protection section, so visibility rules, availability and lock access do
+ * not apply and are not shown.
+ */
+const isProtection = computed(() => formCategory.value === PROTECTION_CATEGORY)
+
+/**
+ * ⚠️ A Damage Protection upsell sells ONE package: a tier and its guest price,
+ * picked here rather than added as items. Bronze and Silver are two upsells.
+ */
+const packageTier = ref<TernTier>('bronze')
+const packagePrice = ref(0)
+const packageCover = computed(() => ternPriceFor(packageTier.value, formCurrency.value))
+/** What Elev8 charges the tenant for this package, and what is left of the guest price. */
+const packageFeeText = computed(() => {
+  const cover = packageCover.value
+  if (!cover)
+    return ''
+  const fee = `Elev8 charges you ${formatProtectionAmount(cover.perStayFee, formCurrency.value)} per package (30 nights of a covered stay), billed on the 1st of the month after check-out`
+  return packagePrice.value > 0
+    ? `${fee}, so you keep ${formatProtectionAmount(packagePrice.value - cover.perStayFee, formCurrency.value)}.`
+    : `${fee}.`
+})
+
+/** The other protection upsells: a listing picked here leaves them. */
+const otherProtectionServices = computed(() =>
+  useUpsellServices().services.value.filter(s => isProtectionService(s) && s.id !== props.service?.id))
+
+const steps = computed(() => isProtection.value
+  ? [
+      { id: 1, label: 'Basic Info' },
+      { id: 2, label: 'Package' },
+      { id: 3, label: 'Listings' },
+      { id: 5, label: 'Settings' },
+    ]
+  : [
+      { id: 1, label: 'Basic Info' },
+      { id: 2, label: 'Items' },
+      { id: 3, label: 'Listings' },
+      { id: 4, label: 'Visibility' },
+      { id: 5, label: 'Settings' },
+    ])
+const lastStepId = computed(() => steps.value[steps.value.length - 1]!.id)
+/** The step badge shows its position, so a skipped step leaves no gap in the numbers. */
+function stepNumber(stepId: number) {
+  return steps.value.findIndex(step => step.id === stepId) + 1
+}
 
 function stepCircleClass(stepId: number) {
   if (currentStep.value === stepId)
@@ -78,17 +135,17 @@ function nextStep() {
     return
   }
   nameError.value = false
-  goToStep(currentStep.value + 1)
+  const index = steps.value.findIndex(step => step.id === currentStep.value)
+  goToStep(steps.value[index + 1]?.id ?? lastStepId.value)
 }
 
 function prevStep() {
-  goToStep(currentStep.value - 1)
+  const index = steps.value.findIndex(step => step.id === currentStep.value)
+  goToStep(steps.value[Math.max(0, index - 1)]!.id)
 }
 
 const formName = ref('')
 const formDescription = ref('')
-const formCategory = ref<UpsellService['category']>('Airport Transport')
-const formCurrency = ref('CHF')
 const formImage = ref<string | undefined>(undefined)
 const serviceImageInputRef = ref<HTMLInputElement | null>(null)
 const formYoutubeLinks = ref<string[]>([])
@@ -214,6 +271,8 @@ watch(() => props.open, (open) => {
       formTaxPercent.value = props.service.taxPercent
       formServicePercent.value = props.service.servicePercent
       formItems.value = props.service.items.map(i => ({ ...i }))
+      packageTier.value = props.service.items.find(i => i.coverTier)?.coverTier ?? 'bronze'
+      packagePrice.value = props.service.items.find(i => i.coverTier)?.price ?? 0
       formListings.value = [...props.service.assignedListings]
       formAvailability.value = props.service.availability
       formLockAccess.value = props.service.lockAccess
@@ -227,7 +286,8 @@ watch(() => props.open, (open) => {
       formName.value = ''
       formDescription.value = ''
       formCategory.value = props.initialCategory ?? 'Airport Transport'
-      formCurrency.value = 'CHF'
+      // Elev8 Cover is priced in USD only for now (`tern-products.ts`).
+      formCurrency.value = formCategory.value === PROTECTION_CATEGORY ? 'USD' : 'CHF'
       formImage.value = undefined
       formYoutubeLinks.value = []
       formNewYoutubeLink.value = ''
@@ -238,7 +298,9 @@ watch(() => props.open, (open) => {
       formTaxPercent.value = 0
       formServicePercent.value = 0
       formItems.value = []
-      formListings.value = []
+      packageTier.value = 'bronze'
+      packagePrice.value = 0
+      formListings.value = [...(props.initialListings ?? [])]
       formAvailability.value = 'always'
       formLockAccess.value = createDefaultLockAccessConfig()
       formStatus.value = 'active'
@@ -249,7 +311,7 @@ watch(() => props.open, (open) => {
       nameError.value = false
     }
   }
-})
+}, { immediate: true })
 
 const smartLock = useSmartLock()
 
@@ -357,6 +419,26 @@ function clearAllListings() {
   formListings.value = []
 }
 
+/**
+ * Protection is tied to where the listing is paid out (the currency, and Stripe
+ * for a deposit), so a protection service lists the real listings, by name like
+ * every upsell, with the payout currency beside each.
+ */
+const protectionListingRows = computed(() => allListings.value.map(listing => ({
+  name: listing.name,
+  currency: payoutAccounts.value.find(a => a.listingIds.includes(listing.id))?.currency ?? null,
+  /** Another protection upsell this listing sits in: saving here moves it (one package per listing). */
+  elsewhere: otherProtectionServices.value.find(s => s.assignedListings.includes(listing.name) || s.assignedListings.includes(listing.id))?.name ?? null,
+})))
+
+function selectAllProtectionListings() {
+  formListings.value = protectionListingRows.value.map(row => row.name)
+}
+
+function tierName(tier: TernTier) {
+  return TERN_PRODUCTS.find(product => product.tier === tier)?.name ?? ''
+}
+
 function removeItem(id: string) {
   formItems.value = formItems.value.filter(i => i.id !== id)
 }
@@ -442,7 +524,29 @@ function handleSave() {
     toast.error('Service name is required.')
     return
   }
-  if (formItems.value.length === 0) {
+  if (isProtection.value) {
+    // No currency conversion, ever: a tier Elev8 Cover does not price in this
+    // currency would sell a waiver that covers nothing.
+    if (!packageCover.value) {
+      toast.error(`Elev8 Cover ${tierName(packageTier.value)} is not available in ${formCurrency.value} yet.`)
+      goToStep(2)
+      return
+    }
+    if (!(packagePrice.value > 0)) {
+      toast.error('Set what the guest pays for the package.')
+      goToStep(2)
+      return
+    }
+    const existing = formItems.value[0]
+    formItems.value = [{
+      ...existing,
+      id: existing?.id ?? `itm-${Date.now()}`,
+      name: tierName(packageTier.value),
+      price: packagePrice.value,
+      coverTier: packageTier.value,
+    }]
+  }
+  else if (formItems.value.length === 0) {
     toast.error('At least one item is required.')
     goToStep(2)
     return
@@ -463,7 +567,7 @@ function handleSave() {
     items: formItems.value,
     assignedListings: formListings.value,
     availability: formAvailability.value,
-    lockAccess: formLockAccess.value.enabled
+    lockAccess: formLockAccess.value.enabled && !isProtection.value
       ? {
           enabled: true,
           lockNames: [...formLockAccess.value.lockNames],
@@ -475,21 +579,42 @@ function handleSave() {
     visibilityMatchMode: formVisibilityMatchMode.value,
   }
 
+  // Read BEFORE the save: a service created now must not count as "another" one.
+  const others = otherProtectionServices.value
+  let savedId: string
   if (isEditing.value && props.service) {
     updateService(props.service.id, data)
+    savedId = props.service.id
     toast.success('Service updated.')
   }
   else {
-    addService(data)
+    savedId = addService(data).id
     toast.success('Service created.')
   }
+  if (isProtection.value) {
+    // One package per listing: the listings picked here leave any other protection upsell.
+    const moved = new Set(formListings.value)
+    for (const other of others) {
+      const kept = other.assignedListings.filter(n => !moved.has(n))
+      if (kept.length !== other.assignedListings.length)
+        updateService(other.id, { assignedListings: kept })
+    }
+    // Its listings are the ones with the waiver on: host-paid cover follows now.
+    useDamageProtection().syncHostCover()
+  }
+  const saved = useUpsellServices().services.value.find(s => s.id === savedId)
+  if (saved)
+    emit('saved', saved)
   emit('update:open', false)
 }
 
 function handleDelete() {
   if (props.service) {
+    const wasProtection = props.service.category === PROTECTION_CATEGORY
     deleteService(props.service.id)
     toast.success('Service deleted.')
+    if (wasProtection)
+      useDamageProtection().syncHostCover()
     emit('update:open', false)
   }
 }
@@ -526,7 +651,7 @@ function onOpenChange(val: boolean) {
                   name="lucide:check"
                   class="h-3.5 w-3.5"
                 />
-                <span v-else class="text-xs font-medium">{{ step.id }}</span>
+                <span v-else class="text-xs font-medium">{{ stepNumber(step.id) }}</span>
               </div>
               <span
                 class="text-xs transition-colors"
@@ -569,6 +694,18 @@ function onOpenChange(val: boolean) {
               <code class="rounded bg-muted px-1.5 py-0.5 text-xs">&lt;listing_name&gt;</code>
             </div>
           </div>
+
+          <p
+            v-if="isProtection"
+            class="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground"
+            data-testid="upsell-protection-note"
+          >
+            <Icon name="lucide:shield-check" class="mt-0.5 size-4 shrink-0" />
+            <span>
+              Priced in {{ formCurrency }}, the currency Elev8 Cover is priced in. Every listing you assign gets
+              damage protection; guests buy a package in the guest guide, not with the other upsells.
+            </span>
+          </p>
 
           <Separator />
 
@@ -642,8 +779,61 @@ function onOpenChange(val: boolean) {
           </div>
         </div>
 
+        <!-- Step 2, Damage Protection: the ONE package this upsell sells -->
+        <div v-if="currentStep === 2 && isProtection" class="flex flex-col gap-5 p-6" data-testid="upsell-protection-package">
+          <div>
+            <p class="text-sm font-medium">
+              Elev8 Cover tier
+            </p>
+            <p class="text-xs text-muted-foreground">
+              One package per upsell. For another tier, create another Damage Protection upsell.
+            </p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Elev8 Cover tier">
+            <button
+              v-for="product in TERN_PRODUCTS"
+              :key="product.tier"
+              type="button"
+              role="radio"
+              :aria-checked="packageTier === product.tier"
+              class="flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors"
+              :class="packageTier === product.tier ? 'border-primary ring-1 ring-primary' : 'hover:border-primary/60'"
+              :data-testid="`upsell-tier-${product.tier}`"
+              @click="packageTier = product.tier"
+            >
+              <span class="flex items-center gap-2 text-sm font-medium">
+                {{ product.name }}
+                <Icon v-if="packageTier === product.tier" name="lucide:check" class="ml-auto size-4 text-primary" />
+              </span>
+              <span class="text-xs text-muted-foreground">{{ ternSizeLabel(product) }}</span>
+              <span class="text-xs text-muted-foreground">
+                {{ ternPriceFor(product.tier, formCurrency)
+                  ? `Covers up to ${formatProtectionAmount(ternPriceFor(product.tier, formCurrency)!.coverageCap, formCurrency)}`
+                  : `Not available in ${formCurrency}` }}
+              </span>
+              <span
+                v-if="ternPriceFor(product.tier, formCurrency)"
+                class="text-xs font-medium"
+                :data-testid="`upsell-tier-fee-${product.tier}`"
+              >
+                Elev8 charges you {{ formatProtectionAmount(ternPriceFor(product.tier, formCurrency)!.perStayFee, formCurrency) }}
+              </span>
+            </button>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label for="upsell-package-price">Guest pays, per 30 nights</Label>
+            <div class="relative">
+              <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">{{ formCurrency }}</span>
+              <Input id="upsell-package-price" v-model.number="packagePrice" type="number" min="0" class="pl-14" data-testid="upsell-package-price" />
+            </div>
+            <p v-if="packageFeeText" class="text-xs text-muted-foreground" data-testid="upsell-package-fee">
+              {{ packageFeeText }}
+            </p>
+          </div>
+        </div>
+
         <!-- Step 2: Items -->
-        <div v-if="currentStep === 2" class="flex flex-col gap-5 p-6">
+        <div v-if="currentStep === 2 && !isProtection" class="flex flex-col gap-5 p-6">
           <div class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <div>
@@ -691,7 +881,7 @@ function onOpenChange(val: boolean) {
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
                     <span class="text-sm font-medium text-muted-foreground">
-                      {{ item.price.toLocaleString() }} {{ formCurrency }}
+                      {{ formCurrency }} {{ item.price.toLocaleString() }}
                     </span>
                     <Button
                       variant="ghost"
@@ -722,8 +912,58 @@ function onOpenChange(val: boolean) {
           </div>
         </div>
 
+        <!-- Step 3, Damage Protection: the listings this service turns protection on for -->
+        <div v-if="currentStep === 3 && isProtection" class="flex flex-col gap-3 p-6" data-testid="upsell-protection-listings">
+          <div class="flex items-center justify-between">
+            <Label>Listings with damage protection</Label>
+            <div class="flex gap-2">
+              <Button variant="ghost" size="sm" class="h-7 text-xs" @click="selectAllProtectionListings">
+                Select all
+              </Button>
+              <Button variant="ghost" size="sm" class="h-7 text-xs" @click="clearAllListings">
+                Clear
+              </Button>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            Listings picked here offer this package as their damage waiver. A listing has one package, so one already
+            in another protection upsell moves here. The deposit is set on each listing's Protection tab.
+          </p>
+          <div class="max-h-80 overflow-y-auto rounded-md border">
+            <div
+              v-for="row in protectionListingRows"
+              :key="row.name"
+              class="flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-b-0 hover:bg-muted/50"
+              @click="toggleListing(row.name)"
+            >
+              <div
+                class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                :class="formListings.includes(row.name) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+              >
+                <Icon v-if="formListings.includes(row.name)" name="lucide:check" class="size-3" />
+              </div>
+              <span class="min-w-0 flex-1 truncate text-sm">
+                {{ row.name }}
+                <span v-if="row.elsewhere" class="block text-xs text-muted-foreground">
+                  {{ formListings.includes(row.name) ? `Moves here from ${row.elsewhere}` : `In ${row.elsewhere}` }}
+                </span>
+              </span>
+              <span
+                class="shrink-0 text-xs"
+                :class="row.currency && row.currency !== formCurrency ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+              >
+                {{ row.currency ? (row.currency !== formCurrency ? `Paid out in ${row.currency}, not covered` : row.currency) : 'No payout account' }}
+              </span>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            {{ formListings.length }} {{ formListings.length === 1 ? 'listing' : 'listings' }} selected. Nothing is
+            converted: a listing paid out in another currency than {{ formCurrency }} stays unprotected.
+          </p>
+        </div>
+
         <!-- Step 3: Listings & Availability -->
-        <div v-if="currentStep === 3" class="flex flex-col gap-5 p-6">
+        <div v-if="currentStep === 3 && !isProtection" class="flex flex-col gap-5 p-6">
           <div class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <Label>Assigned Listings</Label>
@@ -917,14 +1157,18 @@ function onOpenChange(val: boolean) {
             <!-- Time before Check-in -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('hoursBeforeCheckIn') ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-hours-before-check-in" class="text-sm font-medium">Time before Check-in</h4>
+                <h4 id="visibility-hours-before-check-in" class="text-sm font-medium">
+                  Time before Check-in
+                </h4>
                 <Switch
                   aria-labelledby="visibility-hours-before-check-in"
                   :model-value="isConditionEnabled('hoursBeforeCheckIn')"
                   @update:model-value="toggleCondition('hoursBeforeCheckIn')"
                 />
               </div>
-              <p v-if="!isConditionEnabled('hoursBeforeCheckIn')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('hoursBeforeCheckIn')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
                 <div class="flex items-center gap-2">
                   <Input
@@ -937,21 +1181,27 @@ function onOpenChange(val: boolean) {
                   />
                   <span class="text-sm text-muted-foreground">hours</span>
                 </div>
-                <p id="visibility-hours-before-check-in-help" class="text-xs text-muted-foreground">Show only within the window from N hours before check-in up to check-in. Set 0 for "show anytime up to check-in".</p>
+                <p id="visibility-hours-before-check-in-help" class="text-xs text-muted-foreground">
+                  Show only within the window from N hours before check-in up to check-in. Set 0 for "show anytime up to check-in".
+                </p>
               </div>
             </div>
 
             <!-- Time before Check-out -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('hoursBeforeCheckOut') ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-hours-before-check-out" class="text-sm font-medium">Time before Check-out</h4>
+                <h4 id="visibility-hours-before-check-out" class="text-sm font-medium">
+                  Time before Check-out
+                </h4>
                 <Switch
                   aria-labelledby="visibility-hours-before-check-out"
                   :model-value="isConditionEnabled('hoursBeforeCheckOut')"
                   @update:model-value="toggleCondition('hoursBeforeCheckOut')"
                 />
               </div>
-              <p v-if="!isConditionEnabled('hoursBeforeCheckOut')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('hoursBeforeCheckOut')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
                 <div class="flex items-center gap-2">
                   <Input
@@ -964,21 +1214,27 @@ function onOpenChange(val: boolean) {
                   />
                   <span class="text-sm text-muted-foreground">hours</span>
                 </div>
-                <p id="visibility-hours-before-check-out-help" class="text-xs text-muted-foreground">Show only within the window from N hours before check-out up to check-out.</p>
+                <p id="visibility-hours-before-check-out-help" class="text-xs text-muted-foreground">
+                  Show only within the window from N hours before check-out up to check-out.
+                </p>
               </div>
             </div>
 
             <!-- Guest Count -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="(isConditionEnabled('guestCountMin') || isConditionEnabled('guestCountMax')) ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-guest-count" class="text-sm font-medium">Guest Count</h4>
+                <h4 id="visibility-guest-count" class="text-sm font-medium">
+                  Guest Count
+                </h4>
                 <Switch
                   aria-labelledby="visibility-guest-count"
                   :model-value="isConditionEnabled('guestCountMin') || isConditionEnabled('guestCountMax')"
                   @update:model-value="(v) => { toggleCondition('guestCountMin'); toggleCondition('guestCountMax') }"
                 />
               </div>
-              <p v-if="!isConditionEnabled('guestCountMin') && !isConditionEnabled('guestCountMax')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('guestCountMin') && !isConditionEnabled('guestCountMax')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
                 <div class="grid grid-cols-2 gap-3">
                   <div class="flex flex-col gap-1">
@@ -1005,21 +1261,27 @@ function onOpenChange(val: boolean) {
                 <p v-if="formVisibility.guestCountMin !== null && formVisibility.guestCountMax !== null && formVisibility.guestCountMin > formVisibility.guestCountMax" class="text-xs text-destructive">
                   Min is greater than max.
                 </p>
-                <p id="visibility-guest-count-help" class="text-xs text-muted-foreground">Show only when guest count is within this range.</p>
+                <p id="visibility-guest-count-help" class="text-xs text-muted-foreground">
+                  Show only when guest count is within this range.
+                </p>
               </div>
             </div>
 
             <!-- Length of Stay -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="(isConditionEnabled('lengthOfStayMin') || isConditionEnabled('lengthOfStayMax')) ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-length-of-stay" class="text-sm font-medium">Length of Stay</h4>
+                <h4 id="visibility-length-of-stay" class="text-sm font-medium">
+                  Length of Stay
+                </h4>
                 <Switch
                   aria-labelledby="visibility-length-of-stay"
                   :model-value="isConditionEnabled('lengthOfStayMin') || isConditionEnabled('lengthOfStayMax')"
                   @update:model-value="(v) => { toggleCondition('lengthOfStayMin'); toggleCondition('lengthOfStayMax') }"
                 />
               </div>
-              <p v-if="!isConditionEnabled('lengthOfStayMin') && !isConditionEnabled('lengthOfStayMax')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('lengthOfStayMin') && !isConditionEnabled('lengthOfStayMax')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
                 <div class="grid grid-cols-2 gap-3">
                   <div class="flex flex-col gap-1">
@@ -1046,21 +1308,27 @@ function onOpenChange(val: boolean) {
                 <p v-if="formVisibility.lengthOfStayMin !== null && formVisibility.lengthOfStayMax !== null && formVisibility.lengthOfStayMin > formVisibility.lengthOfStayMax" class="text-xs text-destructive">
                   Min is greater than max.
                 </p>
-                <p id="visibility-length-of-stay-help" class="text-xs text-muted-foreground">Show only when stay length (nights) is within this range.</p>
+                <p id="visibility-length-of-stay-help" class="text-xs text-muted-foreground">
+                  Show only when stay length (nights) is within this range.
+                </p>
               </div>
             </div>
 
             <!-- Booking Status -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('bookingStatuses') ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-booking-status" class="text-sm font-medium">Booking Status</h4>
+                <h4 id="visibility-booking-status" class="text-sm font-medium">
+                  Booking Status
+                </h4>
                 <Switch
                   aria-labelledby="visibility-booking-status"
                   :model-value="isConditionEnabled('bookingStatuses')"
                   @update:model-value="toggleCondition('bookingStatuses')"
                 />
               </div>
-              <p v-if="!isConditionEnabled('bookingStatuses')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('bookingStatuses')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
                 <div class="flex flex-wrap gap-2">
                   <button
@@ -1083,23 +1351,31 @@ function onOpenChange(val: boolean) {
                     {{ opt.label }}
                   </button>
                 </div>
-                <p class="text-xs text-muted-foreground">Show only when the booking is in one of these statuses.</p>
+                <p class="text-xs text-muted-foreground">
+                  Show only when the booking is in one of these statuses.
+                </p>
               </div>
             </div>
 
             <!-- Related Upsell -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('excludeIfUpsellPurchased') ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-related-upsell" class="text-sm font-medium">Related Upsell</h4>
+                <h4 id="visibility-related-upsell" class="text-sm font-medium">
+                  Related Upsell
+                </h4>
                 <Switch
                   aria-labelledby="visibility-related-upsell"
                   :model-value="isConditionEnabled('excludeIfUpsellPurchased')"
                   @update:model-value="toggleCondition('excludeIfUpsellPurchased')"
                 />
               </div>
-              <p v-if="!isConditionEnabled('excludeIfUpsellPurchased')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('excludeIfUpsellPurchased')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
-                <p v-if="otherUpsellServices.length === 0" class="text-xs text-muted-foreground">No other upsells to relate to.</p>
+                <p v-if="otherUpsellServices.length === 0" class="text-xs text-muted-foreground">
+                  No other upsells to relate to.
+                </p>
                 <div v-else class="flex flex-wrap gap-2">
                   <button
                     v-for="svc in otherUpsellServices"
@@ -1115,21 +1391,27 @@ function onOpenChange(val: boolean) {
                     {{ svc.name }}
                   </button>
                 </div>
-                <p class="text-xs text-muted-foreground">Hide this upsell if any of the selected services were already purchased.</p>
+                <p class="text-xs text-muted-foreground">
+                  Hide this upsell if any of the selected services were already purchased.
+                </p>
               </div>
             </div>
 
             <!-- Channels -->
             <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('channels') ? 'border-primary/30 bg-primary/5' : 'border-border'">
               <div class="flex items-center justify-between">
-                <h4 id="visibility-channels" class="text-sm font-medium">Channels</h4>
+                <h4 id="visibility-channels" class="text-sm font-medium">
+                  Channels
+                </h4>
                 <Switch
                   aria-labelledby="visibility-channels"
                   :model-value="isConditionEnabled('channels')"
                   @update:model-value="toggleCondition('channels')"
                 />
               </div>
-              <p v-if="!isConditionEnabled('channels')" class="text-xs text-muted-foreground">Off — condition ignored</p>
+              <p v-if="!isConditionEnabled('channels')" class="text-xs text-muted-foreground">
+                Off — condition ignored
+              </p>
               <div v-else class="flex flex-col gap-1">
                 <div class="flex flex-wrap gap-2">
                   <button
@@ -1153,7 +1435,9 @@ function onOpenChange(val: boolean) {
                     {{ opt.label }}
                   </button>
                 </div>
-                <p class="text-xs text-muted-foreground">Show only on these booking channels.</p>
+                <p class="text-xs text-muted-foreground">
+                  Show only on these booking channels.
+                </p>
               </div>
             </div>
           </div>
@@ -1167,7 +1451,7 @@ function onOpenChange(val: boolean) {
 
         <!-- Step 5: Settings -->
         <div v-if="currentStep === 5" class="flex flex-col gap-5 p-6">
-          <div class="flex flex-col gap-3">
+          <div v-if="!isProtection" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <Label>Tax and Service</Label>
               <div class="flex items-center gap-2">
@@ -1195,9 +1479,9 @@ function onOpenChange(val: boolean) {
             </div>
           </div>
 
-          <Separator />
+          <Separator v-if="!isProtection" />
 
-          <div class="flex flex-col gap-2">
+          <div v-if="!isProtection" class="flex flex-col gap-2">
             <Label>Add Users to Receive WhatsApp Notification</Label>
             <div v-if="formNotificationUsers.length === 0" class="rounded-md border border-dashed p-4 text-center">
               <p class="text-sm text-muted-foreground">
@@ -1241,7 +1525,7 @@ function onOpenChange(val: boolean) {
             </div>
           </div>
 
-          <Separator />
+          <Separator v-if="!isProtection" />
 
           <div class="flex flex-col gap-2">
             <Label>Internal Notes</Label>
@@ -1286,8 +1570,8 @@ function onOpenChange(val: boolean) {
           >
             Cancel
           </Button>
-          <Button class="flex-1" @click="currentStep < 5 ? nextStep() : handleSave()">
-            <template v-if="currentStep < 5">
+          <Button class="flex-1" @click="currentStep < lastStepId ? nextStep() : handleSave()">
+            <template v-if="currentStep < lastStepId">
               Next
               <Icon name="lucide:chevron-right" class="ml-1 h-4 w-4" />
             </template>
@@ -1343,9 +1627,9 @@ function onOpenChange(val: boolean) {
           </div>
           <div class="flex flex-col gap-2">
             <Label>Price</Label>
-            <div class="flex items-center gap-2">
-              <Input v-model.number="itemFormPrice" type="number" min="0" placeholder="0" class="flex-1" />
-              <span class="text-sm text-muted-foreground">{{ formCurrency }}</span>
+            <div class="relative">
+              <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">{{ formCurrency }}</span>
+              <Input v-model.number="itemFormPrice" type="number" min="0" placeholder="0" class="pl-14" />
             </div>
           </div>
           <div class="flex flex-col gap-2">

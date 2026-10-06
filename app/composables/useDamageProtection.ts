@@ -1,3 +1,4 @@
+import type { ListingProtectionSetup } from '~/components/damage-protection/data/listing-protection-setup'
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type {
   CardInput,
@@ -9,10 +10,11 @@ import type {
   ProtectionOptionView,
   ProtectionRail,
   SettleRefusal,
-  StaySlot,
 } from '~/components/reservations/data/damage-protection'
 import type { DamageProtection, ProtectionClaim, ProtectionPayer, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
+import { defaultListingSetup, listingPackage, listingPolicy, protectionPackageOptions, protectionServicesFor } from '~/components/damage-protection/data/listing-protection-setup'
+import { listings } from '~/components/listings/data/listings'
 import {
   assignmentForStay,
   buildOptions,
@@ -30,8 +32,6 @@ import {
   isChoiceValid,
   isClaimValid,
   isGuestStay,
-  listingSlots,
-  overlappingBands,
   protectionActivityEvent,
   protectionOffered,
   remainingCover,
@@ -39,13 +39,12 @@ import {
   savedCardFrom,
   settleDueAt,
   settleOutcome,
-  SLOT_RANGES,
   waiverAmount,
   waiverCover,
   waiverPotTotal,
   withExtraPackages,
 } from '~/components/reservations/data/damage-protection'
-import { seedProtectionAssignments, seedProtectionPayers, seedProtectionPolicies } from '~/components/reservations/data/damage-protection-seed'
+import { seedListingProtectionSetups, seedProtectionPayers } from '~/components/reservations/data/damage-protection-seed'
 import { coverPackagesFor } from '~/components/reservations/data/tern-products'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
@@ -55,11 +54,12 @@ import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useRoles } from '~/composables/useRoles'
 import { useTernActivation } from '~/composables/useTernActivation'
 import { useTernApi } from '~/composables/useTernApi'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 
-// v3: the waiver's cover comes from a Tern tier and the tenant only sets the
-// guest price, so a v2 policy carries pricing, cap and exclusion fields that no
-// longer exist. v2 itself replaced the charge-upfront deposit.
-const STORAGE_KEY = 'elev8-damage-protection-v3'
+// v4: protection is set per listing (`ListingProtectionSetup`) and turned on by
+// a Damage Protection upsell, so a v3 payload of shared policies and bands has
+// nothing left to load into. v3 moved the cover onto Tern tiers.
+const STORAGE_KEY = 'elev8-damage-protection-v4'
 
 /** The mock gateway round trip. Long enough for the spinner to be visible. */
 const GATEWAY_MOCK_MS = 1500
@@ -141,19 +141,39 @@ export function useDamageProtection() {
   const canViewProtection = computed(() => protectionPermissions.value?.dashboardView ?? false)
   const canEditProtection = computed(() => protectionPermissions.value?.dashboardEdit ?? false)
 
-  const policies = useState<DamageProtectionPolicy[]>(
-    'damage-protection-policies',
-    () => seedProtectionPolicies.map(p => ({ ...p })),
+  /** Per listing: waiver and/or deposit, the package, the deposit limit. Absent = `defaultListingSetup`. */
+  const setups = useState<ListingProtectionSetup[]>(
+    'damage-protection-setups',
+    () => seedListingProtectionSetups.map(s => ({ ...s })),
   )
-  const assignments = useState<DamageProtectionAssignment[]>(
-    'damage-protection-assignments',
-    () => seedProtectionAssignments.map(a => ({ ...a })),
-  )
-  /** Per listing. Absent means the guest pays. Only read where the listing has a policy. */
+  /** Per listing. Absent means the guest pays. Only read where the listing is protected. */
   const payers = useState<Record<string, ProtectionPayer>>(
     'damage-protection-payers',
     () => ({ ...seedProtectionPayers }),
   )
+
+  /**
+   * ⚠️ Assigning a listing to an active Damage Protection upsell is what turns
+   * its protection ON. The upsell owns that list; nothing here writes it.
+   */
+  const { services: upsellServices } = useUpsellServices()
+
+  function setupFor(listingId: string): ListingProtectionSetup {
+    return setups.value.find(s => s.listingId === listingId) ?? defaultListingSetup(listingId)
+  }
+
+  /**
+   * One policy per protected listing, DERIVED from its setup and package, never
+   * stored: a policy cannot drift from the upsell that sells it. `policyId` on a
+   * frozen protection is provenance, so a later change here touches no stay.
+   */
+  const policies = computed<DamageProtectionPolicy[]>(() => listings.value.flatMap((listing) => {
+    const built = listingPolicy(setupFor(listing.id), upsellServices.value, listing, payoutAccountFor(listing.id)?.currency ?? null)
+    return built.policy ? [built.policy] : []
+  }))
+  /** Every stay length on one policy: there is no separate long-stay setup any more. */
+  const assignments = computed<DamageProtectionAssignment[]>(() =>
+    policies.value.map(p => ({ listingId: p.id.replace(/^lp-/, ''), policyId: p.id, minNights: 1, maxNights: null })))
 
   // Guarded on storage availability rather than `import.meta.client`, which
   // Vitest does not substitute.
@@ -162,8 +182,7 @@ export function useDamageProtection() {
       return
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        policies: policies.value,
-        assignments: assignments.value,
+        setups: setups.value,
         payers: payers.value,
       }))
     }
@@ -179,17 +198,16 @@ export function useDamageProtection() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed.policies))
-          policies.value = parsed.policies
-        if (Array.isArray(parsed.assignments))
-          assignments.value = parsed.assignments
+        if (Array.isArray(parsed.setups))
+          setups.value = parsed.setups
         if (parsed.payers && typeof parsed.payers === 'object')
           payers.value = parsed.payers
       }
     }
     catch { /* corrupt payload, keep the seed */ }
     // No booking-created hook and no scheduler in this app: catching up on
-    // hydrate is what covers a host-paid listing's new stays.
+    // hydrate is what covers a host-paid listing's new stays, and what follows
+    // a protection upsell being assigned or unassigned.
     syncHostCover()
   }
 
@@ -231,7 +249,7 @@ export function useDamageProtection() {
     return payers.value[listingId] ?? 'guest'
   }
 
-  /** Off when the listing has no policy at all; otherwise who pays. */
+  /** Off when the listing has no policy (no protection upsell, or nothing it can run); otherwise who pays. */
   function listingMode(listingId: string): ListingProtectionMode {
     if (!assignments.value.some(a => a.listingId === listingId))
       return 'off'
@@ -294,154 +312,75 @@ export function useDamageProtection() {
     return verdict.ok ? null : verdict.reason
   }
 
-  // ------------------------------------------------------------ policy CRUD
+  // ------------------------------------------------------- per-listing setup
 
   /**
-   * Whether this save would switch the waiver ON: a new policy offering it, or
-   * an existing one that did not. A policy already offering it may still be
-   * edited while the service is not active; it simply stays paused.
+   * Everything the listing's Protection tab shows: whether a protection upsell
+   * covers it, the packages on offer, the setup, and the policy built from them
+   * (or why there is none).
    */
-  function turnsWaiverOn(policy: DamageProtectionPolicy): boolean {
-    if (!policy.offers.includes('waiver'))
-      return false
-    const existing = policies.value.find(p => p.id === policy.id)
-    return !existing?.offers.includes('waiver')
-  }
-
-  /**
-   * ⚠️ Refuses to turn the waiver on before the service is activated
-   * (`waiver_not_activated`): a waiver policy made then could only ever sit
-   * paused, and the activation is where the tenant accepts Tern's terms.
-   */
-  function savePolicy(policy: DamageProtectionPolicy): ProtectionWriteResult {
-    if (turnsWaiverOn(policy) && !waiverServiceActive.value)
-      return { ok: false, reason: 'waiver_not_activated' }
-    // Touches `policies` only, never a reservation: the frozen amount, cap and
-    // terms on an accepted protection is what a guest agreed to.
-    const index = policies.value.findIndex(p => p.id === policy.id)
-    const next = { ...policy, updatedAt: new Date().toISOString() }
-    policies.value = index === -1
-      ? [...policies.value, next]
-      : policies.value.map(p => p.id === policy.id ? next : p)
-    persist()
-    return { ok: true }
-  }
-
-  function deletePolicy(id: string): ProtectionWriteResult {
-    if (assignments.value.some(a => a.policyId === id))
-      return { ok: false, reason: 'policy_assigned' }
-    policies.value = policies.value.filter(p => p.id !== id)
-    persist()
-    return { ok: true }
-  }
-
-  function assignBand(
-    listingId: string,
-    policyId: string,
-    minNights: number,
-    maxNights: number | null,
-  ): ProtectionWriteResult {
-    const policy = policies.value.find(p => p.id === policyId)
-    if (!policy)
-      return { ok: false, reason: 'policy_not_found' }
-
-    // The currency check belongs here, not at charge time when a guest is
-    // already waiting on a charge that cannot be made.
-    const account = payoutAccountFor(listingId)
-    if (account && account.currency !== policy.currency)
-      return { ok: false, reason: 'currency_mismatch' }
-
-    const candidate = [...assignments.value, { listingId, policyId, minNights, maxNights }]
-    if (overlappingBands(candidate, listingId))
-      return { ok: false, reason: 'overlapping_band' }
-
-    assignments.value = candidate
-    persist()
-    return { ok: true }
-  }
-
-  /**
-   * The settings page's way in: set, change or clear the policy a listing uses
-   * for short or long stays. Replaces exactly that slot's band and nothing
-   * else, and goes through `assignBand`, so the currency and overlap checks
-   * still apply.
-   */
-  function setListingSlot(listingId: string, slot: StaySlot, policyId: string | null): ProtectionWriteResult {
-    const range = SLOT_RANGES[slot]
-    const isSlot = (a: DamageProtectionAssignment) =>
-      a.listingId === listingId && a.minNights === range.minNights && a.maxNights === range.maxNights
-    if (policyId && payerFor(listingId) === 'host'
-      && !policies.value.find(p => p.id === policyId)?.offers.includes('waiver')) {
-      return { ok: false, reason: 'host_needs_waiver' }
+  function listingProtection(listingId: string) {
+    const listing = listings.value.find(l => l.id === listingId) ?? { id: listingId, name: '' }
+    const setup = setupFor(listingId)
+    const currency = payoutAccountFor(listingId)?.currency ?? null
+    const built = listingPolicy(setup, upsellServices.value, listing, currency)
+    return {
+      setup,
+      services: protectionServicesFor(upsellServices.value, listing),
+      /** Every package on offer (one per protection upsell), to pick from. */
+      packages: protectionPackageOptions(upsellServices.value),
+      /** The package this listing is in, even when no policy runs (a currency mismatch still names it). */
+      assignedPackage: listingPackage(upsellServices.value, listing),
+      currency,
+      policy: built.policy,
+      package: built.policy ? built.pkg : null,
+      /** The waiver can only run where a protection upsell sells its package. */
+      waiverAvailable: protectionServicesFor(upsellServices.value, listing).length > 0,
+      block: built.policy ? null : built.block,
     }
-    const previous = assignments.value
-    assignments.value = previous.filter(a => !isSlot(a))
-    if (!policyId) {
-      persist()
-      syncHostCover()
-      return { ok: true }
-    }
-    const result = assignBand(listingId, policyId, range.minNights, range.maxNights)
-    if (!result.ok)
-      assignments.value = previous
-    else
-      syncHostCover()
-    return result
   }
 
   /**
-   * The per-listing choice: no protection, guest pays, or host pays.
+   * Change a listing's setup: the waiver and deposit switches, the package, the
+   * deposit limit. Touches the setup only, never a reservation: what a guest
+   * already accepted stays frozen on their stay.
    *
-   * - 'off' clears the listing's policies.
-   * - Turning a listing on with no policy yet assigns the standard templates in
-   *   its currency (or failing those, a usable policy in that currency), so a
-   *   tenant only has to pick who pays.
-   * - 'host_paid' refuses a listing whose only policy is deposit-only: the host
-   *   has no waiver to pay for there.
+   * ⚠️ A host-paid listing must keep the waiver (`host_needs_waiver`): the host
+   * pays for the cover, a deposit has nothing for them to pay for.
    */
-  function setListingMode(listingId: string, mode: ListingProtectionMode): ProtectionWriteResult {
-    if (mode === 'off') {
-      assignments.value = assignments.value.filter(a => a.listingId !== listingId)
-      payers.value = Object.fromEntries(Object.entries(payers.value).filter(([id]) => id !== listingId))
-      persist()
-      syncHostCover()
-      return { ok: true }
-    }
-    const payer: ProtectionPayer = mode === 'host_paid' ? 'host' : 'guest'
-    if (payer === 'host' && !waiverServiceActive.value)
-      return { ok: false, reason: 'waiver_not_activated' }
-    const current = assignments.value.filter(a => a.listingId === listingId)
-    if (payer === 'host' && current.length > 0 && current.every(a =>
-      !policies.value.find(p => p.id === a.policyId)?.offers.includes('waiver'))) {
+  function setListingSetup(
+    listingId: string,
+    patch: Partial<Omit<ListingProtectionSetup, 'listingId' | 'updatedAt'>>,
+  ): ProtectionWriteResult {
+    const next: ListingProtectionSetup = { ...setupFor(listingId), ...patch, listingId, updatedAt: new Date().toISOString() }
+    if (payerFor(listingId) === 'host' && !next.waiver)
       return { ok: false, reason: 'host_needs_waiver' }
+    if (next.deposit && !(next.depositLimit > 0))
+      return { ok: false, reason: 'deposit_limit_missing' }
+    if (next.deposit && !(next.settleWithinDays >= 1))
+      return { ok: false, reason: 'settle_days_missing' }
+    setups.value = setups.value.some(s => s.listingId === listingId)
+      ? setups.value.map(s => s.listingId === listingId ? next : s)
+      : [...setups.value, next]
+    persist()
+    syncHostCover()
+    return { ok: true }
+  }
+
+  /**
+   * Who pays on a protected listing. Host-paid is Tern's cover bought by the
+   * host, so it needs the service activated and the waiver switched on.
+   */
+  function setListingPayer(listingId: string, payer: ProtectionPayer): ProtectionWriteResult {
+    if (payer === 'host') {
+      if (!waiverServiceActive.value)
+        return { ok: false, reason: 'waiver_not_activated' }
+      if (!setupFor(listingId).waiver || !listingProtection(listingId).waiverAvailable)
+        return { ok: false, reason: 'host_needs_waiver' }
     }
-    const previousPayers = payers.value
-    payers.value = { ...payers.value, [listingId]: payer }
-    if (current.length === 0) {
-      const currency = payoutAccountFor(listingId)?.currency ?? 'USD'
-      const usable = (p: DamageProtectionPolicy) =>
-        p.currency === currency && (payer === 'guest' || p.offers.includes('waiver'))
-      const fromTemplate = (templateId: string) =>
-        policies.value.find(p => p.templateId === templateId && usable(p))
-      // The standard templates first; failing those, any policy the listing
-      // can use in its own currency, for short stays. Never another currency.
-      const short = fromTemplate('standard_short') ?? policies.value.find(p => usable(p) && p.templateId !== 'standard_long')
-      const long = fromTemplate('standard_long')
-      if (!short && !long) {
-        payers.value = previousPayers
-        return { ok: false, reason: 'no_policy_in_currency' }
-      }
-      if (short)
-        assignBand(listingId, short.id, SLOT_RANGES.short.minNights, SLOT_RANGES.short.maxNights)
-      if (long)
-        assignBand(listingId, long.id, SLOT_RANGES.long.minNights, SLOT_RANGES.long.maxNights)
-    }
-    else if (payer === 'host') {
-      // A deposit-only slot has nothing the host can pay for: dropped, the
-      // waiver slot beside it stays.
-      assignments.value = assignments.value.filter(a => a.listingId !== listingId
-        || policies.value.find(p => p.id === a.policyId)?.offers.includes('waiver'))
-    }
+    payers.value = payer === 'host'
+      ? { ...payers.value, [listingId]: 'host' }
+      : Object.fromEntries(Object.entries(payers.value).filter(([id]) => id !== listingId))
     persist()
     syncHostCover()
     return { ok: true }
@@ -501,62 +440,6 @@ export function useDamageProtection() {
       if (cover)
         commit(reservation, cover, protectionActivityEvent('host_covered', cover, actor.value))
     }
-  }
-
-  /**
-   * Set the short and/or long stay policy on many listings at once. `undefined`
-   * leaves that slot as it is, `null` clears it. Each listing goes through
-   * `setListingSlot`, so the same currency and overlap checks apply one by one;
-   * a listing that is refused, or uses custom night ranges, is SKIPPED and
-   * reported, never half-applied and never silently dropped.
-   */
-  function setSlotsForListings(
-    listingIds: string[],
-    change: { short?: string | null, long?: string | null },
-  ): { applied: string[], skipped: { listingId: string, reason: string }[] } {
-    const applied: string[] = []
-    const skipped: { listingId: string, reason: string }[] = []
-    for (const listingId of listingIds) {
-      if (listingSlots(assignments.value, listingId).custom) {
-        skipped.push({ listingId, reason: 'custom_ranges' })
-        continue
-      }
-      const before = assignments.value
-      let refusal: string | null = null
-      for (const slot of ['short', 'long'] as const) {
-        const value = change[slot]
-        if (value === undefined)
-          continue
-        const result = setListingSlot(listingId, slot, value)
-        if (!result.ok) {
-          refusal = result.reason
-          break
-        }
-      }
-      if (refusal) {
-        // Both slots or neither: a listing is never left half-changed.
-        assignments.value = before
-        persist()
-        skipped.push({ listingId, reason: refusal })
-      }
-      else {
-        applied.push(listingId)
-      }
-    }
-    return { applied, skipped }
-  }
-
-  /** Clears a listing's custom night ranges so it can use the two standard slots. */
-  function resetListingBands(listingId: string) {
-    assignments.value = assignments.value.filter(a => a.listingId !== listingId)
-    persist()
-  }
-
-  function removeBand(listingId: string, policyId: string) {
-    assignments.value = assignments.value.filter(
-      a => !(a.listingId === listingId && a.policyId === policyId),
-    )
-    persist()
   }
 
   // ------------------------------------------------------------- the writers
@@ -1195,17 +1078,13 @@ export function useDamageProtection() {
     bucketFor,
     settleRefusalFor,
     listingsMissingGuideSection,
-    // policy CRUD
-    savePolicy,
-    turnsWaiverOn,
-    deletePolicy,
-    assignBand,
-    removeBand,
-    setListingSlot,
-    setListingMode,
+    // per-listing setup
+    setups,
+    setupFor,
+    listingProtection,
+    setListingSetup,
+    setListingPayer,
     syncHostCover,
-    setSlotsForListings,
-    resetListingBands,
     // writers
     saveCard,
     savingCard,

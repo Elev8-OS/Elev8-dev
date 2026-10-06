@@ -31,15 +31,16 @@ export function useUpsellServices() {
     services.value.filter(s => s.status === 'active'),
   )
 
-  function addService(data: Omit<UpsellService, 'id' | 'createdAt' | 'updatedAt'>) {
+  /** Returns the new service, so a caller can link to it (a listing's Protection tab does). */
+  function addService(data: Omit<UpsellService, 'id' | 'createdAt' | 'updatedAt'>): UpsellService {
     const now = new Date().toISOString()
-    const id = `svc-${String(services.value.length + 1).padStart(3, '0')}`
-    services.value = [...services.value, {
-      ...data,
-      id,
-      createdAt: now,
-      updatedAt: now,
-    }]
+    // The next free number: counting the list could repeat an id the seed already uses.
+    let n = services.value.length + 1
+    while (services.value.some(s => s.id === `svc-${String(n).padStart(3, '0')}`))
+      n++
+    const created: UpsellService = { ...data, id: `svc-${String(n).padStart(3, '0')}`, createdAt: now, updatedAt: now }
+    services.value = [...services.value, created]
+    return created
   }
 
   function updateService(id: string, updates: Partial<UpsellService>) {
