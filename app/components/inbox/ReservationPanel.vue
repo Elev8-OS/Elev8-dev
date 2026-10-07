@@ -81,7 +81,7 @@ const conversationPhoneCalls = computed((): PhoneCall[] =>
 
         <TabsContent value="tasks">
           <div class="p-4">
-            <InboxReservationTasks :tasks="reservation.tasks" />
+            <InboxReservationTasks :listing-name="reservation.listingName" />
           </div>
         </TabsContent>
 

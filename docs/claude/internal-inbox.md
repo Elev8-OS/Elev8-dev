@@ -278,7 +278,7 @@ Add-Remove from selection / Clear selection · Copy text.
   list's own filters, and puts the source listing first. Checkbox rows are `div @click` +
   a custom visual, never a reka-ui `Checkbox` in a `<label>` (double-toggle).
 - **`CreateTaskDialog.vue`** is a thin wrapper around **`tasks/NewTaskDialog.vue`**, the
-  same New Task form the Tasks page opens (HostBuddy detection, owner approval, images), so
+  same New Task form the Tasks page opens (owner approval, images), so
   there is no second, thinner task form. ⚠️ **The form has no Title and no Description
   field, only Instructions (required).** Instructions are stored in `Task.description`, and
   the title is their first line (`taskTitleFromInstructions` in `tasks/data/task-title.ts`).
@@ -294,7 +294,10 @@ Add-Remove from selection / Clear selection · Copy text.
 - **Task cards open the task.** A task row in the room panel calls
   `useTaskDetail().openTaskDetailById`, and `inbox/Layout.vue` mounts the same
   `TasksTaskDetailSheet` the Tasks page uses, resolved against the live store so an update
-  made in the sheet shows at once. ⚠️ **A task card never shows the task id**
+  made in the sheet shows at once. The guest inbox's reservation **Tasks** tab
+  (`inbox/ReservationTasks.vue`) works the same way: it lists the live store's tasks at the
+  reservation's listing (`tasksForListing` on `reservation.listingName`), not the mock
+  `reservation.tasks`, and each card opens the sheet. ⚠️ **A task card never shows the task id**
   (`TASK-1234`): a task is named by its title.
 - **Task statuses are Not started, In progress and Completed**, nothing else
   (`TASK_STATUSES` in `tasks/data/schema.ts`, a zod enum). `isTaskOpen` treats only

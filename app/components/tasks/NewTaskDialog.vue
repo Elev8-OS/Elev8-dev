@@ -4,14 +4,13 @@ import { toast } from 'vue-sonner'
 import { listings } from '@/components/listings/data/listings'
 import { assigneeOptions, priorities } from '@/components/tasks/data/data'
 import { taskTitleFromInstructions } from '@/components/tasks/data/task-title'
-import { useHostBuddyInventorySync } from '@/composables/useHostBuddyInventorySync'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskStore } from '@/composables/useTaskStore'
 
 /**
  * The one "New Task" form. The Tasks page opens it empty; the inbox opens it
  * prefilled from the messages a task is raised from, so both create a task
- * the same way (HostBuddy detection, owner approval, images) instead of the
+ * the same way (owner approval, images) instead of the
  * inbox keeping a thinner form of its own.
  *
  * ⚠️ There is no Title and no Description field: the only text field is
@@ -34,17 +33,21 @@ const open = defineModel<boolean>('open', { default: false })
 
 const { addTask } = useTaskStore()
 const { ownerForTask, notifyApprovalRequested } = useTaskOwnerApproval()
-const { detectInventoryItem } = useHostBuddyInventorySync()
 
 const newListing = ref('')
 const assignee = ref('')
 const assigneeType = ref<'role' | 'person'>('role')
 const dueDate = ref('')
 const newPriority = ref('medium')
+
+const priorityFlagClass: Record<string, string> = {
+  high: 'text-red-500',
+  medium: 'text-blue-500',
+  low: 'text-green-500',
+}
 const newInstructions = ref('')
 /** Derived, never typed: the first line of the instructions. */
 const newTitle = computed(() => taskTitleFromInstructions(newInstructions.value))
-const isDetecting = ref(false)
 const newImages = ref<string[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 
@@ -66,6 +69,13 @@ const selectedListingTags = ref<string[]>([])
 // Assignee picker state
 const assigneePopoverOpen = ref(false)
 const assigneeSearch = ref('')
+const assigneeTab = ref<'role' | 'person'>('role')
+
+// Open on the tab of whoever is already picked.
+watch(assigneePopoverOpen, (isOpen) => {
+  if (isOpen)
+    assigneeTab.value = assignee.value ? assigneeType.value : 'role'
+})
 
 const filteredListings = computed(() => {
   const query = listingSearch.value.trim().toLowerCase()
@@ -88,20 +98,7 @@ const allListingTags = computed(() => {
 
 const filteredAssigneeOptions = computed(() => {
   const query = assigneeSearch.value.trim().toLowerCase()
-  if (!query)
-    return assigneeOptions
-  return assigneeOptions.filter(a => a.label.toLowerCase().includes(query))
-})
-
-const detected = computed(() => {
-  if (!newTitle.value.trim() || !newListing.value)
-    return null
-  return detectInventoryItem(newTitle.value, newListing.value)
-})
-
-watch([() => newTitle.value, () => newListing.value], () => {
-  isDetecting.value = true
-  setTimeout(() => { isDetecting.value = false }, 400)
+  return assigneeOptions.filter(a => a.type === assigneeTab.value && (!query || a.label.toLowerCase().includes(query)))
 })
 
 function toggleListingTag(tag: string) {
@@ -184,7 +181,6 @@ watch(open, (isOpen) => {
 function handleCreateTask() {
   if (!newTitle.value.trim())
     return
-  const detection = detected.value
   const created = addTask({
     title: newTitle.value,
     status: 'not started',
@@ -195,11 +191,6 @@ function handleCreateTask() {
     description: newInstructions.value.trim() || undefined,
     dueDate: dueDate.value || undefined,
     images: newImages.value.length ? newImages.value : undefined,
-    linkedInventoryItemId: detection?.itemId,
-    linkedInventoryItemName: detection?.itemName,
-    linkedInventoryEntryId: detection?.entryId,
-    conditionBefore: detection ? 'good' : undefined,
-    detectedByHostBuddy: detection ? true : undefined,
     // Owner cost approval — the task is held until the owner decides.
     ownerApprovalRequired: needsOwnerApproval.value ? true : undefined,
     ownerApprovalStatus: needsOwnerApproval.value ? 'pending' : undefined,
@@ -222,7 +213,7 @@ function handleCreateTask() {
     toast.success(`Task created — waiting on ${approvalOwner.value?.name ?? 'the owner'} to approve the cost.`)
   }
   else {
-    toast.success(detection ? `Task created — HostBuddy linked ${detection.itemName}` : 'Task created')
+    toast.success('Task created')
   }
   emit('created', created)
   open.value = false
@@ -240,9 +231,8 @@ const todayDate = formatDate(new Date())
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>New Task</DialogTitle>
-        <DialogDescription>
-          HostBuddy will automatically detect and link inventory items from your instructions.
-          <span v-if="context" class="mt-1 block">{{ context }}</span>
+        <DialogDescription :class="{ 'sr-only': !context }">
+          {{ context || 'Describe the task for your team.' }}
         </DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-4 py-2">
@@ -403,26 +393,6 @@ const todayDate = formatDate(new Date())
           </div>
         </div>
 
-        <div v-if="newTitle.trim() && newListing" class="rounded-md border px-3 py-2.5 flex items-start gap-2.5" :class="detected ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20' : 'border-border bg-muted/40'">
-          <Icon :name="isDetecting ? 'lucide:loader-circle' : detected ? 'elev8:elevai' : 'lucide:search'" class="h-4 w-4 mt-0.5 shrink-0" :class="[isDetecting ? 'animate-spin text-muted-foreground' : '', detected && !isDetecting ? 'text-[#C8A84B]' : '', !detected && !isDetecting ? 'text-muted-foreground' : '']" />
-          <div class="flex flex-col gap-0.5">
-            <p class="text-xs font-semibold" :class="detected ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
-              HostBuddy AI
-            </p>
-            <p class="text-xs" :class="detected ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
-              <template v-if="isDetecting">
-                Scanning for inventory items…
-              </template>
-              <template v-else-if="detected">
-                Detected: <strong>{{ detected.itemName }}</strong> — condition will update to <strong>Damaged</strong>
-              </template>
-              <template v-else>
-                No matching inventory item found for this listing.
-              </template>
-            </p>
-          </div>
-        </div>
-
         <div class="grid grid-cols-2 gap-3">
           <div class="flex flex-col gap-1.5">
             <Label>Assignee</Label>
@@ -434,35 +404,32 @@ const todayDate = formatDate(new Date())
                 </Button>
               </PopoverTrigger>
               <PopoverContent class="w-[280px] p-0" align="start">
+                <Tabs v-model="assigneeTab" class="gap-0">
+                  <div class="border-b p-1.5">
+                    <TabsList class="grid w-full grid-cols-2">
+                      <TabsTrigger value="role">
+                        Roles
+                      </TabsTrigger>
+                      <TabsTrigger value="person">
+                        Users
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                </Tabs>
                 <Command>
-                  <CommandInput v-model="assigneeSearch" placeholder="Search role or person..." />
+                  <CommandInput v-model="assigneeSearch" :placeholder="assigneeTab === 'role' ? 'Search roles...' : 'Search users...'" />
                   <CommandList>
                     <CommandEmpty>No match found.</CommandEmpty>
-                    <CommandGroup heading="Roles">
+                    <CommandGroup>
                       <CommandItem
-                        v-for="opt in filteredAssigneeOptions.filter(a => a.type === 'role')"
+                        v-for="opt in filteredAssigneeOptions"
                         :key="opt.value"
                         :value="opt.label"
                         class="cursor-pointer"
                         @select="selectAssignee(opt)"
                       >
                         <div class="flex items-center gap-2 w-full">
-                          <Icon name="lucide:badge" class="size-4 text-muted-foreground" />
-                          <span>{{ opt.label }}</span>
-                          <Icon v-if="assignee === opt.value" name="lucide:check" class="size-4 text-primary ml-auto" />
-                        </div>
-                      </CommandItem>
-                    </CommandGroup>
-                    <CommandGroup heading="People">
-                      <CommandItem
-                        v-for="opt in filteredAssigneeOptions.filter(a => a.type === 'person')"
-                        :key="opt.value"
-                        :value="opt.label"
-                        class="cursor-pointer"
-                        @select="selectAssignee(opt)"
-                      >
-                        <div class="flex items-center gap-2 w-full">
-                          <Icon name="lucide:user" class="size-4 text-muted-foreground" />
+                          <Icon :name="opt.type === 'role' ? 'lucide:badge' : 'lucide:user'" class="size-4 text-muted-foreground" />
                           <span>{{ opt.label }}</span>
                           <Icon v-if="assignee === opt.value" name="lucide:check" class="size-4 text-primary ml-auto" />
                         </div>
@@ -479,6 +446,7 @@ const todayDate = formatDate(new Date())
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="p in priorities" :key="p.value" :value="p.value">
+                  <Icon name="lucide:flag" class="size-4" :class="priorityFlagClass[p.value]" />
                   {{ p.label }}
                 </SelectItem>
               </SelectContent>
