@@ -9,6 +9,8 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/h
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{ booking: Booking, listing: Listing }>()
+/** Optional: lets a caller close the card, e.g. when its bar is clicked and a sheet opens. Hover still opens it. */
+const open = defineModel<boolean>('open', { default: false })
 
 const { reservations, getCheckInTime, getCheckOutTime, getListingCheckInTime, getListingCheckOutTime } = useReservationsModule()
 
@@ -50,7 +52,7 @@ function formatAmount(amount: number) {
 </script>
 
 <template>
-  <HoverCard :open-delay="250" :close-delay="100">
+  <HoverCard v-model:open="open" :open-delay="250" :close-delay="100">
     <HoverCardTrigger as-child>
       <slot />
     </HoverCardTrigger>
