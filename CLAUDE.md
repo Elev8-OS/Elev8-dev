@@ -21,6 +21,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Internal staff messaging | `docs/claude/internal-inbox.md` | Derived listing+role rooms, forward/create-task context menu, delivery state, image viewer |
 | WhatsApp | `docs/claude/whatsapp.md` | Multi-account settings, test send, 24h window, unmatched queue |
 | Reservation folio | `docs/claude/reservation-folio.md` | Staff-posted charges, tax/service rounding, voids/refunds, `priceDetails.extras` ownership |
+| Stay extension | `docs/claude/stay-extension.md` | Extend wizard (dates, payment, review), OTA linked direct booking, cleaning/lock/city tax follow-up, inbox entry point |
 | City tax | `docs/claude/city-tax.md` | Collector policy, guest-category rates, age bands, alerts, `/city-tax` worklist |
 | Damage protection | `docs/claude/damage-protection.md` | Waiver vs saved-card deposit, Tern tiers + activation, host-paid cover, claims from cleaning reports, insurance partner claims, evidence PDF |
 | Owner statements | `docs/claude/owner-statements.md` | Corrections/adjustments, disputes, owner-portal PDF export |

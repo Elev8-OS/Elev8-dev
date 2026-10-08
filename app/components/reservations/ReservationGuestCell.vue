@@ -13,8 +13,10 @@ const props = defineProps<Props>()
   <div class="flex items-center gap-3">
     <BasePersonAvatar :name="props.name" class="size-9" />
     <div class="min-w-0">
-      <p class="text-sm font-medium truncate">
-        {{ props.name }}
+      <p class="flex items-center gap-1.5 text-sm font-medium">
+        <span class="truncate">{{ props.name }}</span>
+        <!-- Small markers beside the name (e.g. an extended stay) -->
+        <slot name="after-name" />
       </p>
       <p class="text-xs text-muted-foreground truncate">
         {{ props.email }}

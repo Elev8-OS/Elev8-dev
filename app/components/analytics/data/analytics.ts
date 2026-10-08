@@ -74,6 +74,18 @@ export interface AnalyticsBooking {
   country: string
   /** Set when the guest cancelled; a cancelled booking holds no nights. */
   cancelledOn?: string
+  /**
+   * Direct stay extended in place: nights added after booking, already
+   * counted in `nights` and `checkOut`. See `stayExtensionFor`.
+   */
+  extendedNights?: number
+  /** Day the in-place extension was agreed. */
+  extendedOn?: string
+  /**
+   * The direct booking that carries an OTA stay's added nights (the OTA
+   * booking is never changed): the id of the stay it extends.
+   */
+  extensionOf?: string
 }
 
 /* ----------------------------------------------------------------- units */
@@ -177,6 +189,41 @@ function monthOf(iso: string): number {
 export const HISTORY_DAYS = 2 * 365 + 7
 export const FUTURE_DAYS = 190
 
+/** FNV-1a of a booking id: drives choices that must not draw from `rand`. */
+function idHash(id: string): number {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++)
+    h = Math.imul(h ^ id.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+
+/** Share of stays with a free night after them whose guest stays on. */
+export const EXTENSION_SHARE = 0.14
+
+/**
+ * Whether a generated stay was extended, and by how much. Decided from the
+ * booking id rather than `rand`, so adding extensions never reshuffles a
+ * stay; and only into the gap the generator was leaving empty after it
+ * anyway, so no night is ever double-booked. Usually 1 to 3 nights, now and
+ * then a week. An extension agreed after the anchor has not happened yet.
+ */
+export function stayExtensionFor(
+  b: Pick<AnalyticsBooking, 'id' | 'checkIn' | 'checkOut'>,
+  freeNights: number,
+  anchorIso: string,
+): { nights: number, decidedOn: string } | null {
+  const h = idHash(b.id)
+  if (freeNights < 1 || h % 1000 >= EXTENSION_SHARE * 1000)
+    return null
+  const wanted = (h >>> 10) % 12 === 0 ? 7 : 1 + ((h >>> 14) % 3)
+  const nights = Math.min(wanted, freeNights)
+  const asked = addIsoDays(b.checkOut, -(1 + ((h >>> 18) % 2)))
+  const decidedOn = asked < b.checkIn ? b.checkIn : asked
+  if (decidedOn > anchorIso)
+    return null
+  return { nights, decidedOn }
+}
+
 export function buildAnalyticsBookings(units: AnalyticsUnit[], anchorIso: string, seed = 51_017): AnalyticsBooking[] {
   const windowStart = addIsoDays(anchorIso, -HISTORY_DAYS)
   const windowEnd = addIsoDays(anchorIso, FUTURE_DAYS)
@@ -208,7 +255,8 @@ export function buildAnalyticsBookings(units: AnalyticsUnit[], anchorIso: string
 
       // A stay that will only be booked after today does not exist yet, which
       // is what makes the months ahead read as "on the books so far".
-      if (bookedOn <= anchorIso) {
+      const listed = bookedOn <= anchorIso
+      if (listed) {
         let cancelledOn: string | undefined
         if (cancelled) {
           const latest = checkIn < anchorIso ? checkIn : anchorIso
@@ -236,6 +284,32 @@ export function buildAnalyticsBookings(units: AnalyticsUnit[], anchorIso: string
       // Busy months turn over the same day; quiet ones leave the unit empty.
       const gapChance = Math.min(0.9, Math.max(0.15, 1.15 - demand * 0.7))
       const gap = rand() < gapChance ? 1 + Math.floor(rand() * (demand < 1 ? 6 : 3)) : 0
+
+      // Some guests stay on, into that gap. A direct stay grows; an OTA stay
+      // keeps its dates and the added nights become a linked direct booking.
+      const stay = listed ? bookings.at(-1)! : null
+      const extension = stay && !cancelled
+        ? stayExtensionFor(stay, Math.min(gap, isoDiffDays(checkOut, stopOn)), anchorIso)
+        : null
+      if (stay && extension) {
+        const until = addIsoDays(checkOut, extension.nights)
+        if (channel === 'Direct') {
+          bookings[bookings.length - 1] = { ...stay, checkOut: until, nights: nights + extension.nights, extendedNights: extension.nights, extendedOn: extension.decidedOn }
+        }
+        else {
+          bookings.push({
+            ...stay,
+            id: `${stay.id}-ext`,
+            channel: 'Direct',
+            bookedOn: extension.decidedOn,
+            checkIn: checkOut,
+            checkOut: until,
+            nights: extension.nights,
+            leadDays: isoDiffDays(extension.decidedOn, checkOut),
+            extensionOf: stay.id,
+          })
+        }
+      }
       cursor = addIsoDays(checkOut, gap)
     }
   })

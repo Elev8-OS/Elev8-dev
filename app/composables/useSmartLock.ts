@@ -119,8 +119,10 @@ export function useSmartLock() {
   const codes = useState<AccessCode[]>('smart-lock-codes', () => loadFromStorage<AccessCode[]>(CODES_KEY, []))
 
   watch(connection, (val) => {
-    if (val) saveToStorage(CONNECTION_KEY, val)
-    else if (import.meta.client) localStorage.removeItem(CONNECTION_KEY)
+    if (val)
+      saveToStorage(CONNECTION_KEY, val)
+    else if (import.meta.client)
+      localStorage.removeItem(CONNECTION_KEY)
   }, { deep: true })
 
   watch(locks, (val) => { saveToStorage(LOCKS_KEY, val) }, { deep: true })
@@ -129,7 +131,8 @@ export function useSmartLock() {
   const isConnected = computed(() => connection.value?.status === 'connected')
 
   const allDevices = computed<SmartLockDevice[]>(() => {
-    if (!isConnected.value) return []
+    if (!isConnected.value)
+      return []
     return MOCK_DEVICES.map((d) => {
       const paired = locks.value.some(l => l.providerDeviceId === d.deviceId)
       return { ...d, paired }
@@ -142,7 +145,8 @@ export function useSmartLock() {
 
   async function validateAndConnect(apiKey: string, workspaceName: string): Promise<{ success: boolean, error?: string }> {
     await new Promise(r => setTimeout(r, 1500))
-    if (!apiKey.trim()) return { success: false, error: 'API key is required.' }
+    if (!apiKey.trim())
+      return { success: false, error: 'API key is required.' }
     if (!apiKey.startsWith('seam_') && !apiKey.startsWith('sk_')) {
       return { success: false, error: 'Invalid API key format. Keys start with "seam_" or "sk_".' }
     }
@@ -173,7 +177,8 @@ export function useSmartLock() {
   }
 
   function syncDevices() {
-    if (!connection.value) return
+    if (!connection.value)
+      return
     connection.value = { ...connection.value, lastSyncAt: new Date().toISOString() }
     // Randomly nudge battery + online for realism
     locks.value = locks.value.map((l) => {
@@ -197,7 +202,8 @@ export function useSmartLock() {
   }
 
   function getLockCount(listingId: string, unitId?: string): number {
-    if (unitId) return getLocksForUnit(listingId, unitId).length
+    if (unitId)
+      return getLocksForUnit(listingId, unitId).length
     return getLocksForListing(listingId).length
   }
 
@@ -217,14 +223,16 @@ export function useSmartLock() {
     isMain?: boolean
   }): { success: boolean, error?: string, lock?: SmartLock } {
     const device = MOCK_DEVICES.find(d => d.deviceId === opts.providerDeviceId)
-    if (!device) return { success: false, error: 'Device not found.' }
+    if (!device)
+      return { success: false, error: 'Device not found.' }
     if (locks.value.some(l => l.providerDeviceId === opts.providerDeviceId)) {
       return { success: false, error: 'This lock is already paired.' }
     }
     if (opts.isMain) {
       // Demote existing main in this scope
       locks.value = locks.value.map((l) => {
-        if (l.listingId !== opts.listingId) return l
+        if (l.listingId !== opts.listingId)
+          return l
         if (opts.unitId ? l.unitId !== opts.unitId : l.assignment === 'property') {
           return { ...l, isMain: false }
         }
@@ -256,7 +264,8 @@ export function useSmartLock() {
 
   function setMainLock(lockId: string) {
     const target = locks.value.find(l => l.id === lockId)
-    if (!target) return
+    if (!target)
+      return
     locks.value = locks.value.map((l) => {
       const inScope = l.listingId === target.listingId
         && (target.unitId ? l.unitId === target.unitId : l.assignment === 'property' || !l.unitId)
@@ -270,17 +279,20 @@ export function useSmartLock() {
 
   function swapDevice(lockId: string, newProviderDeviceId: string): { success: boolean, error?: string, lock?: SmartLock } {
     const target = locks.value.find(l => l.id === lockId)
-    if (!target) return { success: false, error: 'Lock not found.' }
+    if (!target)
+      return { success: false, error: 'Lock not found.' }
     if (target.providerDeviceId === newProviderDeviceId) {
       return { success: false, error: 'This device is already paired to this lock.' }
     }
     const device = MOCK_DEVICES.find(d => d.deviceId === newProviderDeviceId)
-    if (!device) return { success: false, error: 'Device not found.' }
+    if (!device)
+      return { success: false, error: 'Device not found.' }
     if (locks.value.some(l => l.id !== lockId && l.providerDeviceId === newProviderDeviceId)) {
       return { success: false, error: 'This device is already paired to another lock in this workspace.' }
     }
     locks.value = locks.value.map((l) => {
-      if (l.id !== lockId) return l
+      if (l.id !== lockId)
+        return l
       return {
         ...l,
         providerDeviceId: device.deviceId,
@@ -295,8 +307,10 @@ export function useSmartLock() {
 
   async function unlockLock(lockId: string): Promise<{ success: boolean, error?: string }> {
     const lock = locks.value.find(l => l.id === lockId)
-    if (!lock) return { success: false, error: 'Lock not found.' }
-    if (!lock.online) return { success: false, error: 'Lock is offline. Try again when it reconnects.' }
+    if (!lock)
+      return { success: false, error: 'Lock not found.' }
+    if (!lock.online)
+      return { success: false, error: 'Lock is offline. Try again when it reconnects.' }
     // Mock network delay
     await new Promise(r => setTimeout(r, 600))
     return { success: true }
@@ -325,7 +339,8 @@ export function useSmartLock() {
     // Mock network delay so loading states are visible in the UI
     await new Promise(r => setTimeout(r, 700))
     const lock = locks.value.find(l => l.id === opts.lockId)
-    if (!lock) return { success: false, error: 'Lock not found.' }
+    if (!lock)
+      return { success: false, error: 'Lock not found.' }
     const startsAt = opts.startsAt ?? new Date().toISOString()
     // Compute endsAt from the chosen schedule type:
     //  - 'ongoing' = far future (effectively always active)
@@ -372,15 +387,74 @@ export function useSmartLock() {
    */
   function findActiveBrandCode(reservationId: string, provider: SmartLockProvider): string | undefined {
     const matchedCode = codes.value.find((c) => {
-      if (c.reservationId !== reservationId) return false
-      if (c.status !== 'active') return false
+      if (c.reservationId !== reservationId)
+        return false
+      if (c.status !== 'active')
+        return false
       const matchedLock = locks.value.find(l => l.id === c.lockId)
-      if (!matchedLock) return false
+      if (!matchedLock)
+        return false
       const matchedDevice = MOCK_DEVICES.find(d => d.deviceId === matchedLock.providerDeviceId)
-      if (!matchedDevice) return false
+      if (!matchedDevice)
+        return false
       return matchedDevice.provider === provider
     })
     return matchedCode?.code
+  }
+
+  /**
+   * A reservation's active, dated codes that stop on its (old) check-out day,
+   * read in Bali time (UTC+8). Ongoing codes and ones ending on another day
+   * were scheduled on purpose and are left alone.
+   */
+  function codesEndingOn(reservationId: string, date: string): AccessCode[] {
+    return codes.value.filter((c) => {
+      if (c.reservationId !== reservationId || c.status !== 'active' || c.scheduleType === 'ongoing')
+        return false
+      const ms = new Date(c.endsAt).getTime()
+      return !Number.isNaN(ms) && new Date(ms + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) === date
+    })
+  }
+
+  /**
+   * A stay was extended: its codes ending on the old check-out day now end the
+   * same time on the new one. Mock provider, so this is a local update.
+   * Returns how many codes moved.
+   */
+  function extendCodesForReservation(reservationId: string, fromDate: string, toDate: string): number {
+    const moving = new Set(codesEndingOn(reservationId, fromDate).map(c => c.id))
+    if (!moving.size)
+      return 0
+    const shiftMs = new Date(`${toDate}T00:00:00Z`).getTime() - new Date(`${fromDate}T00:00:00Z`).getTime()
+    codes.value = codes.value.map(c => moving.has(c.id)
+      ? { ...c, endsAt: new Date(new Date(c.endsAt).getTime() + shiftMs).toISOString(), scheduleType: 'range' as const }
+      : c)
+    return moving.size
+  }
+
+  /** Active, dated codes of the stay that start on `date` (Bali day). */
+  function codesStartingOn(reservationId: string, date: string): AccessCode[] {
+    return codes.value.filter((c) => {
+      if (c.reservationId !== reservationId || c.status !== 'active' || c.scheduleType === 'ongoing')
+        return false
+      const ms = new Date(c.startsAt).getTime()
+      return !Number.isNaN(ms) && new Date(ms + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) === date
+    })
+  }
+
+  /**
+   * An early arrival: the stay's codes starting on the old check-in day now
+   * start the same time on the new one. Returns how many codes moved.
+   */
+  function advanceCodesForReservation(reservationId: string, fromDate: string, toDate: string): number {
+    const moving = new Set(codesStartingOn(reservationId, fromDate).map(c => c.id))
+    if (!moving.size)
+      return 0
+    const shiftMs = new Date(`${toDate}T00:00:00Z`).getTime() - new Date(`${fromDate}T00:00:00Z`).getTime()
+    codes.value = codes.value.map(c => moving.has(c.id)
+      ? { ...c, startsAt: new Date(new Date(c.startsAt).getTime() + shiftMs).toISOString(), scheduleType: 'range' as const }
+      : c)
+    return moving.size
   }
 
   function revokeAccessCode(codeId: string) {
@@ -390,7 +464,8 @@ export function useSmartLock() {
   // --- Mock alert generator (for the 5 SMART_LOCK_* alert types) ---
 
   function emitMockAlerts() {
-    if (!isConnected.value) return
+    if (!isConnected.value)
+      return
     const notif = useNotifications()
     locks.value.forEach((lock) => {
       if (lock.batteryLevel <= 5) {
@@ -440,6 +515,10 @@ export function useSmartLock() {
     getActiveCodeForLock,
     generateAccessCode,
     revokeAccessCode,
+    codesEndingOn,
+    extendCodesForReservation,
+    codesStartingOn,
+    advanceCodesForReservation,
     findActiveBrandCode,
     emitMockAlerts,
   }

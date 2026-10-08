@@ -8,9 +8,11 @@ import { listings } from '~/components/listings/data/listings'
 import { guestRatingForReservation } from '~/components/reservations/data/guest-rating'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
+import ReservationCancelExtensionDialog from '~/components/reservations/ReservationCancelExtensionDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationCityTaxSection from '~/components/reservations/ReservationCityTaxSection.vue'
 import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
+import ReservationExtensionsSection from '~/components/reservations/ReservationExtensionsSection.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import ReservationGuestRatingSection from '~/components/reservations/ReservationGuestRatingSection.vue'
 import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
@@ -257,12 +259,23 @@ function fmtUploadTime(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+// Every cancel is confirmed first and runs through useStayExtension().cancelStay:
+// linked bookings, payment links, cleanings, door codes and the guest message
+// (see ReservationCancelExtensionDialog).
+const cancelDialogOpen = ref(false)
+
 function onStatusChange(value: unknown) {
   if (!reservation.value)
     return
   const status = value as ReservationStatus
-  updateReservationStatus(reservation.value.id, status)
-  toast.success(`Status updated to ${reservationStatusLabels[status]}`)
+  if (status === 'cancelled' && reservation.value.status !== 'cancelled') {
+    cancelDialogOpen.value = true
+    return
+  }
+  const others = updateReservationStatus(reservation.value.id, status).filter(id => id !== reservation.value!.id)
+  toast.success(`Status updated to ${reservationStatusLabels[status]}`, others.length
+    ? { description: `Linked booking${others.length === 1 ? '' : 's'} updated too: ${others.join(', ')}` }
+    : undefined)
 }
 
 const smartLock = useSmartLock()
@@ -754,6 +767,9 @@ const guestGuideRoute = computed(() => {
                       </AccordionContent>
                     </AccordionItem>
                   </Accordion>
+
+                  <!-- Extensions: added nights, their payment, the linked OTA stay -->
+                  <ReservationExtensionsSection :reservation="reservation" />
 
                   <!-- City tax: what the municipality is owed on this stay -->
                   <ReservationCityTaxSection :reservation="reservation" />
@@ -1409,6 +1425,8 @@ const guestGuideRoute = computed(() => {
         </template>
       </SheetContent>
     </Sheet>
+
+    <ReservationCancelExtensionDialog v-model:open="cancelDialogOpen" :reservation="reservation" />
 
     <!-- Edit reservation dialog -->
     <UpsellOrderDrawer

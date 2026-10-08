@@ -4,6 +4,7 @@ import type { ReservationCleaningSchedule } from '~/components/reservations/data
 import type { FolioItem } from '~/components/reservations/data/folio'
 import type { TernTier } from '~/components/reservations/data/tern-products'
 import { damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
+import { stayExtensionDemoGuests, stayExtensionDemoReservations } from '~/components/reservations/data/stay-extension-demo'
 
 export type {
   CustomCleaningFrequency,
@@ -458,6 +459,64 @@ export interface ReservationEntry {
   damageProtection?: DamageProtection
   /** Recurring cleaning schedule configuration for this reservation */
   cleaningSchedule?: ReservationCleaningSchedule
+  /** Nights added after booking (later check-out or earlier arrival), oldest first. See `useStayExtension`. */
+  extensions?: StayExtension[]
+  /**
+   * Set on the direct booking that carries an OTA stay's added nights: the
+   * id of the OTA reservation it extends. Provenance, the OTA booking is never
+   * rewritten (the channel owns its dates and price).
+   */
+  extensionOf?: string
+}
+
+/** How the guest pays for added nights. */
+export type ExtensionPaymentMethod = 'payment_link' | 'saved_card' | 'at_property' | 'already_paid'
+
+/**
+ * One extension of a stay, frozen when it is confirmed. Lives on the stay the
+ * guest booked (for an OTA stay, the OTA reservation), even when the nights
+ * themselves sit on a linked direct booking.
+ */
+/** `after`: a later check-out. `before`: an earlier arrival (the guest comes in before the booked check-in). */
+export type ExtensionDirection = 'after' | 'before'
+
+export interface StayExtension {
+  id: string
+  /** Missing on records written before early arrivals existed: read as `after`. */
+  direction?: ExtensionDirection
+  /** `after` only. */
+  previousCheckOut?: string
+  newCheckOut?: string
+  /** `before` only. */
+  previousCheckIn?: string
+  newCheckIn?: string
+  extraNights: number
+  nightlyRate: number
+  amount: number
+  currency: string
+  paymentMethod: ExtensionPaymentMethod
+  /** `guestPaid` on the billed stay moves only once this is 'paid'. */
+  paymentStatus: 'pending' | 'paid'
+  paymentRequestId?: string
+  paidAt?: string
+  /** OTA stay: the direct booking that holds the added nights and is billed for them. */
+  linkedReservationId?: string
+  createdAt: string
+  createdBy: string
+  /**
+   * Set when the extension was cancelled, on its own or with its stay. A
+   * cancelled extension no longer counts anywhere (icon, filters, chains).
+   */
+  cancelledAt?: string
+  cancelledBy?: string
+  /** A paid extension that was cancelled owes the guest its `amount` back until staff mark it refunded. */
+  refundStatus?: 'due' | 'refunded'
+  refundedAt?: string
+}
+
+/** Still counts: not cancelled. */
+export function isActiveExtension(e: Pick<StayExtension, 'cancelledAt'>): boolean {
+  return !e.cancelledAt
 }
 
 export interface GuestProfile {
@@ -542,8 +601,15 @@ export interface ReservationDraft {
   guestId?: string
 }
 
+let lastReservationStamp = 0
+
+/**
+ * Time-based and strictly increasing: two bookings made in the same
+ * millisecond (a stay and its extension, one after the other) never share an id.
+ */
 export function generateReservationId(): string {
-  return `res-${Date.now()}`
+  lastReservationStamp = Math.max(Date.now(), lastReservationStamp + 1)
+  return `res-${lastReservationStamp}`
 }
 
 let guestSeq = 0
@@ -1694,6 +1760,7 @@ export const initialReservations: ReservationEntry[] = [
 // Demo stays that make every damage-protection bucket reachable on first load.
 // Kept in their own module because their dates are relative to today.
 initialReservations.push(...damageProtectionDemoReservations)
+initialReservations.push(...stayExtensionDemoReservations)
 
 export const initialGuests: GuestProfile[] = [
   {
@@ -1774,6 +1841,8 @@ export const initialGuests: GuestProfile[] = [
     createdAt: '2026-08-18',
   },
 ]
+
+initialGuests.push(...stayExtensionDemoGuests)
 
 // Convenience: helper to compute nights between two ISO dates
 export function nightsBetween(checkIn: string, checkOut: string): number {

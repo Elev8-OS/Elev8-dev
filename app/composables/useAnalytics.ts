@@ -28,6 +28,7 @@ import {
   trendGrain,
   trendSeries,
 } from '~/components/analytics/data/analytics'
+import { extensionRevenueSeries, extensionSummary } from '~/components/analytics/data/extension-insights'
 import { movementSeries, partySummary, pickupSeries, stayAverages, stayAverageSeries } from '~/components/analytics/data/reservation-insights'
 import { retiredUnits } from '~/components/analytics/data/retired-listings'
 import { buildCommissionRates, makeValuer, REVENUE_BASES, revenueBreakdown } from '~/components/analytics/data/revenue-basis'
@@ -193,6 +194,9 @@ export function useAnalytics() {
   const stayAvgNow = computed(() => stayAverages(bookings.value, span.value, currency.value, value.value))
   const stayAvgBefore = computed(() => previousSpan.value ? stayAverages(bookings.value, previousSpan.value, currency.value, value.value) : null)
   const stayAvgTrend = computed(() => stayAverageSeries(bookings.value, span.value, previousSpan.value, currency.value, value.value))
+  const extensionsNow = computed(() => extensionSummary(bookings.value, span.value, currency.value, value.value))
+  const extensionsBefore = computed(() => previousSpan.value ? extensionSummary(bookings.value, previousSpan.value, currency.value, value.value) : null)
+  const extensionRevenue = computed(() => extensionRevenueSeries(bookings.value, span.value, currency.value, value.value))
 
   /* -------------------------------------------------------------- chips */
 
@@ -307,6 +311,9 @@ export function useAnalytics() {
     stayAvgNow,
     stayAvgBefore,
     stayAvgTrend,
+    extensionsNow,
+    extensionsBefore,
+    extensionRevenue,
     basisMeta,
     breakdown,
     contractedListings,

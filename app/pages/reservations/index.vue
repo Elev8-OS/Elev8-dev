@@ -12,6 +12,8 @@ import ReservationTable from '~/components/reservations/ReservationTable.vue'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { downloadReservationsXlsx } from '~/lib/reservation-export'
+import { RESERVATION_DATE_BASIS_OPTIONS } from '~/lib/reservation-period'
 
 const router = useRouter()
 const route = useRoute()
@@ -45,10 +47,38 @@ function openGuest(id: string) {
   router.push(`/reservations/guests/${id}`)
 }
 
+/** Exports exactly the rows the current filters show. */
+const exporting = ref(false)
+
+async function exportReservations() {
+  const rows = filteredReservations.value
+  if (!rows.length) {
+    toast.info('No reservations to export with the current filters.')
+    return
+  }
+  exporting.value = true
+  try {
+    await downloadReservationsXlsx(rows, { from: filters.value.dateFrom, to: filters.value.dateTo })
+    toast.success(`${rows.length} reservation${rows.length === 1 ? '' : 's'} exported to Excel.`)
+  }
+  catch {
+    toast.error('Could not create the Excel file. Please try again.')
+  }
+  finally {
+    exporting.value = false
+  }
+}
+
 function copyId(id: string) {
   navigator.clipboard.writeText(id)
   toast.success('Booking ID copied')
 }
+
+const extensionOptions = [
+  { label: 'Any extension', value: 'all' },
+  { label: 'Extended', value: 'extended' },
+  { label: 'Unpaid extension', value: 'unpaid' },
+]
 
 const statusOptions = [
   { label: 'All', value: 'all' },
@@ -109,11 +139,9 @@ function parseDateToCalendarDate(dateStr: string): CalendarDate | undefined {
   return new CalendarDate(year, month, day)
 }
 
+/** `YYYY-MM-DD` straight from the calendar date: `toISOString()` would shift it a day back in UTC+8. */
 function calendarDateToString(date: CalendarDate | undefined): string {
-  if (!date)
-    return ''
-  const d = date.toDate(getLocalTimeZone())
-  return d.toISOString().split('T')[0]
+  return date ? date.toString() : ''
 }
 
 const dateRange = ref<DateRange>({
@@ -147,6 +175,8 @@ function clearAllFilters() {
   filters.value.listings = []
   filters.value.dateFrom = ''
   filters.value.dateTo = ''
+  filters.value.dateBasis = 'stay'
+  filters.value.extension = 'all'
   selectedListingTags.value = []
   listingSearch.value = ''
 }
@@ -156,16 +186,24 @@ const hasActiveFilters = computed(() =>
   || filters.value.status !== 'all'
   || filters.value.listings.length > 0
   || filters.value.dateFrom
-  || filters.value.dateTo,
+  || filters.value.dateTo
+  || filters.value.extension !== 'all',
 )
 
 const dateFilterLabel = computed(() => {
   if (!filters.value.dateFrom && !filters.value.dateTo)
     return 'Date range'
+  const basis = RESERVATION_DATE_BASIS_OPTIONS.find(o => o.value === filters.value.dateBasis)?.label ?? 'Staying'
   if (filters.value.dateFrom === filters.value.dateTo)
-    return filters.value.dateFrom
-  return `${filters.value.dateFrom} – ${filters.value.dateTo}`
+    return `${basis}: ${filters.value.dateFrom}`
+  return `${basis}: ${filters.value.dateFrom} – ${filters.value.dateTo}`
 })
+
+const dateBasisHint = computed(() => ({
+  stay: 'Any reservation with a night in the range. A stay across two months shows in both.',
+  check_in: 'Reservations arriving in the range.',
+  check_out: 'Reservations departing in the range.',
+})[filters.value.dateBasis])
 
 // Stats cards (clickable to filter)
 const statCards = computed(() => [
@@ -248,10 +286,16 @@ function confirmRejectOwnerStay() {
           {{ filteredReservations.length }} reservations
         </p>
       </div>
-      <Button class="gap-2" @click="createOpen = true">
-        <Icon name="lucide:plus" class="size-4" />
-        New Reservation
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" class="gap-2" data-testid="export-reservations" :disabled="exporting" @click="exportReservations">
+          <Icon :name="exporting ? 'lucide:loader-2' : 'lucide:file-spreadsheet'" class="size-4" :class="exporting && 'animate-spin'" />
+          Export to Excel
+        </Button>
+        <Button class="gap-2" @click="createOpen = true">
+          <Icon name="lucide:plus" class="size-4" />
+          New Reservation
+        </Button>
+      </div>
     </div>
 
     <!-- Stats -->
@@ -308,6 +352,18 @@ function confirmRejectOwnerStay() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select v-model="filters.extension">
+        <SelectTrigger class="w-[170px]" data-testid="filter-extension">
+          <Icon name="lucide:calendar-plus" class="size-4 text-muted-foreground" />
+          <SelectValue placeholder="Extension" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="opt in extensionOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </SelectItem>
         </SelectContent>
@@ -438,11 +494,28 @@ function confirmRejectOwnerStay() {
             :class="filters.dateFrom ? 'border-primary text-foreground hover:bg-primary/10' : ''"
           >
             <Icon name="lucide:calendar" class="size-4" />
-            <span class="max-w-[160px] truncate">{{ dateFilterLabel }}</span>
+            <span class="max-w-[240px] truncate">{{ dateFilterLabel }}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-auto p-0" align="start">
           <div class="p-3">
+            <div class="mb-3 space-y-1.5 border-b pb-3">
+              <ToggleGroup
+                :model-value="filters.dateBasis"
+                type="single"
+                variant="outline"
+                size="sm"
+                data-testid="date-basis"
+                @update:model-value="(v: any) => v && (filters.dateBasis = v)"
+              >
+                <ToggleGroupItem v-for="opt in RESERVATION_DATE_BASIS_OPTIONS" :key="opt.value" :value="opt.value" class="px-3 text-xs">
+                  {{ opt.label }}
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <p class="text-xs text-muted-foreground">
+                {{ dateBasisHint }}
+              </p>
+            </div>
             <RangeCalendar
               v-model="dateRange"
               weekday-format="short"

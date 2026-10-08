@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { isActiveExtension } from '~/components/reservations/data/reservations'
 import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
 import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { useCityTax } from '~/composables/useCityTax'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{ reservations: ReservationEntry[] }>()
 
@@ -34,8 +36,55 @@ function cityTaxRow(reservationId: string) {
   return cityTax.rows.value.find(row => row.reservation.id === reservationId) ?? null
 }
 
+// Extensions: a stay that was extended, and the direct booking that carries
+// an OTA stay's added nights (looked up in the full store, not the filtered page).
+const { reservations: allReservations } = useReservationsModule()
+
+function extensionSummary(r: ReservationEntry) {
+  // A cancelled extension no longer extends anything.
+  const list = (r.extensions ?? []).filter(isActiveExtension)
+  if (!list.length)
+    return null
+  return {
+    nights: list.reduce((sum, e) => sum + e.extraNights, 0),
+    until: list.reduce((end, e) => e.newCheckOut && e.newCheckOut > end ? e.newCheckOut : end, r.checkOut),
+    // Early arrivals: in place the stay's check-in already moved; via a linked booking it did not.
+    arrives: list.reduce((start, e) => e.newCheckIn && e.newCheckIn < start ? e.newCheckIn : start, r.checkIn),
+    early: list.some(e => e.direction === 'before'),
+    later: list.some(e => e.direction !== 'before'),
+    viaLinked: list.some(e => e.linkedReservationId),
+    unpaid: list.some(e => e.paymentStatus === 'pending'),
+  }
+}
+
+/** Hover text for the extended-stay icon beside the guest's name. */
+function extensionTitle(r: ReservationEntry): string {
+  const summary = extensionSummary(r)
+  if (!summary)
+    return ''
+  const span = [
+    summary.early ? `arrives ${fmtDate(summary.arrives)}` : '',
+    summary.later ? `stays until ${fmtDate(summary.until)}` : '',
+  ].filter(Boolean).join(', ')
+  return `Extended +${summary.nights} night${summary.nights === 1 ? '' : 's'}, ${span}${summary.unpaid ? '. Payment pending' : ''}`
+}
+
+/** A linked booking that ends where its stay begins carries an early arrival. */
+function isEarlyArrival(r: ReservationEntry): boolean {
+  if (!r.extensionOf)
+    return false
+  const parent = allReservations.value.find(x => x.id === r.extensionOf)
+  return Boolean(parent && r.checkOut <= parent.checkIn)
+}
+
+function openParent(id: string) {
+  const parent = allReservations.value.find(x => x.id === id)
+  if (parent)
+    emit('openDetail', parent)
+}
+
 // Sorting
-type SortKey = 'guest' | 'listing' | 'checkIn' | 'checkOut' | 'nights' | 'guests' | 'channel' | 'total' | 'status'
+type SortKey = 'guest' | 'listing' | 'checkIn' | 'checkOut' | 'nights' | 'guests' | 'channel' | 'total' | 'status' | 'cityTax' | 'protection'
 const sortKey = ref<SortKey | null>(null)
 const sortDir = ref<'asc' | 'desc'>('asc')
 
@@ -49,9 +98,28 @@ const sortableColumns: Array<{ key: SortKey, label: string, align?: 'right' }> =
   { key: 'channel', label: 'Channel' },
   { key: 'total', label: 'Total', align: 'right' },
   { key: 'status', label: 'Status' },
+  { key: 'cityTax', label: 'City tax' },
+  { key: 'protection', label: 'Protection' },
 ]
 
-function sortValue(r: ReservationEntry, key: SortKey): string | number {
+// City tax and protection sort by urgency, not by label: ascending puts what
+// needs action first. A stay with nothing to show ranks null and always sorts last.
+const CITY_TAX_RANK: Record<string, number> = { overdue: 0, due: 1, channel_collects: 2, collected: 3, waived: 4 }
+const PROTECTION_RANK: Record<string, number> = { decision_overdue: 0, failed: 1, decision_due: 2, refund_due: 3, awaiting_choice: 4, on_file: 5, settled: 6 }
+
+function cityTaxRank(r: ReservationEntry): number | null {
+  const row = cityTaxRow(r.id)
+  if (!row)
+    return null
+  const key = row.assessment.status === 'due' && row.stage === 'overdue' ? 'overdue' : row.assessment.status
+  return CITY_TAX_RANK[key] ?? null
+}
+
+function protectionRank(r: ReservationEntry): number | null {
+  return PROTECTION_RANK[damageProtection.bucketFor(r.id)] ?? null
+}
+
+function sortValue(r: ReservationEntry, key: SortKey): string | number | null {
   switch (key) {
     case 'guest': return r.guestName.toLowerCase()
     case 'listing': return r.listingName.toLowerCase()
@@ -62,6 +130,8 @@ function sortValue(r: ReservationEntry, key: SortKey): string | number {
     case 'channel': return r.channel
     case 'total': return r.totalPrice
     case 'status': return r.status
+    case 'cityTax': return cityTaxRank(r)
+    case 'protection': return protectionRank(r)
   }
 }
 
@@ -83,8 +153,28 @@ function toggleSort(key: SortKey) {
   page.value = 1
 }
 
+// Parent and child: a linked extension booking is drawn under the stay it
+// extends, so the pair reads as one guest stay. It only nests when that stay
+// is in the same (filtered) list; otherwise it stands alone with its badge.
+const listedIds = computed(() => new Set(props.reservations.map(r => r.id)))
+
+function isNested(r: ReservationEntry): boolean {
+  return Boolean(r.extensionOf && listedIds.value.has(r.extensionOf))
+}
+
+const childrenByParent = computed(() => {
+  const map = new Map<string, ReservationEntry[]>()
+  for (const r of props.reservations) {
+    if (isNested(r))
+      map.set(r.extensionOf!, [...(map.get(r.extensionOf!) ?? []), r])
+  }
+  for (const list of map.values())
+    list.sort((a, b) => a.checkIn.localeCompare(b.checkIn))
+  return map
+})
+
 const sortedReservations = computed(() => {
-  const list = [...props.reservations]
+  const list = props.reservations.filter(r => !isNested(r))
   if (!sortKey.value)
     return list
   const key = sortKey.value
@@ -92,6 +182,9 @@ const sortedReservations = computed(() => {
   return list.sort((a, b) => {
     const av = sortValue(a, key)
     const bv = sortValue(b, key)
+    // Empty cells stay at the bottom whichever way the column is sorted.
+    if (av === null || bv === null)
+      return av === bv ? 0 : av === null ? 1 : -1
     if (av < bv)
       return -1 * dir
     if (av > bv)
@@ -106,6 +199,12 @@ const pagedReservations = computed(() => {
   const start = (page.value - 1) * pageSize
   return sortedReservations.value.slice(start, start + pageSize)
 })
+
+// Paging counts stays; a stay's extension rows always come along with it.
+const pagedRows = computed(() => pagedReservations.value.flatMap(r => [
+  { r, child: false },
+  ...(childrenByParent.value.get(r.id) ?? []).map(c => ({ r: c, child: true })),
+]))
 
 const rangeLabel = computed(() => {
   const total = sortedReservations.value.length
@@ -178,22 +277,52 @@ const pageNumbers = computed(() => {
         </thead>
         <tbody>
           <tr
-            v-for="r in pagedReservations"
+            v-for="{ r, child } in pagedRows"
             :key="r.id"
-            class="border-t hover:bg-muted/30 transition-colors cursor-pointer"
+            class="hover:bg-muted/30 transition-colors cursor-pointer"
+            :class="child ? 'border-t border-dashed bg-muted/20' : 'border-t'"
+            :data-testid="child ? 'row-child' : undefined"
+            :data-row-id="r.id"
             @click="emit('openDetail', r)"
           >
-            <td class="px-4 py-3" @click.stop>
+            <td v-if="child" class="py-2.5 pl-8 pr-4">
+              <div class="flex items-center gap-2">
+                <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
+                <div class="min-w-0">
+                  <p class="text-sm font-medium">
+                    {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
+                  </p>
+                  <p class="truncate font-mono text-xs text-muted-foreground">
+                    {{ r.id }}
+                  </p>
+                </div>
+              </div>
+            </td>
+            <td v-else class="px-4 py-3" @click.stop>
               <button
                 type="button"
                 class="text-left hover:underline"
                 @click="emit('openGuest', r.guestId)"
               >
-                <ReservationGuestCell :name="r.guestName" :email="r.guestEmail" />
+                <ReservationGuestCell :name="r.guestName" :email="r.guestEmail">
+                  <template v-if="extensionSummary(r)" #after-name>
+                    <span
+                      class="inline-flex shrink-0"
+                      :class="extensionSummary(r)!.unpaid ? 'text-amber-600 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400'"
+                      :title="extensionTitle(r)"
+                      :aria-label="extensionTitle(r)"
+                      role="img"
+                      data-testid="row-extended"
+                    >
+                      <Icon name="lucide:calendar-plus" class="size-3.5" />
+                    </span>
+                  </template>
+                </ReservationGuestCell>
               </button>
             </td>
             <td class="px-4 py-3">
-              <NuxtLink :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
+              <span v-if="child" class="text-muted-foreground">Same listing</span>
+              <NuxtLink v-else :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
                 {{ r.listingName }}
               </NuxtLink>
             </td>
@@ -218,16 +347,36 @@ const pageNumbers = computed(() => {
             <td class="px-4 py-3">
               <div class="flex flex-wrap items-center gap-1.5">
                 <ReservationStatusBadge :status="r.status" />
-                <CityTaxStatusChip
-                  v-if="cityTaxRow(r.id)"
-                  :status="cityTaxRow(r.id)!.assessment.status"
-                  :stage="cityTaxRow(r.id)!.stage"
-                />
-                <DamageProtectionStatusChip
-                  :bucket="damageProtection.bucketFor(r.id)"
-                  :option="r.damageProtection?.option"
-                />
+                <button
+                  v-if="r.extensionOf && !child"
+                  type="button"
+                  :title="`${isEarlyArrival(r) ? 'Early arrival for' : 'Extension of'} ${r.extensionOf}. Open it`"
+                  data-testid="row-extension-of"
+                  @click.stop="openParent(r.extensionOf)"
+                >
+                  <Badge variant="outline" class="gap-1 whitespace-nowrap border-muted-foreground/30 bg-muted text-muted-foreground hover:text-foreground">
+                    <Icon name="lucide:link-2" class="size-3" />
+                    {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
+                  </Badge>
+                </button>
               </div>
+            </td>
+            <!-- City tax and damage protection each get their own column, so the
+                 Status column only ever says where the booking stands. -->
+            <td class="px-4 py-3" data-testid="cell-city-tax">
+              <CityTaxStatusChip
+                v-if="cityTaxRow(r.id)"
+                class="whitespace-nowrap"
+                :status="cityTaxRow(r.id)!.assessment.status"
+                :stage="cityTaxRow(r.id)!.stage"
+              />
+            </td>
+            <td class="px-4 py-3" data-testid="cell-protection">
+              <DamageProtectionStatusChip
+                class="whitespace-nowrap"
+                :bucket="damageProtection.bucketFor(r.id)"
+                :option="r.damageProtection?.option"
+              />
             </td>
             <td class="px-4 py-3" @click.stop>
               <DropdownMenu>
@@ -270,7 +419,7 @@ const pageNumbers = computed(() => {
             </td>
           </tr>
           <tr v-if="pagedReservations.length === 0">
-            <td colspan="10" class="px-4 py-12 text-center text-sm text-muted-foreground">
+            <td colspan="12" class="px-4 py-12 text-center text-sm text-muted-foreground">
               <div class="flex flex-col items-center gap-2">
                 <Icon name="lucide:calendar-x" class="size-8 opacity-50" />
                 No reservations match your filters.

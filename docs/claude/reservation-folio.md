@@ -45,9 +45,12 @@ reservation migrates.
   untouched, since a desk-posted extra carries no OTA commission.
 - **Extending a stay** (`useReservationsModule().extendReservation`, from the
   detail sheet's Modify menu) is the one other writer of `priceDetails`: it
-  moves `subtotal`, `guestPaid` and `payout` by the added nights' amount and
-  raises `totalPrice`, but never touches `extras`. Room-line stays grow only
-  their per-night lines, so the Edit dialog's rebuilt total agrees.
+  moves `subtotal` and `payout` by the added nights' amount and raises
+  `totalPrice`, but never touches `extras`. `guestPaid` moves only once the
+  nights are paid (now, or later via `markExtensionPaid`). Room-line stays grow
+  only their per-night lines, so the Edit dialog's rebuilt total agrees. An OTA
+  stay is never moved: its nights become a linked direct booking. Full flow:
+  `docs/claude/stay-extension.md`.
 - ⚠️ **`useReservationFolio` never writes to `useUpsellOrders`**, and each action
   patches the items array and its `ActivityEvent` in **one**
   `updateReservation` call so a posting and its audit line cannot land apart.

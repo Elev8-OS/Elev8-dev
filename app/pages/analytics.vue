@@ -40,6 +40,9 @@ const {
   stayAvgNow,
   stayAvgBefore,
   stayAvgTrend,
+  extensionsNow,
+  extensionsBefore,
+  extensionRevenue,
 } = useAnalytics()
 
 /* Tabs: kept in the URL, so a refresh or a shared link opens the same one. */
@@ -260,6 +263,25 @@ const MOVEMENT_SERIES = [
 function sumOf<T>(rows: T[], key: keyof T): string {
   return rows.reduce((s, r) => s + Number(r[key]), 0).toLocaleString('en-US')
 }
+
+// Stay extensions: rate and nights by arrival, money by the added nights inside the period.
+const extensionKpis = computed<Kpi[]>(() => {
+  const c = extensionsNow.value
+  const p = extensionsBefore.value
+  const vs = compareLabel.value
+  return [
+    { label: 'Extension rate', icon: 'lucide:calendar-plus', value: pct(c.rate), hint: `${c.extended.toLocaleString('en-US')} of ${c.stays.toLocaleString('en-US')} arriving stays`, ...badge(p && c.rate !== null && p.rate !== null ? c.rate - p.rate : null, formatSignedPoints) },
+    // Longer or shorter extensions are neither good nor bad news: no badge.
+    { label: 'Avg. extra nights', icon: 'lucide:moon', value: nights(c.avgExtraNights), hint: p ? `${nights(p.avgExtraNights)} ${vs}` : 'Per extended stay' },
+    { label: `Extension revenue${basisSuffix.value}`, icon: 'lucide:banknote', value: fullMoney(c.revenue), hint: p ? `${fullMoney(p.revenue)} ${vs}` : 'Added nights in the period', ...badge(p && relativeDelta(c.revenue, p.revenue), formatSignedPercent) },
+    { label: 'Fees saved', icon: 'lucide:piggy-bank', value: fullMoney(c.feesSaved), hint: `${c.viaDirect.toLocaleString('en-US')} OTA ${c.viaDirect === 1 ? 'stay' : 'stays'} extended direct` },
+  ]
+})
+
+const EXTENSION_SERIES = [
+  { key: 'inPlace', label: 'Direct stays extended', color: 'var(--viz-3)' },
+  { key: 'viaDirect', label: 'OTA stays rebooked direct', color: 'var(--viz-1)' },
+]
 
 const partyNote = computed(() => {
   const p = party.value
@@ -498,6 +520,32 @@ const subtitle = computed(() => {
                 :description="partyNote"
                 :buckets="party.buckets"
                 :summary="party.avgGuests === null ? undefined : `${party.avgGuests.toFixed(1)} guests avg.`"
+              />
+
+              <!-- Stay extensions -->
+              <GmKpiCard
+                v-for="k in extensionKpis"
+                :key="k.label"
+                :label="k.label"
+                :icon="k.icon"
+                :value="k.value"
+                :delta="k.deltaText"
+                :trend="k.trend"
+                :hint="k.hint"
+                compact
+                data-testid="analytics-extension-kpi"
+              />
+              <AnalyticsSeriesBarChart
+                class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4"
+                :title="`Extension revenue${basisSuffix}`"
+                description="Added nights inside the period, by how the stay was extended"
+                type="stacked"
+                :rows="extensionRevenue"
+                :series="EXTENSION_SERIES"
+                :format-value="fullMoney"
+                :format-axis="compactMoney"
+                :totals="[{ label: 'in the period', value: fullMoney(extensionsNow.revenue) }]"
+                test-id="analytics-extension-revenue"
               />
             </div>
           </TabsContent>

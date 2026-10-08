@@ -40,6 +40,26 @@ cancellation rate.
 - `AnalyticsSeriesBarChart` is the shared grouped / stacked bar card. It draws its **own wrapping
   legend**: the stock one is a single right-aligned row that spilled into the neighbouring card.
 
+#### Stay extensions (generated, `stayExtensionFor` + `extension-insights.ts`)
+- The generator extends about `EXTENSION_SHARE` (14%) of stays that have a free night after them,
+  usually 1 to 3 nights, now and then a week, **only into the gap it was leaving empty anyway**
+  (no double-booked night). ⚠️ Decided from a hash of the booking id, never `rand`, so adding
+  extensions reshuffled no stay. An extension agreed after the anchor does not exist yet.
+- Same two shapes as the real flow (`docs/claude/stay-extension.md`): a Direct stay grows in place
+  (`extendedNights`, `extendedOn`, already inside `nights` / `checkOut`); an OTA stay keeps its
+  dates and the added nights become a linked Direct booking (`extensionOf`, id `<parent>-ext`,
+  `bookedOn` = the day it was agreed). ⚠️ That linked booking is a reservation like any other in
+  every existing figure (stays, arrivals, channel mix, lead time), as it is on the owner statement.
+- Reservations tab, after Guests and party size: four `GmKpiCard`s (Extension rate with a points
+  badge, Avg. extra nights with no badge, Extension revenue on the basis, Fees saved) and a stacked
+  "Extension revenue" bar card (Direct stays extended / OTA stays rebooked direct).
+- Attribution: rate and extra nights by the stay's **arrival** (linked bookings are not stays of
+  their own here); revenue by the **added nights inside the period**, on the revenue basis, chosen
+  currency only. Fees saved = gross of the linked nights x (OTA fees of the parent's channel minus
+  Direct card fees), always gross.
+- No payment status: the generated data has none (the real flow's pending / paid lives on
+  `ReservationEntry.extensions`).
+
 #### Revenue basis: gross / net / owner net (`revenue-basis.ts`)
 - A sidebar switch, **not a filter**: the same bookings, valued differently. Stored in
   `filters.revenueBasis` (default `gross`), so saved views keep it. Changes revenue, ADR, RevPAR,
@@ -173,6 +193,9 @@ restore, reset.
 `tests/lib/analytics-tabs.spec.ts`: channel and breakdown series add up to the Overview figures,
 per-currency ranking, weekday attribution per night and clipping, pickup / movement dates, the
 party split, stay averages and their comparison pairing.
+`tests/lib/analytics-extensions.spec.ts`: generated share and shapes, linked booking starts at the
+parent's check-out, nothing agreed after the anchor, arrival vs night attribution, no currency
+blending, revenue basis, series adding up.
 `tests/lib/analytics-revenue-basis.spec.ts`: channel fees, basis on revenue / ADR / RevPAR with
 occupancy unchanged, flat and net-basis rules, co-owner shares, uncontracted listings, the rule
 per month a stay crosses, cancelled stays, and that the breakdown adds up.
