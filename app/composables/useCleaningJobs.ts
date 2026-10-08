@@ -1,7 +1,7 @@
 import type { CleaningFilters, CleaningJob, CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { cleanerOptions, cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
-import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
+import { cleaningDateKey, resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
 import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { allStays } from '~/components/operations-calendar/data/calendar-stays'
@@ -191,6 +191,28 @@ export function useCleaningJobs() {
     jobs.value = jobs.value.filter(j => !(j.reservationId === reservationId && j.status !== 'done'))
   }
 
+  /**
+   * A stay's check-out moved (an extension): its open check-out cleanings on
+   * `fromDate` follow it to `toDate` at the same time of day, re-linked to
+   * `toReservationId` (the linked booking of an OTA extension). When that stay
+   * already has an open check-out cleaning on the new day they are dropped
+   * instead, so one departure is never cleaned twice. Returns how many moved
+   * or were dropped.
+   */
+  function moveCheckoutCleanings(fromReservationId: string, fromDate: string, toDate: string, toReservationId = fromReservationId): number {
+    const isOpenCheckout = (j: CleaningJob) => j.source === 'checkout' && j.status !== 'done' && j.status !== 'cancelled'
+    const moving = jobs.value.filter(j => j.reservationId === fromReservationId && isOpenCheckout(j) && cleaningDateKey(j.scheduledAt) === fromDate)
+    if (!moving.length)
+      return 0
+    const covered = jobs.value.some(j => j.reservationId === toReservationId && isOpenCheckout(j) && cleaningDateKey(j.scheduledAt) === toDate)
+    const ids = new Set(moving.map(j => j.id))
+    jobs.value = covered
+      ? jobs.value.filter(j => !ids.has(j.id))
+      // Stored as `YYYY-MM-DDTHH:MM:SS+08:00`: swap the day, keep time and offset.
+      : jobs.value.map(j => ids.has(j.id) ? { ...j, scheduledAt: `${toDate}${j.scheduledAt.slice(10)}`, reservationId: toReservationId } : j)
+    return moving.length
+  }
+
   function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string, guestName?: string }) {
     const { createGuestActivityAlert } = useNotifications()
     const scheduledAt = `${reservation.checkOut}T11:00:00+08:00`
@@ -248,6 +270,7 @@ export function useCleaningJobs() {
     applyReservationSchedule,
     clearReservationSchedule,
     createFromCheckout,
+    moveCheckoutCleanings,
     resolveCleanerNames,
     joinCleanerNames,
     resolveListingName,

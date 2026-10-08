@@ -458,6 +458,41 @@ export interface ReservationEntry {
   damageProtection?: DamageProtection
   /** Recurring cleaning schedule configuration for this reservation */
   cleaningSchedule?: ReservationCleaningSchedule
+  /** Nights added after booking, oldest first. See `useStayExtension`. */
+  extensions?: StayExtension[]
+  /**
+   * Set on the direct booking that carries an OTA stay's added nights: the
+   * id of the OTA reservation it extends. Provenance, the OTA booking is never
+   * rewritten (the channel owns its dates and price).
+   */
+  extensionOf?: string
+}
+
+/** How the guest pays for added nights. */
+export type ExtensionPaymentMethod = 'payment_link' | 'saved_card' | 'at_property' | 'already_paid'
+
+/**
+ * One extension of a stay, frozen when it is confirmed. Lives on the stay the
+ * guest booked (for an OTA stay, the OTA reservation), even when the nights
+ * themselves sit on a linked direct booking.
+ */
+export interface StayExtension {
+  id: string
+  previousCheckOut: string
+  newCheckOut: string
+  extraNights: number
+  nightlyRate: number
+  amount: number
+  currency: string
+  paymentMethod: ExtensionPaymentMethod
+  /** `guestPaid` on the billed stay moves only once this is 'paid'. */
+  paymentStatus: 'pending' | 'paid'
+  paymentRequestId?: string
+  paidAt?: string
+  /** OTA stay: the direct booking that holds the added nights and is billed for them. */
+  linkedReservationId?: string
+  createdAt: string
+  createdBy: string
 }
 
 export interface GuestProfile {

@@ -11,6 +11,7 @@ import EditReservationDialog from '~/components/reservations/EditReservationDial
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationCityTaxSection from '~/components/reservations/ReservationCityTaxSection.vue'
 import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
+import ReservationExtensionsSection from '~/components/reservations/ReservationExtensionsSection.vue'
 import ReservationFolioSection from '~/components/reservations/ReservationFolioSection.vue'
 import ReservationGuestRatingSection from '~/components/reservations/ReservationGuestRatingSection.vue'
 import ReservationHousekeepingSection from '~/components/reservations/ReservationHousekeepingSection.vue'
@@ -261,8 +262,10 @@ function onStatusChange(value: unknown) {
   if (!reservation.value)
     return
   const status = value as ReservationStatus
-  updateReservationStatus(reservation.value.id, status)
-  toast.success(`Status updated to ${reservationStatusLabels[status]}`)
+  const others = updateReservationStatus(reservation.value.id, status).filter(id => id !== reservation.value!.id)
+  toast.success(`Status updated to ${reservationStatusLabels[status]}`, others.length
+    ? { description: `Linked booking${others.length === 1 ? '' : 's'} updated too: ${others.join(', ')}` }
+    : undefined)
 }
 
 const smartLock = useSmartLock()
@@ -754,6 +757,9 @@ const guestGuideRoute = computed(() => {
                       </AccordionContent>
                     </AccordionItem>
                   </Accordion>
+
+                  <!-- Extensions: added nights, their payment, the linked OTA stay -->
+                  <ReservationExtensionsSection :reservation="reservation" />
 
                   <!-- City tax: what the municipality is owed on this stay -->
                   <ReservationCityTaxSection :reservation="reservation" />

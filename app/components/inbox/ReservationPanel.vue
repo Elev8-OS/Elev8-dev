@@ -1,5 +1,8 @@
 <script lang="ts" setup>
 import type { Conversation, PhoneCall, Reservation } from '~/components/inbox/data/conversations'
+import ReservationExtendDialog from '~/components/reservations/ReservationExtendDialog.vue'
+import { useReservationsModule } from '~/composables/useReservationsModule'
+import { canExtend } from '~/composables/useStayExtension'
 
 interface ReservationPanelProps {
   conversation: Conversation
@@ -9,6 +12,14 @@ interface ReservationPanelProps {
 const props = defineProps<ReservationPanelProps>()
 
 const waModalOpen = ref(false)
+const extendOpen = ref(false)
+
+// The inbox `Reservation` is a display copy; extending writes the Reservations
+// module's stay, matched on the same id. A thread with no such stay (an
+// unmatched sender) has nothing to extend.
+const { reservations } = useReservationsModule()
+const stay = computed(() => reservations.value.find(r => r.id === props.reservation.id) ?? null)
+const extendable = computed(() => Boolean(stay.value && canExtend(stay.value)))
 const threeCXCalls = useThreeCxCalls()
 
 const conversationPhoneCalls = computed((): PhoneCall[] =>
@@ -22,10 +33,16 @@ const conversationPhoneCalls = computed((): PhoneCall[] =>
       <h2 class="font-semibold text-sm">
         Reservation
       </h2>
-      <Button variant="ghost" size="sm" class="h-7 gap-1.5 text-xs text-green-600" @click="waModalOpen = true">
-        <Icon name="i-lucide-message-circle" class="size-3.5" />
-        Send WhatsApp
-      </Button>
+      <div class="flex items-center gap-1">
+        <Button v-if="extendable" variant="ghost" size="sm" class="h-7 gap-1.5 text-xs" data-testid="inbox-extend-stay" @click="extendOpen = true">
+          <Icon name="lucide:calendar-plus" class="size-3.5" />
+          Extend stay
+        </Button>
+        <Button variant="ghost" size="sm" class="h-7 gap-1.5 text-xs text-green-600" @click="waModalOpen = true">
+          <Icon name="i-lucide-message-circle" class="size-3.5" />
+          Send WhatsApp
+        </Button>
+      </div>
     </div>
 
     <ScrollArea class="flex-1 min-h-0">
@@ -123,5 +140,7 @@ const conversationPhoneCalls = computed((): PhoneCall[] =>
       :phone="reservation.guestDetails.phone"
       :vars="{ property_name: reservation.listingName, check_in_date: reservation.checkIn }"
     />
+
+    <ReservationExtendDialog v-model:open="extendOpen" :reservation="stay" />
   </div>
 </template>

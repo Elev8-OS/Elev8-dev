@@ -50,6 +50,12 @@ function copyId(id: string) {
   toast.success('Booking ID copied')
 }
 
+const extensionOptions = [
+  { label: 'Any extension', value: 'all' },
+  { label: 'Extended', value: 'extended' },
+  { label: 'Unpaid extension', value: 'unpaid' },
+]
+
 const statusOptions = [
   { label: 'All', value: 'all' },
   ...Object.entries(reservationStatusLabels).map(([value, label]) => ({ label, value })),
@@ -147,6 +153,7 @@ function clearAllFilters() {
   filters.value.listings = []
   filters.value.dateFrom = ''
   filters.value.dateTo = ''
+  filters.value.extension = 'all'
   selectedListingTags.value = []
   listingSearch.value = ''
 }
@@ -156,7 +163,8 @@ const hasActiveFilters = computed(() =>
   || filters.value.status !== 'all'
   || filters.value.listings.length > 0
   || filters.value.dateFrom
-  || filters.value.dateTo,
+  || filters.value.dateTo
+  || filters.value.extension !== 'all',
 )
 
 const dateFilterLabel = computed(() => {
@@ -308,6 +316,18 @@ function confirmRejectOwnerStay() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select v-model="filters.extension">
+        <SelectTrigger class="w-[170px]" data-testid="filter-extension">
+          <Icon name="lucide:calendar-plus" class="size-4 text-muted-foreground" />
+          <SelectValue placeholder="Extension" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="opt in extensionOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </SelectItem>
         </SelectContent>

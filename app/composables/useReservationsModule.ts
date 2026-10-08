@@ -1,10 +1,10 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { ExtensionPaymentMethod, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
-import { generateGuestId, generateReservationId, initialGuests, initialReservations, nightsBetween } from '~/components/reservations/data/reservations'
+import { generateGuestId, generateReservationId, initialGuests, initialReservations, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { usePromoRedemption } from '~/composables/usePromoRedemption'
@@ -15,6 +15,11 @@ export interface ReservationFilters {
   listings: string[]
   dateFrom: string
   dateTo: string
+  /**
+   * extended: stays with an extension, plus their linked extension bookings.
+   * unpaid: the same, narrowed to extensions whose payment is still pending.
+   */
+  extension: 'all' | 'extended' | 'unpaid'
 }
 
 export interface UnitConflict {
@@ -69,6 +74,13 @@ export interface ExtensionQuote {
   rateFromRooms: boolean
 }
 
+/** How an extension is being paid, decided by `useStayExtension` before it is recorded. */
+export interface ExtensionPaymentInput {
+  method: ExtensionPaymentMethod
+  status: 'pending' | 'paid'
+  paymentRequestId?: string
+}
+
 export function useReservationsModule() {
   // Shallow copy: a reservation's array fields (folioItems, activity, rooms,
   // charges...) are still the same array object as the seed's. Nothing
@@ -87,6 +99,7 @@ export function useReservationsModule() {
     listings: [],
     dateFrom: '',
     dateTo: '',
+    extension: 'all',
   }))
 
   /** Reservations that already book the given unit in the given date range. */
@@ -129,9 +142,28 @@ export function useReservationsModule() {
     return ids
   }
 
+  /**
+   * Whether a stay matches the extension filter. A linked extension booking
+   * matches through the extension on its parent that created it, so the pair
+   * is listed (and nested) together.
+   */
+  function matchesExtensionFilter(r: ReservationEntry, mode: ReservationFilters['extension']): boolean {
+    if (mode === 'all')
+      return true
+    const wanted = (e: StayExtension) => mode === 'extended' || e.paymentStatus === 'pending'
+    if (r.extensions?.some(wanted))
+      return true
+    if (!r.extensionOf)
+      return false
+    const parent = reservations.value.find(x => x.id === r.extensionOf)
+    return Boolean(parent?.extensions?.some(e => e.linkedReservationId === r.id && wanted(e)))
+  }
+
   const filteredReservations = computed(() => {
     return reservations.value.filter((r) => {
       if (filters.value.status !== 'all' && r.status !== filters.value.status)
+        return false
+      if (!matchesExtensionFilter(r, filters.value.extension ?? 'all'))
         return false
       if (filters.value.listings.length > 0 && !filters.value.listings.includes(r.listingId))
         return false
@@ -282,14 +314,46 @@ export function useReservationsModule() {
     )
   }
 
-  function updateReservationStatus(id: string, status: ReservationStatus) {
-    reservations.value = reservations.value.map(r =>
-      r.id === id ? { ...r, status } : r,
-    )
+  /**
+   * Which stays a status change applies to. A stay and its linked extension
+   * bookings are one guest stay, so they share a status: changing either
+   * moves the whole group. Two exceptions: cancelling an extension cancels
+   * only that extension (the guest keeps the original nights), and an
+   * extension already cancelled is never brought back.
+   */
+  function statusGroupIds(id: string, status: ReservationStatus): string[] {
+    const r = reservations.value.find(x => x.id === id)
+    if (!r)
+      return []
+    if (r.extensionOf && status === 'cancelled')
+      return [id]
+    const rootId = r.extensionOf ?? r.id
+    const children = reservations.value
+      .filter(x => x.extensionOf === rootId && (x.id === id || x.status !== 'cancelled'))
+      .map(x => x.id)
+    return [rootId, ...children]
+  }
+
+  /** Returns every stay the status landed on (the group, see `statusGroupIds`). */
+  function updateReservationStatus(id: string, status: ReservationStatus): string[] {
+    const ids = statusGroupIds(id, status)
+    if (!ids.length)
+      return []
+    const label = reservationStatusLabels[status]
+    reservations.value = reservations.value.map((r) => {
+      if (!ids.includes(r.id))
+        return r
+      if (r.id === id || r.status === status)
+        return { ...r, status }
+      // A mirrored change says where it came from, on the stay it landed on.
+      const event = activityEvent(`status-sync-${r.id}`, 'Status updated', `Set to ${label} with ${id}`)
+      return { ...r, status, activity: [...r.activity, event] }
+    })
     // When a stay is checked in, feed any connected government registration
-    // provider (APOA / AVS) so guest reports become due automatically.
+    // provider (APOA / AVS) so guest reports become due automatically. Once per
+    // guest stay: an extension carries the same guests, so only the root reports.
     if (status === 'checked_in') {
-      const updated = reservations.value.find(r => r.id === id)
+      const updated = reservations.value.find(r => r.id === ids[0])
       if (updated) {
         try {
           useGuestRegistration().syncForReservation(updated)
@@ -299,8 +363,11 @@ export function useReservationsModule() {
     }
     // A cancelled stay gives its promo codes back: free upsell orders are cancelled and
     // the redemption no longer counts against the code's usage limit.
-    if (status === 'cancelled')
-      usePromoRedemption().releaseForReservation(id)
+    if (status === 'cancelled') {
+      for (const groupId of ids)
+        usePromoRedemption().releaseForReservation(groupId)
+    }
+    return ids
   }
 
   /**
@@ -423,12 +490,24 @@ export function useReservationsModule() {
   }
 
   /**
+   * Where the next extension starts: the stay's own check-out or, for an OTA
+   * stay already extended through linked direct bookings, the last of those.
+   */
+  function extensionStart(r: ReservationEntry): string {
+    return reservations.value
+      .filter(x => x.extensionOf === r.id && x.status !== 'cancelled')
+      .reduce((end, x) => x.checkOut > end ? x.checkOut : end, r.checkOut)
+  }
+
+  /**
    * Prices moving check-out to `newCheckOut`. Room-line stays are priced from
    * their per-night lines (flat-rate lines do not grow), so the Edit dialog,
    * which rebuilds the total from the lines, lands on the same number.
+   * `newNights` / `newTotal` describe an in-place extension; a linked OTA
+   * extension bills only `amount`, on its own booking.
    */
   function quoteExtension(r: ReservationEntry, newCheckOut: string, nightlyRate?: number): ExtensionQuote {
-    const extraNights = Math.max(nightsBetween(r.checkOut, newCheckOut), 0)
+    const extraNights = Math.max(nightsBetween(extensionStart(r), newCheckOut), 0)
     const rateFromRooms = Boolean(r.rooms?.length)
     const rate = rateFromRooms ? defaultNightlyRate(r) : Math.max(nightlyRate ?? defaultNightlyRate(r), 0)
     const amount = roundForCurrency(rate * extraNights, r.currency)
@@ -444,19 +523,23 @@ export function useReservationsModule() {
 
   /**
    * Stays that already hold the listing (or, for room-line bookings, one of
-   * the same units) in the nights the extension would add.
+   * the same units) in the nights the extension would add. The stay's own
+   * linked extension bookings never count against it.
    */
   function getExtensionConflicts(id: string, newCheckOut: string): ReservationEntry[] {
     const r = reservations.value.find(x => x.id === id)
-    if (!r || newCheckOut <= r.checkOut)
+    if (!r)
+      return []
+    const from = extensionStart(r)
+    if (newCheckOut <= from)
       return []
     const ownUnits = new Set((r.rooms ?? []).map(l => l.unitId))
     return reservations.value.filter((other) => {
-      if (other.id === r.id || other.listingId !== r.listingId || other.status === 'cancelled')
+      if (other.id === r.id || other.extensionOf === r.id || other.listingId !== r.listingId || other.status === 'cancelled')
         return false
       if (other.status === 'inquiry' && other.blocksAvailability === false)
         return false
-      if (!rangesOverlap(r.checkOut, newCheckOut, other.checkIn, other.checkOut))
+      if (!rangesOverlap(from, newCheckOut, other.checkIn, other.checkOut))
         return false
       // Both booked by unit: only a shared unit collides.
       if (ownUnits.size && other.rooms?.length)
@@ -465,38 +548,78 @@ export function useReservationsModule() {
     })
   }
 
-  function extendReservation(id: string, input: { checkOut: string, nightlyRate?: number }): { success: boolean, error?: string } {
+  function validateExtension(id: string, checkOut: string): { r?: ReservationEntry, error?: string } {
     const r = reservations.value.find(x => x.id === id)
     if (!r)
-      return { success: false, error: 'Reservation not found.' }
+      return { error: 'Reservation not found.' }
     if (NON_EXTENDABLE_STATUSES.includes(r.status))
-      return { success: false, error: 'This stay can no longer be extended.' }
-    if (input.checkOut <= r.checkOut)
-      return { success: false, error: 'Pick a check-out date after the current one.' }
-    const conflicts = getExtensionConflicts(id, input.checkOut)
+      return { error: 'This stay can no longer be extended.' }
+    if (checkOut <= extensionStart(r))
+      return { error: 'Pick a check-out date after the current one.' }
+    const conflicts = getExtensionConflicts(id, checkOut)
     if (conflicts.length)
-      return { success: false, error: `Those nights are already booked by ${conflicts[0]!.guestName}.` }
+      return { error: `Those nights are already booked by ${conflicts[0]!.guestName}.` }
+    return { r }
+  }
 
+  function buildExtension(r: ReservationEntry, from: string, checkOut: string, quote: ExtensionQuote, payment: ExtensionPaymentInput, linkedReservationId?: string): StayExtension {
+    const now = new Date().toISOString()
+    return {
+      id: `ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      previousCheckOut: from,
+      newCheckOut: checkOut,
+      extraNights: quote.extraNights,
+      nightlyRate: quote.nightlyRate,
+      amount: quote.amount,
+      currency: r.currency,
+      paymentMethod: payment.method,
+      paymentStatus: payment.status,
+      ...(payment.paymentRequestId ? { paymentRequestId: payment.paymentRequestId } : {}),
+      ...(payment.status === 'paid' ? { paidAt: now } : {}),
+      ...(linkedReservationId ? { linkedReservationId } : {}),
+      createdAt: now,
+      createdBy: actorName(),
+    }
+  }
+
+  function moneyLabel(amount: number, currency: string): string {
+    const digits = currency === 'IDR' ? 0 : 2
+    return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
+  }
+
+  /**
+   * Moves the stay's own check-out. Without `payment` the added nights count
+   * as paid (the original behaviour); with a pending payment `guestPaid` waits
+   * for `markExtensionPaid`.
+   */
+  function extendReservation(id: string, input: { checkOut: string, nightlyRate?: number, payment?: ExtensionPaymentInput }): { success: boolean, error?: string, extensionId?: string } {
+    const { r, error } = validateExtension(id, input.checkOut)
+    if (!r)
+      return { success: false, error }
+
+    const payment = input.payment ?? { method: 'already_paid', status: 'paid' }
+    const paid = payment.status === 'paid'
     const quote = quoteExtension(r, input.checkOut, input.nightlyRate)
     const rooms = r.rooms?.map(l => isPerNightLine(l)
       ? { ...l, lineTotal: roundForCurrency(l.pricePerNight * quote.newNights, r.currency) }
       : l)
     // The folio owns `priceDetails.extras`; the extension only moves the room
-    // subtotal and keeps guestPaid / payout in step, as the folio does.
+    // subtotal and keeps payout in step, as the folio does. guestPaid follows
+    // the money: it moves now only when the nights are already paid.
     const priceDetails = r.priceDetails
       ? {
           ...r.priceDetails,
           subtotal: roundForCurrency(r.priceDetails.subtotal + quote.amount, r.currency),
-          guestPaid: roundForCurrency(r.priceDetails.guestPaid + quote.amount, r.currency),
+          guestPaid: paid ? roundForCurrency(r.priceDetails.guestPaid + quote.amount, r.currency) : r.priceDetails.guestPaid,
           payout: roundForCurrency(r.priceDetails.payout + quote.amount, r.currency),
         }
       : undefined
 
-    const amountLabel = `${r.currency} ${quote.amount.toLocaleString('en-US', { minimumFractionDigits: r.currency === 'IDR' ? 0 : 2, maximumFractionDigits: r.currency === 'IDR' ? 0 : 2 })}`
+    const extension = buildExtension(r, r.checkOut, input.checkOut, quote, payment)
     const event = activityEvent(
       'extend',
       'Stay extended',
-      `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'} added, check-out moved from ${r.checkOut} to ${input.checkOut} · ${amountLabel}`,
+      `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'} added, check-out moved from ${r.checkOut} to ${input.checkOut} · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
     )
 
     reservations.value = reservations.value.map(x =>
@@ -508,6 +631,7 @@ export function useReservationsModule() {
             totalPrice: quote.newTotal,
             ...(rooms ? { rooms } : {}),
             ...(priceDetails ? { priceDetails } : {}),
+            extensions: [...(x.extensions ?? []), extension],
             activity: [...x.activity, event],
           }
         : x,
@@ -518,13 +642,125 @@ export function useReservationsModule() {
     const previousNights = r.nights
     void import('~/composables/useDamageProtection')
       .then(m => m.useDamageProtection().reassessOnExtension(id, previousNights))
-    return { success: true }
+    return { success: true, extensionId: extension.id }
+  }
+
+  /**
+   * Extends an OTA stay without touching it: the channel owns the booking's
+   * dates and price, so the added nights become a direct booking for the same
+   * guest and rooms, starting where the stay (or its last extension) ends.
+   * The extension is recorded on the OTA stay; the new booking is billed.
+   */
+  function extendViaLinkedBooking(id: string, input: { checkOut: string, nightlyRate?: number, payment: ExtensionPaymentInput }): { success: boolean, error?: string, extensionId?: string, linkedReservationId?: string } {
+    const { r, error } = validateExtension(id, input.checkOut)
+    if (!r)
+      return { success: false, error }
+
+    const from = extensionStart(r)
+    const quote = quoteExtension(r, input.checkOut, input.nightlyRate)
+    const paid = input.payment.status === 'paid'
+    // Per-night room lines carry over for the added nights; a flat-rate line
+    // was paid once on the OTA booking and is not charged again.
+    const rooms = r.rooms
+      ?.filter(isPerNightLine)
+      .map(l => ({ ...l, id: `${l.id}-ext`, lineTotal: roundForCurrency(l.pricePerNight * quote.extraNights, r.currency) }))
+    const draft: ReservationDraft & Partial<ReservationEntry> = {
+      guestId: r.guestId,
+      guestName: r.guestName,
+      guestEmail: r.guestEmail,
+      guestPhone: r.guestPhone,
+      guestLanguage: r.guestLanguage,
+      guestNotes: r.guestNotes,
+      guestFirstName: r.guestFirstName,
+      guestLastName: r.guestLastName,
+      listingId: r.listingId,
+      listingName: r.listingName,
+      channel: 'Direct',
+      checkIn: from,
+      checkOut: input.checkOut,
+      nights: quote.extraNights,
+      guestCount: r.guestCount,
+      guestAdults: r.guestAdults,
+      guestChildren: r.guestChildren,
+      guestInfants: r.guestInfants,
+      totalPrice: quote.amount,
+      currency: r.currency,
+      priceDetails: {
+        subtotal: quote.amount,
+        cleaningFee: 0,
+        serviceFee: 0,
+        tax: 0,
+        extras: 0,
+        guestPaid: paid ? quote.amount : 0,
+        commission: 0,
+        payout: quote.amount,
+      },
+      ...(rooms?.length ? { rooms } : {}),
+      ...(r.assignedUnitIds?.length ? { assignedUnitIds: r.assignedUnitIds } : {}),
+      // The guest is the one already in the house: carry the stay's cleaning
+      // rhythm over the added nights instead of the listing default.
+      ...(r.cleaningSchedule ? { cleaningSchedule: { ...r.cleaningSchedule, startDate: from } } : {}),
+      bookingNote: `Extension of ${r.channel} reservation ${r.id}.`,
+      extensionOf: r.id,
+      // One guest stay, one status (see `statusGroupIds`).
+      status: r.status,
+    }
+    const created = createReservation(draft)
+    if (!created.success || !created.id)
+      return { success: false, error: 'Could not create the extension booking.' }
+    const linkedId = created.id
+
+    const extension = buildExtension(r, from, input.checkOut, quote, input.payment, linkedId)
+    const nightsLabel = `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'}`
+    const parentEvent = activityEvent(
+      'extend',
+      'Stay extended',
+      `${nightsLabel} added from ${from} to ${input.checkOut} as direct booking ${linkedId}, the ${r.channel} reservation is unchanged · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
+    )
+    const linkedEvent = activityEvent('extension-of', 'Created as an extension', `${nightsLabel} added to ${r.channel} reservation ${r.id}`)
+
+    reservations.value = reservations.value.map((x) => {
+      if (x.id === id)
+        return { ...x, extensions: [...(x.extensions ?? []), extension], activity: [...x.activity, parentEvent] }
+      if (x.id === linkedId)
+        return { ...x, activity: [...x.activity, linkedEvent] }
+      return x
+    })
+    return { success: true, extensionId: extension.id, linkedReservationId: linkedId }
+  }
+
+  /**
+   * Records the money for a pending extension: guestPaid moves on the stay
+   * that was billed (the linked booking for an OTA extension).
+   */
+  function markExtensionPaid(id: string, extensionId: string): boolean {
+    const r = reservations.value.find(x => x.id === id)
+    const ext = r?.extensions?.find(e => e.id === extensionId)
+    if (!r || !ext || ext.paymentStatus === 'paid')
+      return false
+    const billedId = ext.linkedReservationId ?? r.id
+    const paidAt = new Date().toISOString()
+    const event = activityEvent('extension-paid', 'Extension paid', `${moneyLabel(ext.amount, ext.currency)} for ${ext.extraNights} added night${ext.extraNights === 1 ? '' : 's'}`)
+    reservations.value = reservations.value.map((x) => {
+      let next = x
+      if (x.id === id) {
+        next = {
+          ...next,
+          extensions: (next.extensions ?? []).map(e => e.id === extensionId ? { ...e, paymentStatus: 'paid' as const, paidAt } : e),
+          activity: [...next.activity, event],
+        }
+      }
+      if (x.id === billedId && next.priceDetails)
+        next = { ...next, priceDetails: { ...next.priceDetails, guestPaid: roundForCurrency(next.priceDetails.guestPaid + ext.amount, next.currency) } }
+      return next
+    })
+    return true
   }
 
   function reset() {
     reservations.value = initialReservations.map(r => ({ ...r }))
     guests.value = initialGuests.map(g => ({ ...g }))
-    filters.value = { search: '', status: 'all', listings: [], dateFrom: '', dateTo: '' }
+    filters.value = { search: '', status: 'all', listings: [], dateFrom: '', dateTo: '', extension: 'all' }
   }
 
   return {
@@ -552,7 +788,10 @@ export function useReservationsModule() {
     defaultNightlyRate,
     quoteExtension,
     getExtensionConflicts,
+    extensionStart,
     extendReservation,
+    extendViaLinkedBooking,
+    markExtensionPaid,
     reset,
   }
 }
