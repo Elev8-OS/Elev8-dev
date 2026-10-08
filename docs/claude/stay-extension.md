@@ -63,6 +63,13 @@ two ways (see `docs/claude/analytics.md`, Stay extensions). Owner statements do 
 a linked booking is its own Direct line, and gross follows `guestPaid` (cash basis), so an unpaid
 extension reaches the owner only once marked paid.
 
+**Demo seed** (`reservations/data/stay-extension-demo.ts`, dates relative to today, guest profiles
+included): a Direct stay extended in place across the month end (29th to the 3rd, paid), a Direct
+in-house stay with an unpaid extension, an Airbnb stay with a paid linked booking, and a Booking.com
+stay extended twice (chained, second unpaid). Single-unit listings lst-8, lst-11, lst-13, clear of
+other stays. ⚠️ Keep it shaped like what `extendReservation` / `extendViaLinkedBooking` write:
+`tests/components/reservations/stay-extension-demo.spec.ts` checks the links, money and filters.
+
 **Not implemented:** no real OTA alteration request; no auto "paid" when a payment link is paid
 (staff click Mark paid); off-platform links in Airbnb threads may be blocked by Airbnb (the
 payment step says so).

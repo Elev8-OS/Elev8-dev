@@ -4,6 +4,7 @@ import type { ReservationCleaningSchedule } from '~/components/reservations/data
 import type { FolioItem } from '~/components/reservations/data/folio'
 import type { TernTier } from '~/components/reservations/data/tern-products'
 import { damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
+import { stayExtensionDemoGuests, stayExtensionDemoReservations } from '~/components/reservations/data/stay-extension-demo'
 
 export type {
   CustomCleaningFrequency,
@@ -1729,6 +1730,7 @@ export const initialReservations: ReservationEntry[] = [
 // Demo stays that make every damage-protection bucket reachable on first load.
 // Kept in their own module because their dates are relative to today.
 initialReservations.push(...damageProtectionDemoReservations)
+initialReservations.push(...stayExtensionDemoReservations)
 
 export const initialGuests: GuestProfile[] = [
   {
@@ -1809,6 +1811,8 @@ export const initialGuests: GuestProfile[] = [
     createdAt: '2026-08-18',
   },
 ]
+
+initialGuests.push(...stayExtensionDemoGuests)
 
 // Convenience: helper to compute nights between two ISO dates
 export function nightsBetween(checkIn: string, checkOut: string): number {
