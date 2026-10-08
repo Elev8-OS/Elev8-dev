@@ -1,6 +1,7 @@
 import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { listings } from '~/components/listings/data/listings'
+import { sellableServices } from '~/components/upsells/data/upsell-services'
 import { useNotifications } from '~/composables/useNotifications'
 import { useSmartLock } from '~/composables/useSmartLock'
 import { useUpsellLockAccess } from '~/composables/useUpsellLockAccess'
@@ -302,7 +303,7 @@ describe('catalog filter: grants lock access', () => {
   it('defaults to showing every service', () => {
     const { services, filteredServices, filterLockAccess } = useUpsellServices()
     expect(filterLockAccess.value).toBe('all')
-    expect(filteredServices.value).toHaveLength(services.value.length)
+    expect(filteredServices.value).toHaveLength(sellableServices(services.value).length)
   })
 
   it('narrows to the services that hand out a code', () => {
@@ -340,6 +341,6 @@ describe('catalog filter: grants lock access', () => {
     clearFilters()
 
     expect(filterLockAccess.value).toBe('all')
-    expect(filteredServices.value).toHaveLength(services.value.length)
+    expect(filteredServices.value).toHaveLength(sellableServices(services.value).length)
   })
 })

@@ -66,6 +66,8 @@ const REFUSALS: Record<string, string> = {
   host_needs_waiver: 'Where you pay for the cover, the damage waiver must stay on. A deposit has nothing for you to pay for.',
   waiver_not_activated: 'Activate the damage waiver first: host-paid cover needs Elev8 Cover.',
   package_missing: 'Choose a package for the damage waiver first.',
+  package_not_priced: 'Elev8 Cover does not offer this package in that currency yet.',
+  guest_price_missing: 'Set what the guest pays for the package.',
   deposit_limit_missing: 'Set the most the guest\'s card may be charged.',
   settle_days_missing: 'Set how many days after check-out you decide on the deposit.',
 }

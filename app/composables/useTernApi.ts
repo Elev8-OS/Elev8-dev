@@ -1,8 +1,10 @@
+import type { TernProduct } from '~/components/reservations/data/tern-products'
 import type { TernApiClient } from '~/lib/tern/client'
 import type { TernMockControls } from '~/lib/tern/mock-client'
 import type { TernBooking } from '~/lib/tern/types'
 import { listings } from '~/components/listings/data/listings'
 import { elev8CoverPartner } from '~/components/reservations/data/damage-protection-seed'
+import { TERN_PRODUCTS } from '~/components/reservations/data/tern-products'
 import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { useTenantBillTo } from '~/composables/useTenantBillTo'
@@ -29,6 +31,9 @@ const client: TernApiClient = mock.client
 export function resetTernMock() {
   mock.controls.reset()
 }
+
+/** The mock catalogue round trip. Long enough for the loading state to show. */
+const CATALOGUE_MOCK_MS = 600
 
 export type TernSyncResult = { ok: true, bookingId?: number } | { ok: false, reason: string }
 
@@ -129,8 +134,21 @@ export function useTernApi() {
     return result.ok ? (result.bookingId ?? bookingIds.value[reservationId] ?? null) : null
   }
 
+  /**
+   * The partner's packages (Elev8 Cover tiers) priced in `currency`, what the
+   * tenant picks from when activating. ⚠️ Tern's API v0 has no catalogue
+   * endpoint yet, so the mock answers from `TERN_PRODUCTS` (placeholder figures)
+   * after a delay; a real integration reads Tern's products through our server
+   * routes (`ternCoverageFromSpec`) and nothing else changes.
+   */
+  async function fetchPackages(currency: string): Promise<TernProduct[]> {
+    await new Promise(resolve => setTimeout(resolve, CATALOGUE_MOCK_MS))
+    return TERN_PRODUCTS.filter(p => p.prices[currency])
+  }
+
   return {
     client,
+    fetchPackages,
     controls: mock.controls as TernMockControls,
     bookingIds,
     bookingFor,

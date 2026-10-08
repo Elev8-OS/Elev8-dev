@@ -296,6 +296,12 @@ export function isProtectionService(service: Pick<UpsellService, 'category'>): b
   return service.category === PROTECTION_CATEGORY
 }
 
+/**
+ * The categories the Upsells page offers (create menu, category filter). Damage
+ * Protection is not one: its package is set in Settings, Damage protection.
+ */
+export const CATALOG_CATEGORIES: UpsellCategory[] = UPSPELL_CATEGORIES.filter(c => c !== PROTECTION_CATEGORY)
+
 /** Upsells sold as upsells: everything except the damage protection packages. */
 export function sellableServices<T extends Pick<UpsellService, 'category'>>(services: T[]): T[] {
   return services.filter(s => !isProtectionService(s))
@@ -745,7 +751,7 @@ export const mockUpsellServices: UpsellService[] = [
     category: 'Damage Protection',
     currency: 'USD',
     youtubeLinks: [],
-    internalNotes: 'Listings assigned here offer the Bronze damage waiver. Set the deposit on each listing\'s Protection tab.',
+    internalNotes: 'A damage waiver package (Elev8 Cover). The one every listing offers is set in Settings, Damage protection.',
     notificationUsers: [],
     pricingEnabled: false,
     taxPercent: 0,
@@ -770,7 +776,7 @@ export const mockUpsellServices: UpsellService[] = [
     category: 'Damage Protection',
     currency: 'USD',
     youtubeLinks: [],
-    internalNotes: 'Listings assigned here offer the Silver damage waiver. Set the deposit on each listing\'s Protection tab.',
+    internalNotes: 'A damage waiver package (Elev8 Cover). The one every listing offers is set in Settings, Damage protection.',
     notificationUsers: [],
     pricingEnabled: false,
     taxPercent: 0,
@@ -795,7 +801,7 @@ export const mockUpsellServices: UpsellService[] = [
     category: 'Damage Protection',
     currency: 'USD',
     youtubeLinks: [],
-    internalNotes: 'Listings assigned here offer the Bronze+ damage waiver. Set the deposit on each listing\'s Protection tab.',
+    internalNotes: 'A damage waiver package (Elev8 Cover). The one every listing offers is set in Settings, Damage protection.',
     notificationUsers: [],
     pricingEnabled: false,
     taxPercent: 0,
@@ -820,7 +826,7 @@ export const mockUpsellServices: UpsellService[] = [
     category: 'Damage Protection',
     currency: 'USD',
     youtubeLinks: [],
-    internalNotes: 'Listings assigned here offer the Silver+ damage waiver. Set the deposit on each listing\'s Protection tab.',
+    internalNotes: 'A damage waiver package (Elev8 Cover). The one every listing offers is set in Settings, Damage protection.',
     notificationUsers: [],
     pricingEnabled: false,
     taxPercent: 0,
@@ -845,7 +851,7 @@ export const mockUpsellServices: UpsellService[] = [
     category: 'Damage Protection',
     currency: 'USD',
     youtubeLinks: [],
-    internalNotes: 'Listings assigned here offer the Gold+ damage waiver. Set the deposit on each listing\'s Protection tab.',
+    internalNotes: 'A damage waiver package (Elev8 Cover). The one every listing offers is set in Settings, Damage protection.',
     notificationUsers: [],
     pricingEnabled: false,
     taxPercent: 0,

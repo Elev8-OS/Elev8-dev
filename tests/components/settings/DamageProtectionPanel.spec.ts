@@ -36,7 +36,11 @@ const STUBS = {
     template: '<input type="checkbox" :checked="modelValue" :disabled="disabled" @change="$emit(\'update:modelValue\', $event.target.checked)">',
   },
   CoverageBreakdown: true,
-  UpsellDrawer: { name: 'UpsellDrawerStub', props: ['open', 'service', 'initialCategory'], template: '<div data-testid="upsell-drawer" />' },
+  DialogContent: passthrough,
+  DialogHeader: passthrough,
+  DialogTitle: passthrough,
+  DialogDescription: passthrough,
+  DialogFooter: passthrough,
   TernActivationWizard: true,
 }
 
@@ -91,11 +95,26 @@ describe('settings, Damage protection', () => {
     expect(wrapper.find('[data-testid="protection-edit-package"]').exists()).toBe(true)
   })
 
-  it('edits the one package the waiver uses, never adds another', async () => {
+  it('edits the one package with the partner\'s packages and a price, never the upsell form', async () => {
+    const dp = useDamageProtection()
+    dp.setProtectionSettings({ waiver: false })
     const wrapper = mountPanel()
     expect(wrapper.find('[data-testid="protection-new-package"]').exists()).toBe(false)
+    // Only setTimeout: a faked clock would date the cards' click handlers in the future, and Vue drops the click.
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
     await wrapper.find('[data-testid="protection-edit-package"]').trigger('click')
-    expect(wrapper.findComponent({ name: 'UpsellDrawerStub' }).props('service')?.id).toBe('svc-dp-bronze')
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+    await nextTick()
+    // Starts from the current package and its price.
+    expect(wrapper.find('[data-testid="tern-package-bronze"]').attributes('aria-checked')).toBe('true')
+    await wrapper.find('[data-testid="tern-package-silver"]').trigger('click')
+    await wrapper.find('[data-testid="tern-guest-price"]').setValue('65')
+    await wrapper.find('[data-testid="partner-package-save"]').trigger('click')
+    expect(dp.currentPackage.value).toMatchObject({ serviceId: 'svc-dp-bronze', tier: 'silver', guestPrice: 65 })
+    // An edit leaves the waiver as it was.
+    expect(dp.settings.value.waiver).toBe(false)
+    expect(wrapper.find('[data-testid="partner-package-dialog"]').exists()).toBe(false)
   })
 
   it('cannot switch the waiver on before activation, and offers the Activate button instead', () => {

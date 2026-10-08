@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BALI_LISTINGS, UPSPELL_CATEGORIES } from '@/components/upsells/data/upsell-services'
+import { BALI_LISTINGS, CATALOG_CATEGORIES } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 
 const { filterCategory, filterStatus, filterListing, filterLockAccess, clearFilters } = useUpsellServices()
@@ -17,7 +17,7 @@ const { filterCategory, filterStatus, filterListing, filterLockAccess, clearFilt
           <SelectItem value="all">
             All categories
           </SelectItem>
-          <SelectItem v-for="cat in UPSPELL_CATEGORIES" :key="cat" :value="cat">
+          <SelectItem v-for="cat in CATALOG_CATEGORIES" :key="cat" :value="cat">
             {{ cat }}
           </SelectItem>
         </SelectContent>

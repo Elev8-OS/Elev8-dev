@@ -36,7 +36,10 @@ per-listing setup of 2026-10-06). There is no Protection tab on the listing deta
 - **Deposit channels**: a deposit ON ITS OWN is asked on `depositChannels` (absent = Direct only).
   ⚠️ With the waiver on they are ignored: every channel is covered and the chips show on and locked.
 - ⚠️ **A protection upsell is never sold as an upsell**: `sellableServices` / `isProtectionService`
-  keep it out of the inbox order creator, the folio catalog (`folioCatalogRows`) and the promo picker.
+  keep it out of the inbox order creator, the folio catalog (`folioCatalogRows`) and the promo picker,
+  and off the **Upsells page** altogether (2026-10-08: `useUpsellServices().filteredServices` drops it,
+  `CATALOG_CATEGORIES` leaves the category out of the create menu and filter). It is reached only from
+  Settings, Damage protection (Edit package) and the activation wizard.
 - Writers: `setProtectionSettings(patch)` (refuses `package_missing`, `host_needs_waiver`,
   `deposit_limit_missing`, `settle_days_missing`), `setProtectionPayer(payer)` (refuses
   `waiver_not_activated`, then as above) and `turnOffProtection()` (waiver and deposit off, guest pays,
@@ -267,9 +270,11 @@ in the sidebar under Booking & Payments after Payouts; the worklist's **Settings
 - **`TernActivationCard`** with the **Activate** button (or Connect Stripe without a Stripe payout).
 - **Damage waiver** card: the switch (disabled until activated; once activation is undone it reads
   "Paused"), **Package, every listing**, read only (no picker, 2026-10-08: the waiver uses ONE upsell; "Paused" when
-  its upsell is inactive) with **Edit package**, which opens the `UpsellDrawer` in place on that upsell
-  (also to switch a paused one back on); there is no New package. "Create a package"
-  shows only when no protection upsell exists, and saving it while active makes it the package), the package summary
+  its upsell is inactive) with **Edit package**, which opens `PartnerPackageDialog`: the SAME partner
+  packages and guest price as the activation step (`PartnerPackagePicker`, shared), never the upsell form.
+  Save calls `setWaiverPackage(tier, price, currency, turnOn)`; an edit leaves the waiver as it is and
+  switches a paused upsell back on. "Choose a package" shows only when no package exists; saving it while
+  active also turns the waiver on., the package summary
   with Elev8's fee, "What's covered" (`CoverageBreakdown`), **Who pays** (Guest pays / Host pays, Host
   pays disabled until activation and the waiver on) and, under Guest pays, the host-cover fallback.
 - **Deposit** card: switch (on and locked while the waiver is on), card limit and decision days (saved
@@ -277,6 +282,8 @@ in the sidebar under Booking & Payments after Payouts; the worklist's **Settings
 - **Listings** card, read only: every listing with its payout and what its guests are offered under
   these settings (Waiver or deposit / Waiver only / Deposit only / Waiver, host pays / Not covered, with
   the `blockText` reason, the no-Stripe note or the undersized flag).
+- ⚠️ Specs that click the package cards fake ONLY `setTimeout` (`vi.useFakeTimers({ toFake: ['setTimeout'] })`):
+  a faked clock dates the cards' click handlers in the future, and Vue drops the real-time click as stale.
 - **Turn off** sits in the activation card beside Change bank account (shown while active and anything is on): `turnOffProtection()`.
 - **Auto-activate host-paid protection if the guest doesn't buy the upsell** (Guest pays only):
   `hostFallback` + `hostFallbackDays` (1, 2, 3, 5, 7 or 14; default 1).
@@ -308,12 +315,18 @@ alerts **directly**, not through `dismiss()`.
 
 **Activating the damage waiver** (`data/tern-activation.ts` framework-free,
 `useTernActivation`, owner's decision 2026-09-25). Before any waiver runs, the tenant activates
-the service in a 4-step wizard (`TernActivationWizard.vue`, opened from `TernActivationCard.vue` at
+the service in a 5-step wizard (`TernActivationWizard.vue`, opened from `TernActivationCard.vue` at
 the top of Settings, Damage protection): **Terms** (`TERN_ACTIVATION_TERMS`, the tier table, the
-deductible) → **Package** (2026-10-08: one card per protection upsell, the current package picked
-first, **Edit package** opens the `UpsellDrawer` in place on the picked one ("Create a package" only when
-none exists); `ActivationDraft.packageServiceId`, required)
-→ **Bank account** (where Tern pays claims) → **Review**, then **Activate** registers the
+deductible) → **Package** (2026-10-08: ⚠️ the PARTNER's packages, never upsells. `useTernApi().fetchPackages
+(PACKAGE_CURRENCY)` reads the partner's catalogue when the wizard opens (loading state; Tern's API v0 has no
+catalogue endpoint, so the mock answers from `TERN_PRODUCTS` after 600ms; the picker reads it on mount), one card per tier with its size,
+cover and Elev8's fee; then the tenant MUST set **Guest pays per package (30 nights)**, with the margin shown.
+`ActivationDraft.packageTier` + `guestPrice`, both required (`validatePackageChoice`, shared with Edit package); starts from the
+current package and its price. `PACKAGE_CURRENCY` is USD, the only currency the partner prices.)
+→ **Who pays** (`ActivationDraft.payer`, Guest pays / Host pays, starts from `settings.payer`; applied with
+`setProtectionPayer` right after `setWaiverPackage` on success) → **Bank account** (where Tern pays claims) → **Review** (with a Who pays row; ⚠️ guest-paid shows an amber
+"Guests cannot skip this" warning: every guest booking must buy the waiver or leave a deposit card before
+arrival), then **Activate** registers the
 tenant as an organization on Tern (mock, 1.5s, stores an integer `ternOrganizationId`; a "simulate
 Tern refusing" switch makes it fail). ⚠️ Tern's API v0 has no organization endpoint: in production
 Tern sets the organization up and hands over its id, and the bank account is registered with Tern
@@ -339,8 +352,11 @@ outside the API (`ternRegistrationPayload` has nowhere to go yet).
   A deposit on its own is not Tern's and keeps working. The Settings page marks a paused waiver
   and disables "Host pays".
 - ⚠️ **A successful Activate switches the waiver on for EVERY listing** with the picked package, and
-  the deposit with it: the wizard calls `useDamageProtection().setProtectionSettings({ waiver: true,
-  packageServiceId })`. `useTernActivation` never reads `useDamageProtection` (that would close a
+  the deposit with it: the wizard calls `useDamageProtection().setWaiverPackage(tier, guestPrice, currency)`,
+  which writes the tier and price onto the waiver's ONE Damage Protection upsell (the current one, renamed
+  "Elev8 Cover <tier>" only while it still has its default name; a new one when none exists, with no
+  listings) and sets it as `packageServiceId` with the waiver on. Refuses `package_not_priced` and
+  `guest_price_missing`. `useTernActivation` never reads `useDamageProtection` (that would close a
   cycle), so the write lives in the wizard. A settings change before activation is not refused: the
   waiver simply stays paused, and the page says so.
 - ⚠️ **One bank account per tenant for now.** Whether Tern accepts one per listing is still to be

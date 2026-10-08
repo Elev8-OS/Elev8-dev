@@ -29,7 +29,7 @@ function bank(patch: Partial<TernBankDraft> = {}): TernBankDraft {
 }
 
 function draft(patch: Partial<ActivationDraft> = {}): ActivationDraft {
-  return { termsAccepted: true, packageServiceId: 'svc-dp-bronze', bank: bank(), ...patch }
+  return { termsAccepted: true, packageTier: 'bronze', guestPrice: 39, payer: 'guest', bank: bank(), ...patch }
 }
 
 describe('validateBankDraft', () => {
@@ -66,11 +66,17 @@ describe('the steps', () => {
     expect(firstInvalidActivationStep(draft())).toBeNull()
     expect(firstInvalidActivationStep(draft({ bank: emptyBankDraft() }))).toBe('bank')
     expect(firstInvalidActivationStep(draft({ termsAccepted: false, bank: emptyBankDraft() }))).toBe('terms')
-    expect(firstInvalidActivationStep(draft({ packageServiceId: null, bank: emptyBankDraft() }))).toBe('package')
+    expect(firstInvalidActivationStep(draft({ packageTier: null, bank: emptyBankDraft() }))).toBe('package')
+  })
+
+  it('needs a partner package and a price the guest pays for it', () => {
+    expect(validateActivationStep(draft({ packageTier: null }), 'package')).toHaveProperty('packageTier')
+    expect(validateActivationStep(draft({ guestPrice: 0 }), 'package')).toHaveProperty('guestPrice')
+    expect(validateActivationStep(draft({ packageTier: 'gold', guestPrice: 79 }), 'package')).toEqual({})
   })
 
   it('has no card step: the per-stay fees go on the subscription card from onboarding', () => {
-    expect(ACTIVATION_STEPS.map(s => s.id)).toEqual(['terms', 'package', 'bank', 'review'])
+    expect(ACTIVATION_STEPS.map(s => s.id)).toEqual(['terms', 'package', 'payer', 'bank', 'review'])
   })
 
   it('carries the bank over from a record, but asks for the terms again', () => {

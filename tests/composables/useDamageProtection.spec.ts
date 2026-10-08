@@ -251,6 +251,12 @@ describe('one setting for every listing', () => {
     expect(dp.listingProtection('lst-3').block).toBe('currency_mismatch')
   })
 
+  it('stays off the Upsells page: no catalog row, no create or filter category', async () => {
+    const { CATALOG_CATEGORIES } = await import('~/components/upsells/data/upsell-services')
+    expect(CATALOG_CATEGORIES).not.toContain('Damage Protection')
+    expect(useUpsellServices().filteredServices.value.some(s => s.category === 'Damage Protection')).toBe(false)
+  })
+
   it('is not an upsell anyone can order: the folio and inbox lists leave it out', async () => {
     const { sellableServices } = await import('~/components/upsells/data/upsell-services')
     expect(sellableServices(useUpsellServices().services.value).some(s => s.id === 'svc-dp-bronze')).toBe(false)
@@ -263,6 +269,23 @@ describe('one setting for every listing', () => {
     expect(dp.setProtectionSettings({ depositLimit: 0 })).toEqual({ ok: false, reason: 'deposit_limit_missing' })
     expect(dp.setProtectionSettings({ settleWithinDays: 0 })).toEqual({ ok: false, reason: 'settle_days_missing' })
     expect(dp.policyFor('lst-1', 5)?.deposit.rate).toBe(800)
+  })
+
+  it('writes the partner package onto the waiver\'s one upsell, at the tenant\'s price', () => {
+    const dp = useDamageProtection()
+    expect(dp.setWaiverPackage('silver', 0, 'USD')).toEqual({ ok: false, reason: 'guest_price_missing' })
+    expect(dp.setWaiverPackage('silver', 65, 'IDR')).toEqual({ ok: false, reason: 'package_not_priced' })
+    const before = useUpsellServices().services.value.length
+    expect(dp.setWaiverPackage('silver', 65, 'USD')).toEqual({ ok: true })
+    // The same upsell, renamed while it carried its default name: no second upsell.
+    expect(useUpsellServices().services.value).toHaveLength(before)
+    expect(dp.currentPackage.value).toMatchObject({ serviceId: 'svc-dp-bronze', serviceName: 'Elev8 Cover Silver', tier: 'silver', guestPrice: 65 })
+    expect(dp.policyFor('lst-1', 5)?.waiver).toEqual({ tier: 'silver', guestPrice: 65 })
+    // With no upsell yet, one is created and becomes the package.
+    useUpsellServices().deleteService('svc-dp-bronze')
+    expect(dp.setWaiverPackage('gold', 99, 'USD')).toEqual({ ok: true })
+    expect(dp.currentPackage.value).toMatchObject({ serviceName: 'Elev8 Cover Gold', tier: 'gold', guestPrice: 99 })
+    expect(useUpsellServices().services.value.find(s => s.id === dp.settings.value.packageServiceId)?.assignedListings).toEqual([])
   })
 
   it('turns everything off in one go, keeping the package picked', () => {
@@ -982,7 +1005,9 @@ describe('before the damage waiver is activated', () => {
     vi.useFakeTimers()
     const pending = tern.activate({
       termsAccepted: true,
-      packageServiceId: 'svc-dp-bronze',
+      packageTier: 'bronze',
+      guestPrice: 39,
+      payer: 'guest',
       bank: { accountHolder: 'PT Elev8 Bali Mandiri', bankName: 'BCA', country: 'ID', iban: '', accountNumber: '7890123456', bicSwift: 'CENAIDJA' },
     }, 'PT Elev8 Bali Mandiri')
     await vi.runAllTimersAsync()

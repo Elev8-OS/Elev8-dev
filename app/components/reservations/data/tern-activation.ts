@@ -1,6 +1,9 @@
+import type { ProtectionPayer } from '~/components/reservations/data/reservations'
+import type { TernTier } from '~/components/reservations/data/tern-products'
 import type { InvoiceTemplate } from '~/components/settings/data/invoice-templates'
 import type { PayoutAccount } from '~/components/settings/data/payouts'
 import { compactIban, isValidBic, isValidIban } from '~/components/owners/data/owner-payout-details'
+import { ternPriceFor } from '~/components/reservations/data/tern-products'
 
 /**
  * Activating the damage waiver service: the tenant accepts the Tern cover
@@ -87,11 +90,15 @@ export const TERN_ACTIVATION_TERMS: string[] = [
   'Guests are offered a damage waiver, never insurance.',
 ]
 
-export type ActivationStepId = 'terms' | 'package' | 'bank' | 'review'
+/** The partner prices Elev8 Cover in USD only for now (`tern-products.ts`), so packages are sold in USD. */
+export const PACKAGE_CURRENCY = 'USD'
+
+export type ActivationStepId = 'terms' | 'package' | 'payer' | 'bank' | 'review'
 
 export const ACTIVATION_STEPS: { id: ActivationStepId, title: string, description: string }[] = [
   { id: 'terms', title: 'Terms', description: 'What activating the damage waiver means' },
-  { id: 'package', title: 'Package', description: 'The package every listing offers' },
+  { id: 'package', title: 'Package', description: 'The partner package every listing offers, and its price' },
+  { id: 'payer', title: 'Who pays', description: 'The guest buys the waiver, or you pay for it' },
   { id: 'bank', title: 'Bank account', description: 'Where your claims are paid' },
   { id: 'review', title: 'Review', description: 'Check and activate' },
 ]
@@ -108,11 +115,20 @@ export interface TernBankDraft {
 export interface ActivationDraft {
   termsAccepted: boolean
   /**
-   * The Damage Protection upsell every listing offers once active. Activating
-   * switches the waiver (and with it the deposit) on for EVERY listing, so
-   * there is no listing to pick, only the package.
+   * The partner's package (an Elev8 Cover tier, read from the partner's
+   * catalogue) every listing offers once active. Activating switches the waiver
+   * (and with it the deposit) on for EVERY listing, so there is no listing to
+   * pick, only the package and its price.
    */
-  packageServiceId: string | null
+  packageTier: TernTier | null
+  /** What the guest pays per package (30 nights), in `PACKAGE_CURRENCY`. Set by the tenant. */
+  guestPrice: number
+  /**
+   * Who pays for the waiver on every listing. Guest-paid: every guest must buy
+   * the waiver or leave a deposit card, they cannot skip it. Host-paid: the
+   * guest is not asked and Elev8 charges the tenant the cover fee.
+   */
+  payer: ProtectionPayer
   bank: TernBankDraft
   bankCopiedFromTemplateId?: string
 }
@@ -121,11 +137,17 @@ export function emptyBankDraft(): TernBankDraft {
   return { accountHolder: '', bankName: '', country: '', iban: '', accountNumber: '', bicSwift: '' }
 }
 
-export function createActivationDraft(activation?: TernActivation, packageServiceId: string | null = null): ActivationDraft {
+export function createActivationDraft(
+  activation?: TernActivation,
+  pkg: { tier: TernTier, guestPrice: number } | null = null,
+  payer: ProtectionPayer = 'guest',
+): ActivationDraft {
   const bank = activation?.payoutBank
   return {
     termsAccepted: false,
-    packageServiceId,
+    packageTier: pkg?.tier ?? null,
+    guestPrice: pkg?.guestPrice ?? 0,
+    payer,
     bank: bank
       ? {
           accountHolder: bank.accountHolder,
@@ -185,6 +207,18 @@ export function validateBankDraft(bank: TernBankDraft): BankErrors {
   return errors
 }
 
+/** A partner package and the price the guest pays for it: the activation step and Edit package alike. */
+export function validatePackageChoice(tier: TernTier | null, guestPrice: number): Record<string, string> {
+  if (!tier)
+    return { packageTier: 'Choose the package your guests are offered.' }
+  // No conversion, ever: a tier the partner does not price in this currency covers nothing.
+  if (!ternPriceFor(tier, PACKAGE_CURRENCY))
+    return { packageTier: `This package is not available in ${PACKAGE_CURRENCY} yet.` }
+  if (!(guestPrice > 0))
+    return { guestPrice: 'Set what the guest pays for the package.' }
+  return {}
+}
+
 /**
  * Why a step cannot be left as it stands, keyed by field. Empty means it can.
  * The subscription card is not a step: `useTernActivation.activate` checks it.
@@ -193,7 +227,9 @@ export function validateActivationStep(draft: ActivationDraft, step: ActivationS
   if (step === 'terms')
     return draft.termsAccepted ? {} : { termsAccepted: 'Accept the terms to activate the damage waiver.' }
   if (step === 'package')
-    return draft.packageServiceId ? {} : { packageServiceId: 'Choose the package your guests are offered.' }
+    return validatePackageChoice(draft.packageTier, draft.guestPrice)
+  if (step === 'payer')
+    return draft.payer === 'guest' || draft.payer === 'host' ? {} : { payer: 'Choose who pays for the damage waiver.' }
   if (step === 'bank')
     return validateBankDraft(draft.bank)
   return {}

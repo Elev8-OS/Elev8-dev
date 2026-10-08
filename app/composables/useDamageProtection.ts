@@ -12,6 +12,7 @@ import type {
   SettleRefusal,
 } from '~/components/reservations/data/damage-protection'
 import type { DamageProtection, ProtectionClaim, ProtectionPayer, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
+import type { TernTier } from '~/components/reservations/data/tern-products'
 import { computed, ref } from 'vue'
 import { applySettingsPatch, hostFallbackDue, listingPolicy, protectionPackageOptions, selectedPackage } from '~/components/damage-protection/data/listing-protection-setup'
 import { listings } from '~/components/listings/data/listings'
@@ -45,8 +46,9 @@ import {
   withExtraPackages,
 } from '~/components/reservations/data/damage-protection'
 import { seedProtectionSettings } from '~/components/reservations/data/damage-protection-seed'
-import { coverPackagesFor } from '~/components/reservations/data/tern-products'
+import { coverPackagesFor, ternPriceFor, ternProduct, ternSizeLabel } from '~/components/reservations/data/tern-products'
 import { payoutAccounts } from '~/components/settings/data/payouts'
+import { emptyVisibilityConditions, isProtectionService, PROTECTION_CATEGORY } from '~/components/upsells/data/upsell-services'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useGuestGuides } from '~/composables/useGuestGuides'
 import { useNotifications } from '~/composables/useNotifications'
@@ -151,7 +153,7 @@ export function useDamageProtection() {
   )
 
   /** The packages are Damage Protection upsells; the tenant picks one for every listing. */
-  const { services: upsellServices } = useUpsellServices()
+  const { services: upsellServices, addService, updateService } = useUpsellServices()
 
   /** The package every listing offers, or null when none is picked (or it was paused or deleted). */
   const currentPackage = computed<ProtectionPackage | null>(() => selectedPackage(upsellServices.value, settings.value))
@@ -355,6 +357,59 @@ export function useDamageProtection() {
     persist()
     syncHostCover()
     return { ok: true }
+  }
+
+  /**
+   * Make the partner package the waiver's: write it onto the ONE Damage
+   * Protection upsell the waiver uses (the current one, else a new one), then
+   * point the settings at it. `turnOn` also switches the waiver on for every
+   * listing (after activation); Edit package in Settings leaves it as it is.
+   *
+   * The upsell is renamed only while it still carries its default name, so a
+   * name the tenant chose is kept.
+   */
+  function setWaiverPackage(tier: TernTier, guestPrice: number, currency: string, turnOn = true): ProtectionWriteResult {
+    if (!ternPriceFor(tier, currency))
+      return { ok: false, reason: 'package_not_priced' }
+    if (!(guestPrice > 0))
+      return { ok: false, reason: 'guest_price_missing' }
+    const product = ternProduct(tier)
+    const item = { name: product.name, description: `For properties ${ternSizeLabel(product).toLowerCase()}.`, price: guestPrice, coverTier: tier }
+    const current = upsellServices.value.find(s => s.id === settings.value.packageServiceId && isProtectionService(s))
+    let serviceId: string
+    if (current) {
+      const oldTier = current.items.find(i => i.coverTier)?.coverTier
+      const hadDefaultName = !oldTier || current.name === `Elev8 Cover ${ternProduct(oldTier).name}`
+      const existing = current.items[0]
+      updateService(current.id, {
+        ...(hadDefaultName ? { name: `Elev8 Cover ${product.name}` } : {}),
+        currency,
+        status: 'active',
+        items: [{ ...existing, id: existing?.id ?? `itm-${Date.now()}`, ...item }],
+      })
+      serviceId = current.id
+    }
+    else {
+      serviceId = addService({
+        name: `Elev8 Cover ${product.name}`,
+        description: 'Accidental damage during your stay is covered, up to the limit of your package. Nothing more to pay after you leave.',
+        category: PROTECTION_CATEGORY,
+        currency,
+        youtubeLinks: [],
+        internalNotes: 'The damage waiver package every listing offers, set in Settings, Damage protection.',
+        notificationUsers: [],
+        pricingEnabled: false,
+        taxPercent: 0,
+        servicePercent: 0,
+        items: [{ id: `itm-${Date.now()}`, ...item }],
+        assignedListings: [],
+        availability: 'always',
+        status: 'active',
+        visibility: emptyVisibilityConditions(),
+        visibilityMatchMode: 'all',
+      }).id
+    }
+    return setProtectionSettings(turnOn ? { waiver: true, packageServiceId: serviceId } : { packageServiceId: serviceId })
   }
 
   /** Who pays, on every listing. Host-paid is Elev8 Cover bought by the host: it needs the activated waiver. */
@@ -1075,6 +1130,7 @@ export function useDamageProtection() {
     listingProtection,
     setProtectionSettings,
     setProtectionPayer,
+    setWaiverPackage,
     turnOffProtection,
     syncHostCover,
     // writers

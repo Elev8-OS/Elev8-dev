@@ -40,7 +40,8 @@ function mountCard() {
 
 /** The mocks wait 1.5s. Fake timers BEFORE the click, then drain them. */
 async function clickAndSettle(wrapper: ReturnType<typeof mountCard>, testid: string) {
-  vi.useFakeTimers()
+  // Only setTimeout: a faked clock would date click handlers rendered now in the future, and Vue drops the click.
+  vi.useFakeTimers({ toFake: ['setTimeout'] })
   await wrapper.find(`[data-testid="${testid}"]`).trigger('click')
   await vi.runAllTimersAsync()
   vi.useRealTimers()
@@ -67,7 +68,7 @@ describe('the damage waiver activation', () => {
     expect(wrapper.find('[data-testid="protection-turn-off"]').exists()).toBe(false)
   })
 
-  it('walks the tenant through terms, package and bank, registers on Tern, and turns the waiver on everywhere', async () => {
+  it('walks the tenant through terms, the partner package and its price, and bank, then turns the waiver on everywhere', async () => {
     useTernActivation().replayActivation()
     const dp = useDamageProtection()
     dp.setProtectionSettings({ waiver: false, deposit: false })
@@ -79,14 +80,33 @@ describe('the damage waiver activation', () => {
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     expect(wrapper.find('[data-testid="tern-step-terms"]').text()).toContain('Accept the terms')
     await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
+    // The package step reads the partner's packages (a mocked delay).
+    await clickAndSettle(wrapper, 'tern-next')
+
+    // Package: the partner's tiers, not upsells; the current package and its price to start with.
+    expect(wrapper.find('[data-testid="tern-step-package"]').exists()).toBe(true)
+    expect(wrapper.findAll('[role="radio"]').map(r => r.attributes('data-testid'))).toEqual([
+      'tern-package-bronze',
+      'tern-package-bronze_plus',
+      'tern-package-silver',
+      'tern-package-silver_plus',
+      'tern-package-gold',
+      'tern-package-gold_plus',
+    ])
+    expect(wrapper.find('[data-testid="tern-package-bronze"]').attributes('aria-checked')).toBe('true')
+    expect((wrapper.find('[data-testid="tern-guest-price"]').element as HTMLInputElement).value).toBe('39')
+    await wrapper.find('[data-testid="tern-package-gold"]').trigger('click')
+    // The price must be set.
+    await wrapper.find('[data-testid="tern-guest-price"]').setValue('')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
+    expect(wrapper.find('[data-testid="tern-step-package"]').text()).toContain('Set what the guest pays')
+    await wrapper.find('[data-testid="tern-guest-price"]').setValue('79')
+    expect(wrapper.find('[data-testid="tern-package-margin"]').text()).toContain('so you keep USD 54.00')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
 
-    // Package: one for every listing, the current one picked to start with.
-    expect(wrapper.find('[data-testid="tern-step-package"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="tern-package-svc-dp-bronze"]').attributes('aria-checked')).toBe('true')
-    await wrapper.find('[data-testid="tern-package-svc-dp-silver"]').trigger('click')
-    expect(wrapper.find('[data-testid="tern-edit-package"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="tern-new-package"]').exists()).toBe(false)
+    // Who pays: the guest by default.
+    expect(wrapper.find('[data-testid="tern-step-payer"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tern-payer-guest"]').attributes('aria-checked')).toBe('true')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
 
     // Bank: copied from the invoice settings, the country still to give.
@@ -103,15 +123,19 @@ describe('the damage waiver activation', () => {
     // Review, then activate. No card was asked for: the subscription card is used.
     expect(wrapper.find('[data-testid="tern-review-bank"]').text()).toContain('Bank Central Asia (BCA) •••• 3456')
     expect(wrapper.find('[data-testid="tern-review-card"]').text()).toBe('The card on your Elev8 subscription')
-    expect(wrapper.find('[data-testid="tern-review-package"]').text()).toContain('Elev8 Cover Silver')
+    expect(wrapper.find('[data-testid="tern-review-package"]').text()).toContain('Elev8 Cover Gold, guest pays USD 79.00')
     expect(wrapper.find('[data-testid="tern-step-card"]').exists()).toBe(false)
+    // Guest pays: the review warns that guests cannot skip it.
+    expect(wrapper.find('[data-testid="tern-review-payer"]').text()).toContain('The guest')
+    expect(wrapper.find('[data-testid="tern-guest-paid-warning"]').text()).toContain('Guests cannot skip this')
     await clickAndSettle(wrapper, 'tern-activate')
     expect(wrapper.find('[data-testid="tern-activation-done"]').text()).toContain('Damage waiver active')
     expect(useTernActivation().activation.value.ternOrganizationId).toEqual(expect.any(Number))
     expect(wrapper.find('[data-testid="tern-activation-card"]').attributes('data-status')).toBe('active')
-    // Every listing, with the package picked, and the deposit beside it.
-    expect(dp.settings.value).toMatchObject({ waiver: true, deposit: true, packageServiceId: 'svc-dp-silver' })
-    expect(dp.policyFor('lst-1', 5)?.waiver.tier).toBe('silver')
+    // Written onto the waiver's one upsell, on every listing, with the deposit beside it.
+    expect(dp.settings.value).toMatchObject({ waiver: true, deposit: true, packageServiceId: 'svc-dp-bronze' })
+    expect(dp.currentPackage.value).toMatchObject({ serviceName: 'Elev8 Cover Gold', tier: 'gold', guestPrice: 79 })
+    expect(dp.policyFor('lst-1', 5)?.waiver).toEqual({ tier: 'gold', guestPrice: 79 })
   })
 
   it('says so when Tern refuses, and keeps the details for the retry', async () => {
@@ -119,6 +143,7 @@ describe('the damage waiver activation', () => {
     const wrapper = mountCard()
     await wrapper.find('[data-testid="tern-activate-open"]').trigger('click')
     await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('#tern-bank-holder').setValue('Elevate Schweiz GmbH')
@@ -143,6 +168,7 @@ describe('the damage waiver activation', () => {
     await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('#tern-bank-holder').setValue('Elevate Schweiz GmbH')
     await wrapper.find('#tern-bank-name').setValue('AKB')
     await wrapper.find('#tern-bank-iban').setValue('CH93 0076 2011 6238 5295 7')
@@ -150,6 +176,29 @@ describe('the damage waiver activation', () => {
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     expect(wrapper.find('[data-testid="tern-no-subscription-card"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="tern-activate"]').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('who pays at activation', () => {
+  it('activates host-paid when the tenant picks it, with no guest warning on the review', async () => {
+    useTernActivation().replayActivation()
+    const dp = useDamageProtection()
+    const wrapper = mountCard()
+    await wrapper.find('[data-testid="tern-activate-open"]').trigger('click')
+    await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
+    await wrapper.find('[data-testid="tern-payer-host"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
+    await wrapper.find('#tern-bank-holder').setValue('Elevate Schweiz GmbH')
+    await wrapper.find('#tern-bank-name').setValue('AKB')
+    await wrapper.find('#tern-bank-iban').setValue('CH93 0076 2011 6238 5295 7')
+    await wrapper.find('#tern-bank-country').setValue('CH')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
+    expect(wrapper.find('[data-testid="tern-review-payer"]').text()).toContain('host pays')
+    expect(wrapper.find('[data-testid="tern-guest-paid-warning"]').exists()).toBe(false)
+    await clickAndSettle(wrapper, 'tern-activate')
+    expect(dp.settings.value).toMatchObject({ waiver: true, payer: 'host' })
   })
 })
 

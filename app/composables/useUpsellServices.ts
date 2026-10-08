@@ -1,7 +1,7 @@
 import type { UpsellCategory, UpsellService } from '@/components/upsells/data/upsell-services'
 import { computed } from 'vue'
 import { serviceGrantsLockAccess } from '@/components/upsells/data/lock-access'
-import { mockUpsellServices } from '@/components/upsells/data/upsell-services'
+import { mockUpsellServices, sellableServices } from '@/components/upsells/data/upsell-services'
 
 export function useUpsellServices() {
   const services = useState<UpsellService[]>('upsell-services', () =>
@@ -13,8 +13,12 @@ export function useUpsellServices() {
   /** 'lock' narrows to services that hand the guest a door code on payment. */
   const filterLockAccess = ref<'all' | 'lock' | 'no_lock'>('all')
 
+  /**
+   * The Upsells page's catalog. ⚠️ Damage Protection services are left out: the
+   * waiver's one package is managed in Settings, Damage protection, never here.
+   */
   const filteredServices = computed(() => {
-    return services.value.filter((s) => {
+    return sellableServices(services.value).filter((s) => {
       if (filterCategory.value !== 'all' && s.category !== filterCategory.value)
         return false
       if (filterStatus.value !== 'all' && s.status !== filterStatus.value)
@@ -31,7 +35,7 @@ export function useUpsellServices() {
     services.value.filter(s => s.status === 'active'),
   )
 
-  /** Returns the new service, so a caller can link to it (a listing's Protection tab does). */
+  /** Returns the new service, so a caller can link to it (the damage waiver package does). */
   function addService(data: Omit<UpsellService, 'id' | 'createdAt' | 'updatedAt'>): UpsellService {
     const now = new Date().toISOString()
     // The next free number: counting the list could repeat an id the seed already uses.

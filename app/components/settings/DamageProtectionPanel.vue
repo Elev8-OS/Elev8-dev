@@ -2,7 +2,6 @@
 import type { BookingChannel } from '~/components/listings/data/listings'
 import type { ProtectionPayer } from '~/components/reservations/data/reservations'
 import type { TernTier } from '~/components/reservations/data/tern-products'
-import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import { toast } from 'vue-sonner'
 import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import {
@@ -13,12 +12,11 @@ import {
   undersizedText,
 } from '~/components/damage-protection/data/listing-protection'
 import { DEFAULT_HOST_FALLBACK_DAYS, depositChannelsOf, HOST_FALLBACK_DAY_OPTIONS } from '~/components/damage-protection/data/listing-protection-setup'
+import PartnerPackageDialog from '~/components/damage-protection/PartnerPackageDialog.vue'
 import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { ternPriceFor } from '~/components/reservations/data/tern-products'
-import { PROTECTION_CATEGORY } from '~/components/upsells/data/upsell-services'
-import UpsellDrawer from '~/components/upsells/UpsellDrawer.vue'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useUpsellServices } from '~/composables/useUpsellServices'
 
@@ -51,15 +49,16 @@ function apply(patch: Parameters<typeof dp.setProtectionSettings>[0], success?: 
 // ------------------------------------------------------------ the waiver
 
 /**
- * The waiver uses ONE upsell: the package is a Damage Protection upsell, edited
- * here in the same form as Upsells. Created here only when none exists yet.
+ * The waiver uses ONE upsell, edited with the partner's packages and a price
+ * (`PartnerPackageDialog`), never the upsell form. A first package made here
+ * while the service is active switches the waiver on; an edit leaves it as is.
  */
-const packageDrawerOpen = ref(false)
-const drawerService = ref<UpsellService | null>(null)
+const packageDialogOpen = ref(false)
+const packageDialogTurnOn = ref(false)
 
-function openPackageForm(service: UpsellService | null) {
-  drawerService.value = service
-  packageDrawerOpen.value = true
+function openPackageForm(first: boolean) {
+  packageDialogTurnOn.value = first && active.value
+  packageDialogOpen.value = true
 }
 
 /** The upsell the waiver uses, to edit. Found even while paused, so it can be switched back on. */
@@ -72,7 +71,7 @@ function setWaiver(on: boolean) {
   }
   const serviceId = pkg.value?.serviceId ?? dp.packages.value[0]?.serviceId
   if (!serviceId) {
-    openPackageForm(null)
+    openPackageForm(true)
     return
   }
   apply({ waiver: true, packageServiceId: serviceId }, 'Damage waiver on for every listing, with the deposit beside it')
@@ -93,17 +92,6 @@ const packageLine = computed(() => {
 })
 
 const coverageOpen = ref(false)
-
-/** A package created here (there was none) becomes the waiver's; an edit keeps it, with its new price. */
-function onPackageSaved(service: UpsellService) {
-  if (drawerService.value)
-    return
-  // Created because there was none: it becomes the waiver's one package.
-  if (active.value)
-    apply({ waiver: true, packageServiceId: service.id }, `Every listing now offers ${service.name}`)
-  else
-    apply({ packageServiceId: service.id })
-}
 
 // --------------------------------------------------------------- who pays
 
@@ -288,20 +276,20 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
                   Paused
                 </Badge>
               </div>
-              <Button variant="outline" class="shrink-0" data-testid="protection-edit-package" @click="openPackageForm(packageService)">
+              <Button variant="outline" class="shrink-0" data-testid="protection-edit-package" @click="openPackageForm(false)">
                 <Icon name="lucide:pencil" class="mr-1 size-4" />
                 Edit package
               </Button>
             </div>
             <div v-else class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="protection-no-packages">
-              The package is a Damage Protection upsell, and there is none yet.
-              <Button size="sm" variant="outline" class="h-7 text-xs" data-testid="protection-new-package" @click="openPackageForm(null)">
+              There is no package yet. Choose one of the partner's packages and set its price.
+              <Button size="sm" variant="outline" class="h-7 text-xs" data-testid="protection-new-package" @click="openPackageForm(true)">
                 <Icon name="lucide:plus" class="mr-1 size-3.5" />
-                Create a package
+                Choose a package
               </Button>
             </div>
             <p v-if="settings.waiver && packageService && !pkg" class="text-xs text-amber-700 dark:text-amber-400" data-testid="protection-package-missing">
-              The package's upsell is paused, so no guest is offered the waiver. Switch it back on with Edit package.
+              The package is paused, so no guest is offered the waiver. Save it again with Edit package to switch it back on.
             </p>
             <p v-if="pkg" class="text-xs text-muted-foreground" data-testid="protection-package-summary">
               {{ packageLine }}
@@ -533,13 +521,6 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
       </CardContent>
     </Card>
 
-    <!-- Mounted only while open: the form is heavy. -->
-    <UpsellDrawer
-      v-if="packageDrawerOpen"
-      v-model:open="packageDrawerOpen"
-      :service="drawerService"
-      :initial-category="PROTECTION_CATEGORY"
-      @saved="onPackageSaved"
-    />
+    <PartnerPackageDialog v-model:open="packageDialogOpen" :turn-on="packageDialogTurnOn" />
   </div>
 </template>

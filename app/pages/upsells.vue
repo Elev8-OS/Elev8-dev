@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { UpsellOrder } from '@/components/upsells/data/upsell-orders'
 import type { UpsellCategory, UpsellService } from '@/components/upsells/data/upsell-services'
-import { UPSPELL_CATEGORIES } from '@/components/upsells/data/upsell-services'
+import { CATALOG_CATEGORIES } from '@/components/upsells/data/upsell-services'
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
 
 const activeView = ref<'catalog' | 'orders'>('catalog')
@@ -57,7 +57,7 @@ function openOrderDrawer(order: UpsellOrder) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" class="w-52">
             <DropdownMenuItem
-              v-for="cat in UPSPELL_CATEGORIES"
+              v-for="cat in CATALOG_CATEGORIES"
               :key="cat"
               @click="openCreateDrawer(cat)"
             >
