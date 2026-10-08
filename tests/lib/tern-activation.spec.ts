@@ -29,7 +29,7 @@ function bank(patch: Partial<TernBankDraft> = {}): TernBankDraft {
 }
 
 function draft(patch: Partial<ActivationDraft> = {}): ActivationDraft {
-  return { termsAccepted: true, bank: bank(), ...patch }
+  return { termsAccepted: true, packageServiceId: 'svc-dp-bronze', bank: bank(), ...patch }
 }
 
 describe('validateBankDraft', () => {
@@ -66,10 +66,11 @@ describe('the steps', () => {
     expect(firstInvalidActivationStep(draft())).toBeNull()
     expect(firstInvalidActivationStep(draft({ bank: emptyBankDraft() }))).toBe('bank')
     expect(firstInvalidActivationStep(draft({ termsAccepted: false, bank: emptyBankDraft() }))).toBe('terms')
+    expect(firstInvalidActivationStep(draft({ packageServiceId: null, bank: emptyBankDraft() }))).toBe('package')
   })
 
   it('has no card step: the per-stay fees go on the subscription card from onboarding', () => {
-    expect(ACTIVATION_STEPS.map(s => s.id)).toEqual(['terms', 'bank', 'review'])
+    expect(ACTIVATION_STEPS.map(s => s.id)).toEqual(['terms', 'package', 'bank', 'review'])
   })
 
   it('carries the bank over from a record, but asks for the terms again', () => {

@@ -7,6 +7,7 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Label } from '~/components/ui/label'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
@@ -162,7 +163,8 @@ describe('reservationDamageProtectionSection', () => {
   })
 
   it('renders nothing on a channel a deposit-only policy skips', () => {
-    // lst-2's short stays are deposit-only, Direct only.
+    // A deposit on its own is asked on Direct only.
+    useDamageProtection().setProtectionSettings({ waiver: false })
     const wrapper = mountSection(reservation({ listingId: 'lst-2', channel: 'Airbnb' }))
     expect(wrapper.text()).toBe('')
   })

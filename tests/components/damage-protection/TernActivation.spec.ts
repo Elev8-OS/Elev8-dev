@@ -6,6 +6,7 @@ import { payoutAccounts } from '~/components/settings/data/payouts'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
+import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useOnboarding } from '~/composables/useOnboarding'
 import { useTernActivation } from '~/composables/useTernActivation'
 
@@ -28,6 +29,8 @@ const STUBS = {
   SelectValue: true,
   SelectContent: passthrough,
   SelectItem: { props: ['value'], template: '<div><slot /></div>' },
+  CoverageBreakdown: true,
+  UpsellDrawer: true,
   Switch: { props: ['modelValue', 'id'], emits: ['update:modelValue'], template: '<input type="checkbox" :id="id" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)">' },
 }
 
@@ -57,8 +60,17 @@ describe('the damage waiver activation', () => {
     expect(wrapper.find('[data-testid="tern-change-bank"]').exists()).toBe(true)
   })
 
-  it('walks the tenant through terms and bank, and registers the organization on Tern', async () => {
+  it('turns damage protection off on every listing from the card, next to the bank account', async () => {
+    const wrapper = mountCard()
+    await wrapper.find('[data-testid="protection-turn-off"]').trigger('click')
+    expect(useDamageProtection().settings.value).toMatchObject({ waiver: false, deposit: false })
+    expect(wrapper.find('[data-testid="protection-turn-off"]').exists()).toBe(false)
+  })
+
+  it('walks the tenant through terms, package and bank, registers on Tern, and turns the waiver on everywhere', async () => {
     useTernActivation().replayActivation()
+    const dp = useDamageProtection()
+    dp.setProtectionSettings({ waiver: false, deposit: false })
     const wrapper = mountCard()
     await wrapper.find('[data-testid="tern-activate-open"]').trigger('click')
     expect(wrapper.find('[data-testid="tern-step-terms"]').exists()).toBe(true)
@@ -67,6 +79,14 @@ describe('the damage waiver activation', () => {
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     expect(wrapper.find('[data-testid="tern-step-terms"]').text()).toContain('Accept the terms')
     await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
+
+    // Package: one for every listing, the current one picked to start with.
+    expect(wrapper.find('[data-testid="tern-step-package"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tern-package-svc-dp-bronze"]').attributes('aria-checked')).toBe('true')
+    await wrapper.find('[data-testid="tern-package-svc-dp-silver"]').trigger('click')
+    expect(wrapper.find('[data-testid="tern-edit-package"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tern-new-package"]').exists()).toBe(false)
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
 
     // Bank: copied from the invoice settings, the country still to give.
@@ -83,11 +103,15 @@ describe('the damage waiver activation', () => {
     // Review, then activate. No card was asked for: the subscription card is used.
     expect(wrapper.find('[data-testid="tern-review-bank"]').text()).toContain('Bank Central Asia (BCA) •••• 3456')
     expect(wrapper.find('[data-testid="tern-review-card"]').text()).toBe('The card on your Elev8 subscription')
+    expect(wrapper.find('[data-testid="tern-review-package"]').text()).toContain('Elev8 Cover Silver')
     expect(wrapper.find('[data-testid="tern-step-card"]').exists()).toBe(false)
     await clickAndSettle(wrapper, 'tern-activate')
     expect(wrapper.find('[data-testid="tern-activation-done"]').text()).toContain('Damage waiver active')
     expect(useTernActivation().activation.value.ternOrganizationId).toEqual(expect.any(Number))
     expect(wrapper.find('[data-testid="tern-activation-card"]').attributes('data-status')).toBe('active')
+    // Every listing, with the package picked, and the deposit beside it.
+    expect(dp.settings.value).toMatchObject({ waiver: true, deposit: true, packageServiceId: 'svc-dp-silver' })
+    expect(dp.policyFor('lst-1', 5)?.waiver.tier).toBe('silver')
   })
 
   it('says so when Tern refuses, and keeps the details for the retry', async () => {
@@ -95,6 +119,7 @@ describe('the damage waiver activation', () => {
     const wrapper = mountCard()
     await wrapper.find('[data-testid="tern-activate-open"]').trigger('click')
     await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('#tern-bank-holder').setValue('Elevate Schweiz GmbH')
     await wrapper.find('#tern-bank-name').setValue('AKB')
@@ -116,6 +141,7 @@ describe('the damage waiver activation', () => {
     const wrapper = mountCard()
     await wrapper.find('[data-testid="tern-activate-open"]').trigger('click')
     await wrapper.find('[data-testid="tern-accept-terms"]').trigger('click')
+    await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('[data-testid="tern-next"]').trigger('click')
     await wrapper.find('#tern-bank-holder').setValue('Elevate Schweiz GmbH')
     await wrapper.find('#tern-bank-name').setValue('AKB')

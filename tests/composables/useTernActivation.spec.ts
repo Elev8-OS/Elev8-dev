@@ -17,6 +17,7 @@ async function settle<T>(run: () => Promise<T>): Promise<T> {
 function draft(patch: Partial<ActivationDraft> = {}): ActivationDraft {
   return {
     termsAccepted: true,
+    packageServiceId: 'svc-dp-bronze',
     bank: { accountHolder: 'Elevate Schweiz GmbH', bankName: 'AKB', country: 'ch', iban: 'CH93 0076 2011 6238 5295 7', accountNumber: '', bicSwift: '' },
     ...patch,
   }

@@ -1,7 +1,6 @@
 import type { DamageProtection, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { moveListingUpdates } from '~/components/damage-protection/data/listing-protection-setup'
-import { listings } from '~/components/listings/data/listings'
+import { seedProtectionSettings } from '~/components/reservations/data/damage-protection-seed'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useNotifications } from '~/composables/useNotifications'
@@ -126,9 +125,9 @@ beforeEach(() => {
 })
 
 describe('policy lookup', () => {
-  it('returns null for a listing no protection upsell assigns, and the listing\'s own policy otherwise', () => {
+  it('returns null for a listing paid out in another currency, and the listing\'s own policy otherwise', () => {
     const dp = useDamageProtection()
-    expect(dp.policyFor('lst-9', 5)).toBeNull()
+    expect(dp.policyFor('lst-3', 5)).toBeNull()
     expect(dp.policyFor('lst-1', 5)?.id).toBe('lp-lst-1')
   })
 
@@ -138,10 +137,10 @@ describe('policy lookup', () => {
     expect(dp.policyFor('lst-1', 400)?.offers).toEqual(['waiver', 'deposit'])
   })
 
-  it('takes the tier and the guest price from the package the listing picked', () => {
+  it('takes the tier and the guest price from the tenant\'s package, the same on every listing', () => {
     const dp = useDamageProtection()
     expect(dp.policyFor('lst-1', 5)?.waiver).toEqual({ tier: 'bronze', guestPrice: 39 })
-    expect(dp.policyFor('lst-18', 5)?.waiver).toEqual({ tier: 'silver', guestPrice: 59 })
+    expect(dp.policyFor('lst-18', 5)?.waiver).toEqual({ tier: 'bronze', guestPrice: 39 })
   })
 })
 
@@ -170,7 +169,8 @@ describe('isOfferedFor and optionsFor', () => {
   })
 
   it('keeps a deposit-only policy silent on a channel it did not pick', () => {
-    // lst-2's short stays are deposit-only, Direct only.
+    // The deposit on its own is asked on Direct only.
+    useDamageProtection().setProtectionSettings({ waiver: false })
     seedReservation({ listingId: 'lst-2', channel: 'Airbnb' })
     expect(useDamageProtection().isOfferedFor('res-dp-1')).toBe(false)
     seedReservation({ listingId: 'lst-2', channel: 'Direct' })
@@ -191,6 +191,8 @@ describe('isOfferedFor and optionsFor', () => {
       seedReservation()
       expect(dp.railForListing('lst-1')).toBe('non_card')
       expect(dp.optionsFor('res-dp-1').map(o => o.option)).toEqual(['waiver'])
+      // With the waiver off, the deposit was all there was.
+      dp.setProtectionSettings({ waiver: false })
       seedReservation({ id: 'res-dp-2', listingId: 'lst-2' })
       expect(dp.isOfferedFor('res-dp-2')).toBe(false)
     }
@@ -200,56 +202,51 @@ describe('isOfferedFor and optionsFor', () => {
   })
 })
 
-/** Puts a listing in one protection upsell (its package), or in none, the way the Protection tab does. */
-function moveListing(listingId: string, serviceId: string | null) {
-  const { services, updateService } = useUpsellServices()
-  const listing = listings.value.find(l => l.id === listingId)!
-  for (const { id, ...patch } of moveListingUpdates(services.value, listing, serviceId))
-    updateService(id, patch)
-}
-
-describe('the protection upsell turns a listing on', () => {
-  it('protects a listing as soon as it is assigned to an active protection upsell, with the waiver by default', () => {
+describe('one setting for every listing', () => {
+  it('protects every listing at once with the one package, whatever upsell lists it', () => {
     const dp = useDamageProtection()
-    expect(dp.listingMode('lst-17')).toBe('off')
-    moveListing('lst-17', 'svc-dp-bronze')
+    // lst-17 has no payout account and is in no upsell: the waiver still runs, in the package's currency.
     expect(dp.listingMode('lst-17')).toBe('guest_paid')
-    expect(dp.policyFor('lst-17', 5)).toMatchObject({ offers: ['waiver'], waiver: { tier: 'bronze', guestPrice: 39 } })
+    expect(dp.policyFor('lst-17', 5)).toMatchObject({ offers: ['waiver', 'deposit'], waiver: { tier: 'bronze', guestPrice: 39 } })
   })
 
-  it('turns the waiver off when the listing is removed or the upsell is switched off, and keeps a deposit', () => {
+  it('brings the deposit with the waiver, and keeps it on beside it', () => {
     const dp = useDamageProtection()
-    const { toggleStatus } = useUpsellServices()
-    toggleStatus('svc-dp-silver')
-    // lst-18 offered the Silver waiver only.
-    expect(dp.listingMode('lst-18')).toBe('off')
-    toggleStatus('svc-dp-bronze')
-    // lst-1 keeps its deposit, now on its own.
-    expect(dp.policyFor('lst-1', 5)?.offers).toEqual(['deposit'])
-    toggleStatus('svc-dp-bronze')
-    moveListing('lst-1', null)
-    expect(dp.policyFor('lst-1', 5)).toMatchObject({ offers: ['deposit'], currency: 'USD', channelPolicy: { Direct: 'offer' } })
+    expect(dp.setProtectionSettings({ waiver: false, deposit: false })).toEqual({ ok: true })
+    expect(dp.listingMode('lst-1')).toBe('off')
+    expect(dp.listingProtection('lst-1').block).toBe('nothing_offered')
+    expect(dp.setProtectionSettings({ waiver: true })).toEqual({ ok: true })
+    expect(dp.settings.value.deposit).toBe(true)
+    dp.setProtectionSettings({ deposit: false })
+    expect(dp.settings.value.deposit).toBe(true)
+    expect(dp.policyFor('lst-1', 5)?.offers).toEqual(['waiver', 'deposit'])
   })
 
-  it('takes a deposit only with no protection upsell at all', () => {
+  it('changes the package for every listing, and offers no waiver without one', () => {
     const dp = useDamageProtection()
-    // lst-18 is on the USD Stripe account; take it out of its upsell and it is off.
-    moveListing('lst-18', null)
-    expect(dp.listingMode('lst-18')).toBe('off')
-    expect(dp.setListingSetup('lst-18', { deposit: true })).toEqual({ ok: true })
-    expect(dp.listingMode('lst-18')).toBe('guest_paid')
-    expect(dp.policyFor('lst-18', 5)).toMatchObject({ offers: ['deposit'], name: 'Deposit', currency: 'USD' })
+    expect(dp.setProtectionSettings({ packageServiceId: 'svc-dp-silver' })).toEqual({ ok: true })
+    expect(dp.policyFor('lst-1', 5)?.waiver).toEqual({ tier: 'silver', guestPrice: 59 })
+    expect(dp.policyFor('lst-18', 5)?.waiver).toEqual({ tier: 'silver', guestPrice: 59 })
+    expect(dp.setProtectionSettings({ packageServiceId: null })).toEqual({ ok: false, reason: 'package_missing' })
+    // Pausing the package's upsell takes the waiver off everywhere.
+    useUpsellServices().toggleStatus('svc-dp-silver')
+    expect(dp.policyFor('lst-1', 5)).toBeNull()
+    expect(dp.listingProtection('lst-1').block).toBe('no_package')
+  })
+
+  it('takes a deposit on its own with the waiver off', () => {
+    const dp = useDamageProtection()
+    dp.setProtectionSettings({ waiver: false })
+    expect(dp.policyFor('lst-1', 5)).toMatchObject({ offers: ['deposit'], name: 'Deposit', currency: 'USD', channelPolicy: { Direct: 'offer' } })
     // There is no waiver for the host to pay for.
-    expect(dp.setListingPayer('lst-18', 'host')).toEqual({ ok: false, reason: 'host_needs_waiver' })
+    expect(dp.setProtectionPayer('host')).toEqual({ ok: false, reason: 'host_needs_waiver' })
     // Without a payout account there is no currency to take it in.
-    expect(dp.setListingSetup('lst-17', { deposit: true })).toEqual({ ok: true })
     expect(dp.listingProtection('lst-17').block).toBe('no_payout_currency')
   })
 
   it('never protects a listing paid out in another currency than the package: nothing is converted', () => {
     const dp = useDamageProtection()
     // lst-3 settles IDR; the package is USD.
-    moveListing('lst-3', 'svc-dp-bronze')
     expect(dp.listingMode('lst-3')).toBe('off')
     expect(dp.listingProtection('lst-3').block).toBe('currency_mismatch')
   })
@@ -258,44 +255,29 @@ describe('the protection upsell turns a listing on', () => {
     const { sellableServices } = await import('~/components/upsells/data/upsell-services')
     expect(sellableServices(useUpsellServices().services.value).some(s => s.id === 'svc-dp-bronze')).toBe(false)
   })
-})
-
-describe('setListingSetup', () => {
-  it('switches the waiver and the deposit, and offers nothing with both off', () => {
-    const dp = useDamageProtection()
-    expect(dp.setListingSetup('lst-1', { deposit: false })).toEqual({ ok: true })
-    expect(dp.policyFor('lst-1', 5)?.offers).toEqual(['waiver'])
-    dp.setListingSetup('lst-1', { waiver: false, deposit: true })
-    expect(dp.policyFor('lst-1', 5)).toMatchObject({ offers: ['deposit'], channelPolicy: { Direct: 'offer' } })
-    dp.setListingSetup('lst-1', { deposit: false })
-    expect(dp.policyFor('lst-1', 5)).toBeNull()
-    expect(dp.listingProtection('lst-1').block).toBe('nothing_offered')
-  })
-
-  it('changes the package by moving the listing to another protection upsell, never into two', () => {
-    const dp = useDamageProtection()
-    moveListing('lst-1', 'svc-dp-silver')
-    expect(dp.policyFor('lst-1', 5)?.waiver).toEqual({ tier: 'silver', guestPrice: 59 })
-    const { services } = useUpsellServices()
-    const luwa = '5BR Pool the R Villa Luwa – Serene near Canggu'
-    expect(services.value.filter(s => s.assignedListings.includes(luwa) && s.category === 'Damage Protection').map(s => s.id)).toEqual(['svc-dp-silver'])
-  })
 
   it('sets the deposit limit and refuses a deposit without one', () => {
     const dp = useDamageProtection()
-    expect(dp.setListingSetup('lst-1', { depositLimit: 800, settleWithinDays: 10 })).toEqual({ ok: true })
+    expect(dp.setProtectionSettings({ depositLimit: 800, settleWithinDays: 10 })).toEqual({ ok: true })
     expect(dp.policyFor('lst-1', 5)?.deposit).toEqual({ pricing: 'flat', rate: 800, settleWithinDays: 10 })
-    expect(dp.setListingSetup('lst-1', { depositLimit: 0 })).toEqual({ ok: false, reason: 'deposit_limit_missing' })
-    expect(dp.setListingSetup('lst-1', { settleWithinDays: 0 })).toEqual({ ok: false, reason: 'settle_days_missing' })
+    expect(dp.setProtectionSettings({ depositLimit: 0 })).toEqual({ ok: false, reason: 'deposit_limit_missing' })
+    expect(dp.setProtectionSettings({ settleWithinDays: 0 })).toEqual({ ok: false, reason: 'settle_days_missing' })
     expect(dp.policyFor('lst-1', 5)?.deposit.rate).toBe(800)
+  })
+
+  it('turns everything off in one go, keeping the package picked', () => {
+    const dp = useDamageProtection()
+    expect(dp.turnOffProtection()).toEqual({ ok: true })
+    expect(dp.policies.value).toEqual([])
+    expect(dp.settings.value.packageServiceId).toBe('svc-dp-bronze')
   })
 
   it('survives a reload', () => {
     const dp = useDamageProtection()
-    dp.setListingSetup('lst-1', { deposit: false })
-    useState('damage-protection-setups').value = []
+    dp.setProtectionSettings({ packageServiceId: 'svc-dp-silver' })
+    useState('damage-protection-settings').value = { ...seedProtectionSettings }
     dp.hydrate()
-    expect(dp.setupFor('lst-1').deposit).toBe(false)
+    expect(dp.settings.value.packageServiceId).toBe('svc-dp-silver')
   })
 })
 
@@ -328,9 +310,8 @@ describe('recordChoice', () => {
     const dp = useDamageProtection()
     dp.recordChoice('res-dp-1', ACCEPT_WAIVER, 'guest_guide')
 
-    // A later change to the listing's package must not reach the accepted stay.
-    moveListing('lst-1', 'svc-dp-silver')
-    dp.setListingSetup('lst-1', { deposit: false })
+    // A later change to the package must not reach the accepted stay.
+    dp.setProtectionSettings({ packageServiceId: 'svc-dp-silver' })
 
     const frozen = protectionOf()
     expect(frozen.amount).toBe(39)
@@ -377,7 +358,7 @@ describe('recordChoice', () => {
   })
 
   it('refuses when not offered and when terms are unaccepted', () => {
-    seedReservation({ listingId: 'lst-2', channel: 'Airbnb' })
+    seedReservation({ listingId: 'lst-3' })
     expect(useDamageProtection().recordChoice('res-dp-1', ACCEPT_WAIVER)).toEqual({ ok: false, reason: 'not_offered' })
     seedReservation()
     expect(useDamageProtection().recordChoice('res-dp-1', { option: 'waiver', termsAccepted: false }))
@@ -718,8 +699,8 @@ describe('long stays take one package per started 30 nights', () => {
 })
 
 describe('the worklist', () => {
-  it('produces no row for an unassigned listing, a block or an owner stay', () => {
-    seedReservation({ id: 'res-a', listingId: 'lst-9' })
+  it('produces no row for an unprotected listing, a block or an owner stay', () => {
+    seedReservation({ id: 'res-a', listingId: 'lst-3' })
     seedReservation({ id: 'res-b', status: 'blocked' })
     seedReservation({ id: 'res-c', status: 'owner_request' })
     const ids = useDamageProtection().rows.value.map(r => r.reservation.id)
@@ -816,11 +797,11 @@ describe('emitProtectionAlerts', () => {
   })
 })
 
-describe('host-paid listings', () => {
+describe('host pays', () => {
   it('never asks the guest and covers the stay at no cost to them', () => {
     seedReservation()
     const dp = useDamageProtection()
-    expect(dp.setListingPayer('lst-1', 'host')).toEqual({ ok: true })
+    expect(dp.setProtectionPayer('host')).toEqual({ ok: true })
     expect(dp.listingMode('lst-1')).toBe('host_paid')
     expect(dp.isOfferedFor('res-dp-1')).toBe(false)
     expect(dp.optionsFor('res-dp-1')).toEqual([])
@@ -841,7 +822,7 @@ describe('host-paid listings', () => {
     seedReservation({ id: 'res-ota', channel: 'Booking.com' })
     seedReservation({ id: 'res-owner', status: 'owner_request' })
     seedReservation({ id: 'res-past', status: 'checked_out', checkIn: isoDaysFromNow(-10), checkOut: isoDaysFromNow(-5) })
-    useDamageProtection().setListingPayer('lst-1', 'host')
+    useDamageProtection().setProtectionPayer('host')
     expect(reservationOf('res-ota').damageProtection?.paidBy).toBe('host')
     expect(reservationOf('res-owner').damageProtection).toBeUndefined()
     expect(reservationOf('res-past').damageProtection).toBeUndefined()
@@ -862,7 +843,7 @@ describe('host-paid listings', () => {
     seedReservation()
     const dp = useDamageProtection()
     dp.recordChoice('res-dp-1', ACCEPT_WAIVER)
-    dp.setListingPayer('lst-1', 'host')
+    dp.setProtectionPayer('host')
     expect(reservationOf('res-asked').damageProtection?.paidBy).toBe('host')
     expect(protectionOf()).toMatchObject({ paidBy: 'guest', amount: 39 })
   })
@@ -870,7 +851,7 @@ describe('host-paid listings', () => {
   it('writes the cover once, however often it is synced', () => {
     seedReservation()
     const dp = useDamageProtection()
-    dp.setListingPayer('lst-1', 'host')
+    dp.setProtectionPayer('host')
     dp.syncHostCover()
     dp.hydrate()
     expect(reservationOf().activity).toHaveLength(1)
@@ -879,8 +860,8 @@ describe('host-paid listings', () => {
   it('removes the cover from a stay that has not started when the listing goes back to guest-paid', () => {
     seedReservation()
     const dp = useDamageProtection()
-    dp.setListingPayer('lst-1', 'host')
-    dp.setListingPayer('lst-1', 'guest')
+    dp.setProtectionPayer('host')
+    dp.setProtectionPayer('guest')
     expect(reservationOf().damageProtection).toBeUndefined()
     expect(dp.isOfferedFor('res-dp-1')).toBe(true)
     expect(reservationOf().activity.map(a => a.title)).toEqual(['Covered by the host', 'Host cover removed'])
@@ -889,7 +870,7 @@ describe('host-paid listings', () => {
   it('closes a cancelled stay\'s cover with nothing to refund', () => {
     seedReservation()
     const dp = useDamageProtection()
-    dp.setListingPayer('lst-1', 'host')
+    dp.setProtectionPayer('host')
     useReservationsModule().updateReservation('res-dp-1', { status: 'cancelled' })
     dp.syncHostCover()
     expect(protectionOf().state).toBe('cancelled')
@@ -899,14 +880,11 @@ describe('host-paid listings', () => {
 
   it('needs the waiver where the host pays: the deposit is not theirs to buy', () => {
     const dp = useDamageProtection()
-    // lst-2 takes a deposit only, in no protection upsell.
-    expect(dp.setListingPayer('lst-2', 'host')).toEqual({ ok: false, reason: 'host_needs_waiver' })
-    dp.setListingSetup('lst-2', { waiver: true })
-    // The waiver switch alone sells nothing: it needs a package, i.e. a protection upsell.
-    expect(dp.setListingPayer('lst-2', 'host')).toEqual({ ok: false, reason: 'host_needs_waiver' })
-    moveListing('lst-2', 'svc-dp-bronze')
-    expect(dp.setListingPayer('lst-2', 'host')).toEqual({ ok: true })
-    expect(dp.setListingSetup('lst-2', { waiver: false })).toEqual({ ok: false, reason: 'host_needs_waiver' })
+    dp.setProtectionSettings({ waiver: false })
+    expect(dp.setProtectionPayer('host')).toEqual({ ok: false, reason: 'host_needs_waiver' })
+    dp.setProtectionSettings({ waiver: true })
+    expect(dp.setProtectionPayer('host')).toEqual({ ok: true })
+    expect(dp.setProtectionSettings({ waiver: false })).toEqual({ ok: false, reason: 'host_needs_waiver' })
     expect(dp.listingMode('lst-2')).toBe('host_paid')
   })
 
@@ -915,9 +893,9 @@ describe('host-paid listings', () => {
     seedReservation({ id: 'res-host', listingId: 'lst-18', nights: 30, checkOut: isoDaysFromNow(35) })
     const dp = useDamageProtection()
     dp.recordChoice('res-guest', ACCEPT_WAIVER)
-    dp.setListingPayer('lst-18', 'host')
+    dp.setProtectionPayer('host')
     expect(dp.elev8FeeTotals.value.guestPaid).toEqual([{ currency: 'USD', amount: 9 }])
-    expect(dp.elev8FeeTotals.value.hostPaid).toEqual([{ currency: 'USD', amount: 15 }])
+    expect(dp.elev8FeeTotals.value.hostPaid).toEqual([{ currency: 'USD', amount: 9 }])
     expect(dp.listingsMissingGuideSection()).not.toContain('lst-18')
   })
 })
@@ -928,11 +906,11 @@ describe('host cover when the guest does not buy', () => {
     seedReservation({ checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
     const dp = useDamageProtection()
     expect(dp.isOfferedFor('res-dp-1')).toBe(true)
-    expect(dp.setListingSetup('lst-1', { hostFallback: true, hostFallbackDays: 1 })).toEqual({ ok: true })
+    expect(dp.setProtectionSettings({ hostFallback: true, hostFallbackDays: 1 })).toEqual({ ok: true })
     expect(protectionOf()).toMatchObject({ paidBy: 'host', amount: 0, autoHostCover: true, tier: 'bronze', elev8Fee: 9 })
     expect(reservationOf().activity.at(-1)!.description).toContain('had not bought the damage waiver')
     expect(dp.isOfferedFor('res-dp-1')).toBe(false)
-    // Still a guest-paid listing: only this stay is covered by the host.
+    // Still guest-paid: only this stay is covered by the host.
     expect(dp.listingMode('lst-1')).toBe('guest_paid')
   })
 
@@ -941,33 +919,34 @@ describe('host cover when the guest does not buy', () => {
     seedReservation({ checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
     const dp = useDamageProtection()
     dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
-    dp.setListingSetup('lst-1', { hostFallback: true, hostFallbackDays: 2 })
+    dp.setProtectionSettings({ hostFallback: true, hostFallbackDays: 2 })
     expect(reservationOf('res-later').damageProtection).toBeUndefined()
     expect(protectionOf()).toMatchObject({ option: 'deposit', state: 'card_on_file' })
     expect(protectionOf().paidBy).not.toBe('host')
     // Moving the cut-off out to a week takes the later stay too.
-    dp.setListingSetup('lst-1', { hostFallbackDays: 7 })
+    dp.setProtectionSettings({ hostFallbackDays: 7 })
     expect(reservationOf('res-later').damageProtection).toMatchObject({ paidBy: 'host', autoHostCover: true })
   })
 
   it('removes the cover from a stay not started yet when the setting goes off', () => {
     seedReservation({ checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
     const dp = useDamageProtection()
-    dp.setListingSetup('lst-1', { hostFallback: true })
-    dp.setListingSetup('lst-1', { hostFallback: false })
+    dp.setProtectionSettings({ hostFallback: true })
+    dp.setProtectionSettings({ hostFallback: false })
     expect(reservationOf().damageProtection).toBeUndefined()
     expect(dp.isOfferedFor('res-dp-1')).toBe(true)
   })
 
-  it('writes nothing without the waiver on the listing or before activation', () => {
+  it('writes nothing without the waiver on or before activation', () => {
     seedReservation({ listingId: 'lst-2', checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
     const dp = useDamageProtection()
-    // lst-2 takes a deposit only: there is no cover for the host to buy.
-    dp.setListingSetup('lst-2', { hostFallback: true })
+    // A deposit on its own: there is no cover for the host to buy.
+    dp.setProtectionSettings({ waiver: false, hostFallback: true })
     expect(reservationOf().damageProtection).toBeUndefined()
+    dp.setProtectionSettings({ waiver: true, hostFallback: false })
     useTernActivation().replayActivation()
     seedReservation({ id: 'res-x', checkIn: isoDaysFromNow(1), checkOut: isoDaysFromNow(5), nights: 4 })
-    dp.setListingSetup('lst-1', { hostFallback: true })
+    dp.setProtectionSettings({ hostFallback: true })
     expect(reservationOf('res-x').damageProtection).toBeUndefined()
   })
 })
@@ -977,20 +956,19 @@ describe('before the damage waiver is activated', () => {
     useTernActivation().replayActivation()
     const dp = useDamageProtection()
     seedReservation()
-    seedReservation({ id: 'res-deposit', listingId: 'lst-2' })
     expect(dp.isOfferedFor('res-dp-1')).toBe(false)
     expect(dp.recordChoice('res-dp-1', ACCEPT_WAIVER)).toEqual({ ok: false, reason: 'not_offered' })
-    expect(dp.isOfferedFor('res-deposit')).toBe(true)
     expect(dp.pausedUntilActivation(dp.policyFor('lst-1', 5))).toBe(true)
-    expect(dp.pausedUntilActivation(dp.policyFor('lst-2', 5))).toBe(false)
+    dp.setProtectionSettings({ waiver: false })
+    expect(dp.isOfferedFor('res-dp-1')).toBe(true)
+    expect(dp.pausedUntilActivation(dp.policyFor('lst-1', 5))).toBe(false)
   })
 
-  it('keeps a listing\'s waiver paused, not refused, and its deposit-only neighbour running', () => {
+  it('keeps the waiver paused, not refused, when the package changes before activation', () => {
     useTernActivation().replayActivation()
     const dp = useDamageProtection()
-    expect(dp.setListingSetup('lst-18', { deposit: false })).toEqual({ ok: true })
+    expect(dp.setProtectionSettings({ packageServiceId: 'svc-dp-silver' })).toEqual({ ok: true })
     expect(dp.pausedUntilActivation(dp.policyFor('lst-18', 5))).toBe(true)
-    expect(dp.pausedUntilActivation(dp.policyFor('lst-2', 5))).toBe(false)
   })
 
   it('refuses host-paid and writes no cover until activation, then covers on the next sync', async () => {
@@ -998,12 +976,13 @@ describe('before the damage waiver is activated', () => {
     tern.replayActivation()
     const dp = useDamageProtection()
     seedReservation()
-    expect(dp.setListingPayer('lst-1', 'host')).toEqual({ ok: false, reason: 'waiver_not_activated' })
+    expect(dp.setProtectionPayer('host')).toEqual({ ok: false, reason: 'waiver_not_activated' })
     expect(reservationOf().damageProtection).toBeUndefined()
 
     vi.useFakeTimers()
     const pending = tern.activate({
       termsAccepted: true,
+      packageServiceId: 'svc-dp-bronze',
       bank: { accountHolder: 'PT Elev8 Bali Mandiri', bankName: 'BCA', country: 'ID', iban: '', accountNumber: '7890123456', bicSwift: 'CENAIDJA' },
     }, 'PT Elev8 Bali Mandiri')
     await vi.runAllTimersAsync()
@@ -1011,7 +990,7 @@ describe('before the damage waiver is activated', () => {
     vi.useRealTimers()
 
     expect(dp.isOfferedFor('res-dp-1')).toBe(true)
-    expect(dp.setListingPayer('lst-1', 'host')).toEqual({ ok: true })
+    expect(dp.setProtectionPayer('host')).toEqual({ ok: true })
     expect(protectionOf().paidBy).toBe('host')
   })
 })

@@ -16,7 +16,7 @@
 #### Components
 - **`UpsellTable.vue`** — TanStack data table with columns: Name, Category, Price Range, Items, Listings, Availability, Status
 - **`UpsellFilterBar.vue`**: Category + Status + Listing + **Lock access** filters + Search input
-- ⚠️ **Category `Damage Protection` is not a normal upsell** (2026-10-06): it sells ONE Elev8 Cover package (its single item: `UpsellItem.coverTier` + guest price; Bronze and Silver are two services) and its assigned listings are the listings whose damage waiver uses that package. A listing sits in one protection upsell at most. `sellableServices` / `isProtectionService` keep it out of inbox orders, the folio catalog and promo codes. See `damage-protection.md`.
+- ⚠️ **Category `Damage Protection` is not a normal upsell** (2026-10-06): it sells ONE Elev8 Cover package (its single item: `UpsellItem.coverTier` + guest price; Bronze and Silver are two services) and has no listings (2026-10-08: the tenant picks ONE package for every listing in Settings, Damage protection; the drawer has no Listings step for it and saves `assignedListings: []`). `sellableServices` / `isProtectionService` keep it out of inbox orders, the folio catalog and promo codes. See `damage-protection.md`.
 - **`UpsellDrawer.vue`** — 2-tab Sheet drawer (Details + Items); Details: name, description, image upload (FileReader→base64), YouTube links, listings, availability selector, tax/service section; Items: modal dialog for adding items, vuedraggable sort with grip handle
 - **`UpsellOrderTable.vue`** — Orders table with status filter pills, KPI cards
 - **`UpsellOrderDrawer.vue`** — Order detail with reactive computed lookup from `useUpsellOrders` state, fulfillment section, approval/decline + payment actions, no notification log section

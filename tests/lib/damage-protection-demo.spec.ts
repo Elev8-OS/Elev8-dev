@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { listings } from '~/components/listings/data/listings'
 import { damageProtectionDemoCleaningJobs, damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
-import { seedListingProtectionSetups } from '~/components/reservations/data/damage-protection-seed'
+import { seedProtectionSettings } from '~/components/reservations/data/damage-protection-seed'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 
 describe('damage protection demo seeds', () => {
@@ -19,7 +19,7 @@ describe('damage protection demo seeds', () => {
     expect(long.listingId).toBe('lst-18')
     const others = damageProtectionDemoReservations.filter(r => r.id !== long.id && r.listingId === long.listingId && r.status !== 'cancelled')
     expect(others.filter(r => r.checkIn < long.checkOut && r.checkOut > long.checkIn)).toEqual([])
-    expect(seedListingProtectionSetups.find(s => s.listingId === 'lst-18')?.waiver).toBe(true)
+    expect(seedProtectionSettings.waiver).toBe(true)
     expect(payoutAccounts.value.find(p => p.listingIds.includes('lst-18'))?.currency).toBe('USD')
   })
 

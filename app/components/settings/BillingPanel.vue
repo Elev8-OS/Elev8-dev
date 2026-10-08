@@ -261,7 +261,7 @@ const history = computed<HistoryRow[]>(() => [
                 <template v-if="tern.isActive.value">
                   Active, billed on the 1st per 30 nights of each covered stay
                 </template>
-                <NuxtLink v-else to="/damage-protection" class="underline underline-offset-2">
+                <NuxtLink v-else to="/settings/damage-protection" class="underline underline-offset-2">
                   Not activated
                 </NuxtLink>
               </dd>

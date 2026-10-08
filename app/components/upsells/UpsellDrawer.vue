@@ -28,7 +28,6 @@ import {
   emptyVisibilityConditions,
   getConditionDefault,
   getConditionEmpty,
-  isProtectionService,
   PROTECTION_CATEGORY,
   summarizeVisibility,
 } from '@/components/upsells/data/upsell-services'
@@ -36,15 +35,12 @@ import { useUpsellServices } from '@/composables/useUpsellServices'
 import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
-import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 
 const props = defineProps<{
   service: UpsellService | null
   initialCategory: UpsellCategory | null
   open: boolean
-  /** Listing names ticked when a NEW service opens (a listing's Protection tab passes its own). */
-  initialListings?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -65,11 +61,11 @@ const formCategory = ref<UpsellService['category']>('Airport Transport')
 const formCurrency = ref('CHF')
 
 /**
- * ⚠️ A Damage Protection service is not sold like the others: its items are the
- * Elev8 Cover packages and its listings are the listings that have protection
- * ON (`useDamageProtection`). The guest meets it in the guest guide's Damage
- * protection section, so visibility rules, availability and lock access do
- * not apply and are not shown.
+ * ⚠️ A Damage Protection service is not sold like the others: it sells one
+ * Elev8 Cover package, and the tenant picks ONE package for every listing in
+ * Settings, Damage protection, so it has no listings step. The guest meets it
+ * in the guest guide's Damage protection section, so visibility rules,
+ * availability and lock access do not apply and are not shown.
  */
 const isProtection = computed(() => formCategory.value === PROTECTION_CATEGORY)
 
@@ -91,15 +87,10 @@ const packageFeeText = computed(() => {
     : `${fee}.`
 })
 
-/** The other protection upsells: a listing picked here leaves them. */
-const otherProtectionServices = computed(() =>
-  useUpsellServices().services.value.filter(s => isProtectionService(s) && s.id !== props.service?.id))
-
 const steps = computed(() => isProtection.value
   ? [
       { id: 1, label: 'Basic Info' },
       { id: 2, label: 'Package' },
-      { id: 3, label: 'Listings' },
       { id: 5, label: 'Settings' },
     ]
   : [
@@ -301,7 +292,7 @@ watch(() => props.open, (open) => {
       formItems.value = []
       packageTier.value = 'bronze'
       packagePrice.value = 0
-      formListings.value = [...(props.initialListings ?? [])]
+      formListings.value = []
       formAvailability.value = 'always'
       formLockAccess.value = createDefaultLockAccessConfig()
       formStatus.value = 'active'
@@ -418,22 +409,6 @@ function selectAllListings() {
 
 function clearAllListings() {
   formListings.value = []
-}
-
-/**
- * Protection is tied to where the listing is paid out (the currency, and Stripe
- * for a deposit), so a protection service lists the real listings, by name like
- * every upsell, with the payout currency beside each.
- */
-const protectionListingRows = computed(() => allListings.value.map(listing => ({
-  name: listing.name,
-  currency: payoutAccounts.value.find(a => a.listingIds.includes(listing.id))?.currency ?? null,
-  /** Another protection upsell this listing sits in: saving here moves it (one package per listing). */
-  elsewhere: otherProtectionServices.value.find(s => s.assignedListings.includes(listing.name) || s.assignedListings.includes(listing.id))?.name ?? null,
-})))
-
-function selectAllProtectionListings() {
-  formListings.value = protectionListingRows.value.map(row => row.name)
 }
 
 function tierName(tier: TernTier) {
@@ -566,7 +541,8 @@ function handleSave() {
     taxPercent: formTaxPercent.value,
     servicePercent: formServicePercent.value,
     items: formItems.value,
-    assignedListings: formListings.value,
+    // A protection package is offered on every listing from Settings: it is assigned to none.
+    assignedListings: isProtection.value ? [] : formListings.value,
     availability: formAvailability.value,
     lockAccess: formLockAccess.value.enabled && !isProtection.value
       ? {
@@ -580,8 +556,6 @@ function handleSave() {
     visibilityMatchMode: formVisibilityMatchMode.value,
   }
 
-  // Read BEFORE the save: a service created now must not count as "another" one.
-  const others = otherProtectionServices.value
   let savedId: string
   if (isEditing.value && props.service) {
     updateService(props.service.id, data)
@@ -593,14 +567,7 @@ function handleSave() {
     toast.success('Service created.')
   }
   if (isProtection.value) {
-    // One package per listing: the listings picked here leave any other protection upsell.
-    const moved = new Set(formListings.value)
-    for (const other of others) {
-      const kept = other.assignedListings.filter(n => !moved.has(n))
-      if (kept.length !== other.assignedListings.length)
-        updateService(other.id, { assignedListings: kept })
-    }
-    // Its listings are the ones with the waiver on: host-paid cover follows now.
+    // The tenant's package may be this one (its price or status changed): host-paid cover follows now.
     useDamageProtection().syncHostCover()
   }
   const saved = useUpsellServices().services.value.find(s => s.id === savedId)
@@ -703,8 +670,8 @@ function onOpenChange(val: boolean) {
           >
             <Icon name="lucide:shield-check" class="mt-0.5 size-4 shrink-0" />
             <span>
-              Priced in {{ formCurrency }}, the currency Elev8 Cover is priced in. Every listing you assign gets
-              damage protection; guests buy a package in the guest guide, not with the other upsells.
+              Priced in {{ formCurrency }}, the currency Elev8 Cover is priced in. Choose the package every listing
+              offers in Settings, Damage protection; guests buy it in the guest guide, not with the other upsells.
             </span>
           </p>
 
@@ -920,56 +887,6 @@ function onOpenChange(val: boolean) {
               </Button>
             </div>
           </div>
-        </div>
-
-        <!-- Step 3, Damage Protection: the listings this service turns protection on for -->
-        <div v-if="currentStep === 3 && isProtection" class="flex flex-col gap-3 p-6" data-testid="upsell-protection-listings">
-          <div class="flex items-center justify-between">
-            <Label>Listings with damage protection</Label>
-            <div class="flex gap-2">
-              <Button variant="ghost" size="sm" class="h-7 text-xs" @click="selectAllProtectionListings">
-                Select all
-              </Button>
-              <Button variant="ghost" size="sm" class="h-7 text-xs" @click="clearAllListings">
-                Clear
-              </Button>
-            </div>
-          </div>
-          <p class="text-xs text-muted-foreground">
-            Listings picked here offer this package as their damage waiver. A listing has one package, so one already
-            in another protection upsell moves here. The deposit is set on each listing's Protection tab.
-          </p>
-          <div class="max-h-80 overflow-y-auto rounded-md border">
-            <div
-              v-for="row in protectionListingRows"
-              :key="row.name"
-              class="flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-b-0 hover:bg-muted/50"
-              @click="toggleListing(row.name)"
-            >
-              <div
-                class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
-                :class="formListings.includes(row.name) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
-              >
-                <Icon v-if="formListings.includes(row.name)" name="lucide:check" class="size-3" />
-              </div>
-              <span class="min-w-0 flex-1 truncate text-sm">
-                {{ row.name }}
-                <span v-if="row.elsewhere" class="block text-xs text-muted-foreground">
-                  {{ formListings.includes(row.name) ? `Moves here from ${row.elsewhere}` : `In ${row.elsewhere}` }}
-                </span>
-              </span>
-              <span
-                class="shrink-0 text-xs"
-                :class="row.currency && row.currency !== formCurrency ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
-              >
-                {{ row.currency ? (row.currency !== formCurrency ? `Paid out in ${row.currency}, not covered` : row.currency) : 'No payout account' }}
-              </span>
-            </div>
-          </div>
-          <p class="text-xs text-muted-foreground">
-            {{ formListings.length }} {{ formListings.length === 1 ? 'listing' : 'listings' }} selected. Nothing is
-            converted: a listing paid out in another currency than {{ formCurrency }} stays unprotected.
-          </p>
         </div>
 
         <!-- Step 3: Listings & Availability -->

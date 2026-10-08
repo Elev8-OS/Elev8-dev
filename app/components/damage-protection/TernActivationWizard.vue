@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { ActivationDraft, ActivationStepId, TernBankDraft } from '~/components/reservations/data/tern-activation'
+import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import { toast } from 'vue-sonner'
+import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { elev8CoverPartner } from '~/components/reservations/data/damage-protection-seed'
 import {
@@ -15,17 +17,23 @@ import {
   TERN_ACTIVATION_TERMS,
   validateActivationStep,
 } from '~/components/reservations/data/tern-activation'
-import { TERN_PRODUCTS, ternSizeLabel } from '~/components/reservations/data/tern-products'
+import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
+import { PROTECTION_CATEGORY } from '~/components/upsells/data/upsell-services'
+import UpsellDrawer from '~/components/upsells/UpsellDrawer.vue'
+import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 import { useOnboarding } from '~/composables/useOnboarding'
 import { useTernActivation } from '~/composables/useTernActivation'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 
 /**
- * Activating the damage waiver: accept the Tern terms and give Tern a bank
- * account for claim payouts, then register the organization on Tern. There is
- * no card step: the per-stay fees go on the card saved at onboarding. Works
- * on a DRAFT: nothing is stored before Activate, and a failed registration
- * keeps what was typed.
+ * Activating the damage waiver: accept the Tern terms, pick the package every
+ * listing offers, and give Tern a bank account for claim payouts, then register
+ * the organization on Tern. On success the waiver, and the deposit with it, is
+ * switched on for EVERY listing with that package: there is no listing picker.
+ * There is no card step: the per-stay fees go on the card saved at onboarding.
+ * Works on a DRAFT: nothing is stored before Activate, and a failed
+ * registration keeps what was typed.
  *
  * `mode: 'bank'` is the same bank step on its own, for changing the account
  * once the service is active.
@@ -39,6 +47,8 @@ const open = defineModel<boolean>('open', { required: true })
 const tern = useTernActivation()
 const { templates } = useInvoiceTemplates()
 const onboarding = useOnboarding()
+const dp = useDamageProtection()
+const { services } = useUpsellServices()
 
 const draft = ref<ActivationDraft>(createActivationDraft())
 const stepIndex = ref(0)
@@ -57,11 +67,44 @@ watch(open, (isOpen) => {
     return
   // The bank carries over from the record (a retry, or a bank change); the
   // terms are always accepted afresh.
-  draft.value = createActivationDraft(tern.activation.value)
+  draft.value = createActivationDraft(tern.activation.value, defaultPackageId())
   stepIndex.value = 0
   errors.value = {}
   done.value = false
 })
+
+// ------------------------------------------------------------- the package
+
+/** The package already picked in settings, else the first on offer. */
+function defaultPackageId(): string | null {
+  const ids = dp.packages.value.map(p => p.serviceId)
+  const current = dp.settings.value.packageServiceId
+  return current && ids.includes(current) ? current : (ids[0] ?? null)
+}
+
+function pickPackage(serviceId: string) {
+  draft.value = { ...draft.value, packageServiceId: serviceId }
+  errors.value = {}
+}
+
+const pickedPackage = computed(() => dp.packages.value.find(p => p.serviceId === draft.value.packageServiceId) ?? null)
+
+/**
+ * The waiver uses ONE upsell: the picked package is edited in the same form as
+ * Upsells, opened in place. Created here only when none exists yet.
+ */
+const packageDrawerOpen = ref(false)
+const drawerService = ref<UpsellService | null>(null)
+const pickedService = computed(() => services.value.find(s => s.id === draft.value.packageServiceId) ?? null)
+
+function openPackageForm(service: UpsellService | null) {
+  drawerService.value = service
+  packageDrawerOpen.value = true
+}
+
+function onPackageSaved(service: UpsellService) {
+  pickPackage(service.id)
+}
 
 /** Invoice templates that already print a bank account: the one-click prefill. */
 const bankSources = computed(() => templates.value.filter(invoiceTemplateHasBank))
@@ -120,8 +163,10 @@ async function activate() {
   }
   const result = await tern.activate(draft.value, organizationName.value, simulateFailure.value)
   if (result.ok) {
+    // Every listing at once, with the package picked here; the deposit comes with the waiver.
+    dp.setProtectionSettings({ waiver: true, packageServiceId: draft.value.packageServiceId })
     done.value = true
-    toast.success('Damage waiver activated')
+    toast.success('Damage waiver activated on every listing')
   }
 }
 
@@ -147,7 +192,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
         <DialogDescription>
           {{ mode === 'bank'
             ? 'Where your approved claims are paid by bank transfer.'
-            : 'Accept the terms and add a bank account for claim payouts, then Elev8 Cover switches on.' }}
+            : 'Accept the terms, choose the package, and add a bank account for claim payouts. The waiver then switches on for every listing.' }}
         </DialogDescription>
       </DialogHeader>
 
@@ -159,8 +204,8 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
         </p>
         <p class="max-w-md text-sm text-muted-foreground">
           Elev8 Cover is active for {{ organizationName }}
-          ({{ tern.activation.value.ternOrganizationId }}). Now choose which properties are protected, and who pays, in the
-          Listings tab.
+          ({{ tern.activation.value.ternOrganizationId }}). Every listing now offers {{ pickedPackage?.serviceName ?? 'the package' }},
+          with the deposit beside it. Change the package, the deposit or who pays in Settings, Damage protection.
         </p>
         <Button class="mt-2" @click="open = false">
           Done
@@ -285,7 +330,69 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
             </p>
           </section>
 
-          <!-- 2. Bank account -->
+          <!-- 2. Package: one for every listing -->
+          <section v-else-if="step.id === 'package'" class="flex flex-col gap-4" data-testid="tern-step-package">
+            <p class="text-sm text-muted-foreground">
+              The damage waiver is switched on for every listing, with this package. The deposit is switched on beside it,
+              so the guest chooses between the two. Each package is a Damage Protection upsell.
+            </p>
+
+            <div v-if="dp.packages.value.length" class="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Package">
+              <button
+                v-for="pkg in dp.packages.value"
+                :key="pkg.serviceId"
+                type="button"
+                role="radio"
+                :aria-checked="draft.packageServiceId === pkg.serviceId"
+                class="flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-colors"
+                :class="draft.packageServiceId === pkg.serviceId ? 'border-primary ring-1 ring-primary' : 'hover:border-primary/60'"
+                :data-testid="`tern-package-${pkg.serviceId}`"
+                @click="pickPackage(pkg.serviceId)"
+              >
+                <span class="flex items-center gap-2 font-medium">
+                  {{ pkg.serviceName }}
+                  <Icon v-if="draft.packageServiceId === pkg.serviceId" name="lucide:check" class="ml-auto size-4 text-primary" />
+                </span>
+                <span class="text-xs text-muted-foreground">
+                  {{ ternPriceFor(pkg.tier, pkg.currency)
+                    ? `Covers up to ${formatProtectionAmount(ternPriceFor(pkg.tier, pkg.currency)!.coverageCap, pkg.currency)}`
+                    : `Not available in ${pkg.currency} yet` }}
+                </span>
+                <span class="text-xs">
+                  Guest pays {{ formatProtectionAmount(pkg.guestPrice, pkg.currency) }}
+                  <template v-if="ternPriceFor(pkg.tier, pkg.currency)">
+                    · Elev8 charges you {{ formatProtectionAmount(ternPriceFor(pkg.tier, pkg.currency)!.perStayFee, pkg.currency) }}
+                  </template>
+                </span>
+              </button>
+            </div>
+            <div v-else class="flex flex-col items-center gap-2 rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground" data-testid="tern-no-packages">
+              There is no package yet. Create one: it is a Damage Protection upsell.
+              <Button variant="outline" size="sm" data-testid="tern-new-package" @click="openPackageForm(null)">
+                <Icon name="lucide:plus" class="mr-1 size-4" />
+                Create a package
+              </Button>
+            </div>
+            <p v-if="errors.packageServiceId" class="text-xs text-destructive">
+              {{ errors.packageServiceId }}
+            </p>
+
+            <Button
+              v-if="pickedService"
+              variant="outline"
+              size="sm"
+              class="w-fit"
+              data-testid="tern-edit-package"
+              @click="openPackageForm(pickedService)"
+            >
+              <Icon name="lucide:pencil" class="mr-1 size-4" />
+              Edit package
+            </Button>
+
+            <CoverageBreakdown v-if="pickedPackage" :tier="pickedPackage.tier" :currency="pickedPackage.currency" />
+          </section>
+
+          <!-- 3. Bank account -->
           <section v-else-if="step.id === 'bank'" class="flex flex-col gap-4" data-testid="tern-step-bank">
             <p class="text-sm text-muted-foreground">
               Approved claims are paid by bank transfer, in {{ elev8CoverPartner.currency }}, into this account. One
@@ -352,7 +459,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
             </div>
           </section>
 
-          <!-- 3. Review -->
+          <!-- 4. Review -->
           <section v-else class="flex flex-col gap-4" data-testid="tern-step-review">
             <dl class="grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
               <dt class="text-muted-foreground">
@@ -368,6 +475,15 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                 Accepted
                 <Button variant="link" size="sm" class="h-auto p-0 text-xs" @click="goTo('terms')">
                   Review
+                </Button>
+              </dd>
+              <dt class="text-muted-foreground">
+                Package, every listing
+              </dt>
+              <dd data-testid="tern-review-package">
+                {{ pickedPackage ? `${pickedPackage.serviceName}, guest pays ${formatProtectionAmount(pickedPackage.guestPrice, pickedPackage.currency)}` : 'None chosen' }}, with the deposit
+                <Button variant="link" size="sm" class="h-auto p-0 text-xs" @click="goTo('package')">
+                  Change
                 </Button>
               </dd>
               <dt class="text-muted-foreground">
@@ -440,5 +556,13 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
         </DialogFooter>
       </template>
     </DialogContent>
+    <!-- Mounted only while open: the form is heavy. Its watch fills a new Damage Protection upsell. -->
+    <UpsellDrawer
+      v-if="packageDrawerOpen"
+      v-model:open="packageDrawerOpen"
+      :service="drawerService"
+      :initial-category="PROTECTION_CATEGORY"
+      @saved="onPackageSaved"
+    />
   </Dialog>
 </template>

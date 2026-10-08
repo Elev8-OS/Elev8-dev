@@ -1,54 +1,61 @@
 import type { BookingChannel } from '~/components/listings/data/listings'
 import type { DamageProtectionPolicy, ProtectionCurrency } from '~/components/reservations/data/damage-protection'
+import type { ProtectionPayer } from '~/components/reservations/data/reservations'
 import type { TernTier } from '~/components/reservations/data/tern-products'
 import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import { DEPOSIT_TERMS, WAIVER_TERMS } from '~/components/reservations/data/damage-protection'
 import { isProtectionService } from '~/components/upsells/data/upsell-services'
 
 /**
- * Damage protection is set PER LISTING (owner's decision, 2026-10-06). There
- * are no shared policies any more and no settings page:
+ * Damage protection is set ONCE FOR THE TENANT, in Settings (owner's decision,
+ * 2026-10-08). There is no per-listing setup and no Protection tab any more:
  *
  * - A Damage Protection upsell sells ONE package: an Elev8 Cover tier and what
  *   the guest pays for it (its single item). Bronze and Silver are two upsells.
- * - The damage waiver is on for a listing assigned to an active protection
- *   upsell, and that upsell IS its package. A listing sits in one at most:
- *   choosing another package moves it (`moveListingUpdates`).
- * - A deposit on its own needs no upsell: switching it on protects the listing.
- * - The listing's Protection tab switches the waiver and the deposit on or off
- *   and sets the deposit's card limit. With both on, the guest chooses.
+ * - The damage waiver is switched on for EVERY listing at once, with the one
+ *   package the tenant picked (`packageServiceId`). There is no listing picker:
+ *   an upsell's `assignedListings` means nothing for protection.
+ * - ⚠️ The waiver brings the deposit with it: switching the waiver on switches
+ *   the deposit on, and it stays on while the waiver is (`applySettingsPatch`).
+ *   A deposit on its own (waiver off) needs no package.
+ * - Who pays and the host-cover fallback are tenant-wide too.
  *
  * The rest of the module still runs on `DamageProtectionPolicy`: `listingPolicy`
- * builds one per listing from its setup and package, so the guest options, the
- * frozen protection, host cover and billing are unchanged.
+ * builds one per listing from these settings and the package, so the guest
+ * options, the frozen protection, host cover and billing are unchanged.
  */
 
-export interface ListingProtectionSetup {
-  listingId: string
-  /** Offer the damage waiver (it runs only while a protection upsell assigns the listing). */
+export interface ProtectionSettings {
+  /** Offer the damage waiver on every listing (it runs only once a package is picked). */
   waiver: boolean
-  /** Offer the deposit (a card kept on file). Stripe listings only. */
+  /** The Damage Protection upsell whose package every listing offers. */
+  packageServiceId: string | null
+  /** Offer the deposit (a card kept on file). Stripe listings only. Always on while the waiver is. */
   deposit: boolean
-  /** The most the saved card may be charged. */
+  /** The most the saved card may be charged, in each listing's own currency. */
   depositLimit: number
   /** Days after check-out by which the deposit is charged or closed. */
   settleWithinDays: number
   /**
-   * Where a deposit ON ITS OWN is asked. Absent means Direct only (every setup
-   * written before this field). ⚠️ Ignored while the waiver is on: the waiver
-   * covers every channel, and the deposit rides along beside it.
+   * Where a deposit ON ITS OWN is asked. Absent means Direct only. ⚠️ Ignored
+   * while the waiver is on: the waiver covers every channel, and the deposit
+   * rides along beside it.
    */
   depositChannels?: BookingChannel[]
+  /** Who pays for the waiver on every listing. Host-paid needs the waiver on and activated. */
+  payer: ProtectionPayer
   /**
-   * Guest-paid listings only: when the guest has not bought the waiver (nor
-   * left a deposit card) by `hostFallbackDays` before check-in, the host covers
-   * the stay and Elev8 charges the host the cover fee. Absent means off.
+   * Guest-paid only: when the guest has not bought the waiver (nor left a
+   * deposit card) by `hostFallbackDays` before check-in, the host covers the
+   * stay and Elev8 charges the host the cover fee. Absent means off.
    */
   hostFallback?: boolean
   /** Days before check-in at which the host cover kicks in. Absent means 1. */
   hostFallbackDays?: number
   updatedAt: string
 }
+
+export type ProtectionSettingsPatch = Partial<Omit<ProtectionSettings, 'updatedAt'>>
 
 export const DEFAULT_HOST_FALLBACK_DAYS = 1
 export const HOST_FALLBACK_DAY_OPTIONS = [1, 2, 3, 5, 7, 14]
@@ -59,7 +66,7 @@ export const HOST_FALLBACK_DAY_OPTIONS = [1, 2, 3, 5, 7, 14]
  * Day strings are local `YYYY-MM-DD`.
  */
 export function hostFallbackDue(
-  setup: Pick<ListingProtectionSetup, 'hostFallback' | 'hostFallbackDays'>,
+  setup: Pick<ProtectionSettings, 'hostFallback' | 'hostFallbackDays'>,
   checkIn: string,
   today: Date,
 ): boolean {
@@ -78,23 +85,35 @@ export const DEFAULT_SETTLE_DAYS = 7
 export const DEFAULT_DEPOSIT_CHANNELS: BookingChannel[] = ['Direct']
 
 /** The channels a deposit on its own is asked on. */
-export function depositChannelsOf(setup: Pick<ListingProtectionSetup, 'depositChannels'>): BookingChannel[] {
+export function depositChannelsOf(setup: Pick<ProtectionSettings, 'depositChannels'>): BookingChannel[] {
   return setup.depositChannels ?? DEFAULT_DEPOSIT_CHANNELS
 }
 /** Fixed so a derived policy is stable across reads (it is provenance on a frozen protection). */
 const DEFAULT_SETUP_STAMP = '2026-09-01T00:00:00.000Z'
 
-/** What a listing starts with: the waiver (once an upsell assigns it), no deposit. */
-export function defaultListingSetup(listingId: string): ListingProtectionSetup {
+/** What a tenant starts with: nothing offered until the waiver is activated with a package. */
+export function defaultProtectionSettings(): ProtectionSettings {
   return {
-    listingId,
-    waiver: true,
+    waiver: false,
+    packageServiceId: null,
     deposit: false,
     depositLimit: DEFAULT_DEPOSIT_LIMIT,
     settleWithinDays: DEFAULT_SETTLE_DAYS,
     depositChannels: [...DEFAULT_DEPOSIT_CHANNELS],
+    payer: 'guest',
     updatedAt: DEFAULT_SETUP_STAMP,
   }
+}
+
+/**
+ * The settings after a patch, with the one coupling rule applied: the waiver
+ * brings the deposit, and the deposit cannot be switched off beside it.
+ */
+export function applySettingsPatch(current: ProtectionSettings, patch: ProtectionSettingsPatch, now: string): ProtectionSettings {
+  const next: ProtectionSettings = { ...current, ...patch, updatedAt: now }
+  if (next.waiver)
+    next.deposit = true
+  return next
 }
 
 export interface ProtectionPackage {
@@ -132,57 +151,21 @@ export function protectionPackageOptions(services: UpsellService[]): ProtectionP
     .filter((p): p is ProtectionPackage => p !== null)
 }
 
-/** Upsells store listings by name; an id is accepted too, so either spelling links. */
-function assignsListing(service: Pick<UpsellService, 'assignedListings'>, listing: { id: string, name: string }): boolean {
-  return service.assignedListings.includes(listing.name) || service.assignedListings.includes(listing.id)
-}
-
-/** The active protection upsells assigning this listing. One at most, unless set up by hand twice. */
-export function protectionServicesFor(
+/** The package every listing offers: the picked upsell's, while it is active and sells one. */
+export function selectedPackage(
   services: UpsellService[],
-  listing: { id: string, name: string },
-): UpsellService[] {
-  return services.filter(s => isProtectionService(s) && s.status === 'active' && assignsListing(s, listing))
-}
-
-/** The listing's package: the one its protection upsell sells. The first wins if it is in two. */
-export function listingPackage(
-  services: UpsellService[],
-  listing: { id: string, name: string },
+  settings: Pick<ProtectionSettings, 'packageServiceId'>,
 ): ProtectionPackage | null {
-  for (const service of protectionServicesFor(services, listing)) {
-    const pkg = packageOf(service)
-    if (pkg)
-      return pkg
-  }
-  return null
-}
-
-/**
- * The `assignedListings` writes that put a listing in ONE protection upsell
- * (`targetId`), taking it out of every other, or out of all of them when
- * `targetId` is null. Only services that change are returned. Inactive ones
- * are cleaned too, so switching one back on cannot put the listing in two.
- */
-export function moveListingUpdates(
-  services: UpsellService[],
-  listing: { id: string, name: string },
-  targetId: string | null,
-): { id: string, assignedListings: string[], status?: 'active' }[] {
-  return services.filter(isProtectionService).flatMap((service) => {
-    const has = assignsListing(service, listing)
-    if (service.id === targetId)
-      return has ? [] : [{ id: service.id, assignedListings: [...service.assignedListings, listing.name], status: 'active' as const }]
-    return has
-      ? [{ id: service.id, assignedListings: service.assignedListings.filter(n => n !== listing.name && n !== listing.id) }]
-      : []
-  })
+  const service = services.find(s => s.id === settings.packageServiceId)
+  if (!service || !isProtectionService(service) || service.status !== 'active')
+    return null
+  return packageOf(service)
 }
 
 const PROTECTION_CURRENCIES: ProtectionCurrency[] = ['USD', 'IDR', 'EUR', 'CHF']
 
 /** The terms the guest accepts, in the words of the options they are offered. */
-export function setupTermsText(setup: Pick<ListingProtectionSetup, 'waiver' | 'deposit'>): string {
+export function setupTermsText(setup: { waiver: boolean, deposit: boolean }): string {
   return [setup.waiver ? WAIVER_TERMS : null, setup.deposit ? DEPOSIT_TERMS : null]
     .filter(Boolean)
     .join(' ')
@@ -193,40 +176,35 @@ export function listingPolicyId(listingId: string): string {
 }
 
 export type ListingPolicyBlock
-  = | 'no_service'
-    | 'no_package'
+  = | 'no_package'
     | 'nothing_offered'
     | 'no_deposit_channel'
     | 'no_payout_currency'
     | 'currency_mismatch'
 
 /**
- * The listing's policy, or why there is none.
+ * The listing's policy under the tenant's settings, or why there is none.
  *
- * - The WAIVER needs a Damage Protection upsell assigning the listing: its
- *   package is what the guest buys. Without one the waiver switch does nothing.
- * - The DEPOSIT needs no upsell (2026-10-06): a listing can take a deposit only,
- *   charged in its own payout currency. So a deposit switched on makes the
- *   listing protected even when no upsell assigns it.
+ * - The WAIVER needs the tenant's package (`pkg`, from `selectedPackage`):
+ *   without one, a waiver switched on builds nothing (`no_package`).
+ * - The DEPOSIT needs no package: on its own it is charged in the listing's
+ *   payout currency.
  *
- * ⚠️ No currency conversion, ever: a waiver package priced in another currency
- * than the listing's payouts builds no policy (`currency_mismatch`).
+ * ⚠️ No currency conversion, ever: a listing paid out in another currency than
+ * the package builds no policy (`currency_mismatch`).
  */
 export function listingPolicy(
-  setup: ListingProtectionSetup,
-  services: UpsellService[],
-  listing: { id: string, name: string },
+  settings: Pick<ProtectionSettings, 'waiver' | 'deposit' | 'depositLimit' | 'settleWithinDays' | 'depositChannels' | 'updatedAt'>,
+  pkg: ProtectionPackage | null,
+  listing: { id: string },
   payoutCurrency: string | null,
 ): { policy: DamageProtectionPolicy, pkg: ProtectionPackage | null } | { policy: null, block: ListingPolicyBlock } {
-  const hasService = protectionServicesFor(services, listing).length > 0
-  const waiverOn = setup.waiver && hasService
-  if (!waiverOn && !setup.deposit)
-    return { policy: null, block: hasService ? 'nothing_offered' : 'no_service' }
-
-  const pkg = hasService ? listingPackage(services, listing) : null
-  if (waiverOn && !pkg)
+  if (settings.waiver && !pkg)
     return { policy: null, block: 'no_package' }
-  if (!waiverOn && depositChannelsOf(setup).length === 0)
+  const waiverOn = settings.waiver && pkg !== null
+  if (!waiverOn && !settings.deposit)
+    return { policy: null, block: 'nothing_offered' }
+  if (!waiverOn && depositChannelsOf(settings).length === 0)
     return { policy: null, block: 'no_deposit_channel' }
 
   // The waiver is priced in its package's currency; a deposit on its own is charged in the payouts'.
@@ -236,8 +214,8 @@ export function listingPolicy(
   if ((payoutCurrency && currency !== payoutCurrency) || !PROTECTION_CURRENCIES.includes(currency as ProtectionCurrency))
     return { policy: null, block: 'currency_mismatch' }
 
-  const offered = { waiver: waiverOn, deposit: setup.deposit }
-  const offers = [waiverOn ? 'waiver' : null, setup.deposit ? 'deposit' : null]
+  const offered = { waiver: waiverOn, deposit: settings.deposit }
+  const offers = [waiverOn ? 'waiver' : null, settings.deposit ? 'deposit' : null]
     .filter((o): o is 'waiver' | 'deposit' => o !== null)
   return {
     pkg: waiverOn ? pkg : null,
@@ -248,13 +226,13 @@ export function listingPolicy(
       offers,
       // Unused without the waiver; kept whole so the policy shape never changes.
       waiver: { tier: pkg?.tier ?? 'bronze', guestPrice: waiverOn ? pkg!.guestPrice : 0 },
-      deposit: { pricing: 'flat', rate: setup.depositLimit, settleWithinDays: setup.settleWithinDays },
-      // A waiver covers every channel; a deposit on its own is asked on the channels the listing picked.
-      channelPolicy: waiverOn ? {} : Object.fromEntries(depositChannelsOf(setup).map(c => [c, 'offer' as const])),
+      deposit: { pricing: 'flat', rate: settings.depositLimit, settleWithinDays: settings.settleWithinDays },
+      // A waiver covers every channel; a deposit on its own is asked on the channels picked.
+      channelPolicy: waiverOn ? {} : Object.fromEntries(depositChannelsOf(settings).map(c => [c, 'offer' as const])),
       termsVersion: 'v1',
       termsText: setupTermsText(offered),
-      createdAt: setup.updatedAt,
-      updatedAt: setup.updatedAt,
+      createdAt: settings.updatedAt,
+      updatedAt: settings.updatedAt,
     },
   }
 }

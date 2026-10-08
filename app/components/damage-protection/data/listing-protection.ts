@@ -5,8 +5,8 @@ import { formatProtectionAmount, waiverCover } from '~/components/reservations/d
 import { recommendedTier, ternPriceFor, ternProduct, tierTooSmall } from '~/components/reservations/data/tern-products'
 
 /**
- * The plain sentences a listing's damage protection is described in. Read by
- * the listing detail Protection tab, so a flag or a refusal is worded once.
+ * The plain sentences damage protection is described in. Read by Settings,
+ * Damage protection, so a flag or a refusal is worded once.
  */
 
 export const PROTECTION_MODE_LABELS: Record<ListingProtectionMode, string> = {
@@ -46,27 +46,26 @@ export function undersizedText(pkg: ProtectionPackage | null, capacity: number):
     + `${ternProduct(recommendedTier(capacity)).name} is recommended.`
 }
 
-/** Why a listing with a protection upsell still protects nothing. */
+/** Why a listing protects nothing under the tenant's settings. */
 export function blockText(block: ListingPolicyBlock, pkg: { currency: string } | null, payoutCurrency: string | null): string {
   switch (block) {
-    case 'no_service':
-      return 'No Damage Protection upsell is assigned to this listing.'
     case 'no_package':
-      return 'The Damage Protection upsell has no package with an Elev8 Cover tier. Add one in Upsells.'
+      return 'No package is chosen for the damage waiver, or it was paused or deleted.'
     case 'nothing_offered':
       return 'Turn on the damage waiver, the deposit, or both: guests are offered nothing right now.'
     case 'no_payout_currency':
-      return 'This listing has no payout account, so there is no currency to take a deposit in.'
+      return 'No payout account, so there is no currency to take a deposit in.'
     case 'no_deposit_channel':
       return 'Pick at least one booking channel for the deposit: no guest is asked right now.'
     case 'currency_mismatch':
-      return `The package is priced in ${pkg?.currency ?? 'another currency'}, but this listing is paid out in ${payoutCurrency ?? 'another currency'}. Nothing is converted, so protection is off until they match.`
+      return `The package is priced in ${pkg?.currency ?? 'another currency'}, but this listing is paid out in ${payoutCurrency ?? 'another currency'}. Nothing is converted, so it is not covered.`
   }
 }
 
 const REFUSALS: Record<string, string> = {
   host_needs_waiver: 'Where you pay for the cover, the damage waiver must stay on. A deposit has nothing for you to pay for.',
   waiver_not_activated: 'Activate the damage waiver first: host-paid cover needs Elev8 Cover.',
+  package_missing: 'Choose a package for the damage waiver first.',
   deposit_limit_missing: 'Set the most the guest\'s card may be charged.',
   settle_days_missing: 'Set how many days after check-out you decide on the deposit.',
 }

@@ -87,10 +87,11 @@ export const TERN_ACTIVATION_TERMS: string[] = [
   'Guests are offered a damage waiver, never insurance.',
 ]
 
-export type ActivationStepId = 'terms' | 'bank' | 'review'
+export type ActivationStepId = 'terms' | 'package' | 'bank' | 'review'
 
 export const ACTIVATION_STEPS: { id: ActivationStepId, title: string, description: string }[] = [
   { id: 'terms', title: 'Terms', description: 'What activating the damage waiver means' },
+  { id: 'package', title: 'Package', description: 'The package every listing offers' },
   { id: 'bank', title: 'Bank account', description: 'Where your claims are paid' },
   { id: 'review', title: 'Review', description: 'Check and activate' },
 ]
@@ -106,6 +107,12 @@ export interface TernBankDraft {
 
 export interface ActivationDraft {
   termsAccepted: boolean
+  /**
+   * The Damage Protection upsell every listing offers once active. Activating
+   * switches the waiver (and with it the deposit) on for EVERY listing, so
+   * there is no listing to pick, only the package.
+   */
+  packageServiceId: string | null
   bank: TernBankDraft
   bankCopiedFromTemplateId?: string
 }
@@ -114,10 +121,11 @@ export function emptyBankDraft(): TernBankDraft {
   return { accountHolder: '', bankName: '', country: '', iban: '', accountNumber: '', bicSwift: '' }
 }
 
-export function createActivationDraft(activation?: TernActivation): ActivationDraft {
+export function createActivationDraft(activation?: TernActivation, packageServiceId: string | null = null): ActivationDraft {
   const bank = activation?.payoutBank
   return {
     termsAccepted: false,
+    packageServiceId,
     bank: bank
       ? {
           accountHolder: bank.accountHolder,
@@ -184,6 +192,8 @@ export function validateBankDraft(bank: TernBankDraft): BankErrors {
 export function validateActivationStep(draft: ActivationDraft, step: ActivationStepId): Record<string, string> {
   if (step === 'terms')
     return draft.termsAccepted ? {} : { termsAccepted: 'Accept the terms to activate the damage waiver.' }
+  if (step === 'package')
+    return draft.packageServiceId ? {} : { packageServiceId: 'Choose the package your guests are offered.' }
   if (step === 'bank')
     return validateBankDraft(draft.bank)
   return {}

@@ -1,4 +1,4 @@
-import type { ListingProtectionSetup } from '~/components/damage-protection/data/listing-protection-setup'
+import type { ProtectionPackage, ProtectionSettings, ProtectionSettingsPatch } from '~/components/damage-protection/data/listing-protection-setup'
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type {
   CardInput,
@@ -13,7 +13,7 @@ import type {
 } from '~/components/reservations/data/damage-protection'
 import type { DamageProtection, ProtectionClaim, ProtectionPayer, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
 import { computed, ref } from 'vue'
-import { defaultListingSetup, hostFallbackDue, listingPackage, listingPolicy, protectionPackageOptions, protectionServicesFor } from '~/components/damage-protection/data/listing-protection-setup'
+import { applySettingsPatch, hostFallbackDue, listingPolicy, protectionPackageOptions, selectedPackage } from '~/components/damage-protection/data/listing-protection-setup'
 import { listings } from '~/components/listings/data/listings'
 import {
   assignmentForStay,
@@ -44,7 +44,7 @@ import {
   waiverPotTotal,
   withExtraPackages,
 } from '~/components/reservations/data/damage-protection'
-import { seedListingProtectionSetups, seedProtectionPayers } from '~/components/reservations/data/damage-protection-seed'
+import { seedProtectionSettings } from '~/components/reservations/data/damage-protection-seed'
 import { coverPackagesFor } from '~/components/reservations/data/tern-products'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
@@ -56,10 +56,10 @@ import { useTernActivation } from '~/composables/useTernActivation'
 import { useTernApi } from '~/composables/useTernApi'
 import { useUpsellServices } from '~/composables/useUpsellServices'
 
-// v4: protection is set per listing (`ListingProtectionSetup`) and turned on by
-// a Damage Protection upsell, so a v3 payload of shared policies and bands has
-// nothing left to load into. v3 moved the cover onto Tern tiers.
-const STORAGE_KEY = 'elev8-damage-protection-v4'
+// v5: protection is set once for the tenant (`ProtectionSettings`), so a v4
+// payload of per-listing setups and payers has nothing left to load into.
+// v4 was per listing, v3 moved the cover onto Tern tiers.
+const STORAGE_KEY = 'elev8-damage-protection-v5'
 
 /** The mock gateway round trip. Long enough for the spinner to be visible. */
 const GATEWAY_MOCK_MS = 1500
@@ -141,34 +141,33 @@ export function useDamageProtection() {
   const canViewProtection = computed(() => protectionPermissions.value?.dashboardView ?? false)
   const canEditProtection = computed(() => protectionPermissions.value?.dashboardEdit ?? false)
 
-  /** Per listing: waiver and/or deposit, the package, the deposit limit. Absent = `defaultListingSetup`. */
-  const setups = useState<ListingProtectionSetup[]>(
-    'damage-protection-setups',
-    () => seedListingProtectionSetups.map(s => ({ ...s })),
-  )
-  /** Per listing. Absent means the guest pays. Only read where the listing is protected. */
-  const payers = useState<Record<string, ProtectionPayer>>(
-    'damage-protection-payers',
-    () => ({ ...seedProtectionPayers }),
+  /**
+   * ONE setting for every listing (owner's decision, 2026-10-08): the waiver
+   * and its package, the deposit, who pays, the host-cover fallback.
+   */
+  const settings = useState<ProtectionSettings>(
+    'damage-protection-settings',
+    () => ({ ...seedProtectionSettings }),
   )
 
-  /**
-   * ⚠️ Assigning a listing to an active Damage Protection upsell is what turns
-   * its protection ON. The upsell owns that list; nothing here writes it.
-   */
+  /** The packages are Damage Protection upsells; the tenant picks one for every listing. */
   const { services: upsellServices } = useUpsellServices()
 
-  function setupFor(listingId: string): ListingProtectionSetup {
-    return setups.value.find(s => s.listingId === listingId) ?? defaultListingSetup(listingId)
+  /** The package every listing offers, or null when none is picked (or it was paused or deleted). */
+  const currentPackage = computed<ProtectionPackage | null>(() => selectedPackage(upsellServices.value, settings.value))
+
+  function buildFor(listing: { id: string }) {
+    return listingPolicy(settings.value, currentPackage.value, listing, payoutAccountFor(listing.id)?.currency ?? null)
   }
 
   /**
-   * One policy per protected listing, DERIVED from its setup and package, never
-   * stored: a policy cannot drift from the upsell that sells it. `policyId` on a
-   * frozen protection is provenance, so a later change here touches no stay.
+   * One policy per protected listing, DERIVED from the tenant settings and the
+   * package, never stored: a policy cannot drift from the upsell that sells it.
+   * `policyId` on a frozen protection is provenance, so a later change here
+   * touches no stay.
    */
   const policies = computed<DamageProtectionPolicy[]>(() => listings.value.flatMap((listing) => {
-    const built = listingPolicy(setupFor(listing.id), upsellServices.value, listing, payoutAccountFor(listing.id)?.currency ?? null)
+    const built = buildFor(listing)
     return built.policy ? [built.policy] : []
   }))
   /** Every stay length on one policy: there is no separate long-stay setup any more. */
@@ -181,10 +180,7 @@ export function useDamageProtection() {
     if (typeof localStorage === 'undefined')
       return
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        setups: setups.value,
-        payers: payers.value,
-      }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings: settings.value }))
     }
     catch { /* quota or private mode */ }
   }
@@ -198,16 +194,14 @@ export function useDamageProtection() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed.setups))
-          setups.value = parsed.setups
-        if (parsed.payers && typeof parsed.payers === 'object')
-          payers.value = parsed.payers
+        if (parsed.settings && typeof parsed.settings === 'object')
+          settings.value = { ...seedProtectionSettings, ...parsed.settings }
       }
     }
     catch { /* corrupt payload, keep the seed */ }
     // No booking-created hook and no scheduler in this app: catching up on
-    // hydrate is what covers a host-paid listing's new stays, and what follows
-    // a protection upsell being assigned or unassigned.
+    // hydrate is what covers a host-paid tenant's new stays, and what follows
+    // the package's upsell being paused or deleted.
     syncHostCover()
   }
 
@@ -245,11 +239,12 @@ export function useDamageProtection() {
     return reservationById(id)?.damageProtection ?? null
   }
 
-  function payerFor(listingId: string): ProtectionPayer {
-    return payers.value[listingId] ?? 'guest'
+  /** Who pays is tenant-wide; the argument stays so call sites read per listing. */
+  function payerFor(_listingId?: string): ProtectionPayer {
+    return settings.value.payer
   }
 
-  /** Off when the listing has no policy (no protection upsell, or nothing it can run); otherwise who pays. */
+  /** Off when the listing has no policy (nothing offered, or nothing it can run); otherwise who pays. */
   function listingMode(listingId: string): ListingProtectionMode {
     if (!assignments.value.some(a => a.listingId === listingId))
       return 'off'
@@ -315,78 +310,63 @@ export function useDamageProtection() {
     return verdict.ok ? null : verdict.reason
   }
 
-  // ------------------------------------------------------- per-listing setup
+  // ------------------------------------------------- the tenant's settings
 
   /**
-   * Everything the listing's Protection tab shows: whether a protection upsell
-   * covers it, the packages on offer, the setup, and the policy built from them
-   * (or why there is none).
+   * One listing under the tenant's settings: its policy, or why it has none
+   * (another payout currency than the package, no payout account, ...).
    */
   function listingProtection(listingId: string) {
-    const listing = listings.value.find(l => l.id === listingId) ?? { id: listingId, name: '' }
-    const setup = setupFor(listingId)
-    const currency = payoutAccountFor(listingId)?.currency ?? null
-    const built = listingPolicy(setup, upsellServices.value, listing, currency)
+    const listing = listings.value.find(l => l.id === listingId) ?? { id: listingId }
+    const built = buildFor(listing)
     return {
-      setup,
-      services: protectionServicesFor(upsellServices.value, listing),
-      /** Every package on offer (one per protection upsell), to pick from. */
-      packages: protectionPackageOptions(upsellServices.value),
-      /** The package this listing is in, even when no policy runs (a currency mismatch still names it). */
-      assignedPackage: listingPackage(upsellServices.value, listing),
-      currency,
+      currency: payoutAccountFor(listingId)?.currency ?? null,
       policy: built.policy,
-      package: built.policy ? built.pkg : null,
-      /** The waiver can only run where a protection upsell sells its package. */
-      waiverAvailable: protectionServicesFor(upsellServices.value, listing).length > 0,
       block: built.policy ? null : built.block,
     }
   }
 
+  /** Every package on offer (one per active protection upsell), to pick from. */
+  const packages = computed(() => protectionPackageOptions(upsellServices.value))
+
   /**
-   * Change a listing's setup: the waiver and deposit switches, the package, the
-   * deposit limit. Touches the setup only, never a reservation: what a guest
-   * already accepted stays frozen on their stay.
+   * Change the tenant's settings. Touches the settings only, never a
+   * reservation: what a guest already accepted stays frozen on their stay.
    *
-   * ⚠️ A host-paid listing must keep the waiver (`host_needs_waiver`): the host
-   * pays for the cover, a deposit has nothing for them to pay for.
+   * ⚠️ The waiver brings the deposit (`applySettingsPatch`). Host-paid must
+   * keep the waiver on (`host_needs_waiver`): a deposit has nothing for the
+   * host to pay for.
    */
-  function setListingSetup(
-    listingId: string,
-    patch: Partial<Omit<ListingProtectionSetup, 'listingId' | 'updatedAt'>>,
-  ): ProtectionWriteResult {
-    const next: ListingProtectionSetup = { ...setupFor(listingId), ...patch, listingId, updatedAt: new Date().toISOString() }
-    if (payerFor(listingId) === 'host' && !next.waiver)
-      return { ok: false, reason: 'host_needs_waiver' }
+  function setProtectionSettings(patch: ProtectionSettingsPatch): ProtectionWriteResult {
+    const next = applySettingsPatch(settings.value, patch, new Date().toISOString())
+    if (next.payer === 'host') {
+      if (!waiverServiceActive.value && settings.value.payer !== 'host')
+        return { ok: false, reason: 'waiver_not_activated' }
+      if (!next.waiver || !selectedPackage(upsellServices.value, next))
+        return { ok: false, reason: 'host_needs_waiver' }
+    }
+    if (next.waiver && !selectedPackage(upsellServices.value, next))
+      return { ok: false, reason: 'package_missing' }
     if (next.deposit && !(next.depositLimit > 0))
       return { ok: false, reason: 'deposit_limit_missing' }
     if (next.deposit && !(next.settleWithinDays >= 1))
       return { ok: false, reason: 'settle_days_missing' }
-    setups.value = setups.value.some(s => s.listingId === listingId)
-      ? setups.value.map(s => s.listingId === listingId ? next : s)
-      : [...setups.value, next]
+    settings.value = next
     persist()
     syncHostCover()
     return { ok: true }
   }
 
-  /**
-   * Who pays on a protected listing. Host-paid is Tern's cover bought by the
-   * host, so it needs the service activated and the waiver switched on.
-   */
-  function setListingPayer(listingId: string, payer: ProtectionPayer): ProtectionWriteResult {
-    if (payer === 'host') {
-      if (!waiverServiceActive.value)
-        return { ok: false, reason: 'waiver_not_activated' }
-      if (!setupFor(listingId).waiver || !listingProtection(listingId).waiverAvailable)
-        return { ok: false, reason: 'host_needs_waiver' }
-    }
-    payers.value = payer === 'host'
-      ? { ...payers.value, [listingId]: 'host' }
-      : Object.fromEntries(Object.entries(payers.value).filter(([id]) => id !== listingId))
-    persist()
-    syncHostCover()
-    return { ok: true }
+  /** Who pays, on every listing. Host-paid is Elev8 Cover bought by the host: it needs the activated waiver. */
+  function setProtectionPayer(payer: ProtectionPayer): ProtectionWriteResult {
+    if (payer === 'host' && !waiverServiceActive.value)
+      return { ok: false, reason: 'waiver_not_activated' }
+    return setProtectionSettings({ payer })
+  }
+
+  /** Off means off: no waiver, no deposit, and the guest pays again. The package stays picked. */
+  function turnOffProtection(): ProtectionWriteResult {
+    return setProtectionSettings({ waiver: false, deposit: false, payer: 'guest', hostFallback: false })
   }
 
   /**
@@ -418,7 +398,7 @@ export function useDamageProtection() {
       const hostPaid = payerFor(reservation.listingId) === 'host' && offersWaiver
       // Guest-paid, but the guest missed the listing's cut-off: the host covers it instead.
       const fallback = !hostPaid && offersWaiver && payerFor(reservation.listingId) === 'guest'
-        && hostFallbackDue(setupFor(reservation.listingId), reservation.checkIn, today)
+        && hostFallbackDue(settings.value, reservation.checkIn, today)
 
       if (isHostCover && existing) {
         const noClaims = (existing.claims ?? []).length === 0
@@ -1073,7 +1053,9 @@ export function useDamageProtection() {
     canEditProtection,
     policies,
     assignments,
-    payers,
+    settings,
+    currentPackage,
+    packages,
     waiverServiceActive,
     pausedUntilActivation,
     hydrate,
@@ -1089,12 +1071,11 @@ export function useDamageProtection() {
     bucketFor,
     settleRefusalFor,
     listingsMissingGuideSection,
-    // per-listing setup
-    setups,
-    setupFor,
+    // the tenant's settings
     listingProtection,
-    setListingSetup,
-    setListingPayer,
+    setProtectionSettings,
+    setProtectionPayer,
+    turnOffProtection,
     syncHostCover,
     // writers
     saveCard,

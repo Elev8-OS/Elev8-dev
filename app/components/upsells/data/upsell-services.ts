@@ -283,9 +283,10 @@ export const UPSPELL_CATEGORIES: UpsellCategory[] = [
 ]
 
 /**
- * ⚠️ A Damage Protection service is not sold like the other upsells. Its items
- * are the Elev8 Cover packages, and assigning a listing to it is what turns
- * damage protection ON for that listing (`useDamageProtection`). The guest
+ * ⚠️ A Damage Protection service is not sold like the other upsells. It sells
+ * one Elev8 Cover package, and the tenant picks ONE such package for every
+ * listing in Settings, Damage protection (`useDamageProtection`); its
+ * `assignedListings` is unused. The guest
  * meets it in the guest guide's Damage protection section, never in the upsell
  * catalog, an inbox offer, the folio or a promo code.
  */
@@ -754,7 +755,7 @@ export const mockUpsellServices: UpsellService[] = [
       { id: 'itm-dp-bronze', name: 'Bronze', description: 'For properties up to 4 guests.', price: 39, coverTier: 'bronze' },
     ],
     // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
-    assignedListings: ['5BR Pool the R Villa Luwa – Serene near Canggu'],
+    assignedListings: [],
     availability: 'always',
     status: 'active',
     visibility: emptyVisibilityConditions(),
@@ -779,7 +780,7 @@ export const mockUpsellServices: UpsellService[] = [
       { id: 'itm-dp-silver', name: 'Silver', description: 'For properties of 5 to 8 guests.', price: 59, coverTier: 'silver' },
     ],
     // Listings paid out on the USD Stripe account (`payouts.ts`): no conversion, ever.
-    assignedListings: ['Apartments Pool - Room 3'],
+    assignedListings: [],
     availability: 'always',
     status: 'active',
     visibility: emptyVisibilityConditions(),

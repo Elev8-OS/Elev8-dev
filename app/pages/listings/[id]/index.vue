@@ -12,7 +12,6 @@ import ListingHeroCompact from '~/components/listings/ListingHeroCompact.vue'
 import ListingMaintenanceTab from '~/components/listings/ListingMaintenanceTab.vue'
 import ListingOverviewTab from '~/components/listings/ListingOverviewTab.vue'
 import ListingPricingTab from '~/components/listings/ListingPricingTab.vue'
-import ListingProtectionTab from '~/components/listings/ListingProtectionTab.vue'
 import ListingReviewsTab from '~/components/listings/ListingReviewsTab.vue'
 import ListingSettingsTab from '~/components/listings/ListingSettingsTab.vue'
 
@@ -33,7 +32,7 @@ function updateListing(updated: Listing) {
 const activeUnitId = computed(() => listing.value?.activeUnitId ?? null)
 const activeUnit = computed(() => listing.value ? getUnitById(listing.value, activeUnitId.value ?? '') : null)
 
-const TABS = ['overview', 'pricing', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'protection', 'settings']
+const TABS = ['overview', 'pricing', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'settings']
 const customTabs = computed(() => listingCustomTabs(listing.value))
 const isTab = (tab: string) => TABS.includes(tab) || customTabs.value.some(t => customTabValue(t) === tab)
 // `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up steps" link; `?tab=custom:<id>` opens a custom tab.
@@ -126,10 +125,6 @@ function confirmRemoveTab() {
             <Icon name="lucide:book-open" class="mr-1.5 size-3.5" />
             Guest Guide
           </TabsTrigger>
-          <TabsTrigger value="protection">
-            <Icon name="lucide:shield-check" class="mr-1.5 size-3.5" />
-            Protection
-          </TabsTrigger>
           <TabsTrigger value="settings">
             <Icon name="lucide:settings" class="mr-1.5 size-3.5" />
             Settings
@@ -179,10 +174,6 @@ function confirmRemoveTab() {
 
       <TabsContent value="guest-guide" class="mt-6">
         <ListingGuestGuideTab :listing="listing" @update="updateListing" />
-      </TabsContent>
-
-      <TabsContent value="protection" class="mt-6">
-        <ListingProtectionTab :listing="listing" />
       </TabsContent>
 
       <TabsContent value="settings" class="mt-6">

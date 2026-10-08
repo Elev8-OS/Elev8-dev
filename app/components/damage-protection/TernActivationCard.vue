@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { toast } from 'vue-sonner'
+import { protectionRefusalText } from '~/components/damage-protection/data/listing-protection'
 import TernActivationWizard from '~/components/damage-protection/TernActivationWizard.vue'
 import { bankAccountLabel, PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
+import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useTernActivation } from '~/composables/useTernActivation'
 
 /**
@@ -19,6 +22,18 @@ function openWizard(mode: 'activate' | 'bank') {
 }
 
 const activation = computed(() => tern.activation.value)
+
+/** Off on every listing at once: no waiver, no deposit, the guest pays again. The package stays picked. */
+const dp = useDamageProtection()
+const protectionOn = computed(() => dp.settings.value.waiver || dp.settings.value.deposit)
+
+function turnOff() {
+  const result = dp.turnOffProtection()
+  if (!result.ok)
+    toast.error(protectionRefusalText(result.reason))
+  else
+    toast.success('Damage protection turned off on every listing')
+}
 
 function when(iso?: string): string {
   return iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -44,6 +59,9 @@ function when(iso?: string): string {
         <div class="flex items-center gap-2">
           <Button size="sm" variant="outline" data-testid="tern-change-bank" @click="openWizard('bank')">
             Change bank account
+          </Button>
+          <Button v-if="protectionOn" size="sm" variant="outline" data-testid="protection-turn-off" @click="turnOff">
+            Turn off
           </Button>
           <Button size="sm" variant="ghost" class="text-xs text-muted-foreground" data-testid="tern-replay" @click="tern.replayActivation()">
             Replay activation (demo)
