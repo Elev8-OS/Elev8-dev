@@ -18,6 +18,52 @@ Seasonality per region, lead time and cancellation rate per channel, guest count
 read as "on the books so far". A cancelled booking holds no nights but still counts in the
 cancellation rate.
 
+#### Tabs: Overview / Revenue / Reservations
+- `Tabs` under the header; the open tab is in the URL (`?tab=revenue`, Overview has none), so a
+  refresh or a shared link opens it. Every tab reads the same scoped bookings, period, comparison,
+  currency and revenue basis, so a Revenue-tab total always matches the Overview Revenue card.
+  The tab figures are lazy computeds in `useAnalytics`: only an open tab is worked out.
+- **Revenue** (`revenue-insights.ts`): revenue by channel (stacked per bucket, on the basis);
+  "Where gross revenue goes" (stacked owner net / management commission / payment fees / OTA
+  commission, each bar adds up to gross, ignores the basis switch); ADR by day of week (by each
+  **night's** weekday, not the arrival's); the period's Gross to owner net table with shares of
+  gross; revenue by listing as horizontal bars, top or bottom 10, ranked **only within the chosen
+  currency** (others counted and named, never compared across currencies).
+- **Reservations** (`reservation-insights.ts`): average reservation value and average length of
+  stay as metric cards with the comparison line (ARV in the chosen currency on the basis; ALOS over
+  every stay, neutral badge); bookings made vs cancellations **by the day they were made /
+  cancelled**; arrivals vs departures of confirmed stays; confirmed reservations by nights
+  booked; guests and party size. ⚠️ Generated stays carry only a head count, so `partyMix` derives
+  adults / children from a hash of the booking id (no extra random draws, which would reshuffle
+  every stay), never fewer than two adults.
+- `AnalyticsSeriesBarChart` is the shared grouped / stacked bar card. It draws its **own wrapping
+  legend**: the stock one is a single right-aligned row that spilled into the neighbouring card.
+
+#### Revenue basis: gross / net / owner net (`revenue-basis.ts`)
+- A sidebar switch, **not a filter**: the same bookings, valued differently. Stored in
+  `filters.revenueBasis` (default `gross`), so saved views keep it. Changes revenue, ADR, RevPAR,
+  channel-mix revenue and the table's money columns; occupancy and counts never change. Money
+  card titles carry the basis ("Revenue (owner net)"); an info button beside the Revenue figure
+  opens a popover listing Gross, OTA commission, payment fees, management commission and the
+  result (`revenueBreakdown`). ⚠️ Keep it in the popover: inline in the header it made the
+  Revenue card taller than its neighbour and broke the shared card rhythm (asked to fix).
+- Gross = room price the guest paid, **taxes excluded on every basis** (collected for the
+  authorities). Net = gross minus `CHANNEL_FEES` (demo: Airbnb host-only 15%, Booking.com 15%,
+  Direct 2.9% card fees). Owner net = net minus the management commission.
+- ⚠️ Owner net reuses `calculateCommission` / `findEffectiveCommissionRule` from
+  `owners/data/commission-rules.ts` with the **live** `useOwners()` mappings and rules, so a rate
+  means the same as on the owner statement. Rules are monthly, so `buildCommissionRates`
+  computes the commission per listing-month (each co-owner's rule on their ownership share, an
+  unheld share pays nothing, net-basis rules deduct exactly the platform fees) and stores it as a
+  share of that month's gross; each night then carries its share, so channel / market filters
+  stay coherent. Rates come from **all** bookings, never the filtered ones. A listing without a
+  contract has no rate: its owner net equals net (the panel says how many have a contract). A
+  month with no revenue carries no commission, so a hybrid's fixed fee is not charged on it.
+- Operating expenses are deducted on no basis: they are not tied to nights. Profit after
+  expenses stays on the owner statement.
+- Valuers thread through `periodPerformance`, `trendSeries`, `channelMix` and
+  `listingPerformance` as an optional last argument defaulting to `grossValue`.
+
 #### Inactive and deleted listings
 - `AnalyticsUnit.lifecycle` is `active | inactive | deleted`, with `endedOn` = first day it no
   longer sells. `toAnalyticsUnits` now keeps `status: 'inactive'` listings (flagged, no date: they
@@ -54,8 +100,22 @@ cancellation rate.
   length of stay carry no badge (longer is not good or bad news). Cancellation colours inverted.
 - **Trend** (`trendSeries`): day grain up to 31 days, week up to 120, month beyond. Current and
   comparison buckets are paired by position; a missing counterpart is `null`, not 0. Buckets cut
-  by the period are flagged `partial` and the chart footnotes them for revenue, because a
-  7-day October otherwise reads as a collapse.
+  by the period are flagged `partial` and the Revenue card footnotes them, because a 7-day
+  October otherwise reads as a collapse.
+- **Metric cards** (`AnalyticsMetricCard`, built to a reference screenshot): Revenue, Occupancy,
+  Average Daily Rate and RevPAR each get their own card, all visible at once (no metric switch),
+  two per row: title, the period figure (`formatOwnerMoney`, 2 decimals), the date range, and a
+  straight-segment line with a hollow dot per bucket. The y axis starts at 0 and steps in round
+  values (1 / 2 / 2.5 / 5 x 10^n, occupancy fixed 0-100%); at most ~7 x labels so none wraps in
+  a half-width card. With a comparison on, a muted dashed second line shows the comparison
+  bucket in the same position (legend names the mode, tooltip shows both); the change badge
+  sits in the card header. With "No comparison" the card is a single line with no legend.
+  Built on `VisXYContainer` directly (the stock `LineChart` has no y domain or dots).
+  The KPI row keeps only the figures without a trend: stays, booking window, length of stay,
+  cancellation rate.
+- **Listing table** is full width and paginated (10 / 20 / 50, first / previous / next / last,
+  same controls as the upsell orders table); sorting or a page size change returns to page 1,
+  a shrinking row count clamps the page.
 - **Pace** (`bookingPace`): per coming month (the current one from today), occupancy booked and
   not cancelled as of today vs the same month last year as of this day last year.
 - **Filters** live in `useState('analytics-filters')` (`AnalyticsFilters` = `AnalyticsScope` +
@@ -70,7 +130,7 @@ cancellation rate.
   the counts live on the Filters button and the section headers.
   - ⚠️ The page body uses **container queries** (`@container/analytics`, `@2xl`/`@5xl`), not
     viewport breakpoints, because the open sidebar takes width. KPI tiles are `GmKpiCard compact`
-    so amounts do not wrap at four columns beside the panel.
+    so amounts do not wrap at four columns beside the panel; metric cards span 2 of the 4 columns.
   - Periods: last 7 / 30 / 90 days, last 12 months, this month, last month, year to date, last
     calendar year, custom. ⚠️ A custom range is clamped to `earliestRangeStart` (so a full year of
     data stays behind it for the last-year comparison) and to **today**: forward months belong to
@@ -109,6 +169,12 @@ believable occupancy and cancellation range).
 `tests/composables/useAnalyticsSavedViews.spec.ts`: snapshot isolation, dirty check, duplicate
 names, the unsaved-changes prompt (cancel and confirm), update / rename / delete, persistence and
 restore, reset.
+`tests/lib/analytics-tabs.spec.ts`: channel and breakdown series add up to the Overview figures,
+per-currency ranking, weekday attribution per night and clipping, pickup / movement dates, the
+party split, stay averages and their comparison pairing.
+`tests/lib/analytics-revenue-basis.spec.ts`: channel fees, basis on revenue / ADR / RevPAR with
+occupancy unchanged, flat and net-basis rules, co-owner shares, uncontracted listings, the rule
+per month a stay crosses, cancelled stays, and that the breakdown adds up.
 
 #### Not implemented
 - Forward-looking periods (use Booking pace), export / download, filters in the URL, views shared

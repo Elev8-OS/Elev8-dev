@@ -1,4 +1,5 @@
 import type { AnalyticsCompareMode, AnalyticsPeriodPreset, AnalyticsScope, DateSpan, RetiredLifecycle } from '~/components/analytics/data/analytics'
+import type { RevenueBasis } from '~/components/analytics/data/revenue-basis'
 import {
   ANALYTICS_CHANNELS,
   ANALYTICS_COMPARE_MODES,
@@ -27,10 +28,14 @@ import {
   trendGrain,
   trendSeries,
 } from '~/components/analytics/data/analytics'
+import { movementSeries, partySummary, pickupSeries, stayAverages, stayAverageSeries } from '~/components/analytics/data/reservation-insights'
 import { retiredUnits } from '~/components/analytics/data/retired-listings'
+import { buildCommissionRates, makeValuer, REVENUE_BASES, revenueBreakdown } from '~/components/analytics/data/revenue-basis'
+import { adrByWeekday, breakdownSeries, channelRevenueSeries, rankListingsByRevenue } from '~/components/analytics/data/revenue-insights'
 import { toIsoDate } from '~/components/gm/data/gm-dashboard'
 import { stayLengthDistribution } from '~/components/listings/data/listing-overview-charts'
 import { listings } from '~/components/listings/data/listings'
+import { useOwners } from '~/composables/useOwners'
 
 export interface AnalyticsFilters extends AnalyticsScope {
   period: AnalyticsPeriodPreset
@@ -39,6 +44,8 @@ export interface AnalyticsFilters extends AnalyticsScope {
   compare: AnalyticsCompareMode
   /** null = the currency most listings in scope earn in. */
   currency: string | null
+  /** What a sold night is worth: gross, net of channel fees, or net of the management commission too. */
+  revenueBasis: RevenueBasis
 }
 
 export type ScopeKey = keyof AnalyticsScope
@@ -74,6 +81,7 @@ export function defaultAnalyticsFilters(): AnalyticsFilters {
     customRange: null,
     compare: defaultCompareMode('30d'),
     currency: null,
+    revenueBasis: 'gross',
   }
 }
 
@@ -142,19 +150,49 @@ export function useAnalytics() {
 
   /* ------------------------------------------------------------- figures */
 
-  const current = computed(() => periodPerformance(bookings.value, units.value, span.value, currency.value))
+  /* ------------------------------------------------------ revenue basis */
+
+  const { mappings, commissionRules } = useOwners()
+  // From every booking, not the filtered ones: a contract's rate depends on the
+  // listing's whole month, whatever channel or market is on screen.
+  const commissionRates = computed(() => buildCommissionRates(allBookings.value, mappings.value, commissionRules.value))
+  const value = computed(() => makeValuer(filters.value.revenueBasis, commissionRates.value))
+  const basisMeta = computed(() => REVENUE_BASES.find(b => b.value === filters.value.revenueBasis)!)
+  /** Listings in scope with an owner contract; the rest have no commission, so their owner net equals net. */
+  const contractedListings = computed(() => {
+    const ids = new Set(mappings.value.map(m => m.listingId))
+    return units.value.filter(u => ids.has(u.listingId)).length
+  })
+  const breakdown = computed(() => revenueBreakdown(bookings.value, span.value, currency.value, commissionRates.value))
+
+  const current = computed(() => periodPerformance(bookings.value, units.value, span.value, currency.value, value.value))
   const previous = computed(() => previousSpan.value
-    ? periodPerformance(bookings.value, units.value, previousSpan.value, currency.value)
+    ? periodPerformance(bookings.value, units.value, previousSpan.value, currency.value, value.value)
     : null)
-  const trend = computed(() => trendSeries(bookings.value, units.value, span.value, previousSpan.value, currency.value))
+  const trend = computed(() => trendSeries(bookings.value, units.value, span.value, previousSpan.value, currency.value, value.value))
 
   const arrivals = computed(() => arrivalsIn(bookings.value, span.value))
-  const channels = computed(() => channelMix(arrivals.value, currency.value))
+  const channels = computed(() => channelMix(arrivals.value, currency.value, value.value))
   const leadTimes = computed(() => leadTimeDistribution(arrivals.value))
   const stayLengths = computed(() => stayLengthDistribution(arrivals.value))
   const origins = computed(() => guestOrigins(arrivals.value))
   const pace = computed(() => bookingPace(bookings.value, units.value, anchorDate.value))
-  const listingRows = computed(() => listingPerformance(bookings.value, units.value, span.value, previousSpan.value))
+  const listingRows = computed(() => listingPerformance(bookings.value, units.value, span.value, previousSpan.value, value.value))
+
+  /* ------------------------------------------- Revenue and Reservations tabs */
+  // Computeds are lazy, so a tab's figures are only worked out while it is open.
+
+  const channelRevenue = computed(() => channelRevenueSeries(bookings.value, span.value, currency.value, value.value))
+  const breakdownPoints = computed(() => breakdownSeries(bookings.value, span.value, currency.value, commissionRates.value))
+  const listingRanking = computed(() => rankListingsByRevenue(listingRows.value, currency.value))
+  const weekdayRates = computed(() => adrByWeekday(bookings.value, span.value, currency.value, value.value))
+
+  const pickup = computed(() => pickupSeries(bookings.value, span.value))
+  const movements = computed(() => movementSeries(bookings.value, span.value))
+  const party = computed(() => partySummary(arrivals.value))
+  const stayAvgNow = computed(() => stayAverages(bookings.value, span.value, currency.value, value.value))
+  const stayAvgBefore = computed(() => previousSpan.value ? stayAverages(bookings.value, previousSpan.value, currency.value, value.value) : null)
+  const stayAvgTrend = computed(() => stayAverageSeries(bookings.value, span.value, previousSpan.value, currency.value, value.value))
 
   /* -------------------------------------------------------------- chips */
 
@@ -187,6 +225,9 @@ export function useAnalytics() {
   }
   function setCompare(compare: AnalyticsCompareMode) {
     filters.value = { ...filters.value, compare }
+  }
+  function setRevenueBasis(revenueBasis: RevenueBasis) {
+    filters.value = { ...filters.value, revenueBasis }
   }
   function setCurrency(code: string) {
     filters.value = { ...filters.value, currency: code }
@@ -255,6 +296,20 @@ export function useAnalytics() {
     setCustomRange,
     setCompare,
     setCurrency,
+    setRevenueBasis,
+    channelRevenue,
+    breakdownPoints,
+    listingRanking,
+    weekdayRates,
+    pickup,
+    movements,
+    party,
+    stayAvgNow,
+    stayAvgBefore,
+    stayAvgTrend,
+    basisMeta,
+    breakdown,
+    contractedListings,
     setScope,
     toggleScope,
     setIncludeRetired,

@@ -47,6 +47,28 @@ const sorted = computed(() => {
   })
 })
 
+/* Pagination, the same controls as the upsell orders table. */
+const PAGE_SIZES = [10, 20, 50]
+const pageSize = ref(10)
+const currentPage = ref(1)
+const totalPages = computed(() => Math.max(1, Math.ceil(props.rows.length / pageSize.value)))
+const pageRows = computed(() => sorted.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value))
+const rangeLabel = computed(() => {
+  if (!props.rows.length)
+    return '0 listings'
+  const first = (currentPage.value - 1) * pageSize.value + 1
+  const last = Math.min(currentPage.value * pageSize.value, props.rows.length)
+  return `${first}-${last} of ${props.rows.length} listings`
+})
+
+// A new order or a narrower filter starts again from the first page.
+watch([sortKey, sortDesc, pageSize], () => {
+  currentPage.value = 1
+})
+watch(() => props.rows.length, () => {
+  currentPage.value = Math.min(currentPage.value, totalPages.value)
+})
+
 function sortIcon(key: SortKey) {
   if (sortKey.value !== key)
     return 'lucide:chevrons-up-down'
@@ -89,7 +111,7 @@ function ariaSort(key: SortKey) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-for="row in sorted" :key="row.listingId" data-testid="analytics-listing-row">
+          <TableRow v-for="row in pageRows" :key="row.listingId" data-testid="analytics-listing-row">
             <TableCell class="max-w-[260px]">
               <div class="flex min-w-0 items-center gap-1.5">
                 <!-- A deleted (or demo-only) listing has no page to open. -->
@@ -139,5 +161,38 @@ function ariaSort(key: SortKey) {
         </TableBody>
       </Table>
     </CardContent>
+    <CardFooter class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2" data-testid="analytics-listing-pagination">
+      <span class="text-sm text-muted-foreground tabular-nums">{{ rangeLabel }}</span>
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium">Rows per page</span>
+          <Select :model-value="`${pageSize}`" @update:model-value="(v) => pageSize = Number(v)">
+            <SelectTrigger size="sm" class="h-8 w-[70px]" aria-label="Rows per page">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent side="top">
+              <SelectItem v-for="n in PAGE_SIZES" :key="n" :value="`${n}`">
+                {{ n }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <span class="text-sm font-medium tabular-nums" data-testid="analytics-listing-page">Page {{ currentPage }} of {{ totalPages }}</span>
+        <div class="flex items-center gap-2">
+          <Button variant="outline" class="size-8 p-0" :disabled="currentPage <= 1" aria-label="First page" @click="currentPage = 1">
+            <Icon name="lucide:chevrons-left" class="size-4" />
+          </Button>
+          <Button variant="outline" class="size-8 p-0" :disabled="currentPage <= 1" aria-label="Previous page" @click="currentPage -= 1">
+            <Icon name="lucide:chevron-left" class="size-4" />
+          </Button>
+          <Button variant="outline" class="size-8 p-0" :disabled="currentPage >= totalPages" aria-label="Next page" @click="currentPage += 1">
+            <Icon name="lucide:chevron-right" class="size-4" />
+          </Button>
+          <Button variant="outline" class="size-8 p-0" :disabled="currentPage >= totalPages" aria-label="Last page" @click="currentPage = totalPages">
+            <Icon name="lucide:chevrons-right" class="size-4" />
+          </Button>
+        </div>
+      </div>
+    </CardFooter>
   </Card>
 </template>

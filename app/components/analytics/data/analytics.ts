@@ -403,6 +403,16 @@ export function scopeBookings(bookings: AnalyticsBooking[], units: AnalyticsUnit
 
 /* --------------------------------------------------------------- metrics */
 
+/**
+ * What a booking's nights inside a span are worth. Gross by default; the
+ * net and owner-net valuers live in `revenue-basis.ts`.
+ */
+export type BookingValuer = (b: AnalyticsBooking, span: DateSpan) => number
+
+export function grossValue(b: AnalyticsBooking, span: DateSpan): number {
+  return nightsIn(b, span) * b.nightlyRate
+}
+
 /** Nights `unit` could be sold in `span`: all of them, or those before it closed. */
 export function unitAvailableNights(unit: Pick<AnalyticsUnit, 'endedOn'>, span: DateSpan): number {
   if (!unit.endedOn)
@@ -458,6 +468,7 @@ export function periodPerformance(
   units: AnalyticsUnit[],
   span: DateSpan,
   currency: string,
+  value: BookingValuer = grossValue,
 ): PeriodPerformance {
   const availableInCurrency = availableNightsOf(units.filter(u => u.currency === currency), span)
   let revenue = 0
@@ -478,7 +489,7 @@ export function periodPerformance(
     const n = nightsIn(b, span)
     occupiedNights += n
     if (b.currency === currency) {
-      revenue += n * b.nightlyRate
+      revenue += n ? value(b, span) : 0
       soldInCurrency += n
     }
     if (b.checkIn >= span.start && b.checkIn <= span.end)
@@ -585,6 +596,7 @@ export function trendSeries(
   span: DateSpan,
   previous: DateSpan | null,
   currency: string,
+  value: BookingValuer = grossValue,
 ): TrendPoint[] {
   const grain = trendGrain(span)
   const prior = previous ? trendBuckets(previous, grain) : []
@@ -592,8 +604,8 @@ export function trendSeries(
     label: bucket.label,
     span: bucket.span,
     partial: bucket.partial,
-    current: periodPerformance(bookings, units, bucket.span, currency),
-    previous: prior[i] ? periodPerformance(bookings, units, prior[i]!.span, currency) : null,
+    current: periodPerformance(bookings, units, bucket.span, currency, value),
+    previous: prior[i] ? periodPerformance(bookings, units, prior[i]!.span, currency, value) : null,
   }))
 }
 
@@ -613,14 +625,15 @@ export interface ChannelShare {
   percent: number
 }
 
-export function channelMix(arrivals: AnalyticsBooking[], currency: string): ChannelShare[] {
+export function channelMix(arrivals: AnalyticsBooking[], currency: string, value: BookingValuer = grossValue): ChannelShare[] {
   return ANALYTICS_CHANNELS
     .map((channel) => {
       const rows = arrivals.filter(b => b.channel === channel)
       return {
         channel,
         stays: rows.length,
-        revenue: rows.filter(b => b.currency === currency).reduce((s, b) => s + b.nights * b.nightlyRate, 0),
+        // The whole stay, on the chosen basis.
+        revenue: rows.filter(b => b.currency === currency).reduce((s, b) => s + value(b, { start: b.checkIn, end: addIsoDays(b.checkOut, -1) }), 0),
         percent: arrivals.length ? Math.round((rows.length / arrivals.length) * 100) : 0,
       }
     })
@@ -752,6 +765,7 @@ export function listingPerformance(
   units: AnalyticsUnit[],
   span: DateSpan,
   previous: DateSpan | null,
+  value: BookingValuer = grossValue,
 ): ListingPerformanceRow[] {
   const byListing = new Map<string, AnalyticsBooking[]>()
   for (const b of bookings) {
@@ -762,8 +776,8 @@ export function listingPerformance(
   }
   return units.map((unit) => {
     const own = byListing.get(unit.listingId) ?? []
-    const now = periodPerformance(own, [unit], span, unit.currency)
-    const before = previous ? periodPerformance(own, [unit], previous, unit.currency) : null
+    const now = periodPerformance(own, [unit], span, unit.currency, value)
+    const before = previous ? periodPerformance(own, [unit], previous, unit.currency, value) : null
     return {
       listingId: unit.listingId,
       listingName: unit.listingName,

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { DateRange } from 'reka-ui'
 import type { AnalyticsCompareMode, AnalyticsPeriodPreset } from '~/components/analytics/data/analytics'
+import type { RevenueBasis } from '~/components/analytics/data/revenue-basis'
 import type { FilterOption, ScopeKey } from '~/composables/useAnalytics'
 import { parseDate } from '@internationalized/date'
 import { ANALYTICS_COMPARE_MODES, ANALYTICS_PERIODS, earliestRangeStart } from '~/components/analytics/data/analytics'
+import { REVENUE_BASES } from '~/components/analytics/data/revenue-basis'
 
 // Every Analytics filter, stacked. Rendered in the right-hand sidebar on wide
 // screens and in a Sheet below that; both read the same `useAnalytics` state.
@@ -26,6 +28,10 @@ const {
   setCustomRange,
   setCompare,
   setCurrency,
+  setRevenueBasis,
+  basisMeta,
+  contractedListings,
+  units,
   setScope,
   toggleScope,
   setIncludeRetired,
@@ -131,6 +137,31 @@ const openSections = ref<Record<string, boolean>>(Object.fromEntries(
             <Label :for="`analytics-compare-${m.value}`" class="cursor-pointer text-sm font-normal">{{ m.label }}</Label>
           </div>
         </RadioGroup>
+      </section>
+
+      <!-- Not a filter: the same bookings, valued differently. -->
+      <section class="flex flex-col gap-2">
+        <Label class="text-xs font-medium text-muted-foreground">Revenue basis</Label>
+        <ToggleGroup
+          :model-value="filters.revenueBasis"
+          type="single"
+          variant="outline"
+          size="sm"
+          class="w-full"
+          aria-label="Revenue basis"
+          data-testid="analytics-revenue-basis"
+          @update:model-value="(v) => v && setRevenueBasis(v as RevenueBasis)"
+        >
+          <ToggleGroupItem v-for="b in REVENUE_BASES" :key="b.value" :value="b.value" class="flex-1 text-xs">
+            {{ b.label }}
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <p class="text-[11px] text-muted-foreground">
+          {{ basisMeta.hint }}
+          <template v-if="filters.revenueBasis === 'owner_net'">
+            {{ contractedListings }} of {{ units.length }} listings have an owner contract; the others pay no commission, so they show net.
+          </template>
+        </p>
       </section>
 
       <!-- Revenue is never converted, so money figures read one currency at a time. -->
