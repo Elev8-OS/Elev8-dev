@@ -40,6 +40,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Branding | `docs/claude/branding.md` | Tenant logo/favicon/Guest Guide colors, server + guide-app wiring |
 | Tenant billing | `docs/claude/tenant-billing.md` | `/settings/billing`: package and active units, next invoices, payment method, history, invoice PDF kit |
 | Tenant onboarding | `docs/claude/onboarding.md` | PMS models, pricing, server-validated promos, import, banners |
+| Analytics | `docs/claude/analytics.md` | `/analytics` portfolio KPIs, trend vs comparison, pace, channel mix, booking window, length of stay, origins, listing table; generated bookings, per-currency money |
 | GM dashboard | `docs/claude/gm-dashboard.md` | Role-gated portfolio dashboard, generated stays, sentiment panel |
 | App shell | `docs/claude/app-shell.md` | Notification Center, layout/header, Tasks, Kanban, Auth, Mail |
 | Composables | `docs/claude/composables.md` | Table of every composable and its key exports |

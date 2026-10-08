@@ -38,6 +38,12 @@ export const navMenu: NavMenu[] = [
         new: true,
       },
       {
+        title: 'Analytics',
+        icon: 'i-lucide-chart-column',
+        link: '/analytics',
+        new: true,
+      },
+      {
         title: 'Listing Health',
         icon: 'i-lucide-trending-up',
         link: '/revenue',

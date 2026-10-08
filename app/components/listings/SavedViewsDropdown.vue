@@ -1,17 +1,27 @@
 <script setup lang="ts">
-import type { SavedView } from '~/types/saved-views'
 import { Icon } from '#components'
 import { computed, nextTick, ref } from 'vue'
+import DeleteViewDialog from '~/components/listings/DeleteViewDialog.vue'
+import UnsavedChangesDialog from '~/components/listings/UnsavedChangesDialog.vue'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import DeleteViewDialog from '~/components/listings/DeleteViewDialog.vue'
-import UnsavedChangesDialog from '~/components/listings/UnsavedChangesDialog.vue'
+
+/**
+ * Only what the menu reads, so any page's view shape fits (Listings, Review
+ * Hub analytics, Analytics) without a cast.
+ */
+interface ViewLike {
+  id: string
+  name: string
+  /** The immutable Default View: no rename, delete or update. */
+  isDefault?: boolean
+}
 
 const props = defineProps<{
-  savedViews: SavedView[]
-  activeView: SavedView | null
+  savedViews: ViewLike[]
+  activeView: ViewLike | null
   isDirty: boolean
   isLoading: boolean
   canUpdateActiveView: boolean
@@ -26,15 +36,25 @@ const emit = defineEmits<{
   'rename': [viewId: string, newName: string]
   'reset': []
   'confirm-load': []
+  /** The unsaved-changes prompt was dismissed; the parent clears its pending view. */
+  'cancelLoad': []
 }>()
 
 const viewSearch = ref('')
-const deleteTarget = ref<SavedView | null>(null)
-const renameTarget = ref<SavedView | null>(null)
+const deleteTarget = ref<ViewLike | null>(null)
+const renameTarget = ref<ViewLike | null>(null)
 const saveMode = ref(false)
 const newViewName = ref('')
-const saveInputRef = ref<HTMLInputElement | null>(null)
-const renameInputRef = ref<HTMLInputElement | null>(null)
+// Template refs on the shadcn `Input` hold the component, not the element;
+// `focusAndSelect` reaches the `<input>` through `$el` either way.
+const saveInputRef = ref<HTMLInputElement | { $el: HTMLInputElement } | null>(null)
+const renameInputRef = ref<HTMLInputElement | { $el: HTMLInputElement } | null>(null)
+
+function focusAndSelect(target: HTMLInputElement | { $el: HTMLInputElement } | null) {
+  const el = target && '$el' in target ? target.$el : target
+  el?.focus()
+  el?.select()
+}
 
 const pendingTarget = computed(() => {
   return props.pendingViewId ? props.savedViews.find(v => v.id === props.pendingViewId) || null : null
@@ -56,8 +76,7 @@ function startSaveMode() {
   newViewName.value = `New View ${getNextViewNumber()}`
 
   nextTick(() => {
-    saveInputRef.value?.focus()
-    saveInputRef.value?.select()
+    focusAndSelect(saveInputRef.value)
   })
 }
 
@@ -77,12 +96,11 @@ function cancelSave() {
   newViewName.value = ''
 }
 
-function startRename(view: SavedView) {
+function startRename(view: ViewLike) {
   renameTarget.value = { ...view, name: view.name }
 
   nextTick(() => {
-    renameInputRef.value?.focus()
-    renameInputRef.value?.select()
+    focusAndSelect(renameInputRef.value)
   })
 }
 
@@ -202,8 +220,8 @@ function handleLoadView(viewId: string) {
             <div
               v-else
               class="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded-sm"
-              @click="startSaveMode"
               data-testid="save-as-option"
+              @click="startSaveMode"
             >
               <Icon name="lucide:plus" class="size-3.5" />
               Save view as...
@@ -212,10 +230,10 @@ function handleLoadView(viewId: string) {
             <DropdownMenuItem
               v-for="view in filteredViews"
               :key="view.id"
-              @click="handleLoadView(view.id)"
               class="group flex items-center justify-between py-2"
               :class="{ 'bg-muted': activeView?.id === view.id }"
               :data-testid="`view-item-${view.id}`"
+              @click="handleLoadView(view.id)"
             >
               <div class="flex items-center gap-2 min-w-0 flex-1">
                 <Icon
@@ -246,12 +264,12 @@ function handleLoadView(viewId: string) {
                   @click.stop
                 />
 
-                 <!-- Normal mode: view name -->
-                 <div v-else class="min-w-0 flex-1">
-                   <div class="font-medium text-sm truncate">
-                     {{ view.name }}
-                   </div>
-                 </div>
+                <!-- Normal mode: view name -->
+                <div v-else class="min-w-0 flex-1">
+                  <div class="font-medium text-sm truncate">
+                    {{ view.name }}
+                  </div>
+                </div>
               </div>
               <div v-if="!view.isDefault" class="flex items-center gap-0.5">
                 <!-- Renaming mode: check/cancel buttons -->
@@ -336,9 +354,9 @@ function handleLoadView(viewId: string) {
       v-if="pendingTarget"
       :open="!!pendingTarget"
       :target-view-name="pendingTarget.name"
-      @update:open="pendingTarget = null"
+      @update:open="(open: boolean) => !open && emit('cancelLoad')"
       @confirm="emit('confirm-load')"
-      @cancel="pendingTarget = null"
+      @cancel="emit('cancelLoad')"
     />
   </div>
 </template>

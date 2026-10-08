@@ -177,7 +177,7 @@ export function formatDayLong(iso: string): string {
 /* ----------------------------------------------------------------- stays */
 
 /** Deterministic PRNG, so the portfolio is stable across reloads. */
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0
   return () => {
     a = (a + 0x6D2B79F5) >>> 0

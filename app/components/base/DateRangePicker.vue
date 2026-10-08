@@ -4,6 +4,7 @@
 // `defineModel` keeps local state when the parent binds nothing, so existing
 // decorative usages need no changes.
 
+import type { DateValue } from '@internationalized/date'
 import type { DateRange } from 'reka-ui'
 import { DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { Calendar as CalendarIcon } from 'lucide-vue-next'
@@ -15,6 +16,9 @@ const props = withDefaults(defineProps<{
   numberOfMonths?: number
   disabled?: boolean
   id?: string
+  /** Earliest / latest selectable day; days outside are disabled. */
+  minValue?: DateValue
+  maxValue?: DateValue
 }>(), {
   placeholder: 'Pick a date range',
   numberOfMonths: 2,
@@ -66,6 +70,8 @@ function label(date: NonNullable<DateRange['start']>): string {
           :number-of-months="props.numberOfMonths"
           initial-focus
           :placeholder="value.start"
+          :min-value="props.minValue"
+          :max-value="props.maxValue"
         />
       </PopoverContent>
     </Popover>
