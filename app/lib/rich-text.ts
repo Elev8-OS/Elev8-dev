@@ -14,6 +14,18 @@ export const RICH_TEXT_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'u
 export const RICH_TEXT_ATTRIBUTES = { a: ['href', 'target', 'rel'] } as const
 export const RICH_TEXT_URL_SCHEMES = ['http', 'https', 'mailto', 'tel'] as const
 
+// The tags of RICH_TEXT_TAGS; keep the two in step.
+const ALLOWED_TAG_PATTERN = /<\/?(?:[abipsu]|br|strong|em|ul|ol|li|blockquote)\b[^>]*>/i
+
+/**
+ * True when the text carries an allowlisted tag. Stricter than `isRichText`, for
+ * text whose plain form can hold angle-bracket placeholders (`<guest_first_name>`
+ * in upsell descriptions) that are not markup.
+ */
+export function hasRichTextTags(text: string): boolean {
+  return ALLOWED_TAG_PATTERN.test(text)
+}
+
 /** True when the text carries markup (anything that looks like a tag). */
 export function isRichText(text: string): boolean {
   return /<\/?[a-z][^>]*>/i.test(text)

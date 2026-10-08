@@ -224,6 +224,36 @@ export function summarizeVisibility(
   return entries
 }
 
+export type UpsellPriceUnit
+  = | 'flat'
+    | 'per_person'
+    | 'per_night'
+    | 'per_person_per_night'
+    | 'per_pet'
+    | 'per_pet_per_night'
+
+export const PRICE_UNIT_OPTIONS: { value: UpsellPriceUnit, label: string }[] = [
+  { value: 'flat', label: 'Flat fee' },
+  { value: 'per_person', label: 'Per person' },
+  { value: 'per_night', label: 'Per night' },
+  { value: 'per_person_per_night', label: 'Per person per night' },
+  { value: 'per_pet', label: 'Per pet' },
+  { value: 'per_pet_per_night', label: 'Per pet per night' },
+]
+
+/** Currencies a service can be priced in (Basic Info). No conversion: items keep the typed amount. */
+export const UPSELL_CURRENCIES = ['IDR', 'USD', 'CHF', 'EUR', 'AUD', 'SGD', 'GBP'] as const
+
+/** Categories that show the Unit Price select in the drawer's Basic Info step. */
+export const PRICE_UNIT_CATEGORIES: UpsellCategory[] = ['Miscellaneous']
+
+/** Short suffix after an item price, empty for a flat fee. */
+export function priceUnitSuffix(unit: UpsellPriceUnit | undefined): string {
+  if (!unit || unit === 'flat')
+    return ''
+  return (PRICE_UNIT_OPTIONS.find(o => o.value === unit)?.label ?? '').toLowerCase()
+}
+
 export interface UpsellItem {
   id: string
   name: string
@@ -244,6 +274,10 @@ export interface UpsellService {
   description: string
   category: UpsellCategory
   currency: string
+  /** How every item's `price` applies. Miscellaneous only; missing means a flat fee. */
+  priceUnit?: UpsellPriceUnit
+  /** Orders for this service are added to the housekeeping preparation of the stay. Missing means off. */
+  addToHousekeepingPrep?: boolean
   image?: string
   youtubeLinks: string[]
   internalNotes: string
@@ -260,8 +294,15 @@ export interface UpsellService {
    */
   lockAccess?: LockAccessConfig
   status: 'active' | 'inactive'
+  /** "Show when" rules: the upsell is offered only to stays that match. */
   visibility: VisibilityConditions
   visibilityMatchMode: VisibilityMatchMode
+  /**
+   * "Hide when" rules: never offered to stays that match, even when a show rule
+   * matches (hide wins). Missing means no hide rules.
+   */
+  hideVisibility?: VisibilityConditions
+  hideVisibilityMatchMode?: VisibilityMatchMode
   createdAt: string
   updatedAt: string
 }

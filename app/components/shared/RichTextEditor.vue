@@ -11,7 +11,12 @@ import { isRichText, isRichTextEmpty, plainTextToHtml } from '~/lib/rich-text'
  * `app/lib/rich-text.ts`. Emits HTML, or '' when empty. Plain text from before
  * the editor existed opens as paragraphs.
  */
-const props = defineProps<{ placeholder?: string, ariaLabel?: string }>()
+const props = defineProps<{
+  placeholder?: string
+  ariaLabel?: string
+  /** Classes for the editing area (text size, min height). Defaults to the guest guide's compact size. */
+  contentClass?: string
+}>()
 const model = defineModel<string>({ default: '' })
 
 function toEditorHtml(text: string) {
@@ -32,7 +37,7 @@ const editor = useEditor({
   ],
   editorProps: {
     attributes: {
-      'class': 'prose-guide min-h-16 px-3 py-2 text-xs focus:outline-none',
+      'class': `prose-guide px-3 py-2 focus:outline-none ${props.contentClass ?? 'min-h-16 text-xs'}`,
       'aria-label': props.ariaLabel ?? 'Text',
       'aria-multiline': 'true',
       'role': 'textbox',
@@ -137,5 +142,7 @@ const buttons = computed<ToolbarButton[]>(() => {
       </Popover>
     </div>
     <EditorContent :editor="editor" />
+    <!-- Optional bar under the text, e.g. variable chips that command the exposed editor -->
+    <slot name="footer" />
   </div>
 </template>

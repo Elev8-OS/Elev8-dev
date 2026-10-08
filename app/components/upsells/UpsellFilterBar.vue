@@ -2,11 +2,24 @@
 import { BALI_LISTINGS, CATALOG_CATEGORIES } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 
-const { filterCategory, filterStatus, filterListing, filterLockAccess, clearFilters } = useUpsellServices()
+const { filterCategory, filterStatus, filterListing, filterLockAccess, searchQuery, clearFilters } = useUpsellServices()
 </script>
 
 <template>
   <div class="flex flex-wrap items-end gap-3">
+    <div class="flex w-full flex-col gap-1 sm:w-64">
+      <label for="upsell-search" class="text-xs text-muted-foreground">Search</label>
+      <div class="relative">
+        <Icon name="lucide:search" class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          id="upsell-search"
+          v-model="searchQuery"
+          placeholder="Search services or items"
+          class="h-8 pl-8 text-sm"
+        />
+      </div>
+    </div>
+
     <div class="flex flex-col gap-1">
       <label class="text-xs text-muted-foreground">Category</label>
       <Select v-model="filterCategory">

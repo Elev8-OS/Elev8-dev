@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import type { LockAccessConfig } from '@/components/upsells/data/lock-access'
 import type {
-  BookingStatusFilter,
-  OtaChannel,
   UpsellCategory,
   UpsellItem,
+  UpsellPriceUnit,
   UpsellService,
-  VisibilityConditionKey,
   VisibilityConditions,
   VisibilityMatchMode,
 } from '@/components/upsells/data/upsell-services'
@@ -26,16 +24,24 @@ import { createDefaultLockAccessConfig } from '@/components/upsells/data/lock-ac
 import {
   BALI_LISTINGS,
   emptyVisibilityConditions,
-  getConditionDefault,
-  getConditionEmpty,
+  PRICE_UNIT_CATEGORIES,
+  PRICE_UNIT_OPTIONS,
+  priceUnitSuffix,
   PROTECTION_CATEGORY,
   summarizeVisibility,
+  UPSELL_CURRENCIES,
 } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
+import RichTextEditor from '~/components/shared/RichTextEditor.vue'
+import UpsellVisibilityGroup from '~/components/upsells/UpsellVisibilityGroup.vue'
+import { defaultRoles } from '~/components/users/data/roles'
+import { computeInitials } from '~/components/users/data/users'
 import { useDamageProtection } from '~/composables/useDamageProtection'
+import { useUsers } from '~/composables/useUsers'
+import { hasRichTextTags, plainTextToHtml } from '~/lib/rich-text'
 
 const props = defineProps<{
   service: UpsellService | null
@@ -59,6 +65,8 @@ const nameError = ref(false)
 
 const formCategory = ref<UpsellService['category']>('Airport Transport')
 const formCurrency = ref('CHF')
+const formPriceUnit = ref<UpsellPriceUnit>('flat')
+const formAddToHousekeepingPrep = ref(false)
 
 /**
  * ⚠️ A Damage Protection service is not sold like the others: it sells one
@@ -68,6 +76,7 @@ const formCurrency = ref('CHF')
  * availability and lock access do not apply and are not shown.
  */
 const isProtection = computed(() => formCategory.value === PROTECTION_CATEGORY)
+const hasPriceUnit = computed(() => PRICE_UNIT_CATEGORIES.includes(formCategory.value))
 
 /**
  * ⚠️ A Damage Protection upsell sells ONE package: a tier and its guest price,
@@ -138,6 +147,26 @@ function prevStep() {
 
 const formName = ref('')
 const formDescription = ref('')
+const descriptionEditor = ref<InstanceType<typeof RichTextEditor> | null>(null)
+
+const DESCRIPTION_VARIABLES = [
+  { token: '<guest_first_name>', label: 'Guest first name' },
+  { token: '<guest_last_name>', label: 'Guest last name' },
+  { token: '<listing_name>', label: 'Listing name' },
+]
+
+/**
+ * Descriptions from before the editor are plain text whose variables look like tags
+ * (`<guest_first_name>`): open them as escaped paragraphs so the editor keeps them.
+ */
+function toDescriptionHtml(text: string): string {
+  return !text || hasRichTextTags(text) ? text : plainTextToHtml(text)
+}
+
+/** Inserts a variable at the cursor as text (never parsed as a tag), caret after it. */
+function insertDescriptionVariable(token: string) {
+  descriptionEditor.value?.editor?.chain().focus().insertContent({ type: 'text', text: token }).run()
+}
 const formImage = ref<string | undefined>(undefined)
 const serviceImageInputRef = ref<HTMLInputElement | null>(null)
 const formYoutubeLinks = ref<string[]>([])
@@ -155,82 +184,23 @@ const formStatus = ref<'active' | 'inactive'>('active')
 const formLockAccess = ref<LockAccessConfig>(createDefaultLockAccessConfig())
 const formVisibility = ref<VisibilityConditions>(emptyVisibilityConditions())
 const formVisibilityMatchMode = ref<VisibilityMatchMode>('all')
-
-function isConditionEnabled(key: VisibilityConditionKey): boolean {
-  return formVisibility.value[key] !== null
-}
-
-function toggleCondition(key: VisibilityConditionKey) {
-  if (isConditionEnabled(key)) {
-    formVisibility.value = {
-      ...formVisibility.value,
-      [key]: getConditionEmpty(key),
-    }
-  }
-  else {
-    formVisibility.value = {
-      ...formVisibility.value,
-      [key]: getConditionDefault(key),
-    }
-  }
-}
-
-function isBookingStatusSelected(status: BookingStatusFilter): boolean {
-  return formVisibility.value.bookingStatuses?.includes(status) ?? false
-}
-
-function toggleBookingStatus(status: BookingStatusFilter) {
-  const current = formVisibility.value.bookingStatuses ?? []
-  formVisibility.value = {
-    ...formVisibility.value,
-    bookingStatuses: current.includes(status)
-      ? current.filter(s => s !== status)
-      : [...current, status],
-  }
-}
-
-function isChannelSelected(channel: OtaChannel): boolean {
-  return formVisibility.value.channels?.includes(channel) ?? false
-}
-
-function toggleChannel(channel: OtaChannel) {
-  const current = formVisibility.value.channels ?? []
-  formVisibility.value = {
-    ...formVisibility.value,
-    channels: current.includes(channel)
-      ? current.filter(c => c !== channel)
-      : [...current, channel],
-  }
-}
-
-function isRelatedUpsellSelected(serviceId: string): boolean {
-  return formVisibility.value.excludeIfUpsellPurchased?.includes(serviceId) ?? false
-}
-
-function toggleRelatedUpsell(serviceId: string) {
-  const current = formVisibility.value.excludeIfUpsellPurchased ?? []
-  formVisibility.value = {
-    ...formVisibility.value,
-    excludeIfUpsellPurchased: current.includes(serviceId)
-      ? current.filter(id => id !== serviceId)
-      : [...current, serviceId],
-  }
-}
+const formHideVisibility = ref<VisibilityConditions>(emptyVisibilityConditions())
+const formHideVisibilityMatchMode = ref<VisibilityMatchMode>('any')
 
 const otherUpsellServices = computed(() => {
   const all = useUpsellServices().services.value
   return props.service ? all.filter(s => s.id !== props.service!.id) : all
 })
 
-const activeConditionSummaries = computed(() => summarizeVisibility(formVisibility.value))
+function describeGroup(conditions: VisibilityConditions, match: VisibilityMatchMode): string {
+  return summarizeVisibility(conditions).map(e => e.label).join(match === 'all' ? ' and ' : ' or ')
+}
 
-const summaryText = computed(() => {
-  const entries = activeConditionSummaries.value
-  if (entries.length === 0)
-    return 'No visibility conditions set — upsell will show everywhere.'
-  const conditionCount = entries.length
-  const matchLabel = formVisibilityMatchMode.value === 'all' ? 'All conditions met' : 'Any condition met'
-  return `${conditionCount} condition${conditionCount === 1 ? '' : 's'} active: ${entries.map(e => e.label).join(', ')}. Match mode: ${matchLabel}.`
+const visibilitySummary = computed(() => {
+  const show = describeGroup(formVisibility.value, formVisibilityMatchMode.value)
+  const hide = describeGroup(formHideVisibility.value, formHideVisibilityMatchMode.value)
+  const showLine = show ? `Shown when ${show}.` : 'Shown to every eligible stay.'
+  return hide ? `${showLine} Hidden when ${hide}; hide rules win.` : showLine
 })
 
 const showDeleteConfirm = ref(false)
@@ -244,17 +214,27 @@ const itemFormPrice = ref(0)
 const itemFormImage = ref<string | undefined>(undefined)
 const itemImageInputRef = ref<HTMLInputElement | null>(null)
 
+// Listing picker filters (Listings step), reset on every open.
+const listingSearch = ref('')
+const listingTagFilter = ref<string[]>([])
+const listingTagSearch = ref('')
+const listingTagPopoverOpen = ref(false)
+
 watch(() => props.open, (open) => {
   if (open) {
     showDeleteConfirm.value = false
+    listingSearch.value = ''
+    listingTagFilter.value = []
     if (props.service) {
       currentStep.value = 1
       visitedSteps.value = new Set([1, 2, 3, 4, 5])
       nameError.value = false
       formName.value = props.service.name
-      formDescription.value = props.service.description
+      formDescription.value = toDescriptionHtml(props.service.description)
       formCategory.value = props.service.category
       formCurrency.value = props.service.currency
+      formPriceUnit.value = props.service.priceUnit ?? 'flat'
+      formAddToHousekeepingPrep.value = props.service.addToHousekeepingPrep ?? false
       formImage.value = props.service.image
       formYoutubeLinks.value = [...props.service.youtubeLinks]
       formInternalNotes.value = props.service.internalNotes
@@ -273,6 +253,8 @@ watch(() => props.open, (open) => {
       formStatus.value = props.service.status
       formVisibility.value = { ...props.service.visibility }
       formVisibilityMatchMode.value = props.service.visibilityMatchMode
+      formHideVisibility.value = { ...(props.service.hideVisibility ?? emptyVisibilityConditions()) }
+      formHideVisibilityMatchMode.value = props.service.hideVisibilityMatchMode ?? 'any'
     }
     else {
       formName.value = ''
@@ -280,6 +262,8 @@ watch(() => props.open, (open) => {
       formCategory.value = props.initialCategory ?? 'Airport Transport'
       // Elev8 Cover is priced in USD only for now (`tern-products.ts`).
       formCurrency.value = formCategory.value === PROTECTION_CATEGORY ? 'USD' : 'CHF'
+      formPriceUnit.value = 'flat'
+      formAddToHousekeepingPrep.value = false
       formImage.value = undefined
       formYoutubeLinks.value = []
       formNewYoutubeLink.value = ''
@@ -298,6 +282,8 @@ watch(() => props.open, (open) => {
       formStatus.value = 'active'
       formVisibility.value = emptyVisibilityConditions()
       formVisibilityMatchMode.value = 'all'
+      formHideVisibility.value = emptyVisibilityConditions()
+      formHideVisibilityMatchMode.value = 'any'
       currentStep.value = 1
       visitedSteps.value = new Set([1])
       nameError.value = false
@@ -382,16 +368,37 @@ function removeYoutubeLink(idx: number) {
   formYoutubeLinks.value = formYoutubeLinks.value.filter((_, i) => i !== idx)
 }
 
-function addNotificationUser() {
-  const user = formNewNotificationUser.value.trim()
-  if (user) {
-    formNotificationUsers.value = [...formNotificationUsers.value, user]
-    formNewNotificationUser.value = ''
-  }
+// Notified users are stored by name; the picker offers active staff.
+const { activeUsers } = useUsers()
+const notifyPickerOpen = ref(false)
+
+function roleName(roleId: string): string {
+  return defaultRoles.find(r => r.id === roleId)?.name ?? ''
 }
 
-function removeNotificationUser(idx: number) {
-  formNotificationUsers.value = formNotificationUsers.value.filter((_, i) => i !== idx)
+const notifyCandidates = computed(() => {
+  const q = formNewNotificationUser.value.trim().toLowerCase()
+  return activeUsers.value
+    .filter(u => !q || u.name.toLowerCase().includes(q) || roleName(u.roleId).toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+/** Selected names with their staff record when there is one (older services may name someone no longer listed). */
+const notifySelected = computed(() =>
+  formNotificationUsers.value.map((name) => {
+    const user = activeUsers.value.find(u => u.name === name)
+    return { name, initials: user?.initials ?? computeInitials(name), avatarUrl: user?.avatarUrl, role: user ? roleName(user.roleId) : '' }
+  }),
+)
+
+function toggleNotificationUser(name: string) {
+  formNotificationUsers.value = formNotificationUsers.value.includes(name)
+    ? formNotificationUsers.value.filter(n => n !== name)
+    : [...formNotificationUsers.value, name]
+}
+
+function removeNotificationUser(name: string) {
+  formNotificationUsers.value = formNotificationUsers.value.filter(n => n !== name)
 }
 
 function toggleListing(listing: string) {
@@ -403,8 +410,45 @@ function toggleListing(listing: string) {
   }
 }
 
-function selectAllListings() {
-  formListings.value = [...BALI_LISTINGS]
+// Listing picker: search + tag filter (AND, like the Listings page). Select all / clear act on the visible rows.
+
+function listingTags(name: string): string[] {
+  return allListings.value.find(l => l.name === name)?.tags ?? []
+}
+
+const listingTagOptions = computed(() =>
+  [...new Set(BALI_LISTINGS.flatMap(listingTags))].sort((a, b) => a.localeCompare(b)),
+)
+
+const filteredListingTagOptions = computed(() => {
+  const q = listingTagSearch.value.trim().toLowerCase()
+  return q ? listingTagOptions.value.filter(t => t.toLowerCase().includes(q)) : listingTagOptions.value
+})
+
+const visibleListings = computed(() => {
+  const q = listingSearch.value.trim().toLowerCase()
+  return BALI_LISTINGS.filter((name) => {
+    if (q && !name.toLowerCase().includes(q))
+      return false
+    const tags = listingTags(name)
+    return listingTagFilter.value.every(t => tags.includes(t))
+  })
+})
+
+const visibleSelectedCount = computed(() => visibleListings.value.filter(l => formListings.value.includes(l)).length)
+const allVisibleSelected = computed(() => visibleListings.value.length > 0 && visibleSelectedCount.value === visibleListings.value.length)
+
+function toggleListingTag(tag: string) {
+  listingTagFilter.value = listingTagFilter.value.includes(tag)
+    ? listingTagFilter.value.filter(t => t !== tag)
+    : [...listingTagFilter.value, tag]
+}
+
+function toggleAllVisibleListings() {
+  const visible = new Set(visibleListings.value)
+  formListings.value = allVisibleSelected.value
+    ? formListings.value.filter(l => !visible.has(l))
+    : [...new Set([...formListings.value, ...visibleListings.value])]
 }
 
 function clearAllListings() {
@@ -533,6 +577,8 @@ function handleSave() {
     description: formDescription.value.trim(),
     category: formCategory.value,
     currency: formCurrency.value,
+    priceUnit: hasPriceUnit.value ? formPriceUnit.value : undefined,
+    addToHousekeepingPrep: isProtection.value ? undefined : formAddToHousekeepingPrep.value,
     image: formImage.value,
     youtubeLinks: formYoutubeLinks.value,
     internalNotes: formInternalNotes.value.trim(),
@@ -554,6 +600,8 @@ function handleSave() {
     status: formStatus.value,
     visibility: { ...formVisibility.value },
     visibilityMatchMode: formVisibilityMatchMode.value,
+    hideVisibility: { ...formHideVisibility.value },
+    hideVisibilityMatchMode: formHideVisibilityMatchMode.value,
   }
 
   let savedId: string
@@ -654,13 +702,85 @@ function onOpenChange(val: boolean) {
 
           <div class="flex flex-col gap-2">
             <Label>Description</Label>
-            <Textarea v-model="formDescription" placeholder="Describe the service..." rows="3" />
-            <div class="flex flex-wrap gap-1.5">
-              <span class="text-xs text-muted-foreground">Variable Replacement</span>
-              <code class="rounded bg-muted px-1.5 py-0.5 text-xs">&lt;guest_first_name&gt;</code>
-              <code class="rounded bg-muted px-1.5 py-0.5 text-xs">&lt;guest_last_name&gt;</code>
-              <code class="rounded bg-muted px-1.5 py-0.5 text-xs">&lt;listing_name&gt;</code>
+            <RichTextEditor
+              ref="descriptionEditor"
+              v-model="formDescription"
+              aria-label="Description"
+              placeholder="Describe the service guests will see..."
+              content-class="min-h-24 text-sm"
+              class="overflow-hidden"
+            >
+              <template #footer>
+                <div class="flex flex-wrap items-center gap-1.5 border-t bg-muted/40 px-3 py-2">
+                  <span class="mr-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Icon name="lucide:braces" class="size-3.5" />
+                    Insert variable
+                  </span>
+                  <button
+                    v-for="v in DESCRIPTION_VARIABLES"
+                    :key="v.token"
+                    type="button"
+                    :title="v.token"
+                    class="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    @click="insertDescriptionVariable(v.token)"
+                  >
+                    <Icon name="lucide:plus" class="size-3" />
+                    {{ v.label }}
+                  </button>
+                </div>
+              </template>
+            </RichTextEditor>
+            <p class="text-xs text-muted-foreground">
+              Variables are replaced with the guest's and listing's details when the upsell is shown.
+            </p>
+          </div>
+
+          <div v-if="!isProtection" class="flex flex-col gap-2">
+            <Label>Currency</Label>
+            <Select v-model="formCurrency">
+              <SelectTrigger class="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="code in UPSELL_CURRENCIES" :key="code" :value="code">
+                  {{ code }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">
+              Item prices are charged in this currency. Changing it does not convert existing prices.
+            </p>
+          </div>
+
+          <div v-if="hasPriceUnit" class="flex flex-col gap-2">
+            <Label>Unit Price</Label>
+            <Select v-model="formPriceUnit">
+              <SelectTrigger class="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="opt in PRICE_UNIT_OPTIONS" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">
+              Applies to every item in this service.
+            </p>
+          </div>
+
+          <div v-if="!isProtection" class="flex items-start justify-between gap-4">
+            <div class="flex flex-col gap-0.5">
+              <Label for="upsell-housekeeping-prep">Add order to Housekeeping Preparation</Label>
+              <p class="text-xs text-muted-foreground">
+                Housekeeping sees this order when preparing the property for the stay.
+              </p>
             </div>
+            <Switch
+              id="upsell-housekeeping-prep"
+              :model-value="formAddToHousekeepingPrep"
+              @update:model-value="(v: boolean) => formAddToHousekeepingPrep = v"
+            />
           </div>
 
           <p
@@ -858,7 +978,7 @@ function onOpenChange(val: boolean) {
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
                     <span class="text-sm font-medium text-muted-foreground">
-                      {{ formCurrency }} {{ item.price.toLocaleString() }}
+                      {{ formCurrency }} {{ item.price.toLocaleString() }}<template v-if="hasPriceUnit && priceUnitSuffix(formPriceUnit)"> {{ priceUnitSuffix(formPriceUnit) }}</template>
                     </span>
                     <Button
                       variant="ghost"
@@ -892,33 +1012,138 @@ function onOpenChange(val: boolean) {
         <!-- Step 3: Listings & Availability -->
         <div v-if="currentStep === 3 && !isProtection" class="flex flex-col gap-5 p-6">
           <div class="flex flex-col gap-3">
-            <div class="flex items-center justify-between">
-              <Label>Assigned Listings</Label>
-              <div class="flex gap-2">
-                <Button variant="ghost" size="sm" class="h-7 text-xs" @click="selectAllListings">
-                  Select all
-                </Button>
-                <Button variant="ghost" size="sm" class="h-7 text-xs" @click="clearAllListings">
-                  Clear
-                </Button>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <Label>Assigned Listings</Label>
+                <Badge variant="secondary" class="font-normal">
+                  {{ formListings.length }} of {{ BALI_LISTINGS.length }}
+                </Badge>
+              </div>
+              <Button
+                v-if="formListings.length"
+                variant="ghost"
+                size="sm"
+                class="h-7 text-xs text-muted-foreground"
+                @click="clearAllListings"
+              >
+                Clear selection
+              </Button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="relative flex-1">
+                <Icon name="lucide:search" class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input v-model="listingSearch" placeholder="Search listings..." class="h-9 pl-8" />
+              </div>
+              <Popover v-model:open="listingTagPopoverOpen">
+                <PopoverTrigger as-child>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="h-9 gap-1.5 text-xs"
+                    :class="listingTagFilter.length > 0 ? 'border-primary text-primary' : ''"
+                  >
+                    <Icon name="lucide:tag" class="size-3.5" />
+                    Tags
+                    <Badge v-if="listingTagFilter.length > 0" variant="default" class="ml-0.5 h-4 min-w-4 rounded-full px-1 text-[9px]">
+                      {{ listingTagFilter.length }}
+                    </Badge>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-56 p-0" align="end" :side-offset="4">
+                  <div class="p-2">
+                    <Input v-model="listingTagSearch" placeholder="Search tags..." class="h-7 text-xs" />
+                  </div>
+                  <div class="max-h-48 overflow-y-auto px-1 pb-1">
+                    <div
+                      v-for="tag in filteredListingTagOptions"
+                      :key="tag"
+                      class="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                      @click="toggleListingTag(tag)"
+                    >
+                      <div
+                        class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                        :class="listingTagFilter.includes(tag) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                      >
+                        <Icon v-if="listingTagFilter.includes(tag)" name="lucide:check" class="size-3" />
+                      </div>
+                      <span class="flex-1">{{ tag }}</span>
+                    </div>
+                    <p v-if="filteredListingTagOptions.length === 0" class="px-2 py-1.5 text-xs text-muted-foreground">
+                      No tags found.
+                    </p>
+                  </div>
+                  <div v-if="listingTagFilter.length > 0" class="border-t px-2 py-2">
+                    <Button variant="ghost" size="sm" class="h-7 w-full text-xs text-muted-foreground" @click="listingTagFilter = []">
+                      Clear all tags
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div v-if="listingTagFilter.length" class="flex flex-wrap items-center gap-1.5">
+              <Badge
+                v-for="tag in listingTagFilter"
+                :key="tag"
+                variant="outline"
+                class="cursor-pointer gap-1 font-normal"
+                @click="toggleListingTag(tag)"
+              >
+                {{ tag }}
+                <Icon name="lucide:x" class="size-3" />
+              </Badge>
+            </div>
+
+            <div class="overflow-hidden rounded-md border">
+              <div
+                v-if="visibleListings.length"
+                class="flex cursor-pointer items-center gap-3 border-b bg-muted/40 px-3 py-2"
+                @click="toggleAllVisibleListings"
+              >
+                <div
+                  class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                  :class="visibleSelectedCount > 0 ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background'"
+                >
+                  <Icon v-if="allVisibleSelected" name="lucide:check" class="size-3" />
+                  <Icon v-else-if="visibleSelectedCount > 0" name="lucide:minus" class="size-3" />
+                </div>
+                <span class="text-xs font-medium text-muted-foreground">
+                  {{ listingSearch || listingTagFilter.length ? `Select all ${visibleListings.length} results` : 'Select all listings' }}
+                </span>
+              </div>
+              <div class="max-h-72 overflow-y-auto">
+                <div
+                  v-for="listing in visibleListings"
+                  :key="listing"
+                  class="flex cursor-pointer items-start gap-3 border-b px-3 py-2.5 last:border-b-0 hover:bg-muted/50"
+                  @click="toggleListing(listing)"
+                >
+                  <div
+                    class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                    :class="formListings.includes(listing) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                  >
+                    <Icon v-if="formListings.includes(listing)" name="lucide:check" class="size-3" />
+                  </div>
+                  <div class="flex min-w-0 flex-1 flex-col gap-1">
+                    <span class="text-sm leading-tight">{{ listing }}</span>
+                    <div v-if="listingTags(listing).length" class="flex flex-wrap gap-1">
+                      <span
+                        v-for="tag in listingTags(listing)"
+                        :key="tag"
+                        class="rounded px-1.5 py-px text-[10px]"
+                        :class="listingTagFilter.includes(tag) ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p v-if="visibleListings.length === 0" class="px-3 py-8 text-center text-sm text-muted-foreground">
+                  No listings match your search.
+                </p>
               </div>
             </div>
-            <div class="max-h-64 overflow-y-auto rounded-md border">
-              <label
-                v-for="listing in BALI_LISTINGS"
-                :key="listing"
-                class="flex cursor-pointer items-center gap-2 border-b px-3 py-2 last:border-b-0 hover:bg-muted/50"
-              >
-                <Checkbox
-                  :checked="formListings.includes(listing)"
-                  @update:checked="toggleListing(listing)"
-                />
-                <span class="text-sm">{{ listing }}</span>
-              </label>
-            </div>
-            <p class="text-xs text-muted-foreground">
-              {{ formListings.length }} of {{ BALI_LISTINGS.length }} listings selected
-            </p>
           </div>
 
           <Separator />
@@ -1044,335 +1269,23 @@ function onOpenChange(val: boolean) {
           </div>
         </div>
 
-        <!-- Step 4: Visibility -->
-        <div v-if="currentStep === 4" class="flex flex-col gap-5 p-6">
-          <!-- Match mode selector -->
-          <div class="flex flex-col gap-2 rounded-md border p-4">
-            <div class="flex items-center gap-3">
-              <button
-                type="button"
-                class="flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors"
-                :class="formVisibilityMatchMode === 'all'
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-background hover:bg-muted/50'"
-                @click="formVisibilityMatchMode = 'all'"
-              >
-                <Icon name="lucide:circle-check" class="mr-2 inline h-4 w-4" />
-                All conditions met
-                <span class="ml-1 text-xs opacity-70">(AND)</span>
-              </button>
-              <button
-                type="button"
-                class="flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors"
-                :class="formVisibilityMatchMode === 'any'
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-background hover:bg-muted/50'"
-                @click="formVisibilityMatchMode = 'any'"
-              >
-                <Icon name="lucide:circle-dot" class="mr-2 inline h-4 w-4" />
-                Any condition met
-                <span class="ml-1 text-xs opacity-70">(OR)</span>
-              </button>
-            </div>
-            <p class="text-xs text-muted-foreground">
-              Choose how multiple rules combine. Unset conditions are ignored.
-            </p>
-          </div>
-
-          <!-- Condition cards container -->
-          <div class="flex flex-col gap-3">
-            <!-- Time before Check-in -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('hoursBeforeCheckIn') ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-hours-before-check-in" class="text-sm font-medium">
-                  Time before Check-in
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-hours-before-check-in"
-                  :model-value="isConditionEnabled('hoursBeforeCheckIn')"
-                  @update:model-value="toggleCondition('hoursBeforeCheckIn')"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('hoursBeforeCheckIn')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <div class="flex items-center gap-2">
-                  <Input
-                    :model-value="formVisibility.hoursBeforeCheckIn ?? undefined"
-                    type="number"
-                    min="0"
-                    class="flex-1"
-                    aria-describedby="visibility-hours-before-check-in-help"
-                    @update:model-value="(v) => formVisibility = { ...formVisibility, hoursBeforeCheckIn: Number(v) }"
-                  />
-                  <span class="text-sm text-muted-foreground">hours</span>
-                </div>
-                <p id="visibility-hours-before-check-in-help" class="text-xs text-muted-foreground">
-                  Show only within the window from N hours before check-in up to check-in. Set 0 for "show anytime up to check-in".
-                </p>
-              </div>
-            </div>
-
-            <!-- Time before Check-out -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('hoursBeforeCheckOut') ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-hours-before-check-out" class="text-sm font-medium">
-                  Time before Check-out
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-hours-before-check-out"
-                  :model-value="isConditionEnabled('hoursBeforeCheckOut')"
-                  @update:model-value="toggleCondition('hoursBeforeCheckOut')"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('hoursBeforeCheckOut')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <div class="flex items-center gap-2">
-                  <Input
-                    :model-value="formVisibility.hoursBeforeCheckOut ?? undefined"
-                    type="number"
-                    min="0"
-                    class="flex-1"
-                    aria-describedby="visibility-hours-before-check-out-help"
-                    @update:model-value="(v) => formVisibility = { ...formVisibility, hoursBeforeCheckOut: Number(v) }"
-                  />
-                  <span class="text-sm text-muted-foreground">hours</span>
-                </div>
-                <p id="visibility-hours-before-check-out-help" class="text-xs text-muted-foreground">
-                  Show only within the window from N hours before check-out up to check-out.
-                </p>
-              </div>
-            </div>
-
-            <!-- Guest Count -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="(isConditionEnabled('guestCountMin') || isConditionEnabled('guestCountMax')) ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-guest-count" class="text-sm font-medium">
-                  Guest Count
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-guest-count"
-                  :model-value="isConditionEnabled('guestCountMin') || isConditionEnabled('guestCountMax')"
-                  @update:model-value="(v) => { toggleCondition('guestCountMin'); toggleCondition('guestCountMax') }"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('guestCountMin') && !isConditionEnabled('guestCountMax')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="flex flex-col gap-1">
-                    <Label class="text-xs font-normal text-muted-foreground">Min guests</Label>
-                    <Input
-                      :model-value="formVisibility.guestCountMin ?? undefined"
-                      type="number"
-                      min="1"
-                      aria-describedby="visibility-guest-count-help"
-                      @update:model-value="(v) => formVisibility = { ...formVisibility, guestCountMin: Number(v) }"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <Label class="text-xs font-normal text-muted-foreground">Max guests</Label>
-                    <Input
-                      :model-value="formVisibility.guestCountMax ?? undefined"
-                      type="number"
-                      min="1"
-                      aria-describedby="visibility-guest-count-help"
-                      @update:model-value="(v) => formVisibility = { ...formVisibility, guestCountMax: Number(v) }"
-                    />
-                  </div>
-                </div>
-                <p v-if="formVisibility.guestCountMin !== null && formVisibility.guestCountMax !== null && formVisibility.guestCountMin > formVisibility.guestCountMax" class="text-xs text-destructive">
-                  Min is greater than max.
-                </p>
-                <p id="visibility-guest-count-help" class="text-xs text-muted-foreground">
-                  Show only when guest count is within this range.
-                </p>
-              </div>
-            </div>
-
-            <!-- Length of Stay -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="(isConditionEnabled('lengthOfStayMin') || isConditionEnabled('lengthOfStayMax')) ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-length-of-stay" class="text-sm font-medium">
-                  Length of Stay
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-length-of-stay"
-                  :model-value="isConditionEnabled('lengthOfStayMin') || isConditionEnabled('lengthOfStayMax')"
-                  @update:model-value="(v) => { toggleCondition('lengthOfStayMin'); toggleCondition('lengthOfStayMax') }"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('lengthOfStayMin') && !isConditionEnabled('lengthOfStayMax')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="flex flex-col gap-1">
-                    <Label class="text-xs font-normal text-muted-foreground">Min nights</Label>
-                    <Input
-                      :model-value="formVisibility.lengthOfStayMin ?? undefined"
-                      type="number"
-                      min="1"
-                      aria-describedby="visibility-length-of-stay-help"
-                      @update:model-value="(v) => formVisibility = { ...formVisibility, lengthOfStayMin: Number(v) }"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-1">
-                    <Label class="text-xs font-normal text-muted-foreground">Max nights</Label>
-                    <Input
-                      :model-value="formVisibility.lengthOfStayMax ?? undefined"
-                      type="number"
-                      min="1"
-                      aria-describedby="visibility-length-of-stay-help"
-                      @update:model-value="(v) => formVisibility = { ...formVisibility, lengthOfStayMax: Number(v) }"
-                    />
-                  </div>
-                </div>
-                <p v-if="formVisibility.lengthOfStayMin !== null && formVisibility.lengthOfStayMax !== null && formVisibility.lengthOfStayMin > formVisibility.lengthOfStayMax" class="text-xs text-destructive">
-                  Min is greater than max.
-                </p>
-                <p id="visibility-length-of-stay-help" class="text-xs text-muted-foreground">
-                  Show only when stay length (nights) is within this range.
-                </p>
-              </div>
-            </div>
-
-            <!-- Booking Status -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('bookingStatuses') ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-booking-status" class="text-sm font-medium">
-                  Booking Status
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-booking-status"
-                  :model-value="isConditionEnabled('bookingStatuses')"
-                  @update:model-value="toggleCondition('bookingStatuses')"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('bookingStatuses')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="opt in [
-                      { value: 'inquiry', label: 'Inquiry' },
-                      { value: 'confirmed', label: 'Confirmed' },
-                      { value: 'checked_in', label: 'Checked-in' },
-                      { value: 'checked_out', label: 'Checked-out' },
-                      { value: 'cancelled', label: 'Cancelled' },
-                    ]"
-                    :key="opt.value"
-                    type="button"
-                    class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
-                    :class="isBookingStatusSelected(opt.value as BookingStatusFilter)
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background hover:bg-muted/50'"
-                    :aria-pressed="isBookingStatusSelected(opt.value as BookingStatusFilter)"
-                    @click="toggleBookingStatus(opt.value as BookingStatusFilter)"
-                  >
-                    {{ opt.label }}
-                  </button>
-                </div>
-                <p class="text-xs text-muted-foreground">
-                  Show only when the booking is in one of these statuses.
-                </p>
-              </div>
-            </div>
-
-            <!-- Related Upsell -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('excludeIfUpsellPurchased') ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-related-upsell" class="text-sm font-medium">
-                  Related Upsell
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-related-upsell"
-                  :model-value="isConditionEnabled('excludeIfUpsellPurchased')"
-                  @update:model-value="toggleCondition('excludeIfUpsellPurchased')"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('excludeIfUpsellPurchased')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <p v-if="otherUpsellServices.length === 0" class="text-xs text-muted-foreground">
-                  No other upsells to relate to.
-                </p>
-                <div v-else class="flex flex-wrap gap-2">
-                  <button
-                    v-for="svc in otherUpsellServices"
-                    :key="svc.id"
-                    type="button"
-                    class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
-                    :class="isRelatedUpsellSelected(svc.id)
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background hover:bg-muted/50'"
-                    :aria-pressed="isRelatedUpsellSelected(svc.id)"
-                    @click="toggleRelatedUpsell(svc.id)"
-                  >
-                    {{ svc.name }}
-                  </button>
-                </div>
-                <p class="text-xs text-muted-foreground">
-                  Hide this upsell if any of the selected services were already purchased.
-                </p>
-              </div>
-            </div>
-
-            <!-- Channels -->
-            <div class="flex flex-col gap-2 rounded-md border p-3" :class="isConditionEnabled('channels') ? 'border-primary/30 bg-primary/5' : 'border-border'">
-              <div class="flex items-center justify-between">
-                <h4 id="visibility-channels" class="text-sm font-medium">
-                  Channels
-                </h4>
-                <Switch
-                  aria-labelledby="visibility-channels"
-                  :model-value="isConditionEnabled('channels')"
-                  @update:model-value="toggleCondition('channels')"
-                />
-              </div>
-              <p v-if="!isConditionEnabled('channels')" class="text-xs text-muted-foreground">
-                Off — condition ignored
-              </p>
-              <div v-else class="flex flex-col gap-1">
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="opt in [
-                      { value: 'airbnb', label: 'Airbnb' },
-                      { value: 'booking_com', label: 'Booking.com' },
-                      { value: 'direct', label: 'Direct' },
-                      { value: 'agoda', label: 'Agoda' },
-                      { value: 'vrbo', label: 'VRBO' },
-                      { value: 'expedia', label: 'Expedia' },
-                    ]"
-                    :key="opt.value"
-                    type="button"
-                    class="rounded-full border px-3 py-1 text-xs font-medium transition-colors"
-                    :class="isChannelSelected(opt.value as OtaChannel)
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background hover:bg-muted/50'"
-                    :aria-pressed="isChannelSelected(opt.value as OtaChannel)"
-                    @click="toggleChannel(opt.value as OtaChannel)"
-                  >
-                    {{ opt.label }}
-                  </button>
-                </div>
-                <p class="text-xs text-muted-foreground">
-                  Show only on these booking channels.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Summary banner -->
-          <div class="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-            <Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>{{ summaryText }}</span>
+        <!-- Step 4: Visibility (show rules, hide rules; hide wins) -->
+        <div v-if="currentStep === 4" class="flex flex-col gap-4 p-6">
+          <UpsellVisibilityGroup
+            v-model="formVisibility"
+            v-model:match="formVisibilityMatchMode"
+            mode="show"
+            :other-services="otherUpsellServices"
+          />
+          <UpsellVisibilityGroup
+            v-model="formHideVisibility"
+            v-model:match="formHideVisibilityMatchMode"
+            mode="hide"
+            :other-services="otherUpsellServices"
+          />
+          <div class="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground" data-testid="visibility-summary">
+            <Icon name="lucide:info" class="mt-0.5 size-3.5 shrink-0" />
+            <span>{{ visibilitySummary }}</span>
           </div>
         </div>
 
@@ -1409,47 +1322,92 @@ function onOpenChange(val: boolean) {
           <Separator v-if="!isProtection" />
 
           <div v-if="!isProtection" class="flex flex-col gap-2">
-            <Label>Add Users to Receive WhatsApp Notification</Label>
-            <div v-if="formNotificationUsers.length === 0" class="rounded-md border border-dashed p-4 text-center">
-              <p class="text-sm text-muted-foreground">
-                No users have been added yet
-              </p>
+            <div class="flex flex-col gap-0.5">
+              <Label>Notify Users</Label>
               <p class="text-xs text-muted-foreground">
-                Add users to receive notifications.
+                These users get a notification when a guest orders this service.
               </p>
             </div>
-            <div v-else class="flex flex-col gap-1.5">
+
+            <div v-if="notifySelected.length" class="flex flex-col divide-y rounded-md border">
               <div
-                v-for="(user, idx) in formNotificationUsers"
-                :key="idx"
-                class="flex items-center justify-between rounded-md border px-3 py-1.5"
+                v-for="user in notifySelected"
+                :key="user.name"
+                class="flex items-center gap-3 px-3 py-2"
               >
-                <div class="flex items-center gap-2">
-                  <Icon name="lucide:user" class="h-3.5 w-3.5 text-muted-foreground" />
-                  <span class="text-sm">{{ user }}</span>
+                <Avatar class="size-7">
+                  <AvatarImage v-if="user.avatarUrl" :src="user.avatarUrl" :alt="user.name" />
+                  <AvatarFallback class="text-[10px]">
+                    {{ user.initials }}
+                  </AvatarFallback>
+                </Avatar>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium">
+                    {{ user.name }}
+                  </p>
+                  <p v-if="user.role" class="truncate text-xs text-muted-foreground">
+                    {{ user.role }}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="h-6 w-6 text-muted-foreground hover:text-destructive"
-                  @click="removeNotificationUser(idx)"
+                  class="size-7 text-muted-foreground hover:text-destructive"
+                  :aria-label="`Remove ${user.name}`"
+                  @click="removeNotificationUser(user.name)"
                 >
-                  <Icon name="lucide:x" class="h-3.5 w-3.5" />
+                  <Icon name="lucide:x" class="size-3.5" />
                 </Button>
               </div>
             </div>
-            <div class="flex items-center gap-2">
-              <Input
-                v-model="formNewNotificationUser"
-                placeholder="User name"
-                class="flex-1"
-                @keydown.enter.prevent="addNotificationUser"
-              />
-              <Button variant="outline" size="sm" class="h-9" @click="addNotificationUser">
-                <Icon name="lucide:plus" class="mr-1 h-4 w-4" />
-                Add
-              </Button>
-            </div>
+
+            <Popover v-model:open="notifyPickerOpen" @update:open="(v: boolean) => { if (!v) formNewNotificationUser = '' }">
+              <PopoverTrigger as-child>
+                <Button variant="outline" class="w-full justify-start font-normal text-muted-foreground">
+                  <Icon name="lucide:user-plus" class="mr-2 size-4" />
+                  {{ notifySelected.length ? 'Add more users' : 'Add users' }}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" class="w-(--reka-popover-trigger-width) p-0">
+                <div class="border-b p-2">
+                  <Input v-model="formNewNotificationUser" placeholder="Search by name or role" class="h-8 text-sm" />
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <div class="p-1">
+                    <div
+                      v-for="user in notifyCandidates"
+                      :key="user.id"
+                      class="flex cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 hover:bg-muted"
+                      @click="toggleNotificationUser(user.name)"
+                    >
+                      <div
+                        class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+                        :class="formNotificationUsers.includes(user.name) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+                      >
+                        <Icon v-if="formNotificationUsers.includes(user.name)" name="lucide:check" class="size-3" />
+                      </div>
+                      <Avatar class="size-6">
+                        <AvatarImage v-if="user.avatarUrl" :src="user.avatarUrl" :alt="user.name" />
+                        <AvatarFallback class="text-[10px]">
+                          {{ user.initials }}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm">
+                          {{ user.name }}
+                        </p>
+                        <p class="truncate text-xs text-muted-foreground">
+                          {{ roleName(user.roleId) }}
+                        </p>
+                      </div>
+                    </div>
+                    <p v-if="notifyCandidates.length === 0" class="px-2 py-6 text-center text-sm text-muted-foreground">
+                      No users found.
+                    </p>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <Separator v-if="!isProtection" />
@@ -1480,8 +1438,42 @@ function onOpenChange(val: boolean) {
         </div>
       </ScrollArea>
 
-      <div class="border-t shrink-0 px-6 py-4">
-        <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2 border-t px-6 py-4">
+        <AlertDialog v-if="isEditing" v-model:open="showDeleteConfirm">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <AlertDialogTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="Delete service"
+                  >
+                    <Icon name="lucide:trash-2" class="size-4" />
+                  </Button>
+                </AlertDialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Delete service</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this service?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove "{{ props.service?.name }}" from your catalog. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" @click="handleDelete">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <div class="ml-auto flex items-center gap-2" :class="isEditing ? '' : 'flex-1'">
           <Button
             v-if="currentStep > 1"
             variant="outline"
@@ -1497,39 +1489,25 @@ function onOpenChange(val: boolean) {
           >
             Cancel
           </Button>
-          <Button class="flex-1" @click="currentStep < lastStepId ? nextStep() : handleSave()">
+          <!-- Editing: every step is already filled, so Save is always available and Next is secondary -->
+          <template v-if="isEditing">
+            <Button v-if="currentStep < lastStepId" variant="outline" @click="nextStep()">
+              Next
+              <Icon name="lucide:chevron-right" class="ml-1 h-4 w-4" />
+            </Button>
+            <Button @click="handleSave()">
+              Save Changes
+            </Button>
+          </template>
+          <Button v-else class="flex-1" @click="currentStep < lastStepId ? nextStep() : handleSave()">
             <template v-if="currentStep < lastStepId">
               Next
               <Icon name="lucide:chevron-right" class="ml-1 h-4 w-4" />
             </template>
             <template v-else>
-              {{ isEditing ? 'Save Changes' : 'Create Service' }}
+              Create Service
             </template>
           </Button>
-        </div>
-        <div v-if="isEditing" class="mt-3">
-          <AlertDialog v-model:open="showDeleteConfirm">
-            <AlertDialogTrigger as-child>
-              <Button variant="destructive" class="w-full" size="sm">
-                <Icon name="lucide:trash-2" class="mr-2 h-4 w-4" />
-                Delete Service
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this service?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently remove "{{ props.service?.name }}" from your catalog. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" @click="handleDelete">
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
       </div>
     </SheetContent>
@@ -1553,7 +1531,7 @@ function onOpenChange(val: boolean) {
             <Textarea v-model="itemFormDescription" placeholder="Describe this option..." rows="2" />
           </div>
           <div class="flex flex-col gap-2">
-            <Label>Price</Label>
+            <Label>Price<template v-if="hasPriceUnit && priceUnitSuffix(formPriceUnit)"> <span class="font-normal text-muted-foreground">({{ priceUnitSuffix(formPriceUnit) }})</span></template></Label>
             <div class="relative">
               <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">{{ formCurrency }}</span>
               <Input v-model.number="itemFormPrice" type="number" min="0" placeholder="0" class="pl-14" />

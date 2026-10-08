@@ -2,23 +2,36 @@ import type { UpsellCategory, UpsellService } from '@/components/upsells/data/up
 import { computed } from 'vue'
 import { serviceGrantsLockAccess } from '@/components/upsells/data/lock-access'
 import { mockUpsellServices, sellableServices } from '@/components/upsells/data/upsell-services'
+import { richTextToPlainText } from '~/lib/rich-text'
 
 export function useUpsellServices() {
   const services = useState<UpsellService[]>('upsell-services', () =>
     mockUpsellServices.map(s => ({ ...s })))
 
-  const filterCategory = ref<UpsellCategory | 'all'>('all')
-  const filterStatus = ref<'all' | 'active' | 'inactive'>('all')
-  const filterListing = ref<string>('all')
+  // Shared state: the filter bar and the table each call this composable, and a
+  // plain ref would give each its own copy (the table never saw the filter).
+  const filterCategory = useState<UpsellCategory | 'all'>('upsell-filter-category', () => 'all')
+  const filterStatus = useState<'all' | 'active' | 'inactive'>('upsell-filter-status', () => 'all')
+  const filterListing = useState<string>('upsell-filter-listing', () => 'all')
   /** 'lock' narrows to services that hand the guest a door code on payment. */
-  const filterLockAccess = ref<'all' | 'lock' | 'no_lock'>('all')
+  const filterLockAccess = useState<'all' | 'lock' | 'no_lock'>('upsell-filter-lock', () => 'all')
+  /** Matches name, category, description text and item names. */
+  const searchQuery = useState<string>('upsell-filter-search', () => '')
+
+  function matchesSearch(s: UpsellService, query: string): boolean {
+    const haystack = [s.name, s.category, richTextToPlainText(s.description), ...s.items.map(i => i.name)]
+    return haystack.some(text => text.toLowerCase().includes(query))
+  }
 
   /**
    * The Upsells page's catalog. ⚠️ Damage Protection services are left out: the
    * waiver's one package is managed in Settings, Damage protection, never here.
    */
   const filteredServices = computed(() => {
+    const query = searchQuery.value.trim().toLowerCase()
     return sellableServices(services.value).filter((s) => {
+      if (query && !matchesSearch(s, query))
+        return false
       if (filterCategory.value !== 'all' && s.category !== filterCategory.value)
         return false
       if (filterStatus.value !== 'all' && s.status !== filterStatus.value)
@@ -70,6 +83,7 @@ export function useUpsellServices() {
     filterStatus.value = 'all'
     filterListing.value = 'all'
     filterLockAccess.value = 'all'
+    searchQuery.value = ''
   }
 
   return {
@@ -80,6 +94,7 @@ export function useUpsellServices() {
     filterStatus,
     filterListing,
     filterLockAccess,
+    searchQuery,
     addService,
     updateService,
     deleteService,
