@@ -160,7 +160,7 @@ async function confirm() {
               <Icon name="lucide:link-2" class="size-4 shrink-0 text-muted-foreground" />
               <span class="min-w-0 flex-1">
                 {{ isEarly(linked) ? 'Early arrival' : 'Extension' }}
-                <span class="font-mono text-xs">{{ linked.id }}</span>
+                <span class="whitespace-nowrap font-mono text-xs">{{ linked.id }}</span>
               </span>
               <span class="shrink-0 text-xs text-muted-foreground">{{ fmtDate(linked.checkIn) }} to {{ fmtDate(linked.checkOut) }}</span>
             </li>

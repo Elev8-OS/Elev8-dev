@@ -239,6 +239,8 @@ async function confirm() {
   if (!props.reservation || !canConfirm.value)
     return
   saving.value = true
+  // Read before saving: once the nights are booked, the live quote drops to 0.
+  const n = quote.value?.extraNights ?? 0
   const result = await confirmExtension({
     reservationId: props.reservation.id,
     direction: direction.value,
@@ -252,7 +254,6 @@ async function confirm() {
     toast.error(result.error ?? 'Could not extend the stay.')
     return
   }
-  const n = quote.value?.extraNights ?? 0
   const details = [
     result.linkedReservationId ? `Direct booking ${result.linkedReservationId} created` : '',
     result.paymentLink ? 'payment link sent' : '',

@@ -1,5 +1,6 @@
 import type { Conversation, Message, Note, PhoneCall, Reservation, StayStatus, UnmatchedMessage } from '~/components/inbox/data/conversations'
 import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
+import { toast } from 'vue-sonner'
 import { conversations as conversationsData, messages as messagesData, phoneCalls as phoneCallsData, reservations, resolveConversationTenantId, staffMembers, unmatchedMessages as unmatchedData } from '~/components/inbox/data/conversations'
 import { useCurrentDashboardUser } from './useCurrentDashboardUser'
 import { useGroScope } from './useGroScope'
