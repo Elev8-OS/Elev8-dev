@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { isActiveExtension } from '~/components/reservations/data/reservations'
 import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
 import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
@@ -40,12 +41,17 @@ function cityTaxRow(reservationId: string) {
 const { reservations: allReservations } = useReservationsModule()
 
 function extensionSummary(r: ReservationEntry) {
-  const list = r.extensions ?? []
+  // A cancelled extension no longer extends anything.
+  const list = (r.extensions ?? []).filter(isActiveExtension)
   if (!list.length)
     return null
   return {
     nights: list.reduce((sum, e) => sum + e.extraNights, 0),
-    until: list.reduce((end, e) => e.newCheckOut > end ? e.newCheckOut : end, r.checkOut),
+    until: list.reduce((end, e) => e.newCheckOut && e.newCheckOut > end ? e.newCheckOut : end, r.checkOut),
+    // Early arrivals: in place the stay's check-in already moved; via a linked booking it did not.
+    arrives: list.reduce((start, e) => e.newCheckIn && e.newCheckIn < start ? e.newCheckIn : start, r.checkIn),
+    early: list.some(e => e.direction === 'before'),
+    later: list.some(e => e.direction !== 'before'),
     viaLinked: list.some(e => e.linkedReservationId),
     unpaid: list.some(e => e.paymentStatus === 'pending'),
   }
@@ -56,7 +62,19 @@ function extensionTitle(r: ReservationEntry): string {
   const summary = extensionSummary(r)
   if (!summary)
     return ''
-  return `Extended +${summary.nights} night${summary.nights === 1 ? '' : 's'}, stays until ${fmtDate(summary.until)}${summary.unpaid ? '. Payment pending' : ''}`
+  const span = [
+    summary.early ? `arrives ${fmtDate(summary.arrives)}` : '',
+    summary.later ? `stays until ${fmtDate(summary.until)}` : '',
+  ].filter(Boolean).join(', ')
+  return `Extended +${summary.nights} night${summary.nights === 1 ? '' : 's'}, ${span}${summary.unpaid ? '. Payment pending' : ''}`
+}
+
+/** A linked booking that ends where its stay begins carries an early arrival. */
+function isEarlyArrival(r: ReservationEntry): boolean {
+  if (!r.extensionOf)
+    return false
+  const parent = allReservations.value.find(x => x.id === r.extensionOf)
+  return Boolean(parent && r.checkOut <= parent.checkIn)
 }
 
 function openParent(id: string) {
@@ -272,7 +290,7 @@ const pageNumbers = computed(() => {
                 <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
                 <div class="min-w-0">
                   <p class="text-sm font-medium">
-                    Extension
+                    {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
                   </p>
                   <p class="truncate font-mono text-xs text-muted-foreground">
                     {{ r.id }}
@@ -332,13 +350,13 @@ const pageNumbers = computed(() => {
                 <button
                   v-if="r.extensionOf && !child"
                   type="button"
-                  :title="`Extension of ${r.extensionOf}. Open it`"
+                  :title="`${isEarlyArrival(r) ? 'Early arrival for' : 'Extension of'} ${r.extensionOf}. Open it`"
                   data-testid="row-extension-of"
                   @click.stop="openParent(r.extensionOf)"
                 >
                   <Badge variant="outline" class="gap-1 whitespace-nowrap border-muted-foreground/30 bg-muted text-muted-foreground hover:text-foreground">
                     <Icon name="lucide:link-2" class="size-3" />
-                    Extension
+                    {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
                   </Badge>
                 </button>
               </div>

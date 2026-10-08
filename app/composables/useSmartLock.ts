@@ -432,6 +432,31 @@ export function useSmartLock() {
     return moving.size
   }
 
+  /** Active, dated codes of the stay that start on `date` (Bali day). */
+  function codesStartingOn(reservationId: string, date: string): AccessCode[] {
+    return codes.value.filter((c) => {
+      if (c.reservationId !== reservationId || c.status !== 'active' || c.scheduleType === 'ongoing')
+        return false
+      const ms = new Date(c.startsAt).getTime()
+      return !Number.isNaN(ms) && new Date(ms + 8 * 60 * 60 * 1000).toISOString().slice(0, 10) === date
+    })
+  }
+
+  /**
+   * An early arrival: the stay's codes starting on the old check-in day now
+   * start the same time on the new one. Returns how many codes moved.
+   */
+  function advanceCodesForReservation(reservationId: string, fromDate: string, toDate: string): number {
+    const moving = new Set(codesStartingOn(reservationId, fromDate).map(c => c.id))
+    if (!moving.size)
+      return 0
+    const shiftMs = new Date(`${toDate}T00:00:00Z`).getTime() - new Date(`${fromDate}T00:00:00Z`).getTime()
+    codes.value = codes.value.map(c => moving.has(c.id)
+      ? { ...c, startsAt: new Date(new Date(c.startsAt).getTime() + shiftMs).toISOString(), scheduleType: 'range' as const }
+      : c)
+    return moving.size
+  }
+
   function revokeAccessCode(codeId: string) {
     codes.value = codes.value.map(c => c.id === codeId ? { ...c, status: 'revoked' } : c)
   }
@@ -492,6 +517,8 @@ export function useSmartLock() {
     revokeAccessCode,
     codesEndingOn,
     extendCodesForReservation,
+    codesStartingOn,
+    advanceCodesForReservation,
     findActiveBrandCode,
     emitMockAlerts,
   }

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { DateValue } from '@internationalized/date'
-import type { ExtensionPaymentMethod, ReservationEntry } from '~/components/reservations/data/reservations'
+import type { ExtensionDirection, ExtensionPaymentMethod, ReservationEntry } from '~/components/reservations/data/reservations'
 import type { ExtensionFeeMode } from '~/composables/useStayExtension'
-import { parseDate } from '@internationalized/date'
+import { getLocalTimeZone, parseDate, today } from '@internationalized/date'
 import { toast } from 'vue-sonner'
-import { useReservationsModule } from '~/composables/useReservationsModule'
+import { NON_EARLY_ARRIVAL_STATUSES, useReservationsModule } from '~/composables/useReservationsModule'
 import { PAYMENT_LINK_TOKEN, savedCardFor, useStayExtension } from '~/composables/useStayExtension'
 
-// Three steps: when and at what rate, how the guest pays, then a review of
+// Three steps: which way (later check-out or earlier arrival), when and at what rate, how the guest pays, then a review of
 // everything the extension touches (cleaning, door codes, city tax) with the
 // message the guest will get. All writes happen in useStayExtension on confirm.
 const props = defineProps<{
@@ -19,7 +19,7 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
-const { defaultNightlyRate } = useReservationsModule()
+const { defaultNightlyRate, earlyArrivalEnd } = useReservationsModule()
 const { preview, confirmExtension, defaultExtensionMessage, formatSavedCard } = useStayExtension()
 
 type Step = 'dates' | 'payment' | 'review'
@@ -29,9 +29,15 @@ const STEPS: { id: Step, label: string }[] = [
   { id: 'review', label: 'Review' },
 ]
 const QUICK_NIGHTS = [1, 2, 3, 7]
+const DIRECTION_OPTIONS: { id: ExtensionDirection, label: string, icon: string }[] = [
+  { id: 'after', label: 'Stay longer', icon: 'lucide:log-out' },
+  { id: 'before', label: 'Arrive earlier', icon: 'lucide:log-in' },
+]
 
 const step = ref<Step>('dates')
-const newCheckOut = ref('')
+const direction = ref<ExtensionDirection>('after')
+/** The new check-out, or for an early arrival the new check-in. */
+const newDate = ref('')
 const nightlyRate = ref(0)
 const calendarOpen = ref(false)
 const method = ref<ExtensionPaymentMethod>('payment_link')
@@ -43,18 +49,45 @@ const saving = ref(false)
 
 const savedCard = computed(() => props.reservation ? savedCardFor(props.reservation) : undefined)
 
-const view = computed(() => props.reservation && newCheckOut.value
-  ? preview(props.reservation, newCheckOut.value, nightlyRate.value)
+const isBefore = computed(() => direction.value === 'before')
+
+const view = computed(() => props.reservation && newDate.value
+  ? preview(props.reservation, newDate.value, nightlyRate.value, direction.value)
   : null)
 const quote = computed(() => view.value?.quote ?? null)
 const isLinked = computed(() => view.value?.mode === 'linked_booking')
-const from = computed(() => view.value?.from ?? props.reservation?.checkOut ?? '')
+/** The boundary that moves: the current check-out, or the current check-in. */
+const anchor = computed(() => view.value?.anchor ?? (isBefore.value ? props.reservation?.checkIn : props.reservation?.checkOut) ?? '')
+
+const todayDate = computed(() => today(getLocalTimeZone()))
+
+/** Early arrival is open until the guest is in, with at least tonight still free to add. */
+const canArriveEarly = computed(() => {
+  const r = props.reservation
+  if (!r || NON_EARLY_ARRIVAL_STATUSES.includes(r.status))
+    return false
+  return parseDate(earlyArrivalEnd(r)).compare(todayDate.value) > 0
+})
+
+function initialDate(r: ReservationEntry, dir: ExtensionDirection): string {
+  return dir === 'before'
+    ? parseDate(earlyArrivalEnd(r)).subtract({ days: 1 }).toString()
+    : parseDate(preview(r, r.checkOut).from).add({ days: 1 }).toString()
+}
+
+function setDirection(dir: ExtensionDirection) {
+  if (!props.reservation || direction.value === dir)
+    return
+  direction.value = dir
+  newDate.value = initialDate(props.reservation, dir)
+  calendarOpen.value = false
+}
 
 watch(() => props.open, (open) => {
   if (open && props.reservation) {
     step.value = 'dates'
-    const start = preview(props.reservation, props.reservation.checkOut).from
-    newCheckOut.value = parseDate(start).add({ days: 1 }).toString()
+    direction.value = 'after'
+    newDate.value = initialDate(props.reservation, 'after')
     nightlyRate.value = defaultNightlyRate(props.reservation)
     calendarOpen.value = false
     method.value = 'payment_link'
@@ -66,21 +99,38 @@ watch(() => props.open, (open) => {
   }
 })
 
-const minCheckOut = computed(() => from.value ? parseDate(from.value).add({ days: 1 }) : undefined)
+// Later check-out: from the night after the current one. Earlier arrival:
+// from today up to the night before the current check-in.
+const minDate = computed(() => {
+  if (!anchor.value)
+    return undefined
+  return isBefore.value ? todayDate.value : parseDate(anchor.value).add({ days: 1 })
+})
+const maxDate = computed(() => isBefore.value && anchor.value ? parseDate(anchor.value).subtract({ days: 1 }) : undefined)
 
 const calendarValue = computed<DateValue | undefined>({
-  get: () => newCheckOut.value ? parseDate(newCheckOut.value) : undefined,
+  get: () => newDate.value ? parseDate(newDate.value) : undefined,
   set: (val) => {
     if (val) {
-      newCheckOut.value = val.toString()
+      newDate.value = val.toString()
       calendarOpen.value = false
     }
   },
 })
 
+function quickDate(n: number): string {
+  const base = parseDate(anchor.value)
+  return (isBefore.value ? base.subtract({ days: n }) : base.add({ days: n })).toString()
+}
+
+/** An early arrival cannot start in the past. */
+function quickDisabled(n: number): boolean {
+  return isBefore.value && Boolean(anchor.value) && parseDate(quickDate(n)).compare(todayDate.value) < 0
+}
+
 function addNights(n: number) {
-  if (from.value)
-    newCheckOut.value = parseDate(from.value).add({ days: n }).toString()
+  if (anchor.value && !quickDisabled(n))
+    newDate.value = quickDate(n)
 }
 
 const datesValid = computed(() => Boolean(quote.value && quote.value.extraNights > 0 && !view.value?.conflicts.length))
@@ -133,7 +183,8 @@ function freshMessage(): string {
   if (!props.reservation || !quote.value || !view.value)
     return ''
   return defaultExtensionMessage(props.reservation, {
-    checkOut: newCheckOut.value,
+    checkOut: newDate.value,
+    direction: direction.value,
     quote: quote.value,
     mode: view.value.mode,
     method: method.value,
@@ -190,7 +241,8 @@ async function confirm() {
   saving.value = true
   const result = await confirmExtension({
     reservationId: props.reservation.id,
-    checkOut: newCheckOut.value,
+    direction: direction.value,
+    ...(isBefore.value ? { checkIn: newDate.value } : { checkOut: newDate.value }),
     nightlyRate: nightlyRate.value,
     payment: { method: method.value, feeMode: feeMode.value },
     guestMessage: notifyGuest.value ? message.value : '',
@@ -206,7 +258,7 @@ async function confirm() {
     result.paymentLink ? 'payment link sent' : '',
     result.guestNotified ? 'guest notified' : '',
   ].filter(Boolean).join(', ')
-  toast.success(`Stay extended by ${plural(n, 'night')}`, details ? { description: details.charAt(0).toUpperCase() + details.slice(1) } : undefined)
+  toast.success(isBefore.value ? `Arrival moved ${plural(n, 'night')} earlier` : `Stay extended by ${plural(n, 'night')}`, details ? { description: details.charAt(0).toUpperCase() + details.slice(1) } : undefined)
   emit('update:open', false)
 }
 </script>
@@ -239,13 +291,30 @@ async function confirm() {
       <div v-if="reservation" class="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
         <!-- Step 1: dates and price -->
         <template v-if="step === 'dates'">
+          <div v-if="canArriveEarly" class="grid grid-cols-2 gap-1 rounded-md bg-muted p-1" role="radiogroup" aria-label="Extend direction" data-testid="extend-direction">
+            <button
+              v-for="option in DIRECTION_OPTIONS"
+              :key="option.id"
+              type="button"
+              role="radio"
+              :aria-checked="direction === option.id"
+              :data-testid="`extend-direction-${option.id}`"
+              class="flex items-center justify-center gap-2 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors"
+              :class="direction === option.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+              @click="setDirection(option.id)"
+            >
+              <Icon :name="option.icon" class="size-4" />
+              {{ option.label }}
+            </button>
+          </div>
+
           <div class="grid grid-cols-2 gap-3 rounded-md border bg-muted/40 p-3 text-sm">
             <div>
               <p class="text-xs text-muted-foreground">
-                Current check-out
+                {{ isBefore ? 'Current check-in' : 'Current check-out' }}
               </p>
               <p class="font-medium">
-                {{ fmtDate(from) }}
+                {{ fmtDate(anchor) }}
               </p>
             </div>
             <div>
@@ -262,12 +331,12 @@ async function confirm() {
             <Icon name="lucide:link-2" class="size-4" />
             <AlertTitle>Booked on {{ reservation.channel }}</AlertTitle>
             <AlertDescription>
-              The {{ reservation.channel }} reservation stays unchanged. The extra nights become a direct booking linked to it, billed by you.
+              The {{ reservation.channel }} reservation stays unchanged. The extra nights {{ isBefore ? 'before it ' : '' }}become a direct booking linked to it, billed by you.
             </AlertDescription>
           </Alert>
 
           <div class="space-y-2">
-            <Label>New check-out</Label>
+            <Label>{{ isBefore ? 'New check-in' : 'New check-out' }}</Label>
             <div class="flex flex-wrap gap-2">
               <Button
                 v-for="n in QUICK_NIGHTS"
@@ -275,21 +344,22 @@ async function confirm() {
                 type="button"
                 size="sm"
                 :variant="quote?.extraNights === n ? 'default' : 'outline'"
+                :disabled="quickDisabled(n)"
                 class="h-8"
                 @click="addNights(n)"
               >
-                +{{ plural(n, 'night') }}
+                {{ isBefore ? `${plural(n, 'night')} earlier` : `+${plural(n, 'night')}` }}
               </Button>
             </div>
             <Popover v-model:open="calendarOpen">
               <PopoverTrigger as-child>
                 <Button variant="outline" class="w-full justify-start font-normal">
                   <Icon name="lucide:calendar" class="mr-2 size-4" />
-                  {{ newCheckOut ? fmtDate(newCheckOut) : 'Pick a date' }}
+                  {{ newDate ? fmtDate(newDate) : 'Pick a date' }}
                 </Button>
               </PopoverTrigger>
               <PopoverContent class="w-auto p-0" align="start">
-                <Calendar v-model="calendarValue" :min-value="minCheckOut" initial-focus />
+                <Calendar v-model="calendarValue" :min-value="minDate" :max-value="maxDate" initial-focus />
               </PopoverContent>
             </Popover>
           </div>
@@ -398,7 +468,7 @@ async function confirm() {
                 Dates
               </dt>
               <dd class="text-right">
-                {{ fmtDate(from) }} to {{ fmtDate(newCheckOut) }} · +{{ plural(quote.extraNights, 'night') }}
+                {{ fmtDate(view.from) }} to {{ fmtDate(view.to) }} · +{{ plural(quote.extraNights, 'night') }}
               </dd>
             </div>
             <div class="flex justify-between gap-3">
@@ -406,7 +476,7 @@ async function confirm() {
                 Booking
               </dt>
               <dd class="text-right">
-                {{ isLinked ? `New direct booking, linked to ${reservation.id}` : `Check-out of ${reservation.id} moves` }}
+                {{ isLinked ? `New direct booking, linked to ${reservation.id}` : `${isBefore ? 'Check-in' : 'Check-out'} of ${reservation.id} moves` }}
               </dd>
             </div>
             <div class="flex justify-between gap-3">
@@ -426,13 +496,15 @@ async function confirm() {
             <ul class="space-y-2 text-sm" data-testid="extend-effects">
               <li class="flex items-start gap-2">
                 <Icon name="lucide:brush-cleaning" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span v-if="view.cleaningsToMove">Check-out cleaning moves to {{ fmtDate(newCheckOut) }}</span>
-                <span v-else class="text-muted-foreground">No check-out cleaning is booked on {{ fmtDate(from) }}</span>
+                <span v-if="isBefore" class="text-muted-foreground">Check-out cleaning stays on {{ fmtDate(reservation.checkOut) }}. Have the house ready by {{ fmtDate(newDate) }}</span>
+                <span v-else-if="view.cleaningsToMove">Check-out cleaning moves to {{ fmtDate(newDate) }}</span>
+                <span v-else class="text-muted-foreground">No check-out cleaning is booked on {{ fmtDate(view.from) }}</span>
               </li>
               <li class="flex items-start gap-2">
                 <Icon name="lucide:key-round" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span v-if="view.codesToExtend">{{ plural(view.codesToExtend, 'door code') }} extended to {{ fmtDate(newCheckOut) }}</span>
-                <span v-else class="text-muted-foreground">No door code ends on the old check-out</span>
+                <span v-if="view.codesToExtend && isBefore">{{ plural(view.codesToExtend, 'door code') }} now start{{ view.codesToExtend === 1 ? 's' : '' }} on {{ fmtDate(newDate) }}</span>
+                <span v-else-if="view.codesToExtend">{{ plural(view.codesToExtend, 'door code') }} extended to {{ fmtDate(newDate) }}</span>
+                <span v-else class="text-muted-foreground">No door code {{ isBefore ? 'starts on the old check-in' : 'ends on the old check-out' }}</span>
               </li>
               <li v-if="view.cityTax.kind !== 'none'" class="flex items-start gap-2">
                 <Icon name="lucide:landmark" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -482,7 +554,7 @@ async function confirm() {
         </Button>
         <Button v-else :disabled="!canConfirm" data-testid="extend-confirm" @click="confirm">
           <Icon v-if="saving" name="lucide:loader-2" class="size-4 animate-spin" />
-          {{ saving && method === 'saved_card' ? 'Charging card…' : 'Extend stay' }}
+          {{ saving && method === 'saved_card' ? 'Charging card…' : isBefore ? 'Move arrival' : 'Extend stay' }}
         </Button>
       </DialogFooter>
     </DialogContent>

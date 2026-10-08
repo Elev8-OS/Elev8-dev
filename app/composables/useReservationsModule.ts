@@ -1,11 +1,11 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { ExtensionPaymentMethod, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
+import type { ExtensionDirection, ExtensionPaymentMethod, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
 import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
-import { generateGuestId, generateReservationId, initialGuests, initialReservations, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { usePromoRedemption } from '~/composables/usePromoRedemption'
@@ -55,6 +55,8 @@ const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 /** Statuses a stay can no longer be extended from. */
 export const NON_EXTENDABLE_STATUSES: ReservationStatus[] = ['cancelled', 'checked_out']
 /** Once the guest is in (or the stay is over), the check-in time is history. */
+/** Once the guest is in, the arrival can no longer move earlier. */
+export const NON_EARLY_ARRIVAL_STATUSES: ReservationStatus[] = ['checked_in', 'checked_out', 'cancelled']
 export const CHECK_IN_TIME_LOCKED_STATUSES: ReservationStatus[] = ['checked_in', 'checked_out', 'cancelled']
 /** A checked-in guest can still get a late check-out; a finished stay cannot. */
 export const CHECK_OUT_TIME_LOCKED_STATUSES: ReservationStatus[] = ['checked_out', 'cancelled']
@@ -76,6 +78,29 @@ export interface ExtensionQuote {
   newTotal: number
   /** true when the rate comes from the booked room lines and is not editable. */
   rateFromRooms: boolean
+}
+
+/** Exactly one of the two: `checkOut` adds nights after the stay, `checkIn` before it (early arrival). */
+export interface ExtensionInput {
+  checkOut?: string
+  checkIn?: string
+  nightlyRate?: number
+}
+
+function extensionTarget(input: ExtensionInput): { direction: ExtensionDirection, date: string } {
+  return input.checkIn ? { direction: 'before', date: input.checkIn } : { direction: 'after', date: input.checkOut ?? '' }
+}
+
+/** Local calendar day, matching how checkIn / checkOut are written. */
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+function shiftDate(iso: string, days: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const next = new Date(y!, m! - 1, d! + days)
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
 }
 
 /** How an extension is being paid, decided by `useStayExtension` before it is recorded. */
@@ -155,7 +180,7 @@ export function useReservationsModule() {
   function matchesExtensionFilter(r: ReservationEntry, mode: ReservationFilters['extension']): boolean {
     if (mode === 'all')
       return true
-    const wanted = (e: StayExtension) => mode === 'extended' || e.paymentStatus === 'pending'
+    const wanted = (e: StayExtension) => isActiveExtension(e) && (mode === 'extended' || e.paymentStatus === 'pending')
     if (r.extensions?.some(wanted))
       return true
     if (!r.extensionOf)
@@ -337,21 +362,40 @@ export function useReservationsModule() {
     return [rootId, ...children]
   }
 
-  /** Returns every stay the status landed on (the group, see `statusGroupIds`). */
+  /**
+   * Returns every stay the status landed on (the group, see `statusGroupIds`).
+   * A cancel also cancels the extension records it ends: all of them when the
+   * stay goes, the one that made a linked booking when only that goes. The
+   * operational clean-up (payment link, door codes, cleaning) is
+   * `useStayExtension().cancelStay` / `cancelExtension`, which call this.
+   */
   function updateReservationStatus(id: string, status: ReservationStatus): string[] {
     const ids = statusGroupIds(id, status)
     if (!ids.length)
       return []
     const label = reservationStatusLabels[status]
+    const target = reservations.value.find(x => x.id === id)
+    const cancelling = status === 'cancelled'
+    const now = new Date().toISOString()
     reservations.value = reservations.value.map((r) => {
       if (!ids.includes(r.id))
         return r
+      // The stay itself going: every extension on it ends.
+      const next: ReservationEntry = cancelling && r.id === id && r.extensions?.length
+        ? { ...r, extensions: r.extensions.map(e => isActiveExtension(e) ? cancelledRecord(e, now) : e) }
+        : r
       if (r.id === id || r.status === status)
-        return { ...r, status }
+        return { ...next, status }
       // A mirrored change says where it came from, on the stay it landed on.
       const event = activityEvent(`status-sync-${r.id}`, 'Status updated', `Set to ${label} with ${id}`)
-      return { ...r, status, activity: [...r.activity, event] }
+      return { ...next, status, activity: [...next.activity, event] }
     })
+    // A linked booking cancelled on its own: its parent is not in the group, but its record ends too.
+    if (cancelling && target?.extensionOf && !ids.includes(target.extensionOf)) {
+      reservations.value = reservations.value.map(r => r.id === target.extensionOf && r.extensions?.length
+        ? { ...r, extensions: r.extensions.map(e => isActiveExtension(e) && e.linkedReservationId === id ? cancelledRecord(e, now) : e) }
+        : r)
+    }
     // When a stay is checked in, feed any connected government registration
     // provider (APOA / AVS) so guest reports become due automatically. Once per
     // guest stay: an extension carries the same guests, so only the root reports.
@@ -503,14 +547,33 @@ export function useReservationsModule() {
   }
 
   /**
-   * Prices moving check-out to `newCheckOut`. Room-line stays are priced from
-   * their per-night lines (flat-rate lines do not grow), so the Edit dialog,
-   * which rebuilds the total from the lines, lands on the same number.
-   * `newNights` / `newTotal` describe an in-place extension; a linked OTA
-   * extension bills only `amount`, on its own booking.
+   * Where the next early arrival ends: the stay's own check-in or, for an OTA
+   * stay that already arrives early through linked direct bookings, the
+   * earliest of those.
    */
-  function quoteExtension(r: ReservationEntry, newCheckOut: string, nightlyRate?: number): ExtensionQuote {
-    const extraNights = Math.max(nightsBetween(extensionStart(r), newCheckOut), 0)
+  function earlyArrivalEnd(r: ReservationEntry): string {
+    return reservations.value
+      .filter(x => x.extensionOf === r.id && x.status !== 'cancelled')
+      .reduce((start, x) => x.checkIn < start ? x.checkIn : start, r.checkIn)
+  }
+
+  /** The nights an extension adds: `[from, to)`. `date` is the new check-out (`after`) or check-in (`before`). */
+  function extensionRange(r: ReservationEntry, date: string, direction: ExtensionDirection = 'after'): { from: string, to: string } {
+    return direction === 'before'
+      ? { from: date, to: earlyArrivalEnd(r) }
+      : { from: extensionStart(r), to: date }
+  }
+
+  /**
+   * Prices moving check-out to `date` (or, `before`, check-in back to `date`).
+   * Room-line stays are priced from their per-night lines (flat-rate lines do
+   * not grow), so the Edit dialog, which rebuilds the total from the lines,
+   * lands on the same number. `newNights` / `newTotal` describe an in-place
+   * extension; a linked OTA extension bills only `amount`, on its own booking.
+   */
+  function quoteExtension(r: ReservationEntry, date: string, nightlyRate?: number, direction: ExtensionDirection = 'after'): ExtensionQuote {
+    const { from, to } = extensionRange(r, date, direction)
+    const extraNights = Math.max(nightsBetween(from, to), 0)
     const rateFromRooms = Boolean(r.rooms?.length)
     const rate = rateFromRooms ? defaultNightlyRate(r) : Math.max(nightlyRate ?? defaultNightlyRate(r), 0)
     const amount = roundForCurrency(rate * extraNights, r.currency)
@@ -529,12 +592,12 @@ export function useReservationsModule() {
    * the same units) in the nights the extension would add. The stay's own
    * linked extension bookings never count against it.
    */
-  function getExtensionConflicts(id: string, newCheckOut: string): ReservationEntry[] {
+  function getExtensionConflicts(id: string, date: string, direction: ExtensionDirection = 'after'): ReservationEntry[] {
     const r = reservations.value.find(x => x.id === id)
     if (!r)
       return []
-    const from = extensionStart(r)
-    if (newCheckOut <= from)
+    const { from, to } = extensionRange(r, date, direction)
+    if (to <= from)
       return []
     const ownUnits = new Set((r.rooms ?? []).map(l => l.unitId))
     return reservations.value.filter((other) => {
@@ -542,7 +605,7 @@ export function useReservationsModule() {
         return false
       if (other.status === 'inquiry' && other.blocksAvailability === false)
         return false
-      if (!rangesOverlap(from, newCheckOut, other.checkIn, other.checkOut))
+      if (!rangesOverlap(from, to, other.checkIn, other.checkOut))
         return false
       // Both booked by unit: only a shared unit collides.
       if (ownUnits.size && other.rooms?.length)
@@ -551,26 +614,38 @@ export function useReservationsModule() {
     })
   }
 
-  function validateExtension(id: string, checkOut: string): { r?: ReservationEntry, error?: string } {
+  function validateExtension(id: string, date: string, direction: ExtensionDirection = 'after'): { r?: ReservationEntry, error?: string } {
     const r = reservations.value.find(x => x.id === id)
     if (!r)
       return { error: 'Reservation not found.' }
     if (NON_EXTENDABLE_STATUSES.includes(r.status))
       return { error: 'This stay can no longer be extended.' }
-    if (checkOut <= extensionStart(r))
+    if (direction === 'before') {
+      if (NON_EARLY_ARRIVAL_STATUSES.includes(r.status))
+        return { error: 'The guest has already checked in, so the arrival can no longer move earlier.' }
+      if (date >= earlyArrivalEnd(r))
+        return { error: 'Pick a check-in date before the current one.' }
+      if (date < todayIso())
+        return { error: 'The new check-in cannot be in the past.' }
+    }
+    else if (date <= extensionStart(r)) {
       return { error: 'Pick a check-out date after the current one.' }
-    const conflicts = getExtensionConflicts(id, checkOut)
+    }
+    const conflicts = getExtensionConflicts(id, date, direction)
     if (conflicts.length)
       return { error: `Those nights are already booked by ${conflicts[0]!.guestName}.` }
     return { r }
   }
 
-  function buildExtension(r: ReservationEntry, from: string, checkOut: string, quote: ExtensionQuote, payment: ExtensionPaymentInput, linkedReservationId?: string): StayExtension {
+  /** `previous` is the boundary that moves (old check-out, or old check-in for `before`), `next` where it lands. */
+  function buildExtension(r: ReservationEntry, direction: ExtensionDirection, previous: string, next: string, quote: ExtensionQuote, payment: ExtensionPaymentInput, linkedReservationId?: string): StayExtension {
     const now = new Date().toISOString()
     return {
       id: `ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      previousCheckOut: from,
-      newCheckOut: checkOut,
+      direction,
+      ...(direction === 'before'
+        ? { previousCheckIn: previous, newCheckIn: next }
+        : { previousCheckOut: previous, newCheckOut: next }),
       extraNights: quote.extraNights,
       nightlyRate: quote.nightlyRate,
       amount: quote.amount,
@@ -585,24 +660,157 @@ export function useReservationsModule() {
     }
   }
 
+  function cancelledRecord(e: StayExtension, at: string): StayExtension {
+    return {
+      ...e,
+      cancelledAt: at,
+      cancelledBy: actorName(),
+      ...(e.paymentStatus === 'paid' ? { refundStatus: 'due' as const } : {}),
+    }
+  }
+
+  /**
+   * Whether this one extension can be cancelled on its own. Only the
+   * outermost of its direction (the latest check-out, the earliest arrival),
+   * so a chain never has a gap, and only before its nights have begun.
+   */
+  function canCancelExtension(id: string, extensionId: string): { ok: boolean, error?: string } {
+    const r = reservations.value.find(x => x.id === id)
+    const ext = r?.extensions?.find(e => e.id === extensionId)
+    if (!r || !ext)
+      return { ok: false, error: 'Extension not found.' }
+    if (!isActiveExtension(ext))
+      return { ok: false, error: 'This extension is already cancelled.' }
+    if (r.status === 'cancelled' || r.status === 'checked_out')
+      return { ok: false, error: 'This stay is over.' }
+    const before = ext.direction === 'before'
+    const sameWay = (r.extensions ?? []).filter(e => isActiveExtension(e) && (e.direction === 'before') === before)
+    if (sameWay.at(-1)?.id !== ext.id)
+      return { ok: false, error: before ? 'Cancel the earlier arrival first.' : 'Cancel the later extension first.' }
+    const today = todayIso()
+    if (before && (r.status === 'checked_in' || today >= ext.newCheckIn!))
+      return { ok: false, error: 'The guest has already arrived for the earlier nights.' }
+    if (!before && today >= ext.previousCheckOut!)
+      return { ok: false, error: 'The guest is already staying the added nights.' }
+    return { ok: true }
+  }
+
+  /**
+   * Takes one extension back: in place, the stay's dates, nights, price and
+   * room lines return to what they were; for an OTA stay, the linked booking
+   * is cancelled (the OTA booking was never touched). A paid extension is left
+   * with a refund due; `guestPaid` moves only when it is marked refunded.
+   */
+  function cancelExtension(id: string, extensionId: string): { success: boolean, error?: string, extension?: StayExtension } {
+    const check = canCancelExtension(id, extensionId)
+    if (!check.ok)
+      return { success: false, error: check.error }
+    const r = reservations.value.find(x => x.id === id)!
+    const ext = r.extensions!.find(e => e.id === extensionId)!
+    const before = ext.direction === 'before'
+    const now = new Date().toISOString()
+    const nightsLabel = `${ext.extraNights} night${ext.extraNights === 1 ? '' : 's'}`
+    const refund = ext.paymentStatus === 'paid' ? ` · ${moneyLabel(ext.amount, ext.currency)} refund due` : ''
+
+    if (ext.linkedReservationId) {
+      const event = activityEvent('extension-cancel', before ? 'Early arrival cancelled' : 'Extension cancelled', `${nightsLabel} on direct booking ${ext.linkedReservationId} cancelled${refund}`)
+      reservations.value = reservations.value.map((x) => {
+        if (x.id === id)
+          return { ...x, extensions: x.extensions!.map(e => e.id === extensionId ? cancelledRecord(e, now) : e), activity: [...x.activity, event] }
+        if (x.id === ext.linkedReservationId) {
+          const linkedEvent = activityEvent('status-sync-cancel', 'Status updated', `Set to ${reservationStatusLabels.cancelled}, the extension of ${id} was cancelled`)
+          return { ...x, status: 'cancelled' as const, activity: [...x.activity, linkedEvent] }
+        }
+        return x
+      })
+      usePromoRedemption().releaseForReservation(ext.linkedReservationId)
+      return { success: true, extension: ext }
+    }
+
+    const nights = Math.max(r.nights - ext.extraNights, 1)
+    const rooms = r.rooms?.map(l => isPerNightLine(l)
+      ? { ...l, lineTotal: roundForCurrency(l.pricePerNight * nights, r.currency) }
+      : l)
+    const priceDetails = r.priceDetails
+      ? {
+          ...r.priceDetails,
+          subtotal: roundForCurrency(r.priceDetails.subtotal - ext.amount, r.currency),
+          payout: roundForCurrency(r.priceDetails.payout - ext.amount, r.currency),
+        }
+      : undefined
+    const cleaningSchedule = before && r.cleaningSchedule && r.cleaningSchedule.type !== 'checkout'
+      ? { ...r.cleaningSchedule, startDate: shiftDate(r.cleaningSchedule.startDate, ext.extraNights) }
+      : undefined
+    const event = activityEvent(
+      'extension-cancel',
+      before ? 'Early arrival cancelled' : 'Extension cancelled',
+      `${nightsLabel} removed, ${before ? `check-in back to ${ext.previousCheckIn}` : `check-out back to ${ext.previousCheckOut}`}${refund}`,
+    )
+    reservations.value = reservations.value.map(x => x.id === id
+      ? {
+          ...x,
+          ...(before ? { checkIn: ext.previousCheckIn! } : { checkOut: ext.previousCheckOut! }),
+          nights,
+          totalPrice: roundForCurrency(x.totalPrice - ext.amount, x.currency),
+          ...(rooms ? { rooms } : {}),
+          ...(priceDetails ? { priceDetails } : {}),
+          ...(cleaningSchedule ? { cleaningSchedule } : {}),
+          extensions: x.extensions!.map(e => e.id === extensionId ? cancelledRecord(e, now) : e),
+          activity: [...x.activity, event],
+        }
+      : x)
+    const previousNights = r.nights
+    void import('~/composables/useDamageProtection')
+      .then(m => m.useDamageProtection().reassessOnExtension(id, previousNights))
+    return { success: true, extension: ext }
+  }
+
+  /** The money for a cancelled, paid extension went back: guestPaid drops on the stay that was billed. */
+  function markExtensionRefunded(id: string, extensionId: string): boolean {
+    const r = reservations.value.find(x => x.id === id)
+    const ext = r?.extensions?.find(e => e.id === extensionId)
+    if (!r || !ext || ext.refundStatus !== 'due')
+      return false
+    const billedId = ext.linkedReservationId ?? r.id
+    const refundedAt = new Date().toISOString()
+    const event = activityEvent('extension-refund', 'Extension refunded', `${moneyLabel(ext.amount, ext.currency)} for ${ext.extraNights} cancelled night${ext.extraNights === 1 ? '' : 's'}`)
+    reservations.value = reservations.value.map((x) => {
+      let next = x
+      if (x.id === id) {
+        next = {
+          ...next,
+          extensions: (next.extensions ?? []).map(e => e.id === extensionId ? { ...e, refundStatus: 'refunded' as const, refundedAt } : e),
+          activity: [...next.activity, event],
+        }
+      }
+      if (x.id === billedId && next.priceDetails)
+        next = { ...next, priceDetails: { ...next.priceDetails, guestPaid: roundForCurrency(Math.max(next.priceDetails.guestPaid - ext.amount, 0), next.currency) } }
+      return next
+    })
+    return true
+  }
+
   function moneyLabel(amount: number, currency: string): string {
     const digits = currency === 'IDR' ? 0 : 2
     return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
   }
 
   /**
-   * Moves the stay's own check-out. Without `payment` the added nights count
-   * as paid (the original behaviour); with a pending payment `guestPaid` waits
-   * for `markExtensionPaid`.
+   * Moves the stay's own check-out (or, with `checkIn`, its check-in back for
+   * an early arrival). Without `payment` the added nights count as paid (the
+   * original behaviour); with a pending payment `guestPaid` waits for
+   * `markExtensionPaid`.
    */
-  function extendReservation(id: string, input: { checkOut: string, nightlyRate?: number, payment?: ExtensionPaymentInput }): { success: boolean, error?: string, extensionId?: string } {
-    const { r, error } = validateExtension(id, input.checkOut)
+  function extendReservation(id: string, input: ExtensionInput & { payment?: ExtensionPaymentInput }): { success: boolean, error?: string, extensionId?: string } {
+    const { direction, date } = extensionTarget(input)
+    const { r, error } = validateExtension(id, date, direction)
     if (!r)
       return { success: false, error }
 
     const payment = input.payment ?? { method: 'already_paid', status: 'paid' }
     const paid = payment.status === 'paid'
-    const quote = quoteExtension(r, input.checkOut, input.nightlyRate)
+    const quote = quoteExtension(r, date, input.nightlyRate, direction)
+    const before = direction === 'before'
     const rooms = r.rooms?.map(l => isPerNightLine(l)
       ? { ...l, lineTotal: roundForCurrency(l.pricePerNight * quote.newNights, r.currency) }
       : l)
@@ -618,18 +826,24 @@ export function useReservationsModule() {
         }
       : undefined
 
-    const extension = buildExtension(r, r.checkOut, input.checkOut, quote, payment)
+    const extension = buildExtension(r, direction, before ? r.checkIn : r.checkOut, date, quote, payment)
+    const nightsLabel = `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'}`
     const event = activityEvent(
       'extend',
-      'Stay extended',
-      `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'} added, check-out moved from ${r.checkOut} to ${input.checkOut} · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
+      before ? 'Early arrival' : 'Stay extended',
+      `${nightsLabel} added, ${before ? `check-in moved from ${r.checkIn}` : `check-out moved from ${r.checkOut}`} to ${date} · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
     )
+    // A recurring cleaning rhythm keeps its offset from arrival.
+    const cleaningSchedule = before && r.cleaningSchedule && r.cleaningSchedule.type !== 'checkout'
+      ? { ...r.cleaningSchedule, startDate: shiftDate(r.cleaningSchedule.startDate, -quote.extraNights) }
+      : undefined
 
     reservations.value = reservations.value.map(x =>
       x.id === id
         ? {
             ...x,
-            checkOut: input.checkOut,
+            ...(before ? { checkIn: date } : { checkOut: date }),
+            ...(cleaningSchedule ? { cleaningSchedule } : {}),
             nights: quote.newNights,
             totalPrice: quote.newTotal,
             ...(rooms ? { rooms } : {}),
@@ -651,16 +865,20 @@ export function useReservationsModule() {
   /**
    * Extends an OTA stay without touching it: the channel owns the booking's
    * dates and price, so the added nights become a direct booking for the same
-   * guest and rooms, starting where the stay (or its last extension) ends.
-   * The extension is recorded on the OTA stay; the new booking is billed.
+   * guest and rooms, starting where the stay (or its last extension) ends, or,
+   * for an early arrival (`checkIn`), ending where it (or its earliest early
+   * arrival) begins. The extension is recorded on the OTA stay; the new booking
+   * is billed.
    */
-  function extendViaLinkedBooking(id: string, input: { checkOut: string, nightlyRate?: number, payment: ExtensionPaymentInput }): { success: boolean, error?: string, extensionId?: string, linkedReservationId?: string } {
-    const { r, error } = validateExtension(id, input.checkOut)
+  function extendViaLinkedBooking(id: string, input: ExtensionInput & { payment: ExtensionPaymentInput }): { success: boolean, error?: string, extensionId?: string, linkedReservationId?: string } {
+    const { direction, date } = extensionTarget(input)
+    const { r, error } = validateExtension(id, date, direction)
     if (!r)
       return { success: false, error }
 
-    const from = extensionStart(r)
-    const quote = quoteExtension(r, input.checkOut, input.nightlyRate)
+    const before = direction === 'before'
+    const { from, to } = extensionRange(r, date, direction)
+    const quote = quoteExtension(r, date, input.nightlyRate, direction)
     const paid = input.payment.status === 'paid'
     // Per-night room lines carry over for the added nights; a flat-rate line
     // was paid once on the OTA booking and is not charged again.
@@ -680,7 +898,7 @@ export function useReservationsModule() {
       listingName: r.listingName,
       channel: 'Direct',
       checkIn: from,
-      checkOut: input.checkOut,
+      checkOut: to,
       nights: quote.extraNights,
       guestCount: r.guestCount,
       guestAdults: r.guestAdults,
@@ -703,7 +921,9 @@ export function useReservationsModule() {
       // The guest is the one already in the house: carry the stay's cleaning
       // rhythm over the added nights instead of the listing default.
       ...(r.cleaningSchedule ? { cleaningSchedule: { ...r.cleaningSchedule, startDate: from } } : {}),
-      bookingNote: `Extension of ${r.channel} reservation ${r.id}.`,
+      bookingNote: before
+        ? `Early arrival for ${r.channel} reservation ${r.id}.`
+        : `Extension of ${r.channel} reservation ${r.id}.`,
       extensionOf: r.id,
       // One guest stay, one status (see `statusGroupIds`).
       status: r.status,
@@ -713,14 +933,20 @@ export function useReservationsModule() {
       return { success: false, error: 'Could not create the extension booking.' }
     const linkedId = created.id
 
-    const extension = buildExtension(r, from, input.checkOut, quote, input.payment, linkedId)
+    const extension = before
+      ? buildExtension(r, direction, to, from, quote, input.payment, linkedId)
+      : buildExtension(r, direction, from, to, quote, input.payment, linkedId)
     const nightsLabel = `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'}`
     const parentEvent = activityEvent(
       'extend',
-      'Stay extended',
-      `${nightsLabel} added from ${from} to ${input.checkOut} as direct booking ${linkedId}, the ${r.channel} reservation is unchanged · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
+      before ? 'Early arrival' : 'Stay extended',
+      `${nightsLabel} added from ${from} to ${to} as direct booking ${linkedId}, the ${r.channel} reservation is unchanged · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
     )
-    const linkedEvent = activityEvent('extension-of', 'Created as an extension', `${nightsLabel} added to ${r.channel} reservation ${r.id}`)
+    const linkedEvent = activityEvent(
+      'extension-of',
+      before ? 'Created as an early arrival' : 'Created as an extension',
+      `${nightsLabel} ${before ? 'before' : 'added to'} ${r.channel} reservation ${r.id}`,
+    )
 
     reservations.value = reservations.value.map((x) => {
       if (x.id === id)
@@ -739,7 +965,7 @@ export function useReservationsModule() {
   function markExtensionPaid(id: string, extensionId: string): boolean {
     const r = reservations.value.find(x => x.id === id)
     const ext = r?.extensions?.find(e => e.id === extensionId)
-    if (!r || !ext || ext.paymentStatus === 'paid')
+    if (!r || !ext || ext.paymentStatus === 'paid' || !isActiveExtension(ext))
       return false
     const billedId = ext.linkedReservationId ?? r.id
     const paidAt = new Date().toISOString()
@@ -792,9 +1018,14 @@ export function useReservationsModule() {
     quoteExtension,
     getExtensionConflicts,
     extensionStart,
+    earlyArrivalEnd,
+    extensionRange,
     extendReservation,
     extendViaLinkedBooking,
     markExtensionPaid,
+    canCancelExtension,
+    cancelExtension,
+    markExtensionRefunded,
     reset,
   }
 }

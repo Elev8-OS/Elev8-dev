@@ -12,6 +12,9 @@ import type { GuestProfile, ReservationEntry, ReservationStatus, StayExtension }
  * damage-protection-demo.ts). The month-crossing stay is anchored to the end
  * of the current month, so it always runs from about the 29th to the 3rd.
  *
+ * Includes an Airbnb stay with an early arrival (nights before the Airbnb
+ * check-in on a linked Direct booking).
+ *
  * Single-unit listings only (lst-8, lst-11, lst-13), clear of every other
  * seed stay, so no unit conflict is possible.
  */
@@ -324,6 +327,80 @@ function bookingLinked(id: string, checkIn: string, checkOut: string, nights: nu
   }
 }
 
+// --- 5. Airbnb, early arrival, linked Direct booking, unpaid, upcoming -------
+// The guest booked on Airbnb from the 5th and asked to come on the 3rd: the
+// nights before the Airbnb check-in are a Direct booking ending on it.
+
+const earlyIn = day(16)
+const earlyAirIn = day(18)
+const earlyAirOut = day(23)
+const earlyStatus = statusFor(earlyIn, earlyAirOut)
+
+const earlyArrivalStay: ReservationEntry = {
+  ...base,
+  id: 'res-ext-early',
+  guestId: 'guest-ext-5',
+  guestName: 'Mia Hoffmann',
+  guestEmail: 'mia.hoffmann@example.com',
+  guestPhone: '+49 151 2345 6789',
+  guestCountry: 'DE',
+  listingId: 'lst-11',
+  listingName: 'Villa Rice Terrace Jimbaran',
+  channel: 'Airbnb',
+  checkIn: earlyAirIn,
+  checkOut: earlyAirOut,
+  nights: 5,
+  totalPrice: 760,
+  currency: 'USD',
+  priceDetails: { subtotal: 720, cleaningFee: 40, serviceFee: 0, tax: 0, extras: 0, guestPaid: 760, commission: 114, payout: 646 },
+  status: earlyStatus,
+  extensions: [
+    extension({
+      id: 'ext-demo-early',
+      direction: 'before',
+      previousCheckIn: earlyAirIn,
+      newCheckIn: earlyIn,
+      extraNights: 2,
+      nightlyRate: 144,
+      amount: 288,
+      currency: 'USD',
+      paymentMethod: 'at_property',
+      paymentStatus: 'pending',
+      linkedReservationId: 'res-ext-early-x1',
+      createdAt: iso(-2),
+    }),
+  ],
+  activity: [
+    event('act-ext-5-created', 'Reservation created', `Airbnb booking, ${earlyAirIn} to ${earlyAirOut}`, iso(-30)),
+    event('act-ext-5-early', 'Early arrival', `2 nights added from ${earlyIn} to ${earlyAirIn} as direct booking res-ext-early-x1, the Airbnb reservation is unchanged · USD 288.00 (payment pending)`, iso(-2)),
+  ],
+}
+
+const earlyArrivalLinked: ReservationEntry = {
+  ...base,
+  id: 'res-ext-early-x1',
+  guestId: earlyArrivalStay.guestId,
+  guestName: earlyArrivalStay.guestName,
+  guestEmail: earlyArrivalStay.guestEmail,
+  guestPhone: earlyArrivalStay.guestPhone,
+  guestCountry: earlyArrivalStay.guestCountry,
+  listingId: earlyArrivalStay.listingId,
+  listingName: earlyArrivalStay.listingName,
+  channel: 'Direct',
+  checkIn: earlyIn,
+  checkOut: earlyAirIn,
+  nights: 2,
+  totalPrice: 288,
+  currency: 'USD',
+  priceDetails: { subtotal: 288, cleaningFee: 0, serviceFee: 0, tax: 0, extras: 0, guestPaid: 0, commission: 0, payout: 288 },
+  status: earlyStatus,
+  bookingNote: 'Early arrival for Airbnb reservation res-ext-early.',
+  extensionOf: 'res-ext-early',
+  activity: [
+    event('act-ext-5x-created', 'Created as an early arrival', '2 nights before Airbnb reservation res-ext-early', iso(-2)),
+  ],
+}
+
 export const stayExtensionDemoReservations: ReservationEntry[] = [
   directCrossing,
   directPending,
@@ -332,10 +409,12 @@ export const stayExtensionDemoReservations: ReservationEntry[] = [
   bookingStay,
   bookingLinked('res-ext-bdc-x1', bdcOut, bdcExt1Out, 2, true, iso(-3)),
   bookingLinked('res-ext-bdc-x2', bdcExt1Out, bdcExt2Out, 1, false, iso(-1)),
+  earlyArrivalStay,
+  earlyArrivalLinked,
 ]
 
 /** Profiles for the demo guests, so their names open the guest page. */
-export const stayExtensionDemoGuests: GuestProfile[] = [directCrossing, directPending, airbnbStay, bookingStay].map(r => ({
+export const stayExtensionDemoGuests: GuestProfile[] = [directCrossing, directPending, airbnbStay, bookingStay, earlyArrivalStay].map(r => ({
   id: r.guestId,
   name: r.guestName,
   email: r.guestEmail,

@@ -213,6 +213,35 @@ export function useCleaningJobs() {
     return moving.length
   }
 
+  /**
+   * Early arrival on a linked booking: it "ends" on the stay's old check-in,
+   * but the guest stays on. Its check-out cleaning that day goes, and so does
+   * any other job of it the stay already covers that day. Returns how many went.
+   */
+  function dropArrivalOverlap(linkedReservationId: string, stayReservationId: string, day: string): number {
+    const isOpen = (j: CleaningJob) => j.status !== 'done' && j.status !== 'cancelled' && cleaningDateKey(j.scheduledAt) === day
+    const stayCovers = jobs.value.some(j => j.reservationId === stayReservationId && isOpen(j))
+    const dropping = new Set(jobs.value
+      .filter(j => j.reservationId === linkedReservationId && isOpen(j) && (j.source === 'checkout' || j.source === 'check_out' || stayCovers))
+      .map(j => j.id))
+    if (dropping.size)
+      jobs.value = jobs.value.filter(j => !dropping.has(j.id))
+    return dropping.size
+  }
+
+  /**
+   * Cancels a stay's open jobs, all of them or those `which` picks (nights
+   * that are no longer booked). Done jobs stay as history. Returns how many.
+   */
+  function cancelOpenJobs(reservationId: string, which: (j: CleaningJob) => boolean = () => true): number {
+    const ids = new Set(jobs.value
+      .filter(j => j.reservationId === reservationId && j.status !== 'done' && j.status !== 'cancelled' && which(j))
+      .map(j => j.id))
+    if (ids.size)
+      jobs.value = jobs.value.map(j => ids.has(j.id) ? { ...j, status: 'cancelled' as const } : j)
+    return ids.size
+  }
+
   function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string, guestName?: string }) {
     const { createGuestActivityAlert } = useNotifications()
     const scheduledAt = `${reservation.checkOut}T11:00:00+08:00`
@@ -271,6 +300,8 @@ export function useCleaningJobs() {
     clearReservationSchedule,
     createFromCheckout,
     moveCheckoutCleanings,
+    dropArrivalOverlap,
+    cancelOpenJobs,
     resolveCleanerNames,
     joinCleanerNames,
     resolveListingName,

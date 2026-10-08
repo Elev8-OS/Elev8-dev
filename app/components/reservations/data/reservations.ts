@@ -459,7 +459,7 @@ export interface ReservationEntry {
   damageProtection?: DamageProtection
   /** Recurring cleaning schedule configuration for this reservation */
   cleaningSchedule?: ReservationCleaningSchedule
-  /** Nights added after booking, oldest first. See `useStayExtension`. */
+  /** Nights added after booking (later check-out or earlier arrival), oldest first. See `useStayExtension`. */
   extensions?: StayExtension[]
   /**
    * Set on the direct booking that carries an OTA stay's added nights: the
@@ -477,10 +477,19 @@ export type ExtensionPaymentMethod = 'payment_link' | 'saved_card' | 'at_propert
  * guest booked (for an OTA stay, the OTA reservation), even when the nights
  * themselves sit on a linked direct booking.
  */
+/** `after`: a later check-out. `before`: an earlier arrival (the guest comes in before the booked check-in). */
+export type ExtensionDirection = 'after' | 'before'
+
 export interface StayExtension {
   id: string
-  previousCheckOut: string
-  newCheckOut: string
+  /** Missing on records written before early arrivals existed: read as `after`. */
+  direction?: ExtensionDirection
+  /** `after` only. */
+  previousCheckOut?: string
+  newCheckOut?: string
+  /** `before` only. */
+  previousCheckIn?: string
+  newCheckIn?: string
   extraNights: number
   nightlyRate: number
   amount: number
@@ -494,6 +503,20 @@ export interface StayExtension {
   linkedReservationId?: string
   createdAt: string
   createdBy: string
+  /**
+   * Set when the extension was cancelled, on its own or with its stay. A
+   * cancelled extension no longer counts anywhere (icon, filters, chains).
+   */
+  cancelledAt?: string
+  cancelledBy?: string
+  /** A paid extension that was cancelled owes the guest its `amount` back until staff mark it refunded. */
+  refundStatus?: 'due' | 'refunded'
+  refundedAt?: string
+}
+
+/** Still counts: not cancelled. */
+export function isActiveExtension(e: Pick<StayExtension, 'cancelledAt'>): boolean {
+  return !e.cancelledAt
 }
 
 export interface GuestProfile {
@@ -578,8 +601,15 @@ export interface ReservationDraft {
   guestId?: string
 }
 
+let lastReservationStamp = 0
+
+/**
+ * Time-based and strictly increasing: two bookings made in the same
+ * millisecond (a stay and its extension, one after the other) never share an id.
+ */
 export function generateReservationId(): string {
-  return `res-${Date.now()}`
+  lastReservationStamp = Math.max(Date.now(), lastReservationStamp + 1)
+  return `res-${lastReservationStamp}`
 }
 
 let guestSeq = 0

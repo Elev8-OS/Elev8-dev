@@ -23,7 +23,9 @@ describe('stay extension demo seed', () => {
         expect(linked.extensionOf).toBe(r.id)
         expect(linked.channel).toBe('Direct')
         expect(linked.status).toBe(r.status)
-        expect([linked.checkIn, linked.checkOut]).toEqual([ext.previousCheckOut, ext.newCheckOut])
+        expect([linked.checkIn, linked.checkOut]).toEqual(ext.direction === 'before'
+          ? [ext.newCheckIn, ext.previousCheckIn]
+          : [ext.previousCheckOut, ext.newCheckOut])
         expect(linked.nights).toBe(ext.extraNights)
         expect(linked.totalPrice).toBe(ext.amount)
         expect(linked.priceDetails!.guestPaid).toBe(ext.paymentStatus === 'paid' ? ext.amount : 0)
@@ -41,6 +43,14 @@ describe('stay extension demo seed', () => {
       expect(r.totalPrice).toBe(pd.subtotal + pd.cleaningFee)
       expect(pd.guestPaid).toBe(ext.paymentStatus === 'paid' ? r.totalPrice : r.totalPrice - ext.amount)
     }
+  })
+
+  it('the early arrival ends on the Airbnb check-in and is still open to change', () => {
+    const r = byId('res-ext-early')
+    const linked = byId('res-ext-early-x1')
+    expect(linked.checkOut).toBe(r.checkIn)
+    expect(r.status).toBe('verified')
+    expect(useReservationsModule().earlyArrivalEnd(r)).toBe(linked.checkIn)
   })
 
   it('the month-crossing stay puts its added nights in next month', () => {
@@ -77,7 +87,7 @@ describe('stay extension demo seed', () => {
 
     filters.value.extension = 'unpaid'
     const unpaid = filteredReservations.value.map(r => r.id)
-    expect(unpaid).toEqual(expect.arrayContaining(['res-ext-direct-pending', 'res-ext-bdc', 'res-ext-bdc-x2']))
+    expect(unpaid).toEqual(expect.arrayContaining(['res-ext-direct-pending', 'res-ext-bdc', 'res-ext-bdc-x2', 'res-ext-early', 'res-ext-early-x1']))
     expect(unpaid).not.toContain('res-ext-direct-paid')
     expect(unpaid).not.toContain('res-ext-airbnb')
     expect(unpaid).not.toContain('res-ext-bdc-x1')

@@ -248,3 +248,263 @@ describe('extension filter', () => {
     expect(ids()).toHaveLength(4)
   })
 })
+
+describe('early arrival', () => {
+  function otherStay(over: Partial<ReservationEntry> = {}): ReservationEntry {
+    return stay({ id: 'res-other', guestName: 'Ben Ode', checkIn: '2030-02-25', checkOut: '2030-02-27', ...over })
+  }
+
+  it('moves a direct stay\'s check-in back in place and records it as an early arrival', async () => {
+    seed(stay())
+    const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', direction: 'before', checkIn: '2030-02-27', payment: { method: 'already_paid' } })
+    expect(result.success).toBe(true)
+    expect(find()).toMatchObject({ checkIn: '2030-02-27', checkOut: '2030-03-04', nights: 5, totalPrice: 1000 })
+    expect(find().priceDetails!.guestPaid).toBe(1000)
+    expect(find().extensions![0]).toMatchObject({ direction: 'before', previousCheckIn: '2030-03-01', newCheckIn: '2030-02-27', extraNights: 2 })
+    expect(find().extensions![0]!.newCheckOut).toBeUndefined()
+  })
+
+  it('books the nights before an OTA stay as a linked direct booking ending on its check-in', async () => {
+    seed(stay({ channel: 'Airbnb', checkIn: '2030-03-05', checkOut: '2030-03-08' }))
+    const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkIn: '2030-03-03', payment: { method: 'at_property' } })
+    expect(result.success).toBe(true)
+    expect(find()).toMatchObject({ checkIn: '2030-03-05', checkOut: '2030-03-08', nights: 3 })
+    expect(find(result.linkedReservationId!)).toMatchObject({ channel: 'Direct', extensionOf: 'res-x', checkIn: '2030-03-03', checkOut: '2030-03-05', nights: 2, totalPrice: 400 })
+    expect(find().extensions![0]).toMatchObject({ direction: 'before', previousCheckIn: '2030-03-05', newCheckIn: '2030-03-03', linkedReservationId: result.linkedReservationId })
+  })
+
+  it('chains a second early arrival from the earliest linked booking, independent of a later check-out', async () => {
+    seed(stay({ channel: 'Booking.com', checkIn: '2030-03-05', checkOut: '2030-03-08' }))
+    const { confirmExtension, preview } = useStayExtension()
+    await confirmExtension({ reservationId: 'res-x', checkIn: '2030-03-04', payment: { method: 'already_paid' } })
+    await confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-09', payment: { method: 'already_paid' } })
+
+    const view = preview(find(), '2030-03-02', undefined, 'before')
+    expect(view).toMatchObject({ from: '2030-03-02', to: '2030-03-04', anchor: '2030-03-04', conflicts: [] })
+    expect(view.quote.extraNights).toBe(2)
+    // The later check-out still chains from its own linked booking.
+    expect(preview(find(), '2030-03-10').from).toBe('2030-03-09')
+
+    const third = await confirmExtension({ reservationId: 'res-x', checkIn: '2030-03-02', payment: { method: 'already_paid' } })
+    expect(find(third.linkedReservationId!)).toMatchObject({ checkIn: '2030-03-02', checkOut: '2030-03-04' })
+    expect(find().extensions).toHaveLength(3)
+  })
+
+  it('refuses nights another guest holds before the stay, but allows a same-day turnover', async () => {
+    seed(stay(), otherStay())
+    const { preview, confirmExtension } = useStayExtension()
+    expect(preview(find(), '2030-02-27', undefined, 'before').conflicts).toHaveLength(0)
+    expect(preview(find(), '2030-02-26', undefined, 'before').conflicts.map(c => c.id)).toEqual(['res-other'])
+    const result = await confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-26', payment: { method: 'already_paid' } })
+    expect(result).toMatchObject({ success: false, error: 'Those nights are already booked by Ben Ode.' })
+    expect(find().checkIn).toBe('2030-03-01')
+  })
+
+  it('is closed once the guest has checked in, and never starts in the past', () => {
+    seed(stay({ status: 'checked_in' }))
+    const module = useReservationsModule()
+    expect(module.extendReservation('res-x', { checkIn: '2030-02-27' })).toMatchObject({ success: false, error: 'The guest has already checked in, so the arrival can no longer move earlier.' })
+
+    seed(stay({ checkIn: '2020-01-05', checkOut: '2020-01-08' }))
+    expect(module.extendReservation('res-x', { checkIn: '2020-01-03' })).toMatchObject({ success: false, error: 'The new check-in cannot be in the past.' })
+    expect(module.extendReservation('res-x', { checkIn: '2020-01-05' }).success).toBe(false)
+  })
+
+  it('moves door codes starting on the old check-in and leaves the check-out cleaning where it is', async () => {
+    seed(stay())
+    useCleaningJobs().jobs.value = [{ id: 'cln-1', listingId: 'lst-1', listingName: 'Villa Test', scheduledAt: '2030-03-04T11:00:00+08:00', status: 'scheduled', source: 'checkout', reservationId: 'res-x', cleanerIds: [], cleanerNames: [] } as never]
+    useSmartLock().codes.value = [
+      { id: 'code-1', lockId: 'lock-1', code: '123456', startsAt: '2030-03-01T06:00:00.000Z', endsAt: '2030-03-04T03:00:00.000Z', reservationId: 'res-x', status: 'active', providerCodeId: 'p1', scheduleType: 'range' },
+    ]
+    expect(useStayExtension().preview(find(), '2030-02-28', undefined, 'before')).toMatchObject({ cleaningsToMove: 0, codesToExtend: 1 })
+
+    const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-28', payment: { method: 'already_paid' } })
+    expect(result).toMatchObject({ cleaningsMoved: 0, codesExtended: 1 })
+    expect(useSmartLock().codes.value[0]).toMatchObject({ startsAt: '2030-02-28T06:00:00.000Z', endsAt: '2030-03-04T03:00:00.000Z' })
+    expect(useCleaningJobs().jobs.value.find(j => j.id === 'cln-1')!.scheduledAt).toBe('2030-03-04T11:00:00+08:00')
+  })
+
+  it('adds daily cleanings for the earlier nights and shifts the schedule start', async () => {
+    seed(stay({ cleaningSchedule: { type: 'daily', startDate: '2030-03-01', time: '10:00' } }))
+    const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-27', payment: { method: 'already_paid' } })
+    expect(result.cleaningsAdded).toBe(2)
+    expect(find().cleaningSchedule!.startDate).toBe('2030-02-27')
+    const days = useCleaningJobs().jobs.value.filter(j => j.reservationId === 'res-x').map(j => j.scheduledAt.slice(0, 10)).sort()
+    expect(days).toEqual(['2030-02-27', '2030-02-28'])
+  })
+
+  it('drops the linked booking\'s check-out cleaning on the OTA check-in day: the guest stays on', async () => {
+    seed(stay({ channel: 'Airbnb', checkIn: '2030-03-05', checkOut: '2030-03-08', cleaningSchedule: { type: 'checkout', startDate: '2030-03-05' } }))
+    const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkIn: '2030-03-03', payment: { method: 'already_paid' } })
+    const linkedJobs = useCleaningJobs().jobs.value.filter(j => j.reservationId === result.linkedReservationId)
+    expect(linkedJobs.filter(j => j.scheduledAt.startsWith('2030-03-05'))).toHaveLength(0)
+  })
+
+  it('writes the guest message about the new check-in', () => {
+    const r = stay({ channel: 'Airbnb', checkIn: '2030-03-05', checkOut: '2030-03-08' })
+    seed(r)
+    const view = useStayExtension().preview(r, '2030-03-03', undefined, 'before')
+    const text = useStayExtension().defaultExtensionMessage(r, { checkOut: '2030-03-03', direction: 'before', quote: view.quote, mode: view.mode, method: 'at_property', codesExtended: 1 })
+    expect(text).toContain('you can arrive earlier at Villa Test')
+    expect(text).toContain('Your new check-in is Sunday, 3 March 2030')
+    expect(text).toContain('The extra nights before it are booked directly with us.')
+    expect(text).toContain('now works from your new check-in')
+  })
+})
+
+describe('cancelling', () => {
+  function localDay(offset: number): string {
+    const d = new Date()
+    d.setDate(d.getDate() + offset)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  function code(over: Record<string, unknown> = {}) {
+    return { id: 'code-1', lockId: 'lock-1', code: '123456', startsAt: '2030-03-01T06:00:00.000Z', endsAt: '2030-03-04T03:00:00.000Z', reservationId: 'res-x', status: 'active', providerCodeId: 'p1', scheduleType: 'range', ...over } as never
+  }
+  function job(over: Record<string, unknown> = {}) {
+    return { id: 'cln-1', listingId: 'lst-1', listingName: 'Villa Test', scheduledAt: '2030-03-04T11:00:00+08:00', status: 'scheduled', source: 'checkout', reservationId: 'res-x', cleanerIds: [], cleanerNames: [], ...over } as never
+  }
+
+  it('takes an OTA extension back: linked booking, payment link, door codes and cleaning', async () => {
+    seed(stay({ channel: 'Airbnb' }))
+    useCleaningJobs().jobs.value = [job()]
+    useSmartLock().codes.value = [code()]
+    const ext = useStayExtension()
+    const created = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'payment_link', feeMode: 'card' } })
+    expect(useCleaningJobs().jobs.value[0]!.reservationId).toBe(created.linkedReservationId)
+
+    const result = await ext.cancelExtension('res-x', created.extensionId!)
+    expect(result).toMatchObject({ success: true, paymentLinksCancelled: 1, cleaningsMoved: 1, codesRestored: 1, cancelledIds: [created.linkedReservationId], refundsDue: [] })
+    expect(find(created.linkedReservationId!).status).toBe('cancelled')
+    expect(find()).toMatchObject({ status: 'verified', checkOut: '2030-03-04' })
+    expect(find().extensions![0]!.cancelledAt).toBeDefined()
+    expect(find().extensions![0]!.refundStatus).toBeUndefined()
+    expect(usePaymentRequests().requests.value.find(p => p.id === created.paymentRequestId)!.status).toBe('cancelled')
+    expect(useCleaningJobs().jobs.value[0]).toMatchObject({ reservationId: 'res-x', scheduledAt: '2030-03-04T11:00:00+08:00', status: 'scheduled' })
+    expect(useSmartLock().codes.value[0]).toMatchObject({ endsAt: '2030-03-04T03:00:00.000Z' })
+    // Chains start from the stay again, and the money buttons are closed.
+    expect(ext.preview(find(), '2030-03-05').from).toBe('2030-03-04')
+    expect(ext.markExtensionPaid('res-x', created.extensionId!)).toBe(false)
+  })
+
+  it('puts an in-place extension back and leaves a paid one with a refund due', async () => {
+    seed(stay())
+    const ext = useStayExtension()
+    const created = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    expect(find().priceDetails!.guestPaid).toBe(1000)
+
+    const result = await ext.cancelExtension('res-x', created.extensionId!)
+    expect(result.refundsDue).toHaveLength(1)
+    expect(find()).toMatchObject({ checkOut: '2030-03-04', nights: 3, totalPrice: 600 })
+    expect(find().priceDetails).toMatchObject({ subtotal: 600, payout: 600, guestPaid: 1000 })
+    expect(find().extensions![0]!.refundStatus).toBe('due')
+
+    expect(ext.markExtensionRefunded('res-x', created.extensionId!)).toBe(true)
+    expect(find().priceDetails!.guestPaid).toBe(600)
+    expect(find().extensions![0]!.refundStatus).toBe('refunded')
+    expect(ext.markExtensionRefunded('res-x', created.extensionId!)).toBe(false)
+  })
+
+  it('takes an in-place early arrival back with its cleanings and door codes', async () => {
+    seed(stay({ cleaningSchedule: { type: 'daily', startDate: '2030-03-01', time: '10:00' } }))
+    useSmartLock().codes.value = [code()]
+    const ext = useStayExtension()
+    const created = await ext.confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-27', payment: { method: 'at_property' } })
+
+    const result = await ext.cancelExtension('res-x', created.extensionId!)
+    expect(result).toMatchObject({ success: true, cleaningsCancelled: 2, codesRestored: 1 })
+    expect(find()).toMatchObject({ checkIn: '2030-03-01', nights: 3, totalPrice: 600 })
+    expect(find().cleaningSchedule!.startDate).toBe('2030-03-01')
+    expect(useSmartLock().codes.value[0]).toMatchObject({ startsAt: '2030-03-01T06:00:00.000Z' })
+  })
+
+  it('only cancels the outermost extension of a chain', async () => {
+    seed(stay({ channel: 'Booking.com' }))
+    const ext = useStayExtension()
+    const first = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    const second = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-08', payment: { method: 'already_paid' } })
+    const early = await ext.confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-28', payment: { method: 'already_paid' } })
+
+    expect(await ext.cancelExtension('res-x', first.extensionId!)).toMatchObject({ success: false, error: 'Cancel the later extension first.' })
+    // The early arrival is its own chain, so it does not block the other.
+    expect(ext.canCancelExtension('res-x', early.extensionId!).ok).toBe(true)
+    expect((await ext.cancelExtension('res-x', second.extensionId!)).success).toBe(true)
+    expect((await ext.cancelExtension('res-x', first.extensionId!)).success).toBe(true)
+    expect(find(early.linkedReservationId!).status).toBe('verified')
+  })
+
+  it('refuses once the added nights have begun', async () => {
+    seed(stay({ checkIn: localDay(-3), checkOut: localDay(-1), nights: 2, status: 'checked_in' }))
+    const ext = useStayExtension()
+    const created = await ext.confirmExtension({ reservationId: 'res-x', checkOut: localDay(2), payment: { method: 'already_paid' } })
+    expect(created.success).toBe(true)
+    expect(await ext.cancelExtension('res-x', created.extensionId!)).toMatchObject({ success: false, error: 'The guest is already staying the added nights.' })
+  })
+
+  it('cancels the stay with everything linked to it', async () => {
+    seed(stay({ channel: 'Airbnb' }))
+    const ext = useStayExtension()
+    const later = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    const early = await ext.confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-27', payment: { method: 'payment_link', feeMode: 'no_fee' } })
+
+    const result = await ext.cancelStay('res-x')
+    expect(result.success).toBe(true)
+    expect(result.cancelledIds).toEqual(expect.arrayContaining(['res-x', later.linkedReservationId, early.linkedReservationId]))
+    expect(result).toMatchObject({ paymentLinksCancelled: 1 })
+    expect(result.refundsDue.map(e => e.id)).toEqual([later.extensionId])
+    for (const id of ['res-x', later.linkedReservationId!, early.linkedReservationId!])
+      expect(find(id).status).toBe('cancelled')
+    expect(find().extensions!.every(e => e.cancelledAt)).toBe(true)
+    expect(useCleaningJobs().jobs.value.filter(j => j.reservationId !== 'res-x' && j.status !== 'cancelled')).toHaveLength(0)
+
+    const { filters, filteredReservations } = useReservationsModule()
+    filters.value.extension = 'extended'
+    expect(filteredReservations.value.map(r => r.id)).not.toContain('res-x')
+  })
+
+  it('cancelling a linked booking cancels only its extension', async () => {
+    seed(stay({ channel: 'Airbnb' }))
+    const ext = useStayExtension()
+    const created = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    const result = await ext.cancelStay(created.linkedReservationId!)
+    expect(result).toMatchObject({ success: true, cancelledIds: [created.linkedReservationId] })
+    expect(find().status).toBe('verified')
+    expect(find().extensions![0]).toMatchObject({ refundStatus: 'due' })
+  })
+
+  it('cancelling any stay revokes its door codes, cancels its open cleanings and can tell the guest', async () => {
+    seed(stay())
+    useCleaningJobs().jobs.value = [job(), job({ id: 'cln-done', status: 'done' })]
+    useSmartLock().codes.value = [code(), code({ id: 'code-old', status: 'revoked' })]
+    const ext = useStayExtension()
+    expect(ext.previewCancelStay('res-x')).toMatchObject({ linked: [], codes: 1, cleanings: 1, pendingLinks: 0 })
+
+    const message = ext.defaultCancelMessage('res-x')
+    expect(message).toContain('Your booking at Villa Test from Friday, 1 March 2030 to Monday, 4 March 2030 has been cancelled.')
+    const result = await ext.cancelStay('res-x', { guestMessage: message })
+    expect(result).toMatchObject({ success: true, codesRevoked: 1, cleaningsCancelled: 1, guestNotified: true })
+    expect(useSmartLock().codes.value.find(c => c.id === 'code-1')!.status).toBe('revoked')
+    expect(useCleaningJobs().jobs.value.map(j => j.status)).toEqual(['cancelled', 'done'])
+    const thread = useInbox().conversations.value.find(c => c.reservationId === 'res-x')!
+    expect(useInbox().messages.value[thread.id]!.at(-1)!.content).toContain('has been cancelled')
+    expect((await ext.cancelStay('res-x')).success).toBe(false)
+  })
+
+  it('writes the cancel message for one extension, with the refund', async () => {
+    seed(stay({ channel: 'Airbnb' }))
+    const ext = useStayExtension()
+    const later = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    const text = ext.defaultCancelMessage('res-x', later.extensionId)
+    expect(text).toContain('Your extra 2 nights at Villa Test are cancelled. Your check-out stays on Monday, 4 March 2030.')
+    expect(text).toContain('Your Airbnb booking stays exactly as it is.')
+    expect(text).toContain('We will refund the USD 400.00 you paid for them.')
+    expect(ext.defaultCancelMessage('res-x')).toContain('including the extra nights booked directly with us')
+  })
+
+  it('keeps the extension record in step when a linked booking is cancelled through its status', async () => {
+    seed(stay({ channel: 'Airbnb' }))
+    const created = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'at_property' } })
+    useReservationsModule().updateReservationStatus(created.linkedReservationId!, 'cancelled')
+    expect(find().extensions![0]!.cancelledAt).toBeDefined()
+  })
+})
