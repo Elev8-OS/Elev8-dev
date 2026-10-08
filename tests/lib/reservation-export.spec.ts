@@ -2,6 +2,7 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { describe, expect, it } from 'vitest'
 import {
   buildReservationsSheet,
+  exportColumns,
   moneyFormat,
   RESERVATION_EXPORT_COLUMNS,
   reservationsExportFileName,
@@ -84,8 +85,35 @@ describe('xlsx output', () => {
   })
 })
 
+describe('period columns', () => {
+  const SEP = { from: '2026-09-01', to: '2026-09-30' }
+
+  it('are added after Total only when a range is set', () => {
+    expect(exportColumns().some(c => c.header === 'Nights in Period')).toBe(false)
+    expect(exportColumns({ from: '', to: '' })).toEqual(RESERVATION_EXPORT_COLUMNS)
+    const headers = exportColumns(SEP).map(c => c.header)
+    const total = headers.indexOf('Total')
+    expect(headers.slice(total + 1, total + 4)).toEqual(['Nights in Period', 'Room Revenue in Period', 'Cleaning Fee in Period'])
+  })
+
+  it('write the share of a month-crossing stay', () => {
+    const r = reservation({ checkIn: '2026-09-29', checkOut: '2026-10-03', nights: 4, totalPrice: 400 })
+    const sheet = buildReservationsSheet([r], SEP)
+    const headers = (sheet[0] as any[]).map(h => h.value)
+    const row = sheet[1] as any[]
+    expect(row[headers.indexOf('Nights in Period')]).toEqual({ type: Number, value: 2 })
+    expect(row[headers.indexOf('Room Revenue in Period')]).toEqual({ type: Number, value: 200, format: '#,##0.00' })
+    expect(row[headers.indexOf('Total')]).toEqual({ type: Number, value: 400, format: '#,##0.00' })
+  })
+})
+
 describe('reservationsExportFileName', () => {
   it('stamps the local date with an .xlsx extension', () => {
-    expect(reservationsExportFileName(new Date(2026, 9, 8, 0, 30))).toBe('reservations-2026-10-08.xlsx')
+    expect(reservationsExportFileName(undefined, new Date(2026, 9, 8, 0, 30))).toBe('reservations-2026-10-08.xlsx')
+  })
+
+  it('names the range when one is set', () => {
+    expect(reservationsExportFileName({ from: '2026-09-01', to: '2026-09-30' })).toBe('reservations-2026-09-01_2026-09-30.xlsx')
+    expect(reservationsExportFileName({ from: '2026-09-01', to: '' })).toBe('reservations-2026-09-01_end.xlsx')
   })
 })

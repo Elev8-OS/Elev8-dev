@@ -13,6 +13,7 @@ import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { downloadReservationsXlsx } from '~/lib/reservation-export'
+import { RESERVATION_DATE_BASIS_OPTIONS } from '~/lib/reservation-period'
 
 const router = useRouter()
 const route = useRoute()
@@ -57,7 +58,7 @@ async function exportReservations() {
   }
   exporting.value = true
   try {
-    await downloadReservationsXlsx(rows)
+    await downloadReservationsXlsx(rows, { from: filters.value.dateFrom, to: filters.value.dateTo })
     toast.success(`${rows.length} reservation${rows.length === 1 ? '' : 's'} exported to Excel.`)
   }
   catch {
@@ -138,11 +139,9 @@ function parseDateToCalendarDate(dateStr: string): CalendarDate | undefined {
   return new CalendarDate(year, month, day)
 }
 
+/** `YYYY-MM-DD` straight from the calendar date: `toISOString()` would shift it a day back in UTC+8. */
 function calendarDateToString(date: CalendarDate | undefined): string {
-  if (!date)
-    return ''
-  const d = date.toDate(getLocalTimeZone())
-  return d.toISOString().split('T')[0]
+  return date ? date.toString() : ''
 }
 
 const dateRange = ref<DateRange>({
@@ -176,6 +175,7 @@ function clearAllFilters() {
   filters.value.listings = []
   filters.value.dateFrom = ''
   filters.value.dateTo = ''
+  filters.value.dateBasis = 'stay'
   filters.value.extension = 'all'
   selectedListingTags.value = []
   listingSearch.value = ''
@@ -193,10 +193,17 @@ const hasActiveFilters = computed(() =>
 const dateFilterLabel = computed(() => {
   if (!filters.value.dateFrom && !filters.value.dateTo)
     return 'Date range'
+  const basis = RESERVATION_DATE_BASIS_OPTIONS.find(o => o.value === filters.value.dateBasis)?.label ?? 'Staying'
   if (filters.value.dateFrom === filters.value.dateTo)
-    return filters.value.dateFrom
-  return `${filters.value.dateFrom} – ${filters.value.dateTo}`
+    return `${basis}: ${filters.value.dateFrom}`
+  return `${basis}: ${filters.value.dateFrom} – ${filters.value.dateTo}`
 })
+
+const dateBasisHint = computed(() => ({
+  stay: 'Any reservation with a night in the range. A stay across two months shows in both.',
+  check_in: 'Reservations arriving in the range.',
+  check_out: 'Reservations departing in the range.',
+})[filters.value.dateBasis])
 
 // Stats cards (clickable to filter)
 const statCards = computed(() => [
@@ -487,11 +494,28 @@ function confirmRejectOwnerStay() {
             :class="filters.dateFrom ? 'border-primary text-foreground hover:bg-primary/10' : ''"
           >
             <Icon name="lucide:calendar" class="size-4" />
-            <span class="max-w-[160px] truncate">{{ dateFilterLabel }}</span>
+            <span class="max-w-[240px] truncate">{{ dateFilterLabel }}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent class="w-auto p-0" align="start">
           <div class="p-3">
+            <div class="mb-3 space-y-1.5 border-b pb-3">
+              <ToggleGroup
+                :model-value="filters.dateBasis"
+                type="single"
+                variant="outline"
+                size="sm"
+                data-testid="date-basis"
+                @update:model-value="(v: any) => v && (filters.dateBasis = v)"
+              >
+                <ToggleGroupItem v-for="opt in RESERVATION_DATE_BASIS_OPTIONS" :key="opt.value" :value="opt.value" class="px-3 text-xs">
+                  {{ opt.label }}
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <p class="text-xs text-muted-foreground">
+                {{ dateBasisHint }}
+              </p>
+            </div>
             <RangeCalendar
               v-model="dateRange"
               weekday-format="short"

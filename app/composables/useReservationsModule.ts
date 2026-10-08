@@ -1,5 +1,6 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { ExtensionPaymentMethod, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
+import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
@@ -8,6 +9,7 @@ import { generateGuestId, generateReservationId, initialGuests, initialReservati
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { usePromoRedemption } from '~/composables/usePromoRedemption'
+import { matchesReservationPeriod } from '~/lib/reservation-period'
 
 export interface ReservationFilters {
   search: string
@@ -15,6 +17,8 @@ export interface ReservationFilters {
   listings: string[]
   dateFrom: string
   dateTo: string
+  /** Which date the range applies to; 'stay' keeps a month-crossing stay in both months. */
+  dateBasis: ReservationDateBasis
   /**
    * extended: stays with an extension, plus their linked extension bookings.
    * unpaid: the same, narrowed to extensions whose payment is still pending.
@@ -99,6 +103,7 @@ export function useReservationsModule() {
     listings: [],
     dateFrom: '',
     dateTo: '',
+    dateBasis: 'stay',
     extension: 'all',
   }))
 
@@ -167,9 +172,7 @@ export function useReservationsModule() {
         return false
       if (filters.value.listings.length > 0 && !filters.value.listings.includes(r.listingId))
         return false
-      if (filters.value.dateFrom && r.checkIn < filters.value.dateFrom)
-        return false
-      if (filters.value.dateTo && r.checkIn > filters.value.dateTo)
+      if (!matchesReservationPeriod(r, { from: filters.value.dateFrom, to: filters.value.dateTo }, filters.value.dateBasis ?? 'stay'))
         return false
       if (filters.value.search) {
         const q = filters.value.search.toLowerCase()
@@ -760,7 +763,7 @@ export function useReservationsModule() {
   function reset() {
     reservations.value = initialReservations.map(r => ({ ...r }))
     guests.value = initialGuests.map(g => ({ ...g }))
-    filters.value = { search: '', status: 'all', listings: [], dateFrom: '', dateTo: '', extension: 'all' }
+    filters.value = { search: '', status: 'all', listings: [], dateFrom: '', dateTo: '', dateBasis: 'stay', extension: 'all' }
   }
 
   return {

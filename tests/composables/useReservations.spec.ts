@@ -41,7 +41,11 @@ describe('useReservationsModule', () => {
     filters.value.listings = []
     filters.value.dateFrom = '2026-07-20'
     filters.value.dateTo = '2026-07-25'
+    filters.value.dateBasis = 'check_in'
     expect(filteredReservations.value.every(r => r.checkIn >= '2026-07-20' && r.checkIn <= '2026-07-25')).toBe(true)
+    filters.value.dateBasis = 'stay'
+    expect(filteredReservations.value.length).toBeGreaterThan(0)
+    expect(filteredReservations.value.every(r => r.checkIn <= '2026-07-25' && r.checkOut > '2026-07-20')).toBe(true)
   })
 
   it('stats counts upcoming, current, past, and cancelled reservations', () => {

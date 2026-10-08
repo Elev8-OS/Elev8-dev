@@ -1,6 +1,8 @@
 import type { SheetData } from 'write-excel-file/browser'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { ReservationPeriod } from '~/lib/reservation-period'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { cleaningFeeInPeriod, currencyDecimals, hasPeriod, nightsInPeriod, roomRevenueInPeriod } from '~/lib/reservation-period'
 
 /**
  * Excel (.xlsx) export of the Reservations list. Amounts stay numbers beside
@@ -49,11 +51,29 @@ export const RESERVATION_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Booking Note', width: 40, kind: 'text', value: r => r.bookingNote },
 ]
 
-/** Currencies shown without decimals (IDR 500,000), everything else with two. */
-const ZERO_DECIMAL_CURRENCIES = new Set(['IDR', 'JPY', 'KRW', 'VND'])
+/**
+ * Added after Total when the export has a date range. A stay crossing the
+ * range edge only counts its nights inside it, the same rule as Analytics,
+ * so consecutive monthly exports add up to each stay exactly once.
+ */
+export function periodColumns(period: ReservationPeriod): ExportColumn[] {
+  return [
+    { header: 'Nights in Period', width: 10, kind: 'number', value: r => nightsInPeriod(r, period) },
+    { header: 'Room Revenue in Period', width: 16, kind: 'money', value: r => roomRevenueInPeriod(r, period) },
+    { header: 'Cleaning Fee in Period', width: 16, kind: 'money', value: r => cleaningFeeInPeriod(r, period) },
+  ]
+}
 
+export function exportColumns(period?: ReservationPeriod): ExportColumn[] {
+  if (!period || !hasPeriod(period))
+    return RESERVATION_EXPORT_COLUMNS
+  const at = RESERVATION_EXPORT_COLUMNS.findIndex(c => c.header === 'Total') + 1
+  return [...RESERVATION_EXPORT_COLUMNS.slice(0, at), ...periodColumns(period), ...RESERVATION_EXPORT_COLUMNS.slice(at)]
+}
+
+/** IDR 500,000 without decimals, CHF / USD with two. */
 export function moneyFormat(currency: string): string {
-  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? '#,##0' : '#,##0.00'
+  return currencyDecimals(currency) === 0 ? '#,##0' : '#,##0.00'
 }
 
 /**
@@ -85,9 +105,10 @@ function cell(column: ExportColumn, r: ReservationEntry) {
   }
 }
 
-export function buildReservationsSheet(reservations: ReservationEntry[]): SheetData {
-  const header = RESERVATION_EXPORT_COLUMNS.map(c => ({ value: c.header, fontWeight: 'bold' as const }))
-  const rows = reservations.map(r => RESERVATION_EXPORT_COLUMNS.map(c => cell(c, r)))
+export function buildReservationsSheet(reservations: ReservationEntry[], period?: ReservationPeriod): SheetData {
+  const columns = exportColumns(period)
+  const header = columns.map(c => ({ value: c.header, fontWeight: 'bold' as const }))
+  const rows = reservations.map(r => columns.map(c => cell(c, r)))
   return [header, ...rows] as SheetData
 }
 
@@ -97,16 +118,19 @@ function localDateStamp(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-export function reservationsExportFileName(date = new Date()): string {
+/** `reservations-2026-09-01_2026-09-30.xlsx` for a range, else today's date. */
+export function reservationsExportFileName(period?: ReservationPeriod, date = new Date()): string {
+  if (period && hasPeriod(period))
+    return `reservations-${period.from || 'start'}_${period.to || 'end'}.xlsx`
   return `reservations-${localDateStamp(date)}.xlsx`
 }
 
 /** Writes and downloads the workbook. The writer is loaded only on demand. */
-export async function downloadReservationsXlsx(reservations: ReservationEntry[], fileName = reservationsExportFileName()) {
+export async function downloadReservationsXlsx(reservations: ReservationEntry[], period?: ReservationPeriod) {
   const { default: writeXlsxFile } = await import('write-excel-file/browser')
-  await writeXlsxFile(buildReservationsSheet(reservations), {
+  await writeXlsxFile(buildReservationsSheet(reservations, period), {
     sheet: 'Reservations',
-    columns: RESERVATION_EXPORT_COLUMNS.map(c => ({ width: c.width })),
+    columns: exportColumns(period).map(c => ({ width: c.width })),
     stickyRowsCount: 1,
-  }).toFile(fileName)
+  }).toFile(reservationsExportFileName(period))
 }
