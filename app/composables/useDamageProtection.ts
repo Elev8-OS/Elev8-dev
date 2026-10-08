@@ -419,6 +419,17 @@ export function useDamageProtection() {
     return setProtectionSettings({ payer })
   }
 
+  /**
+   * A listing's own card limit (`amount`, in its payout currency), or null to
+   * fall back to the default. Stays already protected keep the limit frozen on them.
+   */
+  function setDepositOverride(listingId: string, amount: number | null): ProtectionWriteResult {
+    if (amount !== null && !(amount > 0))
+      return { ok: false, reason: 'deposit_limit_missing' }
+    const { [listingId]: _old, ...rest } = settings.value.depositOverrides ?? {}
+    return setProtectionSettings({ depositOverrides: amount === null ? rest : { ...rest, [listingId]: amount } })
+  }
+
   /** Off means off: no waiver, no deposit, and the guest pays again. The package stays picked. */
   function turnOffProtection(): ProtectionWriteResult {
     return setProtectionSettings({ waiver: false, deposit: false, payer: 'guest', hostFallback: false })
@@ -1131,6 +1142,7 @@ export function useDamageProtection() {
     setProtectionSettings,
     setProtectionPayer,
     setWaiverPackage,
+    setDepositOverride,
     turnOffProtection,
     syncHostCover,
     // writers

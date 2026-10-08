@@ -117,6 +117,42 @@ describe('settings, Damage protection', () => {
     expect(wrapper.find('[data-testid="partner-package-dialog"]').exists()).toBe(false)
   })
 
+  it('sets a property\'s own deposit in the Listings table, and resets it to the default', async () => {
+    const dp = useDamageProtection()
+    const wrapper = mountPanel()
+    const cell = () => wrapper.find('[data-testid="protection-deposit-lst-1"]')
+    expect(cell().text()).toContain('USD 500.00')
+    expect(cell().text()).toContain('Default')
+    // IDR listings are not covered: no deposit to set there.
+    expect(wrapper.find('[data-testid="protection-deposit-lst-3"]').text()).toContain('No deposit')
+
+    await cell().find('[data-testid="protection-deposit-edit"]').trigger('click')
+    await cell().find('[data-testid="protection-deposit-input"]').setValue('1500')
+    await cell().find('[data-testid="protection-deposit-save"]').trigger('click')
+    expect(dp.settings.value.depositOverrides).toEqual({ 'lst-1': 1500 })
+    expect(cell().text()).toMatch(/USD 1\D500\.00/)
+    expect(cell().text()).toContain('Custom')
+
+    await cell().find('[data-testid="protection-deposit-reset"]').trigger('click')
+    expect(dp.settings.value.depositOverrides).toEqual({})
+    expect(cell().text()).toContain('Default')
+  })
+
+  it('searches the listings and pages them, 10 to a page', async () => {
+    const wrapper = mountPanel()
+    expect(wrapper.findAll('[data-testid="protection-listing-row"]')).toHaveLength(10)
+    expect(wrapper.find('[data-testid="protection-listing-page"]').text()).toBe('Page 1 of 3')
+    await wrapper.find('[data-testid="protection-listing-next"]').trigger('click')
+    expect(wrapper.find('[data-testid="protection-listing-page"]').text()).toBe('Page 2 of 3')
+
+    // A search starts again on page 1, and matches the payout too.
+    await wrapper.find('[data-testid="protection-listing-search"]').setValue('idr')
+    expect(wrapper.find('[data-testid="protection-listing-page"]').text()).toBe('Page 1 of 1')
+    expect(wrapper.findAll('[data-testid="protection-listing-row"]').every(r => r.text().includes('IDR'))).toBe(true)
+    await wrapper.find('[data-testid="protection-listing-search"]').setValue('nothing like this')
+    expect(wrapper.find('[data-testid="protection-listing-empty"]').exists()).toBe(true)
+  })
+
   it('cannot switch the waiver on before activation, and offers the Activate button instead', () => {
     useTernActivation().replayActivation()
     useDamageProtection().setProtectionSettings({ waiver: false })

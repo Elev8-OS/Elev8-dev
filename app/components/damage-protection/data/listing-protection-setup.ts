@@ -32,8 +32,14 @@ export interface ProtectionSettings {
   packageServiceId: string | null
   /** Offer the deposit (a card kept on file). Stripe listings only. Always on while the waiver is. */
   deposit: boolean
-  /** The most the saved card may be charged, in each listing's own currency. */
+  /** The default most the saved card may be charged, in each listing's own currency. */
   depositLimit: number
+  /**
+   * A listing's own card limit, in ITS payout currency, where the default does
+   * not fit (a bigger villa, a listing paid out in IDR). Absent = the default.
+   * Only the amount is per listing; the decision days stay tenant-wide.
+   */
+  depositOverrides?: Record<string, number>
   /** Days after check-out by which the deposit is charged or closed. */
   settleWithinDays: number
   /**
@@ -77,6 +83,11 @@ export function hostFallbackDue(
   const day = new Date(today)
   day.setHours(0, 0, 0, 0)
   return day.getTime() >= cutoff.getTime()
+}
+
+/** The card limit for one listing: its own amount when it has one, else the tenant default. */
+export function depositLimitFor(settings: Pick<ProtectionSettings, 'depositLimit' | 'depositOverrides'>, listingId: string): number {
+  return settings.depositOverrides?.[listingId] ?? settings.depositLimit
 }
 
 export const DEFAULT_DEPOSIT_LIMIT = 500
@@ -194,7 +205,7 @@ export type ListingPolicyBlock
  * the package builds no policy (`currency_mismatch`).
  */
 export function listingPolicy(
-  settings: Pick<ProtectionSettings, 'waiver' | 'deposit' | 'depositLimit' | 'settleWithinDays' | 'depositChannels' | 'updatedAt'>,
+  settings: Pick<ProtectionSettings, 'waiver' | 'deposit' | 'depositLimit' | 'depositOverrides' | 'settleWithinDays' | 'depositChannels' | 'updatedAt'>,
   pkg: ProtectionPackage | null,
   listing: { id: string },
   payoutCurrency: string | null,
@@ -226,7 +237,7 @@ export function listingPolicy(
       offers,
       // Unused without the waiver; kept whole so the policy shape never changes.
       waiver: { tier: pkg?.tier ?? 'bronze', guestPrice: waiverOn ? pkg!.guestPrice : 0 },
-      deposit: { pricing: 'flat', rate: settings.depositLimit, settleWithinDays: settings.settleWithinDays },
+      deposit: { pricing: 'flat', rate: depositLimitFor(settings, listing.id), settleWithinDays: settings.settleWithinDays },
       // A waiver covers every channel; a deposit on its own is asked on the channels picked.
       channelPolicy: waiverOn ? {} : Object.fromEntries(depositChannelsOf(settings).map(c => [c, 'offer' as const])),
       termsVersion: 'v1',

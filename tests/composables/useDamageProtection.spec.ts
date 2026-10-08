@@ -288,6 +288,30 @@ describe('one setting for every listing', () => {
     expect(useUpsellServices().services.value.find(s => s.id === dp.settings.value.packageServiceId)?.assignedListings).toEqual([])
   })
 
+  it('lets a listing take its own deposit amount, and falls back to the default', () => {
+    const dp = useDamageProtection()
+    expect(dp.setDepositOverride('lst-1', 1500)).toEqual({ ok: true })
+    expect(dp.policyFor('lst-1', 5)?.deposit.rate).toBe(1500)
+    expect(dp.policyFor('lst-2', 5)?.deposit.rate).toBe(500)
+    // The default moving does not move a listing with its own amount.
+    dp.setProtectionSettings({ depositLimit: 600 })
+    expect(dp.policyFor('lst-1', 5)?.deposit.rate).toBe(1500)
+    expect(dp.policyFor('lst-2', 5)?.deposit.rate).toBe(600)
+    expect(dp.setDepositOverride('lst-1', 0)).toEqual({ ok: false, reason: 'deposit_limit_missing' })
+    expect(dp.setDepositOverride('lst-1', null)).toEqual({ ok: true })
+    expect(dp.policyFor('lst-1', 5)?.deposit.rate).toBe(600)
+    expect(dp.settings.value.depositOverrides).toEqual({})
+  })
+
+  it('freezes the deposit amount on a saved card, whatever the listing\'s amount becomes', () => {
+    seedReservation()
+    const dp = useDamageProtection()
+    dp.setDepositOverride('lst-1', 1500)
+    dp.recordChoice('res-dp-1', ACCEPT_DEPOSIT)
+    dp.setDepositOverride('lst-1', 300)
+    expect(protectionOf().amount).toBe(1500)
+  })
+
   it('turns everything off in one go, keeping the package picked', () => {
     const dp = useDamageProtection()
     expect(dp.turnOffProtection()).toEqual({ ok: true })

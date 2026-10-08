@@ -179,9 +179,9 @@ function toggleChannel(channel: BookingChannel) {
   apply({ depositChannels: BOOKING_CHANNELS.filter(c => next.includes(c)) })
 }
 
-// ------------------------------------------------------- per listing, read only
+// ------------------------------------------------------- per listing
 
-/** What each listing ends up offering under these settings: nothing is set per listing. */
+/** What each listing ends up offering under these settings. Only the deposit amount is set per listing. */
 const listingRows = computed(() => listings.value.map((listing) => {
   const state = dp.listingProtection(listing.id)
   const account = dp.payoutAccountFor(listing.id)
@@ -202,9 +202,16 @@ const listingRows = computed(() => listings.value.map((listing) => {
     offered = 'Deposit only'
   else
     offered = 'Not covered'
+  const currency = state.policy?.currency ?? account?.currency ?? null
+  const custom = settings.value.depositOverrides?.[listing.id]
   return {
     id: listing.id,
     name: listing.name,
+    /** A card limit only where a guest can leave a card: the deposit is offered and the listing settles on Stripe. */
+    depositShown: deposit && payer.value === 'guest' && currency !== null,
+    depositCurrency: currency ?? '',
+    depositAmount: custom ?? settings.value.depositLimit,
+    depositCustom: custom !== undefined,
     payout: account ? `${account.currency}, ${account.provider === 'stripe' ? 'Stripe' : account.provider.toUpperCase()}` : 'No payout account',
     offered,
     covered: offered !== 'Not covered',
@@ -215,7 +222,62 @@ const listingRows = computed(() => listings.value.map((listing) => {
         : waiver ? undersizedText(pkg.value, listing.capacity) : null,
   }
 }))
+// One row's deposit is edited in place; Enter or Save writes it, Escape cancels.
+const editingDepositId = ref<string | null>(null)
+const depositDraft = ref(0)
+
+function editDeposit(row: { id: string, depositAmount: number }) {
+  editingDepositId.value = row.id
+  depositDraft.value = row.depositAmount
+}
+
+function saveDeposit(row: { id: string, name: string, depositCurrency: string }) {
+  const amount = Number(depositDraft.value)
+  // The default typed in: keep the listing on the default rather than pinning a copy of it.
+  const result = dp.setDepositOverride(row.id, amount === settings.value.depositLimit ? null : amount)
+  if (!result.ok) {
+    toast.error(protectionRefusalText(result.reason))
+    return
+  }
+  editingDepositId.value = null
+  toast.success(`${row.name}: card charged up to ${formatProtectionAmount(amount, row.depositCurrency)}`)
+}
+
+function resetDeposit(row: { id: string, name: string }) {
+  dp.setDepositOverride(row.id, null)
+  toast.success(`${row.name} uses the default deposit again`)
+}
+
 const coveredCount = computed(() => listingRows.value.filter(r => r.covered).length)
+
+// Search by name or payout, then page. A new search starts on page 1; a shrinking list never strands you past the end.
+const listingSearch = ref('')
+const PAGE_SIZES = [10, 20, 30, 50]
+const pageSize = ref(10)
+const currentPage = ref(1)
+
+const searchedRows = computed(() => {
+  const query = listingSearch.value.trim().toLowerCase()
+  if (!query)
+    return listingRows.value
+  return listingRows.value.filter(row => row.name.toLowerCase().includes(query) || row.payout.toLowerCase().includes(query))
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(searchedRows.value.length / pageSize.value)))
+const pagedRows = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return searchedRows.value.slice(start, start + pageSize.value)
+})
+
+watch(listingSearch, () => { currentPage.value = 1 })
+watch(totalPages, (total) => {
+  if (currentPage.value > total)
+    currentPage.value = total
+})
+
+function setPageSize(value: unknown) {
+  pageSize.value = Number(value)
+  currentPage.value = 1
+}
 const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFor(listings.value[0]?.id ?? '')?.currency ?? 'USD')
 </script>
 
@@ -410,7 +472,7 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
         </p>
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1.5">
-            <Label class="text-xs text-muted-foreground" for="protection-deposit-limit">Card charged up to</Label>
+            <Label class="text-xs text-muted-foreground" for="protection-deposit-limit">Card charged up to (default)</Label>
             <div class="relative">
               <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">
                 {{ depositCurrency }}
@@ -427,7 +489,8 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
               />
             </div>
             <p class="text-xs text-muted-foreground">
-              In each listing's own payout currency. Nothing is converted.
+              In each listing's own payout currency, nothing converted. Set a different amount for a property in
+              the Listings table below.
             </p>
           </div>
           <div class="flex flex-col gap-1.5">
@@ -475,16 +538,27 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
       </CardContent>
     </Card>
 
-    <!-- Listings: read only, nothing is set per listing -->
+    <!-- Listings: what each one offers, and its deposit -->
     <Card data-testid="protection-listings">
       <CardHeader>
         <CardTitle>Listings</CardTitle>
         <CardDescription>
           {{ coveredCount }} of {{ listingRows.length }} listings covered. What guests on each listing are offered under
-          the settings above. A listing paid out in another currency than the package is not covered: nothing is converted.
+          the settings above, and each listing's deposit: the default, or its own amount in its payout currency. A
+          listing paid out in another currency than the package is not covered: nothing is converted.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent class="flex flex-col gap-4">
+        <div class="relative w-full sm:max-w-xs">
+          <Icon name="lucide:search" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            v-model="listingSearch"
+            placeholder="Search listings"
+            class="pl-9"
+            aria-label="Search listings"
+            data-testid="protection-listing-search"
+          />
+        </div>
         <div class="overflow-x-auto rounded-md border">
           <table class="w-full text-sm">
             <thead class="bg-muted/50 text-xs text-muted-foreground">
@@ -498,10 +572,18 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
                 <th class="px-4 py-3 text-left font-medium">
                   Guests are offered
                 </th>
+                <th class="px-4 py-3 text-left font-medium">
+                  Deposit
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in listingRows" :key="row.id" class="border-t" data-testid="protection-listing-row">
+              <tr v-if="!pagedRows.length" class="border-t">
+                <td colspan="4" class="px-4 py-8 text-center text-sm text-muted-foreground" data-testid="protection-listing-empty">
+                  No listings match "{{ listingSearch }}".
+                </td>
+              </tr>
+              <tr v-for="row in pagedRows" :key="row.id" class="border-t" data-testid="protection-listing-row">
                 <td class="px-4 py-3 font-medium">
                   {{ row.name }}
                 </td>
@@ -514,9 +596,101 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
                     {{ row.note }}
                   </p>
                 </td>
+                <td class="px-4 py-3" :data-testid="`protection-deposit-${row.id}`">
+                  <span v-if="!row.depositShown" class="text-xs text-muted-foreground">No deposit</span>
+                  <div v-else-if="editingDepositId === row.id" class="flex items-center gap-1">
+                    <div class="relative w-40">
+                      <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">
+                        {{ row.depositCurrency }}
+                      </span>
+                      <Input
+                        v-model.number="depositDraft"
+                        type="number"
+                        min="1"
+                        class="h-8 pl-14"
+                        :aria-label="`Deposit for ${row.name}`"
+                        data-testid="protection-deposit-input"
+                        @keydown.enter="saveDeposit(row)"
+                        @keydown.esc="editingDepositId = null"
+                      />
+                    </div>
+                    <Button size="icon" variant="ghost" class="size-8" aria-label="Save deposit" data-testid="protection-deposit-save" @click="saveDeposit(row)">
+                      <Icon name="lucide:check" class="size-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" class="size-8" aria-label="Cancel" @click="editingDepositId = null">
+                      <Icon name="lucide:x" class="size-4" />
+                    </Button>
+                  </div>
+                  <div v-else class="flex items-center gap-1 whitespace-nowrap">
+                    <span :class="row.depositCustom ? 'font-medium' : ''">
+                      {{ formatProtectionAmount(row.depositAmount, row.depositCurrency) }}
+                    </span>
+                    <span class="text-xs text-muted-foreground">{{ row.depositCustom ? 'Custom' : 'Default' }}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      class="size-7"
+                      :aria-label="`Change the deposit for ${row.name}`"
+                      data-testid="protection-deposit-edit"
+                      @click="editDeposit(row)"
+                    >
+                      <Icon name="lucide:pencil" class="size-3.5" />
+                    </Button>
+                    <Button
+                      v-if="row.depositCustom"
+                      variant="link"
+                      size="sm"
+                      class="h-auto p-0 text-xs"
+                      data-testid="protection-deposit-reset"
+                      @click="resetDeposit(row)"
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-2" data-testid="protection-listing-pagination">
+          <div class="text-sm text-muted-foreground">
+            {{ searchedRows.length }} {{ searchedRows.length === 1 ? 'listing' : 'listings' }}
+          </div>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div class="flex items-center gap-2">
+              <p class="text-sm font-medium">
+                Rows per page
+              </p>
+              <Select :model-value="`${pageSize}`" @update:model-value="setPageSize">
+                <SelectTrigger class="h-8 w-[70px]" data-testid="protection-listing-page-size">
+                  <SelectValue :placeholder="`${pageSize}`" />
+                </SelectTrigger>
+                <SelectContent side="top">
+                  <SelectItem v-for="size in PAGE_SIZES" :key="size" :value="`${size}`">
+                    {{ size }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="text-sm font-medium" data-testid="protection-listing-page">
+              Page {{ currentPage }} of {{ totalPages }}
+            </div>
+            <div class="flex items-center gap-2">
+              <Button variant="outline" class="hidden size-8 p-0 lg:flex" aria-label="First page" :disabled="currentPage <= 1" @click="currentPage = 1">
+                <Icon name="lucide:chevrons-left" class="size-4" />
+              </Button>
+              <Button variant="outline" class="size-8 p-0" aria-label="Previous page" :disabled="currentPage <= 1" data-testid="protection-listing-prev" @click="currentPage = currentPage - 1">
+                <Icon name="lucide:chevron-left" class="size-4" />
+              </Button>
+              <Button variant="outline" class="size-8 p-0" aria-label="Next page" :disabled="currentPage >= totalPages" data-testid="protection-listing-next" @click="currentPage = currentPage + 1">
+                <Icon name="lucide:chevron-right" class="size-4" />
+              </Button>
+              <Button variant="outline" class="hidden size-8 p-0 lg:flex" aria-label="Last page" :disabled="currentPage >= totalPages" @click="currentPage = totalPages">
+                <Icon name="lucide:chevrons-right" class="size-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

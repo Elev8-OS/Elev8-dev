@@ -103,6 +103,12 @@ describe('listingPolicy', () => {
     expect(listingPolicy({ ...depositOnly, depositChannels: [] }, BRONZE, LISTING, 'USD')).toEqual({ policy: null, block: 'no_deposit_channel' })
   })
 
+  it('takes the listing\'s own deposit amount over the default', () => {
+    const settings = { ...ON, depositOverrides: { 'lst-x': 1500 } }
+    expect(listingPolicy(settings, BRONZE, LISTING, 'USD').policy?.deposit.rate).toBe(1500)
+    expect(listingPolicy(settings, BRONZE, { id: 'lst-y' }, 'USD').policy?.deposit.rate).toBe(500)
+  })
+
   it('ignores the deposit channels while the waiver is on: every channel is covered', () => {
     expect(listingPolicy({ ...ON, depositChannels: [] }, BRONZE, LISTING, 'USD').policy?.channelPolicy).toEqual({})
   })

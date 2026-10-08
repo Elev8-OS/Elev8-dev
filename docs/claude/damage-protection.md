@@ -14,7 +14,10 @@ per-listing setup of 2026-10-06). There is no Protection tab on the listing deta
   this category and saves `assignedListings: []`: an upsell's listings mean nothing for protection.
 - **`ProtectionSettings`** (`damage-protection/data/listing-protection-setup.ts`, framework-free), one
   record for the tenant: `waiver`, `packageServiceId` (the protection upsell every listing offers),
-  `deposit`, `depositLimit` (flat, charged in each listing's own payout currency), `settleWithinDays`,
+  `deposit`, `depositLimit` (the DEFAULT flat card limit, in each listing's own payout currency),
+  `depositOverrides` (a listing's own limit, in ITS payout currency; absent = the default; read through
+  `depositLimitFor`, written by `setDepositOverride(listingId, amount | null)`, refusing
+  `deposit_limit_missing`; only the amount is per listing, the decision days stay tenant-wide), `settleWithinDays`,
   `depositChannels`, `payer` (`'guest' | 'host'`), `hostFallback`, `hostFallbackDays`. Persisted to
   `elev8-damage-protection-v5` (v4 held per-listing setups and payers and is not read).
 - ⚠️ **The waiver runs on EVERY listing at once, with the one package.** There is no listing picker.
@@ -279,9 +282,14 @@ in the sidebar under Booking & Payments after Payouts; the worklist's **Settings
   pays disabled until activation and the waiver on) and, under Guest pays, the host-cover fallback.
 - **Deposit** card: switch (on and locked while the waiver is on), card limit and decision days (saved
   on blur), Booking channels chips (locked while the waiver is on).
-- **Listings** card, read only: every listing with its payout and what its guests are offered under
-  these settings (Waiver or deposit / Waiver only / Deposit only / Waiver, host pays / Not covered, with
-  the `blockText` reason, the no-Stripe note or the undersized flag).
+- **Listings** card: every listing with its payout and what its guests are offered under these settings
+  (Waiver or deposit / Waiver only / Deposit only / Waiver, host pays / Not covered, with the `blockText`
+  reason, the no-Stripe note or the undersized flag), and a **Deposit** column (2026-10-08): the default
+  or the listing's own amount ("Default" / "Custom"), edited in place (pencil, Enter saves, Escape
+  cancels, typing the default clears the override) with **Reset** on a custom one. "No deposit" where no
+  guest can leave a card (no deposit offered, not Stripe, host pays, not covered). The amount is frozen on a
+  stay at acceptance like the rest, so a change only reaches new bookings. A **search** (listing name or payout, back
+  to page 1 on every change) and **pagination** (10 / 20 / 30 / 50 rows, the app's usual footer) sit on the table.
 - ⚠️ Specs that click the package cards fake ONLY `setTimeout` (`vi.useFakeTimers({ toFake: ['setTimeout'] })`):
   a faked clock dates the cards' click handlers in the future, and Vue drops the real-time click as stale.
 - **Turn off** sits in the activation card beside Change bank account (shown while active and anything is on): `turnOffProtection()`.
