@@ -90,7 +90,8 @@
     "vue-draggable-plus": "^0.6.1",
     "vue-stick-to-bottom": "^1.0.0",
     "vue-stream-markdown": "1.0.1-beta.1",
-    "vuedraggable": "^4.1.0"
+    "vuedraggable": "^4.1.0",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.19.0",

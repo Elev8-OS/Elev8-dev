@@ -12,6 +12,7 @@ import ReservationTable from '~/components/reservations/ReservationTable.vue'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
+import { downloadReservationsXlsx } from '~/lib/reservation-export'
 
 const router = useRouter()
 const route = useRoute()
@@ -43,6 +44,28 @@ watch(() => route.query.reservation, (id) => {
 
 function openGuest(id: string) {
   router.push(`/reservations/guests/${id}`)
+}
+
+/** Exports exactly the rows the current filters show. */
+const exporting = ref(false)
+
+async function exportReservations() {
+  const rows = filteredReservations.value
+  if (!rows.length) {
+    toast.info('No reservations to export with the current filters.')
+    return
+  }
+  exporting.value = true
+  try {
+    await downloadReservationsXlsx(rows)
+    toast.success(`${rows.length} reservation${rows.length === 1 ? '' : 's'} exported to Excel.`)
+  }
+  catch {
+    toast.error('Could not create the Excel file. Please try again.')
+  }
+  finally {
+    exporting.value = false
+  }
 }
 
 function copyId(id: string) {
@@ -256,10 +279,16 @@ function confirmRejectOwnerStay() {
           {{ filteredReservations.length }} reservations
         </p>
       </div>
-      <Button class="gap-2" @click="createOpen = true">
-        <Icon name="lucide:plus" class="size-4" />
-        New Reservation
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" class="gap-2" data-testid="export-reservations" :disabled="exporting" @click="exportReservations">
+          <Icon :name="exporting ? 'lucide:loader-2' : 'lucide:file-spreadsheet'" class="size-4" :class="exporting && 'animate-spin'" />
+          Export to Excel
+        </Button>
+        <Button class="gap-2" @click="createOpen = true">
+          <Icon name="lucide:plus" class="size-4" />
+          New Reservation
+        </Button>
+      </div>
     </div>
 
     <!-- Stats -->
