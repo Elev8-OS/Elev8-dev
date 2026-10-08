@@ -33,7 +33,8 @@ cancellation rate.
   stay as metric cards with the comparison line (ARV in the chosen currency on the basis; ALOS over
   every stay, neutral badge); bookings made vs cancellations **by the day they were made /
   cancelled**; arrivals vs departures of confirmed stays; confirmed reservations by nights
-  booked; guests and party size. ⚠️ Generated stays carry only a head count, so `partyMix` derives
+  booked (the only length-of-stay distribution: the Overview's duplicate "Length of stay" chart
+  was removed on request, leaving Booking window full width there); guests and party size. ⚠️ Generated stays carry only a head count, so `partyMix` derives
   adults / children from a hash of the booking id (no extra random draws, which would reshuffle
   every stay), never fewer than two adults.
 - `AnalyticsSeriesBarChart` is the shared grouped / stacked bar card. It draws its **own wrapping

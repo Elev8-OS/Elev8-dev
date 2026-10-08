@@ -391,19 +391,14 @@ const subtitle = computed(() => {
               <AnalyticsChannelMix :shares="channels" :currency="currency" />
               <AnalyticsGuestOrigins :origins="origins" />
 
+              <!-- Full width: the length-of-stay chart that sat beside it lives on the
+                   Reservations tab only ("Confirmed reservations by nights booked"). -->
               <AnalyticsDistributionChart
-                class="@5xl/analytics:col-span-2"
+                class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4"
                 title="Booking window"
                 description="Days between booking and arrival"
                 :buckets="leadTimes"
                 :summary="avgLead === null ? undefined : `${avgLead.toFixed(0)} days avg.`"
-              />
-              <AnalyticsDistributionChart
-                class="@5xl/analytics:col-span-2"
-                title="Length of stay"
-                description="Nights per stay"
-                :buckets="stayLengths"
-                :summary="avgStay === null ? undefined : `${avgStay.toFixed(1)} nights avg.`"
               />
 
               <AnalyticsListingTable class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4" :rows="listingRows" />
