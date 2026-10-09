@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import type { BookingMode, ContactType, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { BookingConflict } from '~/composables/useReservationsModule'
 import { DateFormatter, getLocalTimeZone, parseDate } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
-import { COUNTRIES, nightsBetween } from '~/components/reservations/data/reservations'
+import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
-import { useReservationsModule } from '~/composables/useReservationsModule'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
+import { newReservationConflicts, useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{
   open: boolean
-  /** Opened from a calendar selection (the Cockpit): the listing and dates to start from. */
-  prefill?: { listingId: string, checkIn: string, checkOut: string } | null
+  /**
+   * Opened from a calendar selection (the Cockpit): the listing and dates to
+   * start from, and the room row it came from (checked for double bookings).
+   */
+  prefill?: { listingId: string, checkIn: string, checkOut: string, unitId?: string | null } | null
 }>()
 
 const emit = defineEmits<{
@@ -344,11 +349,47 @@ function reset() {
   attempted.value = false
 }
 
-function handleSubmit() {
+// Double booking check: stays the new one would share nights with, confirmed before saving.
+const pendingConflicts = ref<BookingConflict[]>([])
+const conflictConfirmOpen = computed({
+  get: () => pendingConflicts.value.length > 0,
+  set: (open: boolean) => {
+    if (!open)
+      pendingConflicts.value = []
+  },
+})
+
+function draftConflicts(): BookingConflict[] {
+  // An inquiry that does not hold the dates cannot double book anything.
+  if (status.value === 'inquiry' && !blocksAvailability.value)
+    return []
+  const fromRow = props.prefill?.listingId === listingId.value && props.prefill?.unitId ? [props.prefill.unitId] : []
+  const unitIds = rooms.value.length ? rooms.value.map(r => r.unitId) : fromRow
+  return newReservationConflicts({ listingId: listingId.value, checkIn: checkIn.value, checkOut: checkOut.value, unitIds }, reservations.value)
+}
+
+function formatStayDates(c: BookingConflict) {
+  return `${df.format(parseDate(c.checkIn).toDate(getLocalTimeZone()))} to ${df.format(parseDate(c.checkOut).toDate(getLocalTimeZone()))}`
+}
+
+function confirmDoubleBooking() {
+  pendingConflicts.value = []
+  handleSubmit(true)
+}
+
+/** `force`: the double booking warning was confirmed. */
+function handleSubmit(force = false) {
   attempted.value = true
   if (hasErrors.value) {
     toast.error('Please fill in all required fields.')
     return
+  }
+  if (!force) {
+    const conflicts = draftConflicts()
+    if (conflicts.length) {
+      pendingConflicts.value = conflicts
+      return
+    }
   }
 
   const guestName = `${guestFirstName.value.trim()} ${guestLastName.value.trim()}`.trim()
@@ -906,10 +947,48 @@ watch(() => props.open, (open) => {
         <Button variant="outline" @click="emit('update:open', false)">
           Cancel
         </Button>
-        <Button @click="handleSubmit">
+        <Button @click="handleSubmit()">
           Create Reservation
         </Button>
       </SheetFooter>
     </SheetContent>
   </Sheet>
+
+  <AlertDialog v-model:open="conflictConfirmOpen">
+    <AlertDialogContent data-testid="new-reservation-double-booking">
+      <AlertDialogHeader>
+        <AlertDialogTitle class="flex items-center gap-2">
+          <Icon name="lucide:triangle-alert" class="size-5 text-destructive" />
+          Double booking
+        </AlertDialogTitle>
+        <AlertDialogDescription>
+          {{ selectedListing?.name ?? 'This listing' }} is already booked on some of these nights by
+          {{ pendingConflicts.length === 1 ? 'this stay' : `these ${pendingConflicts.length} stays` }}.
+          Create the reservation anyway?
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <ul class="flex max-h-60 flex-col gap-2 overflow-y-auto">
+        <li v-for="c in pendingConflicts" :key="c.reservationId" class="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+          <Icon name="lucide:calendar-x" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-medium">
+              {{ c.status === 'blocked' ? 'Blocked nights' : c.guestName }}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {{ formatStayDates(c) }}<template v-if="c.unitNames.length">
+                · {{ c.unitNames.join(', ') }}
+              </template>
+            </p>
+          </div>
+          <span class="shrink-0 text-xs text-muted-foreground">{{ reservationStatusLabels[c.status] }}</span>
+        </li>
+      </ul>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Go back</AlertDialogCancel>
+        <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" @click="confirmDoubleBooking">
+          Create anyway
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>

@@ -7,7 +7,7 @@ import { initialReservations } from '~/components/reservations/data/reservations
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
-import { useReservationsModule } from '~/composables/useReservationsModule'
+import { reservationUnitIds, useReservationsModule } from '~/composables/useReservationsModule'
 import { useSmartLock } from '~/composables/useSmartLock'
 import { PAYMENT_LINK_TOKEN, SAVED_CARD_CHARGE_MS, useStayExtension } from '~/composables/useStayExtension'
 // extendReservation reassesses damage protection through a fire-and-forget
@@ -128,6 +128,20 @@ describe('oTA stay', () => {
     expect(linked.rooms).toHaveLength(1)
     expect(linked.rooms![0]!.lineTotal).toBe(200)
     expect(linked.priceDetails!.guestPaid).toBe(200)
+  })
+
+  it('keeps the linked booking in every room of the stay, flat-rate ones included', async () => {
+    seed(stay({ channel: 'Airbnb', rooms: [room(), room({ id: 'line-2', unitId: 'unit-b', priceMode: 'per_stay', pricePerStay: 50, lineTotal: 50 })] }))
+    const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    const linked = find(result.linkedReservationId!)
+    // No line for the flat-rate room, but the guest is still in it.
+    expect(linked.assignedUnitIds).toEqual(['unit-b'])
+    expect(reservationUnitIds(linked)).toEqual(['unit-a', 'unit-b'])
+
+    // Only a flat-rate room: the extension still sits in it.
+    seed(stay({ channel: 'Airbnb', rooms: [room({ priceMode: 'per_stay', pricePerStay: 300 })] }))
+    const second = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
+    expect(reservationUnitIds(find(second.linkedReservationId!))).toEqual(['unit-a'])
   })
 
   it('chains a second extension from the linked booking, which never blocks its own stay', async () => {

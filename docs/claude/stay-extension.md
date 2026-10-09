@@ -22,6 +22,11 @@ night before the current one.
   `extensionOf: <ota id>`, per-night room lines only (a flat-rate line was paid on the OTA
   booking), and the parent's cleaning schedule. A second extension chains from the last
   linked booking; linked bookings never count as conflicts for their own stay.
+  ⚠️ **Rooms carry over in full.** Per-night lines are copied; any room of the stay without a
+  copied line (a flat-rate `per_stay` line, or a stay only assigned to a room) goes on the linked
+  booking's `assignedUnitIds`, and `reservationUnitIds` returns lines and assignments together. Before
+  this, an OTA stay in a flat-rate room got an extension with no room, which the Cockpit and the
+  listing rooms timeline drew on "Not assigned to a room" instead of beside the stay.
 - **Early arrival** mirrors both: in place moves `checkIn` (and a daily/custom
   `cleaningSchedule.startDate`, by the same number of days); for OTA the linked `Direct`
   booking runs from the new check-in to `earlyArrivalEnd(r)` (the OTA check-in, or the earliest
@@ -65,7 +70,7 @@ night before the current one.
 **Reservation list** (`ReservationTable.vue`): an extended stay gets a `lucide:calendar-plus`
 icon beside the guest's name (sky, amber while a payment is pending; details on hover). A linked booking is
 drawn as a child row under its stay (dashed border, "Extension" + id); paging and sorting
-count stays, so the pair is never split. When a filter hides the parent, the child stands
+count stays, so the pair is never split. ⚠️ A direct stay extended in place gets child rows too (the user asked for it): one dashed row per active extension without a `linkedReservationId` (`inPlaceRows`), built from the `StayExtension` record: "Extension" or "Early arrival", "Added to this booking", the added nights' dates and count, the stay's guests and channel, the extension `amount`, and in the Status column the stay's own status badge (as on every row, not "Paid": the user found that out of place) plus an amber "Payment pending" badge only while the extension is unpaid (no city tax, protection or menu). Children, linked and in place, sort by date; a click opens the stay. When a filter hides the parent, the child stands
 alone with an `Extension` badge that opens the parent.
 
 **Extension filter** (Reservations page, `ReservationFilters.extension`): Any extension /

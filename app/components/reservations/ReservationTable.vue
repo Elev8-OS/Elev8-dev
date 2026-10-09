@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
-import { isActiveExtension } from '~/components/reservations/data/reservations'
 import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
 import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
+import { isActiveExtension } from '~/components/reservations/data/reservations'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
 import { useCityTax } from '~/composables/useCityTax'
@@ -200,11 +200,36 @@ const pagedReservations = computed(() => {
   return sortedReservations.value.slice(start, start + pageSize)
 })
 
-// Paging counts stays; a stay's extension rows always come along with it.
-const pagedRows = computed(() => pagedReservations.value.flatMap(r => [
-  { r, child: false },
-  ...(childrenByParent.value.get(r.id) ?? []).map(c => ({ r: c, child: true })),
-]))
+/**
+ * A direct stay extended in place keeps one booking, so its added nights get a
+ * child row of their own from the extension record (`StayExtension`): the
+ * nights added, their amount and payment. Linked bookings are real rows
+ * (`childrenByParent`); cancelled extensions are left out.
+ */
+function inPlaceRows(r: ReservationEntry) {
+  return (r.extensions ?? [])
+    .filter(e => isActiveExtension(e) && !e.linkedReservationId)
+    .map((e) => {
+      const before = e.direction === 'before'
+      return {
+        ext: e,
+        before,
+        checkIn: before ? e.newCheckIn! : e.previousCheckOut!,
+        checkOut: before ? e.previousCheckIn! : e.newCheckOut!,
+      }
+    })
+    .filter(x => x.checkIn && x.checkOut)
+}
+
+// Paging counts stays; a stay's extension rows (linked bookings and in-place
+// extensions, by date) always come along with it.
+const pagedRows = computed(() => pagedReservations.value.flatMap((r) => {
+  const children = [
+    ...(childrenByParent.value.get(r.id) ?? []).map(c => ({ key: c.id, r: c, child: true, inPlace: null, start: c.checkIn })),
+    ...inPlaceRows(r).map(x => ({ key: `${r.id}-${x.ext.id}`, r, child: true, inPlace: x, start: x.checkIn })),
+  ].sort((a, b) => a.start.localeCompare(b.start))
+  return [{ key: r.id, r, child: false, inPlace: null }, ...children]
+}))
 
 const rangeLabel = computed(() => {
   const total = sortedReservations.value.length
@@ -276,148 +301,210 @@ const pageNumbers = computed(() => {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="{ r, child } in pagedRows"
-            :key="r.id"
-            class="hover:bg-muted/30 transition-colors cursor-pointer"
-            :class="child ? 'border-t border-dashed bg-muted/20' : 'border-t'"
-            :data-testid="child ? 'row-child' : undefined"
-            :data-row-id="r.id"
-            @click="emit('openDetail', r)"
-          >
-            <td v-if="child" class="py-2.5 pl-8 pr-4">
-              <div class="flex items-center gap-2">
-                <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
-                <div class="min-w-0">
-                  <p class="text-sm font-medium">
-                    {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
-                  </p>
-                  <p class="truncate font-mono text-xs text-muted-foreground">
-                    {{ r.id }}
-                  </p>
+          <template v-for="{ key, r, child, inPlace } in pagedRows" :key="key">
+            <!-- Nights added in place to a direct stay: one booking, so the row comes from the extension record. -->
+            <tr
+              v-if="inPlace"
+              class="cursor-pointer border-t border-dashed bg-muted/20 transition-colors hover:bg-muted/30"
+              data-testid="row-child-in-place"
+              :data-row-id="r.id"
+              @click="emit('openDetail', r)"
+            >
+              <td class="py-2.5 pl-8 pr-4">
+                <div class="flex items-center gap-2">
+                  <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium">
+                      {{ inPlace.before ? 'Early arrival' : 'Extension' }}
+                    </p>
+                    <p class="truncate text-xs text-muted-foreground">
+                      Added to this booking
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </td>
-            <td v-else class="px-4 py-3" @click.stop>
-              <button
-                type="button"
-                class="text-left hover:underline"
-                @click="emit('openGuest', r.guestId)"
-              >
-                <ReservationGuestCell :name="r.guestName" :email="r.guestEmail">
-                  <template v-if="extensionSummary(r)" #after-name>
-                    <span
-                      class="inline-flex shrink-0"
-                      :class="extensionSummary(r)!.unpaid ? 'text-amber-600 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400'"
-                      :title="extensionTitle(r)"
-                      :aria-label="extensionTitle(r)"
-                      role="img"
-                      data-testid="row-extended"
-                    >
-                      <Icon name="lucide:calendar-plus" class="size-3.5" />
-                    </span>
-                  </template>
-                </ReservationGuestCell>
-              </button>
-            </td>
-            <td class="px-4 py-3">
-              <span v-if="child" class="text-muted-foreground">Same listing</span>
-              <NuxtLink v-else :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
-                {{ r.listingName }}
-              </NuxtLink>
-            </td>
-            <td class="px-4 py-3">
-              {{ fmtDate(r.checkIn) }}
-            </td>
-            <td class="px-4 py-3">
-              {{ fmtDate(r.checkOut) }}
-            </td>
-            <td class="px-4 py-3">
-              {{ r.nights }}
-            </td>
-            <td class="px-4 py-3">
-              {{ r.guestCount }}
-            </td>
-            <td class="px-4 py-3">
-              {{ r.channel }}
-            </td>
-            <td class="px-4 py-3 text-right tabular-nums">
-              {{ fmtCurrency(r.totalPrice, r.currency) }}
-            </td>
-            <td class="px-4 py-3">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <ReservationStatusBadge :status="r.status" />
-                <button
-                  v-if="r.extensionOf && !child"
-                  type="button"
-                  :title="`${isEarlyArrival(r) ? 'Early arrival for' : 'Extension of'} ${r.extensionOf}. Open it`"
-                  data-testid="row-extension-of"
-                  @click.stop="openParent(r.extensionOf)"
-                >
-                  <Badge variant="outline" class="gap-1 whitespace-nowrap border-muted-foreground/30 bg-muted text-muted-foreground hover:text-foreground">
-                    <Icon name="lucide:link-2" class="size-3" />
-                    {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
+              </td>
+              <td class="px-4 py-3">
+                <span class="text-muted-foreground">Same listing</span>
+              </td>
+              <td class="px-4 py-3">
+                {{ fmtDate(inPlace.checkIn) }}
+              </td>
+              <td class="px-4 py-3">
+                {{ fmtDate(inPlace.checkOut) }}
+              </td>
+              <td class="px-4 py-3">
+                {{ inPlace.ext.extraNights }}
+              </td>
+              <td class="px-4 py-3">
+                {{ r.guestCount }}
+              </td>
+              <td class="px-4 py-3">
+                {{ r.channel }}
+              </td>
+              <td class="px-4 py-3 text-right tabular-nums">
+                {{ fmtCurrency(inPlace.ext.amount, inPlace.ext.currency) }}
+              </td>
+              <td class="px-4 py-3">
+                <!-- The stay's status, as on every row; only an unpaid extension adds a badge. -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <ReservationStatusBadge :status="r.status" />
+                  <Badge
+                    v-if="inPlace.ext.paymentStatus === 'pending'"
+                    variant="outline"
+                    class="gap-1 whitespace-nowrap border-amber-500/40 text-amber-700 dark:text-amber-400"
+                    data-testid="row-in-place-payment"
+                  >
+                    <Icon name="lucide:clock" class="size-3" />
+                    Payment pending
                   </Badge>
+                </div>
+              </td>
+              <td class="px-4 py-3" />
+              <td class="px-4 py-3" />
+              <td class="px-4 py-3" />
+            </tr>
+            <tr
+              v-else
+              class="hover:bg-muted/30 transition-colors cursor-pointer"
+              :class="child ? 'border-t border-dashed bg-muted/20' : 'border-t'"
+              :data-testid="child ? 'row-child' : undefined"
+              :data-row-id="r.id"
+              @click="emit('openDetail', r)"
+            >
+              <td v-if="child" class="py-2.5 pl-8 pr-4">
+                <div class="flex items-center gap-2">
+                  <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium">
+                      {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
+                    </p>
+                    <p class="truncate font-mono text-xs text-muted-foreground">
+                      {{ r.id }}
+                    </p>
+                  </div>
+                </div>
+              </td>
+              <td v-else class="px-4 py-3" @click.stop>
+                <button
+                  type="button"
+                  class="text-left hover:underline"
+                  @click="emit('openGuest', r.guestId)"
+                >
+                  <ReservationGuestCell :name="r.guestName" :email="r.guestEmail">
+                    <template v-if="extensionSummary(r)" #after-name>
+                      <span
+                        class="inline-flex shrink-0"
+                        :class="extensionSummary(r)!.unpaid ? 'text-amber-600 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400'"
+                        :title="extensionTitle(r)"
+                        :aria-label="extensionTitle(r)"
+                        role="img"
+                        data-testid="row-extended"
+                      >
+                        <Icon name="lucide:calendar-plus" class="size-3.5" />
+                      </span>
+                    </template>
+                  </ReservationGuestCell>
                 </button>
-              </div>
-            </td>
-            <!-- City tax and damage protection each get their own column, so the
+              </td>
+              <td class="px-4 py-3">
+                <span v-if="child" class="text-muted-foreground">Same listing</span>
+                <NuxtLink v-else :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
+                  {{ r.listingName }}
+                </NuxtLink>
+              </td>
+              <td class="px-4 py-3">
+                {{ fmtDate(r.checkIn) }}
+              </td>
+              <td class="px-4 py-3">
+                {{ fmtDate(r.checkOut) }}
+              </td>
+              <td class="px-4 py-3">
+                {{ r.nights }}
+              </td>
+              <td class="px-4 py-3">
+                {{ r.guestCount }}
+              </td>
+              <td class="px-4 py-3">
+                {{ r.channel }}
+              </td>
+              <td class="px-4 py-3 text-right tabular-nums">
+                {{ fmtCurrency(r.totalPrice, r.currency) }}
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <ReservationStatusBadge :status="r.status" />
+                  <button
+                    v-if="r.extensionOf && !child"
+                    type="button"
+                    :title="`${isEarlyArrival(r) ? 'Early arrival for' : 'Extension of'} ${r.extensionOf}. Open it`"
+                    data-testid="row-extension-of"
+                    @click.stop="openParent(r.extensionOf)"
+                  >
+                    <Badge variant="outline" class="gap-1 whitespace-nowrap border-muted-foreground/30 bg-muted text-muted-foreground hover:text-foreground">
+                      <Icon name="lucide:link-2" class="size-3" />
+                      {{ isEarlyArrival(r) ? 'Early arrival' : 'Extension' }}
+                    </Badge>
+                  </button>
+                </div>
+              </td>
+              <!-- City tax and damage protection each get their own column, so the
                  Status column only ever says where the booking stands. -->
-            <td class="px-4 py-3" data-testid="cell-city-tax">
-              <CityTaxStatusChip
-                v-if="cityTaxRow(r.id)"
-                class="whitespace-nowrap"
-                :status="cityTaxRow(r.id)!.assessment.status"
-                :stage="cityTaxRow(r.id)!.stage"
-              />
-            </td>
-            <td class="px-4 py-3" data-testid="cell-protection">
-              <DamageProtectionStatusChip
-                class="whitespace-nowrap"
-                :bucket="damageProtection.bucketFor(r.id)"
-                :option="r.damageProtection?.option"
-              />
-            </td>
-            <td class="px-4 py-3" @click.stop>
-              <DropdownMenu>
-                <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
-                    <Icon name="lucide:more-horizontal" class="size-4" />
-                    <span class="sr-only">Actions</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem @click="emit('openDetail', r)">
-                    <Icon name="lucide:eye" class="mr-2 size-4" />
-                    View Reservation
-                  </DropdownMenuItem>
-                  <DropdownMenuItem @click="emit('openGuest', r.guestId)">
-                    <Icon name="lucide:user" class="mr-2 size-4" />
-                    Open Guest
-                  </DropdownMenuItem>
-                  <DropdownMenuItem @click="emit('copyId', r.id)">
-                    <Icon name="lucide:copy" class="mr-2 size-4" />
-                    Copy booking ID
-                  </DropdownMenuItem>
-                  <!-- Owner stay awaiting a decision — actionable in place. -->
-                  <template v-if="r.status === 'owner_request'">
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem @click="emit('approveOwnerStay', r)">
-                      <Icon name="lucide:calendar-check" class="mr-2 size-4" />
-                      Approve owner stay
+              <td class="px-4 py-3" data-testid="cell-city-tax">
+                <CityTaxStatusChip
+                  v-if="cityTaxRow(r.id)"
+                  class="whitespace-nowrap"
+                  :status="cityTaxRow(r.id)!.assessment.status"
+                  :stage="cityTaxRow(r.id)!.stage"
+                />
+              </td>
+              <td class="px-4 py-3" data-testid="cell-protection">
+                <DamageProtectionStatusChip
+                  class="whitespace-nowrap"
+                  :bucket="damageProtection.bucketFor(r.id)"
+                  :option="r.damageProtection?.option"
+                />
+              </td>
+              <td class="px-4 py-3" @click.stop>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
+                      <Icon name="lucide:more-horizontal" class="size-4" />
+                      <span class="sr-only">Actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem @click="emit('openDetail', r)">
+                      <Icon name="lucide:eye" class="mr-2 size-4" />
+                      View Reservation
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      class="text-destructive focus:text-destructive"
-                      @click="emit('rejectOwnerStay', r)"
-                    >
-                      <Icon name="lucide:calendar-x" class="mr-2 size-4" />
-                      Reject owner stay…
+                    <DropdownMenuItem @click="emit('openGuest', r.guestId)">
+                      <Icon name="lucide:user" class="mr-2 size-4" />
+                      Open Guest
                     </DropdownMenuItem>
-                  </template>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </td>
-          </tr>
+                    <DropdownMenuItem @click="emit('copyId', r.id)">
+                      <Icon name="lucide:copy" class="mr-2 size-4" />
+                      Copy booking ID
+                    </DropdownMenuItem>
+                    <!-- Owner stay awaiting a decision — actionable in place. -->
+                    <template v-if="r.status === 'owner_request'">
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem @click="emit('approveOwnerStay', r)">
+                        <Icon name="lucide:calendar-check" class="mr-2 size-4" />
+                        Approve owner stay
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        class="text-destructive focus:text-destructive"
+                        @click="emit('rejectOwnerStay', r)"
+                      >
+                        <Icon name="lucide:calendar-x" class="mr-2 size-4" />
+                        Reject owner stay…
+                      </DropdownMenuItem>
+                    </template>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </td>
+            </tr>
+          </template>
           <tr v-if="pagedReservations.length === 0">
             <td colspan="12" class="px-4 py-12 text-center text-sm text-muted-foreground">
               <div class="flex flex-col items-center gap-2">

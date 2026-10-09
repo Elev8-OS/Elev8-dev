@@ -3,6 +3,7 @@ import type { ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestPr
 import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import { DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
@@ -40,11 +41,102 @@ export interface UnitConflict {
  * was assigned to on the listing calendar (`assignedUnitIds`).
  */
 export function reservationUnitIds(r: Pick<ReservationEntry, 'rooms' | 'assignedUnitIds'>): string[] {
-  return r.rooms?.length ? r.rooms.map(line => line.unitId) : (r.assignedUnitIds ?? [])
+  const lines = r.rooms?.map(line => line.unitId) ?? []
+  // Both only on a linked extension booking whose stay had a flat-rate room:
+  // that room has no line on the extension but the guest is still in it.
+  return lines.length ? [...new Set([...lines, ...(r.assignedUnitIds ?? [])])] : (r.assignedUnitIds ?? [])
 }
 
 function rangesOverlap(aIn: string, aOut: string, bIn: string, bOut: string): boolean {
   return aIn < bOut && bIn < aOut
+}
+
+/** A stay that would share nights with a booking being created (`newReservationConflicts`). */
+export interface BookingConflict {
+  reservationId: string
+  guestName: string
+  checkIn: string
+  checkOut: string
+  status: ReservationStatus
+  /** Names of the rooms both stays take; empty when the clash is the whole property. */
+  unitNames: string[]
+}
+
+/**
+ * Stays that a new booking would double book, checked before it is saved.
+ * Cancelled stays never count, nor an inquiry that does not hold the dates
+ * (`blocksAvailability: false`); blocks do. Same rule as an extension
+ * (`getExtensionConflicts`), widened for rooms:
+ * - a single-unit listing: any stay sharing a night;
+ * - the new booking names rooms (priced lines, or the Cockpit row it came
+ *   from): a stay in one of those rooms, or a stay with no room when the
+ *   listing runs out of rooms on a night they share;
+ * - no room named on a multi-unit listing: a stay sharing a night on which
+ *   every room is taken (stays without a room take one each).
+ */
+export function newReservationConflicts(
+  draft: { listingId: string, checkIn: string, checkOut: string, unitIds?: string[] },
+  reservations: ReservationEntry[],
+): BookingConflict[] {
+  if (!draft.listingId || !draft.checkIn || draft.checkOut <= draft.checkIn)
+    return []
+  const listing = listings.value.find(l => l.id === draft.listingId)
+  const units = listing?.unitTypes?.flatMap(t => t.units) ?? []
+  const unitName = (id: string) => units.find(u => u.id === id)?.name ?? id
+  const others = reservations.filter(r =>
+    r.listingId === draft.listingId
+    && r.status !== 'cancelled'
+    && !(r.status === 'inquiry' && r.blocksAvailability === false)
+    && rangesOverlap(draft.checkIn, draft.checkOut, r.checkIn, r.checkOut))
+  const toConflict = (r: ReservationEntry, unitNames: string[] = []): BookingConflict => ({
+    reservationId: r.id,
+    guestName: r.guestName,
+    checkIn: r.checkIn,
+    checkOut: r.checkOut,
+    status: r.status,
+    unitNames,
+  })
+
+  if (listing?.unitType !== 'multi' || !units.length)
+    return others.map(r => toConflict(r))
+
+  const nights: string[] = []
+  for (let d = draft.checkIn; d < draft.checkOut; d = addIsoDays(d, 1))
+    nights.push(d)
+  const wanted = new Set(draft.unitIds?.filter(Boolean) ?? [])
+  const on = (r: ReservationEntry, night: string) => r.checkIn <= night && night < r.checkOut
+
+  /**
+   * Whether the new booking overfills the listing on a night: the rooms held
+   * (plus the ones it asks for) and one room per stay without a room, against
+   * every room. A booking with no room needs one more.
+   */
+  function overfull(night: string) {
+    const held = new Set(wanted)
+    let floating = wanted.size ? 0 : 1
+    for (const r of others) {
+      if (!on(r, night))
+        continue
+      const ids = reservationUnitIds(r)
+      if (ids.length)
+        ids.forEach(id => held.add(id))
+      else
+        floating++
+    }
+    return held.size + floating > units.length
+  }
+
+  const conflicts: BookingConflict[] = []
+  for (const r of others) {
+    const ids = reservationUnitIds(r)
+    const shared = [...new Set(ids.filter(id => wanted.has(id)))]
+    if (shared.length)
+      conflicts.push(toConflict(r, shared.map(unitName)))
+    // No shared room: a clash only when the listing runs out of rooms on a night they share.
+    else if ((!wanted.size || !ids.length) && nights.some(n => on(r, n) && overfull(n)))
+      conflicts.push(toConflict(r, ids.map(unitName)))
+  }
+  return conflicts
 }
 
 export const DEFAULT_CHECK_IN_TIME = '14:00'
@@ -966,7 +1058,14 @@ export function useReservationsModule() {
         payout: quote.amount,
       },
       ...(rooms?.length ? { rooms } : {}),
-      ...(r.assignedUnitIds?.length ? { assignedUnitIds: r.assignedUnitIds } : {}),
+      // The added nights are in the same rooms. Rooms without a carried line
+      // (a flat-rate line, or a stay only assigned to a room) ride along as an
+      // assignment, so the extension sits on them, not on "Not assigned".
+      ...(() => {
+        const carried = new Set(rooms?.map(l => l.unitId) ?? [])
+        const rest = reservationUnitIds(r).filter(id => !carried.has(id))
+        return rest.length ? { assignedUnitIds: rest } : {}
+      })(),
       // The guest is the one already in the house: carry the stay's cleaning
       // rhythm over the added nights instead of the listing default.
       ...(r.cleaningSchedule ? { cleaningSchedule: { ...r.cleaningSchedule, startDate: from } } : {}),
