@@ -86,7 +86,7 @@ describe('usePriceLabs — mapping', () => {
   it('unmapping a unit also stops its sync', async () => {
     const pl = await connected()
     const id = pl.units.value[0]!.providerUnitId
-    enable(pl, id, 'room-suryas-2')
+    enable(pl, id, 'lst-14')
     expect(pl.syncingUnits.value).toHaveLength(1)
     pl.mapUnit(id, null)
     expect(pl.units.value[0]!.syncEnabled).toBe(false)
@@ -96,9 +96,9 @@ describe('usePriceLabs — mapping', () => {
   it('reports rooms that have no provider unit', async () => {
     const pl = await connected()
     const before = pl.unmappedRooms.value.length
-    pl.mapUnit(pl.units.value[0]!.providerUnitId, 'room-suryas-2')
+    pl.mapUnit(pl.units.value[0]!.providerUnitId, 'lst-14')
     expect(pl.unmappedRooms.value).toHaveLength(before - 1)
-    expect(pl.unmappedRooms.value.map(r => r.id)).not.toContain('room-suryas-2')
+    expect(pl.unmappedRooms.value.map(r => r.id)).not.toContain('lst-14')
   })
 })
 
@@ -107,7 +107,7 @@ describe('usePriceLabs — drift is derived, not stored', () => {
     const pl = await connected()
     // plu-88214 differs from the provider by seed, but nothing syncs it yet.
     expect(pl.drift.value).toHaveLength(0)
-    enable(pl, 'plu-88214', 'room-suryas-2')
+    enable(pl, 'plu-88214', 'lst-14')
     expect(pl.drift.value).toHaveLength(1)
     expect(pl.drift.value[0]).toMatchObject({
       providerUnitId: 'plu-88214',
@@ -119,7 +119,7 @@ describe('usePriceLabs — drift is derived, not stored', () => {
 
   it('a provider-side edit produces drift with no record being written', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88215', 'room-uluwatu-1')
+    enable(pl, 'plu-88215', 'lst-8')
     expect(pl.drift.value).toHaveLength(0)
     pl.simulateProviderEdit()
     expect(pl.drift.value).toHaveLength(1)
@@ -130,7 +130,7 @@ describe('usePriceLabs — drift is derived, not stored', () => {
 describe('usePriceLabs — reconcile writes then verifies', () => {
   it('writes the Elev8 value, reads it back, and clears the drift', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88214', 'room-suryas-2')
+    enable(pl, 'plu-88214', 'lst-14')
     expect(pl.drift.value).toHaveLength(1)
 
     const res = await pl.reconcileUnit('plu-88214')
@@ -149,7 +149,7 @@ describe('usePriceLabs — reconcile writes then verifies', () => {
 
   it('sends only the fields that actually differ', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88216', 'room-padma-3')
+    enable(pl, 'plu-88216', 'lst-10')
     await pl.reconcileUnit('plu-88216')
     const write = pl.calls.value.find(c => c.method === 'POST')!
     const sent = (write.requestBody as { listings: Record<string, unknown>[] }).listings[0]!
@@ -160,7 +160,7 @@ describe('usePriceLabs — reconcile writes then verifies', () => {
 
   it('is a no-op when there is nothing to write', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88215', 'room-uluwatu-1')
+    enable(pl, 'plu-88215', 'lst-8')
     const res = await pl.reconcileUnit('plu-88215')
     expect(res).toEqual({ written: 0, verified: true })
     expect(pl.calls.value.filter(c => c.method === 'POST')).toHaveLength(0)
@@ -168,9 +168,9 @@ describe('usePriceLabs — reconcile writes then verifies', () => {
 
   it('reconcileAll clears every drifting unit', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88214', 'room-suryas-2')
-    enable(pl, 'plu-88216', 'room-padma-3')
-    enable(pl, 'plu-88218', 'room-bakti-2')
+    enable(pl, 'plu-88214', 'lst-14')
+    enable(pl, 'plu-88216', 'lst-10')
+    enable(pl, 'plu-88218', 'lst-5')
     expect(pl.drift.value).toHaveLength(3)
     const res = await pl.reconcileAll()
     expect(res).toEqual({ units: 3, fields: 3 })
@@ -181,7 +181,7 @@ describe('usePriceLabs — reconcile writes then verifies', () => {
 describe('usePriceLabs — sync cycle', () => {
   it('runs the five feed calls in order, on the right client', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88214', 'room-suryas-2')
+    enable(pl, 'plu-88214', 'lst-14')
     pl.clearCalls()
 
     await pl.runFullSync()
@@ -200,8 +200,8 @@ describe('usePriceLabs — sync cycle', () => {
 
   it('pushes a 730-day window for every syncing unit', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88214', 'room-suryas-2')
-    enable(pl, 'plu-88216', 'room-padma-3')
+    enable(pl, 'plu-88214', 'lst-14')
+    enable(pl, 'plu-88216', 'lst-10')
     await pl.pushAvailability()
     const feed = pl.feeds.value.find(f => f.id === 'availability')!
     expect(feed.state).toBe('live')
@@ -229,42 +229,42 @@ describe('usePriceLabs — sync cycle', () => {
 describe('usePriceLabs — room sync state', () => {
   it('is paused while disconnected', () => {
     const pl = usePriceLabs()
-    expect(pl.syncStateForRoom('room-suryas-2')).toBe('paused')
+    expect(pl.syncStateForRoom('lst-14')).toBe('paused')
   })
 
   it('is paused for a mapped room whose sync is off', async () => {
     const pl = await connected()
-    pl.mapUnit('plu-88215', 'room-uluwatu-1')
-    expect(pl.syncStateForRoom('room-uluwatu-1')).toBe('paused')
+    pl.mapUnit('plu-88215', 'lst-8')
+    expect(pl.syncStateForRoom('lst-8')).toBe('paused')
   })
 
   it('is partial once syncing but before any price arrives', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88215', 'room-uluwatu-1')
-    expect(pl.syncStateForRoom('room-uluwatu-1')).toBe('partial')
+    enable(pl, 'plu-88215', 'lst-8')
+    expect(pl.syncStateForRoom('lst-8')).toBe('partial')
   })
 
   it('is live after prices come back', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88215', 'room-uluwatu-1')
+    enable(pl, 'plu-88215', 'lst-8')
     await pl.pullPrices()
-    expect(pl.syncStateForRoom('room-uluwatu-1')).toBe('live')
+    expect(pl.syncStateForRoom('lst-8')).toBe('live')
   })
 
   it('is degraded while the room carries drift', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88214', 'room-suryas-2')
+    enable(pl, 'plu-88214', 'lst-14')
     await pl.pullPrices()
-    expect(pl.syncStateForRoom('room-suryas-2')).toBe('degraded')
+    expect(pl.syncStateForRoom('lst-14')).toBe('degraded')
     await pl.reconcileUnit('plu-88214')
-    expect(pl.syncStateForRoom('room-suryas-2')).toBe('live')
+    expect(pl.syncStateForRoom('lst-14')).toBe('live')
   })
 })
 
 describe('usePriceLabs — webhook and teardown', () => {
   it('an inbound webhook is verified and triggers a price pull', async () => {
     const pl = await connected()
-    enable(pl, 'plu-88214', 'room-suryas-2')
+    enable(pl, 'plu-88214', 'lst-14')
     pl.clearCalls()
     await pl.simulateInboundWebhook()
 

@@ -1,6 +1,8 @@
 import type { SyncState } from '~/components/revenue/data/health'
 import { computed } from 'vue'
-import { healthRooms } from '~/components/revenue/data/health'
+import { listings } from '~/components/listings/data/listings'
+import { revenueRooms } from '~/components/revenue/data/revenue-policy'
+import { useRevenuePolicy } from '~/composables/useRevenuePolicy'
 
 /**
  * PriceLabs integration, prototype against the real API shape.
@@ -90,10 +92,12 @@ export interface PriceLabsUnit {
   pms: string
   roomId: string | null
   syncEnabled: boolean
-  /** What PriceLabs currently holds. Only ever changed by a mocked response. */
+  /**
+   * What PriceLabs currently holds. Only ever changed by a mocked response.
+   * What Elev8 says it should be is not stored here: it is the mapped room's
+   * pricing policy (Revenue tab), read through `desiredFor`. Elev8 is master.
+   */
   provider: UnitState
-  /** What Elev8 says it should be. Elev8 is master. */
-  desired: UnitState
   lastPushedAt: string | null
   lastPriceAt: string | null
 }
@@ -170,24 +174,21 @@ export const unitFieldLabels: Record<keyof UnitState, string> = {
  * match Elev8 room names, which is exactly why mapping exists.
  */
 const REMOTE_LISTINGS: { id: string, name: string, base: number, min: number, max: number, minStay: number }[] = [
-  { id: 'plu-88214', name: 'Villa Suryas Room 2', base: 165, min: 120, max: 340, minStay: 2 },
-  { id: 'plu-88215', name: 'Uluwatu Cliff Hse R1', base: 240, min: 180, max: 520, minStay: 3 },
-  { id: 'plu-88216', name: 'Villa Padma R3', base: 148, min: 110, max: 300, minStay: 3 },
-  { id: 'plu-88217', name: 'Canggu Loft Studio', base: 96, min: 70, max: 210, minStay: 1 },
-  { id: 'plu-88218', name: 'Villa Bakti Room 2', base: 132, min: 100, max: 380, minStay: 2 },
-  { id: 'plu-88219', name: 'Seminyak Grdn 4', base: 118, min: 90, max: 260, minStay: 2 },
+  { id: 'plu-88214', name: 'Canggu Riverside R', base: 165, min: 150, max: 340, minStay: 2 },
+  { id: 'plu-88215', name: 'Sunset Cliff Villa Ulu', base: 340, min: 240, max: 420, minStay: 3 },
+  { id: 'plu-88216', name: 'Smy Beach Bungalow', base: 148, min: 110, max: 300, minStay: 3 },
+  { id: 'plu-88217', name: 'Pererenan Mezz Studio', base: 96, min: 70, max: 210, minStay: 2 },
+  { id: 'plu-88218', name: 'Nomad Mansion Grdn', base: 132, min: 100, max: 380, minStay: 2 },
+  { id: 'plu-88219', name: 'Apts Pool Seminyak', base: 118, min: 90, max: 260, minStay: 2 },
   { id: 'plu-88220', name: 'Legian Beach Suite', base: 205, min: 150, max: 460, minStay: 2 },
 ]
 
-/**
- * Elev8's desired state, seeded to differ from the provider on three units so
- * the first reconcile has something real to correct rather than a canned row.
+/*
+ * The provider values above match each room's set-up policy except on three
+ * units (Canggu base, Seminyak minimum stay, Ubud maximum), so the first
+ * reconcile has something real to correct. Legian Beach Suite has no Elev8
+ * room at all: an unmapped provider unit.
  */
-const DESIRED_OVERRIDES: Record<string, Partial<UnitState>> = {
-  'plu-88214': { base: 182 },
-  'plu-88216': { minStay: 2 },
-  'plu-88218': { max: 410 },
-}
 
 const CAPABILITY_SEED: PriceLabsCapability[] = [
   { key: 'base_price', label: 'Base price', access: 'unverified', source: 'unverified', note: null },
@@ -263,7 +264,21 @@ export function usePriceLabs() {
 
   const isConnected = computed(() => connection.value?.status === 'connected')
 
-  const rooms = computed(() => healthRooms.map(r => ({ id: r.id, name: r.name })))
+  const policyStore = useRevenuePolicy()
+  const allRooms = computed(() => revenueRooms(listings.value))
+  const rooms = computed(() => allRooms.value.map(r => ({ id: r.key, name: r.name })))
+
+  /**
+   * What Elev8 says a unit should hold: its mapped room's current pricing
+   * policy. An unmapped unit has no Elev8 opinion, so it reads as in sync.
+   */
+  function desiredFor(unit: PriceLabsUnit): UnitState {
+    const room = unit.roomId ? allRooms.value.find(r => r.key === unit.roomId) : undefined
+    if (!room)
+      return { ...unit.provider }
+    const policy = policyStore.policyFor(room)
+    return { base: policy.base.price, min: policy.base.minPrice, max: policy.base.maxPrice, minStay: policy.minStay.default }
+  }
 
   /**
    * One mocked HTTP round trip. Everything that changes state goes through
@@ -377,7 +392,6 @@ export function usePriceLabs() {
         roomId: null,
         syncEnabled: false,
         provider,
-        desired: { ...provider, ...DESIRED_OVERRIDES[l.id] },
         lastPushedAt: null,
         lastPriceAt: null,
       }
@@ -422,14 +436,15 @@ export function usePriceLabs() {
   const drift = computed<DriftRow[]>(() => {
     const rows: DriftRow[] = []
     for (const u of syncingUnits.value) {
+      const desired = desiredFor(u)
       for (const field of Object.keys(unitFieldLabels) as (keyof UnitState)[]) {
-        if (u.provider[field] !== u.desired[field]) {
+        if (u.provider[field] !== desired[field]) {
           rows.push({
             providerUnitId: u.providerUnitId,
             roomId: u.roomId,
             field,
             label: unitFieldLabels[field],
-            elev8Value: u.desired[field],
+            elev8Value: desired[field],
             providerValue: u.provider[field],
           })
         }
@@ -556,8 +571,9 @@ export function usePriceLabs() {
     if (!unit || !unit.syncEnabled)
       return { written: 0, verified: false }
 
+    const desired = desiredFor(unit)
     const changed = (Object.keys(unitFieldLabels) as (keyof UnitState)[])
-      .filter(f => unit.provider[f] !== unit.desired[f])
+      .filter(f => unit.provider[f] !== desired[f])
 
     if (changed.length === 0)
       return { written: 0, verified: true }
@@ -566,10 +582,10 @@ export function usePriceLabs() {
       listings: [{
         id: unit.providerUnitId,
         pms: unit.pms,
-        ...(changed.includes('base') ? { base: unit.desired.base } : {}),
-        ...(changed.includes('min') ? { min: unit.desired.min } : {}),
-        ...(changed.includes('max') ? { max: unit.desired.max } : {}),
-        ...(changed.includes('minStay') ? { min_stay: unit.desired.minStay } : {}),
+        ...(changed.includes('base') ? { base: desired.base } : {}),
+        ...(changed.includes('min') ? { min: desired.min } : {}),
+        ...(changed.includes('max') ? { max: desired.max } : {}),
+        ...(changed.includes('minStay') ? { min_stay: desired.minStay } : {}),
       }],
     }
 
@@ -581,7 +597,7 @@ export function usePriceLabs() {
     // The write landed on the provider side.
     units.value = units.value.map(u =>
       u.providerUnitId === providerUnitId
-        ? { ...u, provider: { ...u.desired }, lastPushedAt: nowIso() }
+        ? { ...u, provider: { ...desired }, lastPushedAt: nowIso() }
         : u,
     )
 
@@ -604,10 +620,10 @@ export function usePriceLabs() {
 
     const readBack = (verify.body.listings as { base: number, min: number, max: number, min_stay: number }[])[0]
     const verified = !!readBack
-      && readBack.base === after.desired.base
-      && readBack.min === after.desired.min
-      && readBack.max === after.desired.max
-      && readBack.min_stay === after.desired.minStay
+      && readBack.base === desired.base
+      && readBack.min === desired.min
+      && readBack.max === desired.max
+      && readBack.min_stay === desired.minStay
 
     patchFeed('settings', {
       state: verified ? 'live' : 'degraded',
@@ -726,6 +742,7 @@ export function usePriceLabs() {
   }
 
   return {
+    desiredFor,
     connection,
     units,
     feeds,

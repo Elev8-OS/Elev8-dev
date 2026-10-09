@@ -67,6 +67,11 @@ const maskedKey = computed(() => {
   return `${key.slice(0, 6)}${'•'.repeat(12)}${key.slice(-4)}`
 })
 
+/** The first few names, then a count, so a large portfolio does not flood the panel. */
+function shortList(names: string[], shown = 4): string {
+  return names.length > shown ? `${names.slice(0, shown).join(', ')} and ${names.length - shown} more` : names.join(', ')
+}
+
 function roomName(roomId: string | null): string {
   if (!roomId)
     return ''
@@ -379,7 +384,7 @@ function toggleCall(call: ApiCall) {
             <Icon name="lucide:circle-alert" class="mt-0.5 size-3.5 shrink-0 text-amber-600" />
             <p class="text-xs text-amber-800 leading-relaxed">
               {{ pl.unmappedRooms.value.length }} Elev8 Room{{ pl.unmappedRooms.value.length !== 1 ? 's have' : ' has' }} no PriceLabs unit and will never receive a computed price:
-              {{ pl.unmappedRooms.value.map(r => r.name).join(', ') }}.
+              {{ shortList(pl.unmappedRooms.value.map(r => r.name)) }}.
             </p>
           </div>
         </div>

@@ -1,0 +1,38 @@
+> Split out of CLAUDE.md to keep the always-loaded context small. Read this file before working on this area; keep it updated when the code changes.
+
+### Revenue settings (Listing Health configuration)
+
+Configuration UI from the Revenue Engine spec: §15.5 (Room → Revenue tab) and §15.7 (provider, engine and calendar settings). The Listing Health dashboard itself (`/revenue`, `useRevenueHealth`, `components/revenue/*.vue`) is a separate surface and still runs on its own fixture rooms (`healthRooms`, Villa Suryas etc.).
+
+⚠️ **One room world.** Listing Health, the PriceLabs mock and these settings all key rooms by `revenueRooms(listings)` (one room per unit, or the listing itself when it has no units; key `<listingId>` or `<listingId>:<unitId>`).
+- `revenue/data/managed-rooms.ts` names the rooms the health fixtures talk about (`MANAGED_ROOM`, `NOT_ASSESSABLE_ROOM`) and the policy each was set up with. `health.ts` / `diagnosis.ts` take ids and names from there and the listings, never hardcoded names. Amounts in findings are `USD 182`, matching the room policy.
+- `useRevenuePolicy` seeds version 1 ("Imported at onboarding") for every managed room, so a finding's "from" value equals the Revenue tab. Hydrate merges stored records over the seed.
+- **Pricing engine reads the policy.** `PriceLabsUnit` has no stored desired state; `usePriceLabs().desiredFor(unit)` reads the mapped room's current policy (base, min, max, default min stay). Saving in the Revenue tab therefore shows up at once as drift on a syncing unit, and reconcile writes it. `REMOTE_LISTINGS` match the managed policies except three seeded drifts (Canggu base, Seminyak min stay, Ubud max); Legian Beach Suite is a provider unit with no Elev8 room.
+- **Apply writes the policy.** A finding with `policyChanges` (base/min/max/min stay/orphan gap) saves a new room policy version when the apply ends with settings written (`live`, `recompute_unavailable`, `push_failed`; not `stale`). Revert restores the version it replaced, as a new version. Findings without `policyChanges` (reconnect, content, promotions) write nothing.
+- Still fixture: the health rooms' sync state, trend and money estimates, and the findings themselves (snapshots at check time; they do not re-read a policy edited later).
+
+#### Per room: listing detail > Revenue tab
+- `listings/ListingRevenueTab.vue`, tab value `revenue` (after Pricing). Room picker for multi-unit listings (unit names), follows the hero's active unit.
+- **Draft + versions.** The tab edits a draft of the room's `PricingPolicy`; Save appends an immutable `PolicyVersion` (`useRevenuePolicy.savePolicy`), signed by the current user. The version line opens a history popover; Restore saves the old policy as a NEW version. A room never saved reads `defaultPolicy(room)` (base from the base rate plan, floor 70%, ceiling 200%, min stay 2). The draft resets on a room switch or when the stored policy changes under an untouched draft (save, restore, hydrate); real edits are kept.
+- Sections (`components/revenue/policy/`): `PolicyEssentials` (base/min/max, default min stay, currency, rounding; always open), then collapsible `PolicySection` cards: `PolicyDemandRules` (occupancy, last-minute, orphan gap, day-of-week stored as multipliers, edited as %), `PolicySeasons` (12-month timeline, overlap warning, later season wins, **Copy to other rooms** via `SeasonCopyDialog`, copies the SAVED seasons and writes each target a new version at once), `PolicyStayParty` (LOS tiers, weekly/monthly %, extra-person fee, no check-in / no check-out days, min stay by arrival day).
+- `validatePolicy` errors block Save (base outside min..max, max <= min, season backwards...). Overlapping seasons are a warning only.
+- `PolicyPreview`: next 90 nights from the draft via `previewPolicy` (base × season × DOW × last-minute, clamp to floor/season floor and ceiling, rounding last). Occupancy and orphan-gap rules are NOT in the preview (need live bookings); the card says so.
+- `ProviderSupportBadge`: "Enforced by Elev8" on a section only when PriceLabs is connected and its capability (`SECTION_CAPABILITY` → `usePriceLabs().capabilities`) is `unsupported` / `read_only`.
+- `RoomCostModelCard` (§22.1): saves at once, outside the policy versions. Each field is derived (`derivedCosts`: housekeeping rate × measured cleaning minutes from finished cleaning jobs, else the tenant default minutes; consumables; payment %; channel commission) or overridden for the room. Typing a value = confirmed; Confirm keeps the derived value but marks it confirmed; reset returns to derived. Badges: Confirmed / Estimated / Missing (fixed cost per night is optional). Money defaults are per currency: a room whose currency has no defaults shows Missing, never a converted value.
+
+#### Tenant: `/revenue/settings`
+Reached from the **Settings** button on the Listing Health header. Tabs in the URL (`?tab=`): `provider` (default), `engine`, `calendar`, `channels`, `costs`, `groups`. Every change saves at once (`useRevenueSettings`, localStorage `elev8-revenue-settings`).
+- **Pricing engine** (`RevenueProviderSettings`): PriceLabs status, masked credential, last sync, mapping counts and unmapped-room warning, Disconnect (AlertDialog). Connect and mapping stay in Settings > Integrations > PriceLabs, linked as `/settings/integrations?open=pricelabs` (the integrations overview reads `?open=`). Vendor named here on purpose: integrations inventory, not a data surface (§15.1).
+- **Basis and autonomy** (`RevenueEngineSettings`): default objective basis (the dashboard opens on it once per session, flag `revenue-basis-initialised`; changing it here also switches the live lens), autonomy default mode (`graduated` / `review`), starting band, ceiling, rules per tag or room. `effectiveAutonomy`: room rule > tag rule > default; among tag rules the stricter wins; never wider than the tenant ceiling.
+- **Calendar**: `RevenueBlackouts` (date ranges, optional tags; engine never auto-applies) and `RevenueEventsCalendar` (owner, monthly/quarterly cadence, last reviewed, "Review due" via `nextReviewDue`; Elev8-curated rows can only be hidden, tenant rows edited/removed). Seed dates are relative to today.
+- **Channel markups** (`RevenueChannelMarkups`): one row per channel (`channelOptions`: listing channels + Direct), plus room exceptions that replace the channel markup (`effectiveMarkup`).
+- **Costs** (`RevenueCostDefaults`): housekeeping rate and consumables per currency (rows for every currency a room uses), default cleaning minutes, payment %, commission per channel.
+- **Substitution groups** (`RevenueSubstitutionGroups`): derived by location + bedroom band (`substitutionGroups`), groups of 2+ only. Tenant moves (`moves[roomKey] = groupKey | 'none'`) and names are laid over the derived result; a moved-into custom group with one room stays visible. "Back to derived" clears both.
+
+#### Files
+- Data (pure): `components/revenue/data/revenue-policy.ts`, `components/revenue/data/revenue-settings.ts`
+- State: `composables/useRevenuePolicy.ts` (localStorage `elev8-revenue-policies`, `hydrate()` on mount), `composables/useRevenueSettings.ts`
+- Tests: `tests/composables/revenue-room-consistency.spec.ts` (the three surfaces agree), `tests/lib/revenue-policy.spec.ts`, `tests/lib/revenue-settings.spec.ts`, `tests/composables/useRevenuePolicy.spec.ts`, `tests/components/listings/ListingRevenueTab.spec.ts`
+
+#### Not built yet (from the spec)
+Check configuration and the 7 revenue permissions (§17.3), holdout opt-out, Cockpit pricing integration (§15.6), a per-room sync-health screen (§15.8), the full impact panel (§15.9), and deriving the health rooms' sync state from the PriceLabs connection.

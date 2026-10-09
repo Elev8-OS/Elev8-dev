@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Tabs, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { useRevenueHealth } from '~/composables/useRevenueHealth'
+import { useRevenueSettings } from '~/composables/useRevenueSettings'
 
 definePageMeta({ layout: 'default' })
 
@@ -37,7 +38,18 @@ const {
   toggleExpanded,
 } = useRevenueHealth()
 
-onMounted(() => { load() })
+const revenueSettings = useRevenueSettings()
+// Open on the tenant's default basis once per session; after that the lens the person picked stays.
+const basisInitialised = useState<boolean>('revenue-basis-initialised', () => false)
+
+onMounted(() => {
+  revenueSettings.hydrate()
+  if (!basisInitialised.value) {
+    basis.value = revenueSettings.settings.value.defaultBasis
+    basisInitialised.value = true
+  }
+  load()
+})
 
 const domainOptions = Object.keys(domainLabels) as HealthDomain[]
 const severityOptions: HealthSeverity[] = ['critical', 'high', 'medium', 'low']
@@ -51,7 +63,7 @@ const hasFilters = computed(() =>
 )
 
 function money(amount: number) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount)
+  return `USD ${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
 }
 
 function formatLastCheck(iso: string) {
@@ -79,17 +91,25 @@ async function onRecheck() {
           Listing health
         </h1>
       </div>
-      <p class="text-xs text-muted-foreground">
-        Last check {{ summary ? formatLastCheck(summary.lastCheckedAt) : '—' }} ·
-        <button
-          type="button"
-          class="font-medium text-foreground underline-offset-2 hover:underline disabled:opacity-50"
-          :disabled="isLoading"
-          @click="onRecheck"
-        >
-          {{ isLoading ? 'Re-checking…' : 'Re-check now' }}
-        </button>
-      </p>
+      <div class="flex items-center gap-3">
+        <p class="text-xs text-muted-foreground">
+          Last check {{ summary ? formatLastCheck(summary.lastCheckedAt) : '—' }} ·
+          <button
+            type="button"
+            class="font-medium text-foreground underline-offset-2 hover:underline disabled:opacity-50"
+            :disabled="isLoading"
+            @click="onRecheck"
+          >
+            {{ isLoading ? 'Re-checking…' : 'Re-check now' }}
+          </button>
+        </p>
+        <Button variant="outline" size="sm" class="gap-1.5" as-child>
+          <NuxtLink to="/revenue/settings" data-testid="revenue-settings-link">
+            <Icon name="lucide:settings-2" class="size-3.5" />
+            Settings
+          </NuxtLink>
+        </Button>
+      </div>
     </div>
 
     <!--

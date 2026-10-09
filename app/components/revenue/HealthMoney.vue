@@ -12,11 +12,7 @@ const props = withDefaults(defineProps<{
 }>(), { size: 'md', detail: false })
 
 function format(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: props.estimate.currency,
-    maximumFractionDigits: 0,
-  }).format(value)
+  return `${props.estimate.currency} ${value.toLocaleString(props.estimate.currency === 'CHF' ? 'de-CH' : 'en-US', { maximumFractionDigits: 0 })}`
 }
 
 const sizeClass = computed(() => ({

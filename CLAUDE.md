@@ -15,7 +15,8 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 
 | Area | Doc | Covers |
 |---|---|---|
-| Listings | `docs/claude/listings.md` | 7-tab detail page, AI schedule, Listing Setup overlay, rooms/unit types/rate plans, status + AI aggregation, listings table |
+| Listings | `docs/claude/listings.md` | 8-tab detail page, AI schedule, Listing Setup overlay, rooms/unit types/rate plans, status + AI aggregation, listings table |
+| Revenue settings | `docs/claude/revenue-settings.md` | Listing Revenue tab (versioned pricing policy, 90-day preview, room cost model), `/revenue/settings` (engine, autonomy, blackouts, events calendar, markups, cost defaults, substitution groups) |
 | Channels | `docs/claude/channels.md` | `/channels`: OTA accounts, map-listings flow, per-listing status on the Listings pages, sole writer of `Listing.otaConnected` |
 | Inbox | `docs/claude/inbox.md` | Conversations, filters, phone calls, notes, auto-translate, image sending, `ensureConversationForReservation`, inbox settings / AI settings |
 | Internal staff messaging | `docs/claude/internal-inbox.md` | Derived listing+role rooms, forward/create-task context menu, delivery state, image viewer |
