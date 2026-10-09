@@ -46,6 +46,14 @@ describe('listingSetupProgress', () => {
     expect(p.percent).toBe(13)
   })
 
+  it('names what is still missing in each section', () => {
+    const p = listingSetupProgress(withListing(empty))
+    expect(p.sections.find(s => s.key === 'basics')!.missing).toEqual(['Property type', 'Street', 'Postal code', 'Photos'])
+    expect(p.sections.find(s => s.key === 'amenities')!.missing).toEqual(['Property amenities', 'Room amenities'])
+    for (const s of p.sections)
+      expect(s.missing).toHaveLength(s.total - s.done)
+  })
+
   it('treats whitespace-only text as empty', () => {
     const p = listingSetupProgress(withListing(empty))
     expect(p.sections.find(s => s.key === 'sops')!.complete).toBe(false)

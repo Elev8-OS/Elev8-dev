@@ -69,6 +69,37 @@ describe('reservation list extension indicators', () => {
     expect((wrapper.emitted('openDetail')?.at(-1)?.[0] as ReservationEntry).id).toBe('res-ota')
   })
 
+  it('gives a direct stay extended in place a child row per extension, in date order', async () => {
+    const parent = stay({
+      id: 'res-dir',
+      channel: 'Direct',
+      checkIn: '2030-02-27',
+      checkOut: '2030-03-06',
+      extensions: [
+        extension({ linkedReservationId: undefined, paymentStatus: 'paid' }),
+        extension({ id: 'ext-early', direction: 'before', previousCheckOut: undefined, newCheckOut: undefined, previousCheckIn: '2030-03-01', newCheckIn: '2030-02-27', amount: 150, linkedReservationId: undefined }),
+        extension({ id: 'ext-gone', linkedReservationId: undefined, cancelledAt: '2030-01-01T00:00:00Z' }),
+      ],
+    })
+    useReservationsModule().reservations.value = [parent]
+    const wrapper = mount(ReservationTable, { props: { reservations: [parent] }, global })
+
+    const rows = wrapper.findAll('[data-testid="row-child-in-place"]')
+    // The cancelled extension draws nothing; the early arrival comes first.
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.text()).toContain('Early arrival')
+    expect(rows[0]!.text()).toContain('27 Feb 2030')
+    expect(rows[0]!.text()).toContain('Payment pending')
+    expect(rows[1]!.text()).toContain('Extension')
+    expect(rows[1]!.text()).toContain('06 Mar 2030')
+    // Paid: only the stay's status, no payment badge.
+    expect(rows[1]!.find('[data-testid="row-in-place-payment"]').exists()).toBe(false)
+    // Still one stay for paging, and a click opens it.
+    expect(wrapper.text()).toContain('Showing 1–1 of 1')
+    await rows[1]!.trigger('click')
+    expect((wrapper.emitted('openDetail')?.at(-1)?.[0] as ReservationEntry).id).toBe('res-dir')
+  })
+
   it('reads Extended +nights once paid', () => {
     const parent = stay({ extensions: [extension({ paymentStatus: 'paid' }), extension({ id: 'ext-2', extraNights: 1, paymentStatus: 'paid' })] })
     useReservationsModule().reservations.value = [parent]

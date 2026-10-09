@@ -23,7 +23,7 @@ defineProps<{
   canFold: boolean
   allCollapsed: boolean
 }>()
-const emit = defineEmits<{ toggleAll: [], newReservation: [] }>()
+const emit = defineEmits<{ toggleAll: [] }>()
 
 const search = defineModel<string>('search', { required: true })
 const tags = defineModel<string[]>('tags', { required: true })
@@ -66,8 +66,72 @@ const HATCH = {
 
 <template>
   <div class="flex flex-col gap-2">
-    <!-- Icon tools, as in the reference board: filters, legend, fold, new reservation -->
+    <!-- Icon tools: legend, fold. Filters sit beside the search below. -->
     <div class="flex items-center gap-1.5">
+      <Popover>
+        <PopoverTrigger as-child>
+          <Button variant="ghost" size="icon" class="size-9 shrink-0 border bg-card" aria-label="What the colours mean" title="What the colours mean" data-testid="cockpit-legend">
+            <Icon name="lucide:info" class="size-4 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-64 p-3" align="start">
+          <ul class="flex flex-col gap-1.5 text-sm">
+            <li v-for="s in LEGEND_STATUSES" :key="s" class="flex items-center gap-2">
+              <span class="h-3 w-6 shrink-0 rounded-sm border" :class="stayBarClasses[s]" aria-hidden="true" />
+              {{ reservationStatusLabels[s] }}
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="h-3 w-6 shrink-0 rounded-sm bg-muted-foreground/85" :style="HATCH" aria-hidden="true" />
+              Cancelled
+            </li>
+          </ul>
+          <Separator class="my-3" />
+          <ul class="flex flex-col gap-1.5 text-sm">
+            <li class="flex items-center gap-2">
+              <span class="flex w-6 justify-center" aria-hidden="true"><span class="h-4 w-0.5 bg-primary" /></span>
+              Now
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="flex w-6 justify-center" aria-hidden="true"><span class="size-2.5 rounded-full bg-primary ring-2 ring-card" /></span>
+              Arrives or leaves today
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="flex w-6 justify-center" aria-hidden="true">
+                <span class="flex size-4 items-center justify-center rounded-full bg-destructive text-white"><Icon name="lucide:alert-circle" class="size-3" /></span>
+              </span>
+              Action needed in the Inbox
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="h-3 w-6 shrink-0 rounded-sm ring-2 ring-destructive" aria-hidden="true" />
+              Double booked
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="flex h-3 w-6 shrink-0 items-center justify-center rounded-sm bg-foreground/15 text-[8px] tabular-nums" aria-hidden="true">3/4</span>
+              Rooms free that night
+            </li>
+          </ul>
+        </PopoverContent>
+      </Popover>
+      <Button
+        v-if="canFold"
+        variant="ghost"
+        size="icon"
+        class="size-9 shrink-0 border bg-card"
+        :aria-label="allCollapsed ? 'Expand all rooms' : 'Collapse all rooms'"
+        :title="allCollapsed ? 'Expand all rooms' : 'Collapse all rooms'"
+        @click="emit('toggleAll')"
+      >
+        <Icon :name="allCollapsed ? 'lucide:chevrons-up-down' : 'lucide:chevrons-down-up'" class="size-4" />
+      </Button>
+    </div>
+    <div class="flex items-center gap-1">
+      <Icon name="lucide:search" class="ml-1 size-4 shrink-0 text-muted-foreground" />
+      <Input
+        v-model="search"
+        placeholder="Search listing"
+        aria-label="Search listing"
+        class="h-8 border-0 px-1 shadow-none focus-visible:ring-0"
+      />
       <Popover>
         <PopoverTrigger as-child>
           <Button variant="ghost" size="icon" class="relative size-9 shrink-0 border bg-card" aria-label="Filters" data-testid="cockpit-filters">
@@ -166,73 +230,6 @@ const HATCH = {
           </div>
         </PopoverContent>
       </Popover>
-      <Popover>
-        <PopoverTrigger as-child>
-          <Button variant="ghost" size="icon" class="size-9 shrink-0 border bg-card" aria-label="What the colours mean" title="What the colours mean" data-testid="cockpit-legend">
-            <Icon name="lucide:info" class="size-4 text-muted-foreground" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent class="w-64 p-3" align="start">
-          <ul class="flex flex-col gap-1.5 text-sm">
-            <li v-for="s in LEGEND_STATUSES" :key="s" class="flex items-center gap-2">
-              <span class="h-3 w-6 shrink-0 rounded-sm border" :class="stayBarClasses[s]" aria-hidden="true" />
-              {{ reservationStatusLabels[s] }}
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="h-3 w-6 shrink-0 rounded-sm bg-muted-foreground/85" :style="HATCH" aria-hidden="true" />
-              Cancelled
-            </li>
-          </ul>
-          <Separator class="my-3" />
-          <ul class="flex flex-col gap-1.5 text-sm">
-            <li class="flex items-center gap-2">
-              <span class="flex w-6 justify-center" aria-hidden="true"><span class="h-4 w-0.5 bg-primary" /></span>
-              Now
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="flex w-6 justify-center" aria-hidden="true"><span class="size-2.5 rounded-full bg-primary ring-2 ring-card" /></span>
-              Arrives or leaves today
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="flex w-6 justify-center" aria-hidden="true">
-                <span class="flex size-4 items-center justify-center rounded-full bg-destructive text-white"><Icon name="lucide:alert-circle" class="size-3" /></span>
-              </span>
-              Action needed in the Inbox
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="h-3 w-6 shrink-0 rounded-sm ring-2 ring-destructive" aria-hidden="true" />
-              Double booked
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="flex h-3 w-6 shrink-0 items-center justify-center rounded-sm bg-foreground/15 text-[8px] tabular-nums" aria-hidden="true">3/4</span>
-              Rooms free that night
-            </li>
-          </ul>
-        </PopoverContent>
-      </Popover>
-      <Button
-        v-if="canFold"
-        variant="ghost"
-        size="icon"
-        class="size-9 shrink-0 border bg-card"
-        :aria-label="allCollapsed ? 'Expand all rooms' : 'Collapse all rooms'"
-        :title="allCollapsed ? 'Expand all rooms' : 'Collapse all rooms'"
-        @click="emit('toggleAll')"
-      >
-        <Icon :name="allCollapsed ? 'lucide:chevrons-up-down' : 'lucide:chevrons-down-up'" class="size-4" />
-      </Button>
-      <Button variant="ghost" size="icon" class="size-9 shrink-0 border bg-card" aria-label="New reservation" title="New reservation" data-testid="cockpit-new" @click="emit('newReservation')">
-        <Icon name="lucide:plus" class="size-4" />
-      </Button>
-    </div>
-    <div class="flex items-center gap-1">
-      <Icon name="lucide:search" class="ml-1 size-4 shrink-0 text-muted-foreground" />
-      <Input
-        v-model="search"
-        placeholder="Search listing"
-        aria-label="Search listing"
-        class="h-8 border-0 px-1 shadow-none focus-visible:ring-0"
-      />
     </div>
   </div>
 </template>
