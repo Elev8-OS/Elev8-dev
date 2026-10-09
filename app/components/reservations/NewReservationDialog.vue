@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import type { BookingMode, ContactType, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
-import { DateFormatter, getLocalTimeZone } from '@internationalized/date'
+import { DateFormatter, getLocalTimeZone, parseDate } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import { COUNTRIES, nightsBetween } from '~/components/reservations/data/reservations'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
-const props = defineProps<{ open: boolean }>()
+const props = defineProps<{
+  open: boolean
+  /** Opened from a calendar selection (the Cockpit): the listing and dates to start from. */
+  prefill?: { listingId: string, checkIn: string, checkOut: string } | null
+}>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -117,10 +121,15 @@ const estimatedArrivalTime = ref('')
 
 const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
+/**
+ * A picked calendar date as `YYYY-MM-DD`. ⚠️ Read the date itself, never
+ * `toDate(...).toISOString()`: that is UTC, so in Bali (UTC+8) local midnight
+ * became the previous day and every new reservation saved one day early.
+ */
 function calendarDateToString(date: any): string {
   if (!date)
     return ''
-  return date.toDate(getLocalTimeZone()).toISOString().split('T')[0]
+  return date.toString()
 }
 
 const dateRange = ref<any>({ start: undefined, end: undefined })
@@ -396,6 +405,9 @@ function handleSubmit() {
     toast.error('Please fill in all required fields.')
     return
   }
+  const created = reservations.value.find(r => r.id === result.id)
+  if (created)
+    emit('created', created)
 
   const channels: string[] = []
   if (sendPaymentInbox.value || sendPaymentWhatsApp.value || sendPaymentEmail.value) {
@@ -435,8 +447,14 @@ function handleSubmit() {
 }
 
 watch(() => props.open, (open) => {
-  if (!open)
+  if (!open) {
     attempted.value = false
+    return
+  }
+  if (props.prefill) {
+    listingId.value = props.prefill.listingId
+    dateRange.value = { start: parseDate(props.prefill.checkIn), end: parseDate(props.prefill.checkOut) }
+  }
 })
 </script>
 

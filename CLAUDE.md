@@ -37,6 +37,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Website builder reviews | `docs/claude/website-builder-reviews.md` | Auto/manual review rules, picker UI, publish state |
 | Payment requests | `docs/claude/payment-requests.md` | Payment links, fee modes, payout integration |
 | Operations calendar | `docs/claude/operations-calendar.md` | Week/day board, merged stay sources, half-day bars, lanes |
+| Cockpit | `docs/claude/cockpit.md` | `/cockpit` tape chart: Reservations-only stays, slanted bars, today strip, filters, click/drag to book or block, drag to room, find availability, remembered settings |
 | Promo codes | `docs/claude/promo-codes.md` | Code library, create wizard, scope chain, booking widget links |
 | Branding | `docs/claude/branding.md` | Tenant logo/favicon/Guest Guide colors, server + guide-app wiring |
 | Tenant billing | `docs/claude/tenant-billing.md` | `/settings/billing`: package and active units, next invoices, payment method, history, invoice PDF kit |
