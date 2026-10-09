@@ -20,6 +20,13 @@ export interface RoomCleaningStatus {
   state: RoomCleaningState
   /** The tooltip: what the state rests on and what comes next. */
   detail: string
+  /**
+   * The cleaning a click on the icon opens: the one in progress; for an
+   * occupied or dirty room the next one, else (dirty) the missed one; for a
+   * clean room the last one done, else the next. Absent when the room has no
+   * cleaning to show (the board then offers to schedule one).
+   */
+  jobId?: string
 }
 
 /**
@@ -35,7 +42,7 @@ export const roomCleaningMeta: Record<RoomCleaningState, { label: string, classe
   occupied: { label: 'Occupied', classes: 'border-border bg-muted text-muted-foreground' },
 }
 
-type JobLike = Pick<CleaningJob, 'listingId' | 'unitId' | 'scheduledAt' | 'status' | 'cleanerNames' | 'source'>
+type JobLike = Pick<CleaningJob, 'id' | 'listingId' | 'unitId' | 'scheduledAt' | 'status' | 'cleanerNames' | 'source'>
 
 /** A single-unit row takes every job of its listing; a room row only the jobs naming that room. */
 function jobsForRow(row: CockpitRow, listingId: string, jobs: JobLike[]): JobLike[] {
@@ -62,9 +69,14 @@ function who(job: JobLike) {
 
 const NOT_STARTED = new Set(['draft', 'scheduled', 'confirmed'])
 
+/** The next cleaning not yet started, from today on. */
+function nextJob(jobs: JobLike[], todayKey: string): JobLike | undefined {
+  return jobs.find(j => cleaningDateKey(j.scheduledAt) >= todayKey && NOT_STARTED.has(j.status))
+}
+
 /** The next cleaning not yet done, from today on, as a sentence; else null. */
 function nextCleaning(jobs: JobLike[], todayKey: string): string | null {
-  const next = jobs.find(j => cleaningDateKey(j.scheduledAt) >= todayKey && NOT_STARTED.has(j.status))
+  const next = nextJob(jobs, todayKey)
   return next ? `Next cleaning ${formatWhen(next.scheduledAt)}${who(next)}.` : null
 }
 
@@ -75,14 +87,14 @@ export function roomCleaningStatus(row: CockpitRow, listingId: string, jobs: Job
 
   const ongoing = rowJobs.find(j => j.status === 'in_progress' && cleaningDateKey(j.scheduledAt) === todayKey)
   if (ongoing)
-    return { state: 'cleaning', detail: `Cleaning in progress, started ${formatWhen(ongoing.scheduledAt)}${who(ongoing)}.` }
+    return { state: 'cleaning', detail: `Cleaning in progress, started ${formatWhen(ongoing.scheduledAt)}${who(ongoing)}.`, jobId: ongoing.id }
 
   // Guests only: a block has nobody in it, and a cancelled stay never happened.
   const guests = row.stays.filter(s => s.type !== 'block' && isLiveStay(s))
   const inHouse = guests.find(s => s.checkIn < todayKey && todayKey < s.checkOut)
   if (inHouse) {
     const next = nextCleaning(rowJobs, todayKey)
-    return { state: 'occupied', detail: `Occupied by ${inHouse.guestName} until ${formatDay(inHouse.checkOut)}.${next ? ` ${next}` : ''}` }
+    return { state: 'occupied', detail: `Occupied by ${inHouse.guestName} until ${formatDay(inHouse.checkOut)}.${next ? ` ${next}` : ''}`, jobId: nextJob(rowJobs, todayKey)?.id }
   }
 
   const lastDeparture = guests
@@ -94,17 +106,18 @@ export function roomCleaningStatus(row: CockpitRow, listingId: string, jobs: Job
 
   if (lastDeparture && !cleanedSince(lastDeparture)) {
     // A cleaning dated before today that never started was missed, as on the Operations Calendar.
-    const missed = rowJobs.some((j) => {
+    const missedJob = rowJobs.filter((j) => {
       const key = cleaningDateKey(j.scheduledAt)
       return key >= lastDeparture && (j.status === 'missed' || (key < todayKey && NOT_STARTED.has(j.status)))
-    })
+    }).at(-1)
+    const missed = Boolean(missedJob)
     const next = nextCleaning(rowJobs, todayKey)
     const plan = missed
       ? `The cleaning was missed.${next ? ` ${next}` : ''}`
       : next ?? 'No cleaning scheduled.'
-    return { state: 'dirty', detail: `Dirty: the guest left ${formatDay(lastDeparture)}. ${plan}` }
+    return { state: 'dirty', detail: `Dirty: the guest left ${formatDay(lastDeparture)}. ${plan}`, jobId: (nextJob(rowJobs, todayKey) ?? missedJob)?.id }
   }
 
   const last = rowJobs.filter(j => j.status === 'done' && cleaningDateKey(j.scheduledAt) <= todayKey).at(-1)
-  return { state: 'clean', detail: last ? `Clean. Last cleaned ${formatWhen(last.scheduledAt)}${who(last)}.` : 'Clean.' }
+  return { state: 'clean', detail: last ? `Clean. Last cleaned ${formatWhen(last.scheduledAt)}${who(last)}.` : 'Clean.', jobId: (last ?? nextJob(rowJobs, todayKey))?.id }
 }

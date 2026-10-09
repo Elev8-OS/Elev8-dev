@@ -23,6 +23,7 @@ import {
   freeUnits,
   groupsWithAction,
   hasStaysIn,
+  inPlaceExtensionJoins,
   isLiveStay,
   MAX_CUSTOM_DAYS,
   monthSpans,
@@ -30,12 +31,13 @@ import {
   nightlyRateOn,
   nowFraction,
   occupiesNight,
+  periodSummary,
   portfolioOccupancy,
   rangeLength,
   roomTypeRate,
   selectionStay,
+  splitSpan,
   stayVisible,
-  todaySummary,
   typeFreeUnits,
 } from '~/components/cockpit/data/cockpit'
 import { listings } from '~/components/listings/data/listings'
@@ -256,7 +258,7 @@ describe('conflictIds', () => {
   })
 })
 
-describe('todaySummary', () => {
+describe('periodSummary', () => {
   const today = '2026-10-08'
   const listing = clean(multi)
   const [group] = buildCockpitGroups([listing], [
@@ -265,18 +267,34 @@ describe('todaySummary', () => {
     res('stay', listing, '2026-10-06', '2026-10-09'),
     res('gone', listing, '2026-10-01', '2026-10-03'),
     res('blk', listing, today, '2026-10-09', { status: 'blocked' }),
+    res('next-month', listing, '2026-11-03', '2026-11-05'),
   ])
-  const summary = todaySummary([group!], today, new Set(['stay', 'gone']))
+  const marked = new Set(['stay', 'gone', 'next-month'])
 
-  it('sorts today into arrivals, departures and in house; blocks are not guests', () => {
-    expect([...summary.arrivals]).toEqual(['arrive'])
-    expect([...summary.departures]).toEqual(['leave'])
-    expect([...summary.inHouse]).toEqual(['stay'])
+  it('on a one-day period at today, sorts arrivals, departures and staying; blocks are not guests', () => {
+    const s = periodSummary([group!], today, today, today, marked)
+    expect([...s.arrivals]).toEqual(['arrive'])
+    expect([...s.departures]).toEqual(['leave'])
+    expect([...s.staying].sort()).toEqual(['arrive', 'stay'])
   })
 
-  it('counts unassigned and action needed only for stays not over yet', () => {
-    expect([...summary.unassigned].sort()).toEqual(['arrive', 'stay'])
-    expect([...summary.actionNeeded]).toEqual(['stay'])
+  it('follows the period: another month counts its own stays', () => {
+    const october = periodSummary([group!], '2026-10-01', '2026-10-31', today, marked)
+    expect([...october.arrivals].sort()).toEqual(['arrive', 'gone', 'leave', 'stay'])
+    expect(october.staying.has('next-month')).toBe(false)
+    const november = periodSummary([group!], '2026-11-01', '2026-11-30', today, marked)
+    expect([...november.arrivals]).toEqual(['next-month'])
+    expect([...november.staying]).toEqual(['next-month'])
+    expect([...november.actionNeeded]).toEqual(['next-month'])
+    expect(november.departures.size).toBe(1)
+  })
+
+  it('counts no room yet and action needed only for stays in the period and not over yet', () => {
+    const s = periodSummary([group!], '2026-10-01', '2026-10-31', today, marked)
+    expect([...s.unassigned].sort()).toEqual(['arrive', 'stay'])
+    expect([...s.actionNeeded]).toEqual(['stay'])
+    const september = periodSummary([group!], '2026-09-01', '2026-09-30', today, marked)
+    expect(Object.values(september).every(ids => ids.size === 0)).toBe(true)
   })
 })
 
@@ -397,5 +415,57 @@ describe('extensionJoins', () => {
 
   it('never joins a guest who simply arrives as another leaves', () => {
     expect(extensionJoins(row, extensionOf).some(j => j.extensionId === 'other')).toBe(false)
+  })
+})
+
+describe('inPlaceExtensionJoins', () => {
+  const listing = clean(single)
+  const [group] = buildCockpitGroups([listing], [
+    res('direct', listing, '2026-10-11', '2026-10-17'),
+    res('gone', listing, '2026-10-20', '2026-10-25', { status: 'cancelled' }),
+  ])
+  const row = group!.rows[0]!
+  const ext = (id: string, extra: object) => ({ id, extraNights: 2, ...extra })
+
+  it('puts a link inside the bar where a direct stay was extended, both ways', () => {
+    const byStay = new Map([['direct', [
+      ext('later', { direction: 'after', previousCheckOut: '2026-10-15', newCheckOut: '2026-10-17' }),
+      ext('earlier', { direction: 'before', previousCheckIn: '2026-10-13', newCheckIn: '2026-10-11' }),
+      ext('old-record', { previousCheckOut: '2026-10-14' }),
+    ]]])
+    expect(inPlaceExtensionJoins(row, byStay as never)).toEqual([
+      { key: '2026-10-15', stayId: 'direct', extensionId: 'later', extraNights: 2, direction: 'after' },
+      { key: '2026-10-13', stayId: 'direct', extensionId: 'earlier', extraNights: 2, direction: 'before' },
+      { key: '2026-10-14', stayId: 'direct', extensionId: 'old-record', extraNights: 2, direction: 'after' },
+    ])
+  })
+
+  it('skips linked bookings, cancelled extensions or stays, and dates no longer inside the bar', () => {
+    const byStay = new Map([
+      ['direct', [
+        ext('linked', { previousCheckOut: '2026-10-15', linkedReservationId: 'res-x' }),
+        ext('taken-back', { previousCheckOut: '2026-10-15', cancelledAt: '2026-10-09T10:00:00Z' }),
+        ext('outside', { previousCheckOut: '2026-10-17' }),
+      ]],
+      ['gone', [ext('on-cancelled', { previousCheckOut: '2026-10-23' })]],
+    ])
+    expect(inPlaceExtensionJoins(row, byStay as never)).toEqual([])
+  })
+})
+
+describe('splitSpan', () => {
+  const span = { startHalf: 3, endHalf: 15, continuesBefore: true, continuesAfter: false, lane: 1 }
+
+  it('cuts a bar into parts that meet at the cut, each a real end', () => {
+    expect(splitSpan(span, [9])).toEqual([
+      { startHalf: 3, endHalf: 9, continuesBefore: true, continuesAfter: false, lane: 1 },
+      { startHalf: 9, endHalf: 15, continuesBefore: false, continuesAfter: false, lane: 1 },
+    ])
+    expect(splitSpan(span, [11, 7, 7]).map(p => [p.startHalf, p.endHalf])).toEqual([[3, 7], [7, 11], [11, 15]])
+  })
+
+  it('leaves the bar whole when no cut falls inside it', () => {
+    expect(splitSpan(span, [])).toEqual([span])
+    expect(splitSpan(span, [3, 15, 20])).toEqual([span])
   })
 })

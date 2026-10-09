@@ -1,5 +1,5 @@
 import type { Booking, Listing, UnitType } from '~/components/listings/data/listings'
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { ReservationEntry, StayExtension } from '~/components/reservations/data/reservations'
 import { addIsoDays, isoDiffDays } from '~/components/gm/data/gm-dashboard'
 import { stayUnitIds } from '~/components/listings/data/calendar-rooms'
 import { ratePlanNightlyRate } from '~/components/listings/data/listings'
@@ -390,45 +390,50 @@ export function conflictIds(groups: CockpitGroup[]): Set<string> {
   return ids
 }
 
-/* ------------------------------------------------------------ today */
+/* ------------------------------------------------------------ period summary */
 
-export type TodayKey = 'arrivals' | 'departures' | 'inHouse' | 'unassigned' | 'actionNeeded' | 'conflicts'
+export type PeriodKey = 'arrivals' | 'departures' | 'staying' | 'unassigned' | 'actionNeeded' | 'conflicts'
 
 /**
- * Today's work as booking ids, for the strip above the board. Arrivals and
- * departures are live stays starting or ending today; in house is a stay that
- * started before today and ends after it; unassigned is a live stay with no
- * room that has not left yet; action needed is a stay that has not left yet
- * whose Inbox conversation is marked; conflicts are double bookings not over
- * yet. Blocks are not guests, so they count only as conflicts.
+ * The work in the period on the board (`firstKey` to `lastKey`, both
+ * included) as booking ids, for the strip above it. It follows the period:
+ * move a month and the counts move with it. Arrivals and departures are live
+ * stays checking in or out on a day shown; staying is a live stay with a
+ * night shown. The three to act on also need the stay not to be over yet
+ * (`todayKey`), so a past month shows none: no room yet is a live stay with a
+ * night shown and no room; action needed is a stay shown (a night, or its
+ * departure) whose Inbox conversation is marked; double booked is a clash
+ * with a night shown. Blocks are not guests, so they count only as clashes.
  */
-export function todaySummary(groups: CockpitGroup[], todayKey: string, actionNeeded: Set<string>): Record<TodayKey, Set<string>> {
-  const out: Record<TodayKey, Set<string>> = {
+export function periodSummary(groups: CockpitGroup[], firstKey: string, lastKey: string, todayKey: string, actionNeeded: Set<string>): Record<PeriodKey, Set<string>> {
+  const out: Record<PeriodKey, Set<string>> = {
     arrivals: new Set(),
     departures: new Set(),
-    inHouse: new Set(),
+    staying: new Set(),
     unassigned: new Set(),
     actionNeeded: new Set(),
     conflicts: new Set(),
   }
   const conflicts = conflictIds(groups)
+  const inPeriod = (key: string) => key >= firstKey && key <= lastKey
   for (const group of groups) {
     for (const row of group.rows) {
       for (const stay of row.stays) {
-        const upcoming = stay.checkOut > todayKey
-        if (conflicts.has(stay.id) && upcoming)
+        const hasNight = stay.checkIn <= lastKey && stay.checkOut > firstKey
+        const notOver = stay.checkOut > todayKey
+        if (conflicts.has(stay.id) && hasNight && notOver)
           out.conflicts.add(stay.id)
         if (!holdsRoom(stay) || stay.type === 'block')
           continue
-        if (stay.checkIn === todayKey)
+        if (inPeriod(stay.checkIn))
           out.arrivals.add(stay.id)
-        if (stay.checkOut === todayKey)
+        if (inPeriod(stay.checkOut))
           out.departures.add(stay.id)
-        if (stay.checkIn < todayKey && upcoming)
-          out.inHouse.add(stay.id)
-        if (row.kind === 'unassigned' && upcoming)
+        if (hasNight)
+          out.staying.add(stay.id)
+        if (row.kind === 'unassigned' && hasNight && notOver)
           out.unassigned.add(stay.id)
-        if (actionNeeded.has(stay.id) && stay.checkOut >= todayKey)
+        if (actionNeeded.has(stay.id) && (hasNight || inPeriod(stay.checkOut)) && stay.checkOut >= todayKey)
           out.actionNeeded.add(stay.id)
       }
     }
@@ -568,6 +573,70 @@ export function extensionJoins(row: CockpitRow, extensionOf: Map<string, string>
       joins.push({ key: ext.checkIn, originalId: before.id, extensionId: ext.id })
     else if (after)
       joins.push({ key: ext.checkOut, originalId: after.id, extensionId: ext.id })
+  }
+  return joins
+}
+
+/** A bar's place on the board in half-day columns (`stayBarSpan`), `endHalf` not included. */
+export interface BarSpan {
+  startHalf: number
+  endHalf: number
+  continuesBefore: boolean
+  continuesAfter: boolean
+}
+
+/**
+ * One bar cut into parts at the given half-day lines (midday of a date), for
+ * a direct stay extended in place: each part is drawn as its own bar, like an
+ * OTA stay and its linked booking. A cut is a real end, so the parts meet
+ * slant to slant. Cuts outside the bar are ignored.
+ */
+export function splitSpan<T extends BarSpan>(span: T, cuts: number[]): T[] {
+  const inside = [...new Set(cuts)].filter(h => h > span.startHalf && h < span.endHalf).sort((a, b) => a - b)
+  if (!inside.length)
+    return [span]
+  const edges = [span.startHalf, ...inside, span.endHalf]
+  return edges.slice(0, -1).map((start, i) => ({
+    ...span,
+    startHalf: start,
+    endHalf: edges[i + 1]!,
+    continuesBefore: i === 0 ? span.continuesBefore : false,
+    continuesAfter: i === edges.length - 2 ? span.continuesAfter : false,
+  }))
+}
+
+/** An extension made in place (a direct stay): its own bar, with the date the added nights begin or end. */
+export interface InPlaceJoin {
+  /** The old check-out (nights added after) or the old check-in (early arrival). */
+  key: string
+  stayId: string
+  extensionId: string
+  extraNights: number
+  direction: 'after' | 'before'
+}
+
+type InPlaceExtension = Pick<StayExtension, 'id' | 'direction' | 'previousCheckOut' | 'previousCheckIn' | 'extraNights' | 'linkedReservationId' | 'cancelledAt'>
+
+/**
+ * A direct stay extended in place keeps one reservation and one bar, so there
+ * is no second bar to link to. The join goes inside the bar, where the old
+ * check-out (or check-in) was, for each extension not cancelled and not on a
+ * linked booking (those get `extensionJoins`). Only where the date is still
+ * inside the bar, so a later change to the dates never draws it outside.
+ */
+export function inPlaceExtensionJoins(row: CockpitRow, extensionsByStay: Map<string, InPlaceExtension[]>): InPlaceJoin[] {
+  const joins: InPlaceJoin[] = []
+  for (const stay of row.stays) {
+    if (stay.status === 'cancelled')
+      continue
+    for (const ext of extensionsByStay.get(stay.id) ?? []) {
+      if (ext.linkedReservationId || ext.cancelledAt)
+        continue
+      const direction = ext.direction ?? 'after'
+      const key = direction === 'before' ? ext.previousCheckIn : ext.previousCheckOut
+      if (key && stay.checkIn < key && key < stay.checkOut)
+        joins.push({ key, stayId: stay.id, extensionId: ext.id, extraNights: ext.extraNights, direction })
+    }
   }
   return joins
 }

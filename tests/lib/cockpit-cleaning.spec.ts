@@ -15,7 +15,7 @@ function row(stays: Booking[], extra: Partial<CockpitRow> = {}): CockpitRow {
 }
 
 function job(scheduledAt: string, status: CleaningJob['status'], extra: Partial<CleaningJob> = {}) {
-  return { listingId: 'lst-1', unitId: null, scheduledAt, status, cleanerNames: ['Made Surya'], source: 'check_out' as const, ...extra }
+  return { id: `job-${scheduledAt}-${status}`, listingId: 'lst-1', unitId: null, scheduledAt, status, cleanerNames: ['Made Surya'], source: 'check_out' as const, ...extra }
 }
 
 describe('roomCleaningStatus', () => {
@@ -56,5 +56,22 @@ describe('roomCleaningStatus', () => {
 
   it('gives the unassigned row no state', () => {
     expect(roomCleaningStatus(row([], { id: 'lst-1:unassigned', kind: 'unassigned' }), 'lst-1', [], TODAY)).toBeNull()
+  })
+
+  it('names the cleaning a click opens', () => {
+    const ongoing = job(`${TODAY}T10:00:00+08:00`, 'in_progress')
+    expect(roomCleaningStatus(row([]), 'lst-1', [ongoing], TODAY)?.jobId).toBe(ongoing.id)
+
+    // Dirty: the next cleaning, else the missed one.
+    const left = row([stay('2026-10-01', '2026-10-05')])
+    const missed = job('2026-10-05T11:00:00+08:00', 'scheduled')
+    const next = job('2026-10-10T11:00:00+08:00', 'scheduled')
+    expect(roomCleaningStatus(left, 'lst-1', [missed, next], TODAY)?.jobId).toBe(next.id)
+    expect(roomCleaningStatus(left, 'lst-1', [missed], TODAY)?.jobId).toBe(missed.id)
+
+    // Clean: the last one done; none at all, nothing to open.
+    const done = job('2026-10-05T11:00:00+08:00', 'done')
+    expect(roomCleaningStatus(left, 'lst-1', [done, next], TODAY)?.jobId).toBe(done.id)
+    expect(roomCleaningStatus(row([]), 'lst-1', [], TODAY)?.jobId).toBeUndefined()
   })
 })

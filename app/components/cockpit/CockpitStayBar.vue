@@ -17,7 +17,10 @@ import { reservationStatusLabels } from '~/components/reservations/data/reservat
  * stay that has already left is drawn lighter. A cancelled stay is grey and
  * hatched, tucked under the live bars by the board. The booking channel's logo
  * sits on a small round chip before the name, so it reads on any status
- * colour; times and guests are in the hover card.
+ * colour. After the name: the check-in time, the guest count and a bag when
+ * the stay has upsell orders. They give way as the bar narrows (container
+ * queries): the details go first, the upsell bag last, the name never.
+ * Check-out time and the guest breakdown are in the hover card.
  *
  * The root carries the grid placement; the bar is one button, and the Action
  * needed marker is a second button beside it (a button cannot sit inside
@@ -34,6 +37,10 @@ const props = defineProps<{
   past?: boolean
   /** The reservation's Inbox conversation is marked Action needed. */
   actionNeeded?: boolean
+  /** `HH:mm`, the reservation's check-in time or the listing default. */
+  checkInTime?: string
+  /** Upsell orders on the stay, declined ones left out. */
+  upsells?: number
   /** Double booked: another live stay holds this room on a shared night. */
   conflict?: boolean
   /** The today strip focuses other stays; this one fades back. */
@@ -66,10 +73,20 @@ function formatShort(dateKey: string) {
   return new Date(y!, m! - 1, d!).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
+const guests = computed(() => (props.booking.adults ?? 0) + (props.booking.children ?? 0) + (props.booking.infants ?? 0))
+const guestsLabel = computed(() => `${guests.value} ${guests.value === 1 ? 'guest' : 'guests'}`)
+const upsellsLabel = computed(() => `${props.upsells} upsell ${props.upsells === 1 ? 'order' : 'orders'}`)
+
 const label = computed(() => {
   const flags = `${props.actionNeeded ? ', action needed' : ''}${props.conflict ? ', double booked' : ''}`
-  const channel = isBlock.value ? '' : `, ${props.booking.source}`
-  return `${title.value}${channel}, ${formatShort(props.booking.checkIn)} to ${formatShort(props.booking.checkOut)}, ${reservationStatusLabels[status.value]}${flags}`
+  if (isBlock.value)
+    return `${title.value}, ${formatShort(props.booking.checkIn)} to ${formatShort(props.booking.checkOut)}, ${reservationStatusLabels[status.value]}${flags}`
+  const details = [
+    props.checkInTime && `check-in ${props.checkInTime}`,
+    guests.value > 0 && guestsLabel.value,
+    props.upsells && upsellsLabel.value,
+  ].filter(Boolean).map(d => `, ${d}`).join('')
+  return `${title.value}, ${props.booking.source}, ${formatShort(props.booking.checkIn)} to ${formatShort(props.booking.checkOut)}${details}, ${reservationStatusLabels[status.value]}${flags}`
 })
 
 /** Slanted where the stay really starts or ends, square where it runs off the view. */
@@ -114,7 +131,7 @@ function onDragStart(event: DragEvent) {
     <ListingStayHoverCard v-model:open="hoverOpen" :booking="booking" :listing="listing">
       <button
         type="button"
-        class="flex size-full min-w-0 items-center gap-1.5 text-left text-xs font-medium transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+        class="@container flex size-full min-w-0 items-center gap-1.5 text-left text-xs font-medium transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
         :class="[
           isCancelled ? 'bg-muted-foreground/85 text-background' : stayBarClasses[status],
           // The text clears the slant; a square end needs only a little room.
@@ -145,7 +162,33 @@ function onDragStart(event: DragEvent) {
         >
           <Icon :name="otaIcon(booking.source)" class="size-3" aria-hidden="true" />
         </span>
-        <span class="truncate">{{ title }}</span>
+        <span class="min-w-0 truncate">{{ title }}</span>
+        <template v-if="!isBlock">
+          <span
+            v-if="checkInTime"
+            class="hidden shrink-0 items-center gap-0.5 font-normal tabular-nums opacity-80 @min-[14rem]:inline-flex"
+            :title="`Check-in ${checkInTime}`"
+            data-testid="cockpit-bar-checkin"
+          >
+            <Icon name="lucide:clock" class="size-3" aria-hidden="true" />{{ checkInTime }}
+          </span>
+          <span
+            v-if="guests > 0"
+            class="hidden shrink-0 items-center gap-0.5 font-normal tabular-nums opacity-80 @min-[10rem]:inline-flex"
+            :title="guestsLabel"
+            data-testid="cockpit-bar-guests"
+          >
+            <Icon name="lucide:users" class="size-3" aria-hidden="true" />{{ guests }}
+          </span>
+          <span
+            v-if="upsells"
+            class="hidden size-5 shrink-0 items-center justify-center rounded-full bg-background text-foreground @min-[6rem]:inline-flex"
+            :title="upsellsLabel"
+            data-testid="cockpit-bar-upsells"
+          >
+            <Icon name="lucide:shopping-bag" class="size-3" aria-hidden="true" />
+          </span>
+        </template>
       </button>
     </ListingStayHoverCard>
 

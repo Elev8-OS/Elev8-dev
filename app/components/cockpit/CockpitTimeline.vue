@@ -2,16 +2,20 @@
 import type { CockpitCreateRequest, CockpitDay, CockpitGroup, CockpitRoomType, CockpitRow, CockpitStayFilters } from '~/components/cockpit/data/cockpit'
 import type { RoomCleaningStatus } from '~/components/cockpit/data/cockpit-cleaning'
 import type { Booking, Listing } from '~/components/listings/data/listings'
+import type { Task } from '~/components/tasks/data/schema'
+import { useEventListener } from '@vueuse/core'
 import CockpitBoardTools from '~/components/cockpit/CockpitBoardTools.vue'
+import CockpitListingScore from '~/components/cockpit/CockpitListingScore.vue'
+import CockpitRoomTasks from '~/components/cockpit/CockpitRoomTasks.vue'
 import CockpitStayBar from '~/components/cockpit/CockpitStayBar.vue'
-import { arrivalsOn, DEFAULT_STAY_FILTERS, extensionJoins, formatMoney, freeUnits, isRowFree, listingCurrency, nightlyRateOn, nowFraction, portfolioOccupancy, selectionStay, stayVisible, typeFreeUnits } from '~/components/cockpit/data/cockpit'
+import { arrivalsOn, DEFAULT_STAY_FILTERS, extensionJoins, formatMoney, freeUnits, inPlaceExtensionJoins, isRowFree, listingCurrency, nightlyRateOn, nowFraction, portfolioOccupancy, selectionStay, splitSpan, stayVisible, typeFreeUnits } from '~/components/cockpit/data/cockpit'
 import { ROOM_CLEANING_ICON, roomCleaningMeta } from '~/components/cockpit/data/cockpit-cleaning'
+import { describeOverrides, overridesOn, sellableUnits } from '~/components/cockpit/data/cockpit-overrides'
 import { canAssignRoom } from '~/components/listings/data/calendar-rooms'
-import { listingSetupProgress } from '~/components/listings/data/listing-setup-progress'
 import { bookingReservationStatus } from '~/components/operations-calendar/data/calendar-stays'
 import { assignStayLanes, HALF_DAYS_PER_DAY, stayBarSpan } from '~/components/operations-calendar/data/operations-calendar'
-import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
+import { useCockpitOverrides } from '~/composables/useCockpitOverrides'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 /**
@@ -29,12 +33,16 @@ import { useReservationsModule } from '~/composables/useReservationsModule'
 const props = defineProps<{
   groups: CockpitGroup[]
   days: CockpitDay[]
-  /** Open task count per row id. */
-  openTasks: Map<string, number>
+  /** Open tasks per row id. A row missing from the map has none. */
+  openTasks: Map<string, Task[]>
+  /** Local `YYYY-MM-DD`, for overdue tasks. */
+  todayKey: string
   /** Each room's housekeeping state today, by row id (`roomCleaningStatus`). */
   roomCleaning?: Map<string, RoomCleaningStatus>
   /** Reservation ids whose Inbox conversation is marked Action needed. */
   actionNeeded?: Set<string>
+  /** Upsell orders (not declined) per reservation id. */
+  upsellCounts?: Map<string, number>
   /** Double-booked stay ids (`conflictIds`). */
   conflicts?: Set<string>
   /** The today strip's focus: stays outside it fade back. Null = no focus. */
@@ -50,7 +58,9 @@ const emit = defineEmits<{
   create: [request: CockpitCreateRequest]
   /** A stay dropped on a room of its listing, or on "Not assigned to a room" (`unitId` null). */
   assign: [bookingId: string, unitId: string | null]
-  newReservation: []
+  openTask: [task: Task]
+  /** The room's cleaning icon: the job its state rests on, or none (schedule one). */
+  openCleaning: [target: { listingId: string, unitId: string | null, jobId?: string }]
 }>()
 
 const search = defineModel<string>('search', { default: '' })
@@ -59,7 +69,18 @@ const filters = defineModel<CockpitStayFilters>('filters', { default: () => ({ .
 /** Folded listings, by id. The page remembers them. */
 const collapsedIds = defineModel<string[]>('collapsed', { default: () => [] })
 
-const { reservations } = useReservationsModule()
+const { reservations, getCheckInTime, getListingCheckInTime } = useReservationsModule()
+
+/** The arrival time a bar shows: the reservation's own, else the listing's default. */
+function checkInTimeOf(booking: Booking, listing: Listing) {
+  const r = reservations.value.find(x => x.id === booking.id)
+  return r ? getCheckInTime(r) : getListingCheckInTime(listing.id)
+}
+
+/** A stay's extension records, for the in-place link icons (`inPlaceExtensionJoins`). */
+const extensionsByStay = computed(() => new Map(reservations.value
+  .filter(r => r.extensions?.length)
+  .map(r => [r.id, r.extensions!])))
 
 /** Extension booking id to the id of the stay it extends (`extensionOf`). */
 const extensionOf = computed(() => new Map(reservations.value
@@ -127,6 +148,47 @@ const nowLeft = computed(() => {
 })
 const nowLabel = computed(() => now.value.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
 
+/**
+ * The time pill hangs half below the sticky header, so the listing column
+ * cannot cover that half when the board scrolls sideways. Hide the pill once
+ * its left edge slides under the column.
+ */
+const headerCorner = useTemplateRef<HTMLElement>('headerCorner')
+const nowPill = useTemplateRef<HTMLElement>('nowPill')
+const nowPillHidden = ref(false)
+
+function updateNowPill() {
+  if (!headerCorner.value || !nowPill.value)
+    return
+  nowPillHidden.value = nowPill.value.getBoundingClientRect().left < headerCorner.value.getBoundingClientRect().right
+}
+
+watch([nowLeft, () => props.days.length], () => nextTick(updateNowPill), { immediate: true })
+
+/**
+ * Scroll the board sideways so today's column is the first one after the
+ * listing column (as far as the board can scroll). The page calls it from
+ * Today; the board also does it once when it opens. No-op when today is not
+ * in the period.
+ */
+const scroller = useTemplateRef<HTMLElement>('scroller')
+
+function scrollToToday(smooth = true) {
+  const box = scroller.value
+  const corner = headerCorner.value
+  const cell = box?.querySelector<HTMLElement>('[data-today]')
+  if (!box || !corner || !cell)
+    return
+  const left = box.scrollLeft + cell.getBoundingClientRect().left - corner.getBoundingClientRect().right
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  box.scrollTo({ left: Math.max(0, left), behavior: smooth && !reduced ? 'smooth' : 'auto' })
+}
+
+onMounted(() => nextTick(() => scrollToToday(false)))
+
+defineExpose({ scrollToToday })
+useEventListener('resize', updateNowPill)
+
 /* ------------------------------------------------------------ bars */
 
 interface PlacedBar {
@@ -164,6 +226,21 @@ function layoutRow(row: CockpitRow) {
   }
 }
 
+/**
+ * The bars drawn for one placed stay: a direct stay extended in place is cut
+ * where the added nights begin (or, early arrival, end), so the stay and its
+ * extension read as two bars with the link icon between them, like an OTA
+ * stay and its linked booking. Lanes, keyboard moves, marks and links still
+ * use the whole stay.
+ */
+function barSegments(row: CockpitRow, bar: PlacedBar): PlacedBar[] {
+  const cuts = inPlaceExtensionJoins({ ...row, stays: [bar.booking] }, extensionsByStay.value)
+    .map(join => dayKeys.value.indexOf(join.key))
+    .filter(day => day !== -1)
+    .map(day => day * HALF_DAYS_PER_DAY + 1)
+  return splitSpan(bar, cuts)
+}
+
 function barStyle(bar: PlacedBar) {
   return { gridColumn: `${bar.startHalf + 2} / ${bar.endHalf + 2}`, gridRow: `${bar.lane + 1}`, alignSelf: 'center' }
 }
@@ -199,34 +276,61 @@ function todayMarks(bars: PlacedBar[]) {
  * of the shared date, on the stay's lane. Only when both bars are drawn on
  * this row and the date is in view. Opens the extension.
  */
+function formatDayShort(key: string) {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y!, m! - 1, d!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+/**
+ * Link icons where a stay and its added nights meet: between two bars for a
+ * linked booking (an OTA stay), inside the one bar for a direct stay extended
+ * in place. A click opens the added nights' reservation.
+ */
 function extensionLinks(row: CockpitRow, bars: PlacedBar[]) {
   const byId = new Map(bars.map(b => [b.booking.id, b]))
-  return extensionJoins(row, extensionOf.value).flatMap((join) => {
+  // Midday of the shared date is the boundary after half-column `2 * day`; the icon spans the halves either side of it.
+  const place = (key: string, lane: number) => {
+    const day = dayKeys.value.indexOf(key)
+    if (day === -1)
+      return null
+    const boundary = day * HALF_DAYS_PER_DAY + 1
+    return { gridColumn: `${boundary + 1} / span 2`, gridRow: `${lane + 1}`, justifySelf: 'center', alignSelf: 'center' }
+  }
+  const linked = extensionJoins(row, extensionOf.value).flatMap((join) => {
     const original = byId.get(join.originalId)
     const extension = byId.get(join.extensionId)
-    const day = dayKeys.value.indexOf(join.key)
-    if (!original || !extension || day === -1)
+    const style = original && extension ? place(join.key, original.lane) : null
+    if (!original || !extension || !style)
       return []
-    // Midday of the shared date is the boundary after half-column `2 * day`; the icon spans the halves either side of it.
-    const boundary = day * HALF_DAYS_PER_DAY + 1
     return [{
       key: `${join.originalId}-${join.extensionId}`,
       extension: extension.booking,
       label: `${extension.booking.guestName}: extension of the stay. Open the added nights.`,
-      style: { gridColumn: `${boundary + 1} / span 2`, gridRow: `${original.lane + 1}`, justifySelf: 'center', alignSelf: 'center' },
+      style,
     }]
   })
+  const inPlace = inPlaceExtensionJoins(row, extensionsByStay.value).flatMap((join) => {
+    const bar = byId.get(join.stayId)
+    const style = bar ? place(join.key, bar.lane) : null
+    if (!bar || !style)
+      return []
+    const nights = `${join.extraNights} ${join.extraNights === 1 ? 'night' : 'nights'}`
+    const what = join.direction === 'before' ? `arrives earlier, ${nights} added before ${formatDayShort(join.key)}` : `extended, ${nights} added from ${formatDayShort(join.key)}`
+    return [{
+      key: `${join.stayId}-${join.extensionId}`,
+      extension: bar.booking,
+      label: `${bar.booking.guestName}: ${what}. Open the stay.`,
+      style,
+    }]
+  })
+  return [...linked, ...inPlace]
 }
 
 /* ------------------------------------------------------------ listing column */
 
 function listingTitle(listing: Listing) {
   const channels = listing.otaConnected.length ? `Connected to ${listing.otaConnected.join(', ')}` : 'No channel connected'
-  return `Open listing. ${channels}. Setup ${listingSetupProgress(listing).percent}% complete.`
-}
-
-function tasksLabel(count: number) {
-  return `${count} open ${count === 1 ? 'task' : 'tasks'}`
+  return `Open listing. ${channels}.`
 }
 
 /** The unit row of a single-unit listing has no room name of its own. */
@@ -236,18 +340,72 @@ function unitRowName(group: CockpitGroup, row: CockpitRow) {
   return group.listing.room?.trim() || 'Whole property'
 }
 
-function freeLabel(group: CockpitGroup, key: string) {
+/* ------------------------------------------------------------ date overrides */
+
+const { overrides } = useCockpitOverrides()
+
+/** Overrides on a night, for a room type or (null) a single-unit listing. */
+function dayOverrides(group: CockpitGroup, typeId: string | null, key: string) {
+  return overridesOn(overrides.value, group.listing.id, typeId, key)
+}
+
+/** " Overrides: Min Stay 3 nights, Stop Sell." for a tooltip, or nothing. */
+function overrideNote(group: CockpitGroup, typeId: string | null, key: string, currency: string) {
+  const parts = describeOverrides(dayOverrides(group, typeId, key), currency)
+  return parts.length ? ` Overrides: ${parts.join(', ')}.` : ''
+}
+
+/** A restriction other than the rate is overridden that night: the band shows a marker. */
+function hasRestriction(group: CockpitGroup, typeId: string | null, key: string) {
+  const { rate: _rate, ...rest } = dayOverrides(group, typeId, key)
+  return Object.keys(rest).length > 0
+}
+
+/** The night's rate: an override, else the listing's (seasonal) rate. */
+function listingRateOn(group: CockpitGroup, key: string) {
+  return dayOverrides(group, null, key).rate ?? nightlyRateOn(group.listing, key)
+}
+
+function typeRateOn(group: CockpitGroup, type: CockpitRoomType, key: string) {
+  return dayOverrides(group, type.id, key).rate ?? type.rate
+}
+
+/** A room type's rooms open to sell that night: free rooms, less what its overrides close. */
+function typeSellable(group: CockpitGroup, type: CockpitRoomType, key: string) {
+  return sellableUnits(typeFreeUnits(group, type.id, key), type.unitCount, dayOverrides(group, type.id, key))
+}
+
+/**
+ * The listing header's count: units open to sell. A single-unit listing reads
+ * its own overrides; a multi-unit one takes off what each room type's
+ * overrides close.
+ */
+function listingSellable(group: CockpitGroup, key: string) {
   const free = freeUnits(group, key)
-  const units = `${free} of ${group.unitCount} ${group.unitCount === 1 ? 'unit' : 'units'} free`
+  if (!group.types.length)
+    return sellableUnits(free, group.unitCount, dayOverrides(group, null, key))
+  const closed = group.types.reduce((sum, type) => sum + typeFreeUnits(group, type.id, key) - typeSellable(group, type, key), 0)
+  return Math.max(0, free - closed)
+}
+
+/** "2 of 3 units free" or, when overrides close some, "1 of 3 units open to sell (2 free)". */
+function countPhrase(open: number, free: number, total: number, noun: [string, string]) {
+  const word = total === 1 ? noun[0] : noun[1]
+  return open === free ? `${free} of ${total} ${word} free` : `${open} of ${total} ${word} open to sell (${free} free)`
+}
+
+function freeLabel(group: CockpitGroup, key: string) {
+  const units = countPhrase(listingSellable(group, key), freeUnits(group, key), group.unitCount, ['unit', 'units'])
   // A multi-unit listing's rates are per room type, on the type rows.
   if (group.types.length)
     return units
-  return `${units}, ${formatMoney(nightlyRateOn(group.listing, key), listingCurrency(group.listing))} a night`
+  const currency = listingCurrency(group.listing)
+  return `${units}, ${formatMoney(listingRateOn(group, key), currency)} a night.${overrideNote(group, null, key, currency)}`
 }
 
 function typeFreeLabel(group: CockpitGroup, type: CockpitRoomType, key: string) {
-  const free = typeFreeUnits(group, type.id, key)
-  return `${type.name}: ${free} of ${type.unitCount} ${type.unitCount === 1 ? 'room' : 'rooms'} free, ${formatMoney(type.rate, type.currency)} a night`
+  const units = countPhrase(typeSellable(group, type, key), typeFreeUnits(group, type.id, key), type.unitCount, ['room', 'rooms'])
+  return `${type.name}: ${units}, ${formatMoney(typeRateOn(group, type, key), type.currency)} a night.${overrideNote(group, type.id, key, type.currency)}`
 }
 
 /** `USD 185`, whole amounts, so it fits a day column. Cents are in the tooltip. */
@@ -257,7 +415,7 @@ function pill(currency: string, amount: number) {
 
 /** The pill: `USD 185`, whole amounts, so it fits a day column. Cents are in the tooltip. */
 function ratePill(group: CockpitGroup, key: string) {
-  return pill(listingCurrency(group.listing), nightlyRateOn(group.listing, key))
+  return pill(listingCurrency(group.listing), listingRateOn(group, key))
 }
 
 interface VisibleRow extends ReturnType<typeof layoutRow> {
@@ -462,15 +620,14 @@ function onKeydown(event: KeyboardEvent) {
         :can-fold="groups.length > 0"
         :all-collapsed="allCollapsed"
         @toggle-all="toggleAll"
-        @new-reservation="emit('newReservation')"
       />
     </div>
 
-    <div class="min-h-0 flex-1 overflow-auto rounded-lg border bg-card" data-testid="cockpit-timeline" @keydown="onKeydown">
+    <div ref="scroller" class="min-h-0 flex-1 overflow-auto rounded-lg border bg-card" data-testid="cockpit-timeline" @keydown="onKeydown" @scroll.passive="updateNowPill">
       <div class="relative" :style="{ minWidth: `calc(var(--cockpit-left) + ${days.length * 7}rem)` }">
         <!-- Header: tools on the left, the dates across -->
         <div class="sticky top-0 z-30 grid border-b bg-card" :style="{ gridTemplateColumns: gridColumns }">
-          <div class="sticky left-0 z-10 flex flex-col justify-between gap-2 border-r bg-card p-2">
+          <div ref="headerCorner" class="sticky left-0 z-10 flex flex-col justify-between gap-2 border-r bg-card p-2">
             <div class="hidden md:block">
               <CockpitBoardTools
                 v-model:search="search"
@@ -479,7 +636,6 @@ function onKeydown(event: KeyboardEvent) {
                 :can-fold="groups.length > 0"
                 :all-collapsed="allCollapsed"
                 @toggle-all="toggleAll"
-                @new-reservation="emit('newReservation')"
               />
             </div>
             <span class="px-1 text-sm font-semibold">All listings</span>
@@ -516,9 +672,12 @@ function onKeydown(event: KeyboardEvent) {
           <!-- Now: where the line enters the board, with the time -->
           <div
             v-if="nowLeft"
+            ref="nowPill"
             class="pointer-events-none absolute bottom-0 z-[1] -translate-x-1/2 translate-y-1/2"
+            :class="nowPillHidden && 'invisible'"
             :style="{ left: nowLeft }"
             aria-hidden="true"
+            data-testid="cockpit-now-pill"
           >
             <span class="block rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none font-semibold tabular-nums text-primary-foreground shadow-sm">{{ nowLabel }}</span>
           </div>
@@ -547,6 +706,7 @@ function onKeydown(event: KeyboardEvent) {
                 <span class="truncate text-sm font-bold">{{ group.listing.name }}</span>
                 <span class="hidden truncate text-xs text-muted-foreground md:block">{{ group.unitCount > 1 ? `${group.unitCount} rooms, ` : '' }}{{ group.listing.location }}</span>
               </NuxtLink>
+              <CockpitListingScore :listing="group.listing" />
               <Button
                 variant="ghost"
                 size="icon"
@@ -568,8 +728,23 @@ function onKeydown(event: KeyboardEvent) {
               :aria-label="`${day.weekday} ${Number(day.day)}: ${freeLabel(group, day.key)}`"
               data-testid="cockpit-band"
             >
-              <span class="text-xs leading-none tabular-nums" :class="freeUnits(group, day.key) === 0 ? 'font-semibold text-destructive' : 'text-foreground'">{{ freeUnits(group, day.key) }}</span>
-              <span v-if="!group.types.length" class="rounded-full border bg-card px-2 py-0.5 text-[11px] leading-none font-medium tabular-nums" data-testid="cockpit-rate-pill">{{ ratePill(group, day.key) }}</span>
+              <span class="flex items-center gap-0.5">
+                <span
+                  class="text-xs leading-none tabular-nums"
+                  :class="[
+                    listingSellable(group, day.key) === 0 ? 'font-semibold text-destructive' : 'text-foreground',
+                    listingSellable(group, day.key) < freeUnits(group, day.key) && 'underline decoration-primary decoration-2 underline-offset-2',
+                  ]"
+                  data-testid="cockpit-free"
+                >{{ listingSellable(group, day.key) }}</span>
+                <Icon v-if="!group.types.length && hasRestriction(group, null, day.key)" name="lucide:sliders-horizontal" class="size-3 text-primary" data-testid="cockpit-override-mark" />
+              </span>
+              <span
+                v-if="!group.types.length"
+                class="rounded-full border bg-card px-2 py-0.5 text-[11px] leading-none font-medium tabular-nums"
+                :class="dayOverrides(group, null, day.key).rate !== undefined && 'border-primary text-primary'"
+                data-testid="cockpit-rate-pill"
+              >{{ ratePill(group, day.key) }}</span>
             </div>
           </div>
 
@@ -602,8 +777,22 @@ function onKeydown(event: KeyboardEvent) {
                 :aria-label="`${day.weekday} ${Number(day.day)}: ${typeFreeLabel(group, section.type, day.key)}`"
                 data-testid="cockpit-type-band"
               >
-                <span class="text-xs leading-none tabular-nums" :class="typeFreeUnits(group, section.type.id, day.key) === 0 ? 'font-semibold text-destructive' : 'text-foreground'">{{ typeFreeUnits(group, section.type.id, day.key) }}</span>
-                <span class="rounded-full border bg-card px-2 py-0.5 text-[11px] leading-none font-medium tabular-nums" data-testid="cockpit-rate-pill">{{ pill(section.type.currency, section.type.rate) }}</span>
+                <span class="flex items-center gap-0.5">
+                  <span
+                    class="text-xs leading-none tabular-nums"
+                    :class="[
+                      typeSellable(group, section.type, day.key) === 0 ? 'font-semibold text-destructive' : 'text-foreground',
+                      typeSellable(group, section.type, day.key) < typeFreeUnits(group, section.type.id, day.key) && 'underline decoration-primary decoration-2 underline-offset-2',
+                    ]"
+                    data-testid="cockpit-type-free"
+                  >{{ typeSellable(group, section.type, day.key) }}</span>
+                  <Icon v-if="hasRestriction(group, section.type.id, day.key)" name="lucide:sliders-horizontal" class="size-3 text-primary" data-testid="cockpit-override-mark" />
+                </span>
+                <span
+                  class="rounded-full border bg-card px-2 py-0.5 text-[11px] leading-none font-medium tabular-nums"
+                  :class="dayOverrides(group, section.type.id, day.key).rate !== undefined && 'border-primary text-primary'"
+                  data-testid="cockpit-rate-pill"
+                >{{ pill(section.type.currency, typeRateOn(group, section.type, day.key)) }}</span>
               </div>
             </div>
 
@@ -632,27 +821,26 @@ function onKeydown(event: KeyboardEvent) {
                   <span class="truncate text-sm">{{ unitRowName(group, row) }}</span>
                 </div>
                 <div class="ml-auto flex shrink-0 items-center gap-1.5">
-                  <!-- Housekeeping today: icon only, the sentence in the tooltip -->
-                  <span
+                  <!-- Housekeeping today: icon only, the sentence in the tooltip. A click opens the cleaning. -->
+                  <button
                     v-if="roomCleaning?.get(row.id)"
-                    class="flex size-5 items-center justify-center rounded-full border"
+                    type="button"
+                    class="flex size-5 items-center justify-center rounded-full border transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none motion-reduce:hover:scale-100"
                     :class="roomCleaningMeta[roomCleaning.get(row.id)!.state].classes"
-                    role="img"
                     :title="roomCleaning.get(row.id)!.detail"
-                    :aria-label="roomCleaning.get(row.id)!.detail"
+                    :aria-label="`${roomCleaning.get(row.id)!.detail} ${roomCleaning.get(row.id)!.jobId ? 'Open the cleaning.' : 'Schedule a cleaning.'}`"
                     data-testid="cockpit-room-cleaning"
+                    @click="emit('openCleaning', { listingId: group.listing.id, unitId: row.unitId, jobId: roomCleaning.get(row.id)!.jobId })"
                   >
                     <Icon :name="ROOM_CLEANING_ICON" class="size-3" />
-                  </span>
-                  <Badge
-                    v-if="(openTasks.get(row.id) ?? 0) > 0"
-                    variant="destructive"
-                    class="h-5 min-w-5 justify-center rounded-full px-1 text-[10px] tabular-nums"
-                    :title="tasksLabel(openTasks.get(row.id)!)"
-                    :aria-label="tasksLabel(openTasks.get(row.id)!)"
-                  >
-                    {{ openTasks.get(row.id) }}
-                  </Badge>
+                  </button>
+                  <CockpitRoomTasks
+                    v-if="row.kind !== 'unassigned'"
+                    :tasks="openTasks.get(row.id) ?? []"
+                    :room-name="group.listing.unitType === 'multi' ? `${group.listing.name}, ${unitRowName(group, row)}` : group.listing.name"
+                    :today-key="todayKey ?? ''"
+                    @open-task="emit('openTask', $event)"
+                  />
                 </div>
               </div>
 
@@ -693,6 +881,8 @@ function onKeydown(event: KeyboardEvent) {
                 :continues-after="bar.continuesAfter"
                 :grid-style="cancelledStyle(bar, laneCount)"
                 :action-needed="actionNeeded?.has(bar.booking.id)"
+                :check-in-time="checkInTimeOf(bar.booking, group.listing)"
+                :upsells="upsellCounts?.get(bar.booking.id) ?? 0"
                 :dimmed="!!focusIds && !focusIds.has(bar.booking.id)"
                 :row-index="rowIndex"
                 :start-half="bar.startHalf"
@@ -701,20 +891,22 @@ function onKeydown(event: KeyboardEvent) {
               />
 
               <CockpitStayBar
-                v-for="bar in bars"
-                :key="`${bar.booking.id}-${row.id}`"
+                v-for="{ bar, part, partIndex } in bars.flatMap(b => barSegments(row, b).map((part, partIndex) => ({ bar: b, part, partIndex })))"
+                :key="`${bar.booking.id}-${row.id}-${partIndex}`"
                 :booking="bar.booking"
                 :listing="group.listing"
-                :continues-before="bar.continuesBefore"
-                :continues-after="bar.continuesAfter"
-                :grid-style="barStyle(bar)"
+                :continues-before="part.continuesBefore"
+                :continues-after="part.continuesAfter"
+                :grid-style="barStyle(part)"
                 :past="!!todayKey && bar.booking.checkOut <= todayKey"
-                :action-needed="actionNeeded?.has(bar.booking.id)"
+                :action-needed="partIndex === 0 && actionNeeded?.has(bar.booking.id)"
+                :check-in-time="checkInTimeOf(bar.booking, group.listing)"
+                :upsells="upsellCounts?.get(bar.booking.id) ?? 0"
                 :conflict="conflicts?.has(bar.booking.id)"
                 :dimmed="!!focusIds && !focusIds.has(bar.booking.id)"
                 :draggable="canDrag(group, bar.booking)"
                 :row-index="rowIndex"
-                :start-half="bar.startHalf"
+                :start-half="part.startHalf"
                 @open="emit('open', $event, group.listing)"
                 @open-inbox="emit('openInbox', $event)"
                 @drag-start="dragging = { bookingId: $event.id, listingId: group.listing.id }"
@@ -732,7 +924,7 @@ function onKeydown(event: KeyboardEvent) {
                 data-testid="cockpit-today-mark"
               />
 
-              <!-- Extension: a link in the gap where the stay and its added nights meet -->
+              <!-- Extension: a link where the stay and its added nights meet (between two bars, or inside a bar extended in place) -->
               <button
                 v-for="link in links"
                 :key="link.key"

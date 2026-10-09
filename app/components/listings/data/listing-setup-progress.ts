@@ -15,6 +15,8 @@ export interface ListingSetupSectionProgress {
   done: number
   total: number
   complete: boolean
+  /** Labels of what is still to fill in, in the section's order. */
+  missing: string[]
 }
 
 export interface ListingSetupProgress {
@@ -26,14 +28,17 @@ export interface ListingSetupProgress {
 
 const filled = (val?: string) => !!val?.trim()
 
-function section(key: ListingSetupSection, label: string, icon: string, checks: boolean[]): ListingSetupSectionProgress {
-  const done = checks.filter(Boolean).length
-  return { key, label, icon, done, total: checks.length, complete: done === checks.length }
+interface SetupCheck { label: string, ok: boolean }
+
+function section(key: ListingSetupSection, label: string, icon: string, checks: SetupCheck[]): ListingSetupSectionProgress {
+  const done = checks.filter(c => c.ok).length
+  const missing = checks.filter(c => !c.ok).map(c => c.label)
+  return { key, label, icon, done, total: checks.length, complete: done === checks.length, missing }
 }
 
 /** One check per counted (not `optional`) field across the groups. */
-function groupChecks(listing: Listing, groups: ListingDetailGroup[]): boolean[] {
-  return groups.flatMap(g => g.fields.filter(f => !f.optional).map(f => filled(f.read(listing))))
+function groupChecks(listing: Listing, groups: ListingDetailGroup[]): SetupCheck[] {
+  return groups.flatMap(g => g.fields.filter(f => !f.optional).map(f => ({ label: f.label, ok: filled(f.read(listing)) })))
 }
 
 /**
@@ -49,23 +54,23 @@ export function listingSetupProgress(listing: Listing): ListingSetupProgress {
   const address = listingAddress(listing)
   const sections = [
     section('basics', 'Basics', 'lucide:house', [
-      filled(listing.name),
-      filled(listingTimeZone(listing)),
-      filled(listingPropertyType(listing)),
-      filled(address.street),
-      filled(address.city),
-      filled(address.state),
-      filled(address.postalCode),
-      filled(address.country),
-      listing.photos.length > 0,
+      { label: 'Name', ok: filled(listing.name) },
+      { label: 'Time zone', ok: filled(listingTimeZone(listing)) },
+      { label: 'Property type', ok: filled(listingPropertyType(listing)) },
+      { label: 'Street', ok: filled(address.street) },
+      { label: 'City', ok: filled(address.city) },
+      { label: 'State', ok: filled(address.state) },
+      { label: 'Postal code', ok: filled(address.postalCode) },
+      { label: 'Country', ok: filled(address.country) },
+      { label: 'Photos', ok: listing.photos.length > 0 },
     ]),
     section('listing-details', 'Listing Details', 'lucide:file-text', groupChecks(listing, LISTING_DETAIL_GROUPS)),
     section('amenities', 'Amenities', 'lucide:sofa', [
-      listing.amenities.length > 0,
-      roomAmenityTargets(listing).every(t => t.amenities.length > 0),
+      { label: 'Property amenities', ok: listing.amenities.length > 0 },
+      { label: 'Room amenities', ok: roomAmenityTargets(listing).every(t => t.amenities.length > 0) },
     ]),
     section('sops', 'SOPs', 'lucide:clipboard-list', groupChecks(listing, visibleSopGroups(listing))),
-    section('topics', 'Topics to Avoid', 'lucide:message-circle-off', [listingAvoidTopics(listing).length > 0]),
+    section('topics', 'Topics to Avoid', 'lucide:message-circle-off', [{ label: 'Topics to avoid', ok: listingAvoidTopics(listing).length > 0 }]),
   ]
   // A section with nothing to fill in (every SOP question deleted) counts as done.
   const percent = Math.round(sections.reduce((sum, s) => sum + (s.total ? s.done / s.total : 1), 0) / sections.length * 100)

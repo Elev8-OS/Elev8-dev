@@ -1,30 +1,34 @@
 <script setup lang="ts">
-import type { TodayKey } from '~/components/cockpit/data/cockpit'
+import type { PeriodKey } from '~/components/cockpit/data/cockpit'
 
 /**
- * Today's work above the board. Each count focuses its stays on the board
+ * The period's work above the board (`periodSummary`), so it changes as the
+ * period moves. No visible heading: the page title already names the period;
+ * the dates are only in the group's `aria-label`. Each count focuses its stays on the board
  * (the rest fade back); clicking it again clears the focus. Owner requests
  * open their sheet instead. A count of zero is quiet; double bookings are
  * red when there are any.
  */
 const props = defineProps<{
-  counts: Record<TodayKey, number>
+  counts: Record<PeriodKey, number>
+  /** The period shown, e.g. "1 Oct to 31 Oct 2026", for the `aria-label` only. */
+  periodLabel: string
   ownerRequests: number
 }>()
 const emit = defineEmits<{ ownerRequests: [] }>()
 
-const focus = defineModel<TodayKey | null>('focus', { default: null })
+const focus = defineModel<PeriodKey | null>('focus', { default: null })
 
-const ITEMS: Array<{ key: TodayKey, label: string, icon: string, alarm?: boolean }> = [
+const ITEMS: Array<{ key: PeriodKey, label: string, icon: string, alarm?: boolean }> = [
   { key: 'arrivals', label: 'Arrivals', icon: 'lucide:log-in' },
   { key: 'departures', label: 'Departures', icon: 'lucide:log-out' },
-  { key: 'inHouse', label: 'In house', icon: 'lucide:house' },
+  { key: 'staying', label: 'Staying', icon: 'lucide:house' },
   { key: 'unassigned', label: 'No room yet', icon: 'lucide:circle-help' },
   { key: 'actionNeeded', label: 'Action needed', icon: 'lucide:alert-circle', alarm: true },
   { key: 'conflicts', label: 'Double booked', icon: 'lucide:triangle-alert', alarm: true },
 ]
 
-function toggle(key: TodayKey) {
+function toggle(key: PeriodKey) {
   focus.value = focus.value === key ? null : key
 }
 
@@ -32,8 +36,7 @@ const total = computed(() => Object.values(props.counts).reduce((a, b) => a + b,
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Today" data-testid="cockpit-today">
-    <span class="mr-1 text-sm font-medium">Today</span>
+  <div class="flex flex-wrap items-center gap-2" role="group" :aria-label="`In view: ${periodLabel}`" data-testid="cockpit-today">
     <button
       v-for="item in ITEMS"
       :key="item.key"
@@ -64,6 +67,6 @@ const total = computed(() => Object.values(props.counts).reduce((a, b) => a + b,
       <span class="font-semibold tabular-nums">{{ ownerRequests }}</span>
     </button>
     <span v-if="focus" class="text-xs text-muted-foreground">Showing these stays. Click again to show all.</span>
-    <span v-else-if="total === 0 && ownerRequests === 0" class="text-xs text-muted-foreground">Nothing due today.</span>
+    <span v-else-if="total === 0 && ownerRequests === 0" class="text-xs text-muted-foreground">Nothing in this period.</span>
   </div>
 </template>
