@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { CockpitCreateRequest, CockpitDay, CockpitGroup, CockpitRoomType, CockpitRow, CockpitStayFilters } from '~/components/cockpit/data/cockpit'
+import type { RoomCleaningStatus } from '~/components/cockpit/data/cockpit-cleaning'
 import type { Booking, Listing } from '~/components/listings/data/listings'
 import CockpitBoardTools from '~/components/cockpit/CockpitBoardTools.vue'
 import CockpitStayBar from '~/components/cockpit/CockpitStayBar.vue'
 import { arrivalsOn, DEFAULT_STAY_FILTERS, extensionJoins, formatMoney, freeUnits, isRowFree, listingCurrency, nightlyRateOn, nowFraction, portfolioOccupancy, selectionStay, stayVisible, typeFreeUnits } from '~/components/cockpit/data/cockpit'
+import { roomCleaningMeta } from '~/components/cockpit/data/cockpit-cleaning'
 import { canAssignRoom } from '~/components/listings/data/calendar-rooms'
 import { listingSetupProgress } from '~/components/listings/data/listing-setup-progress'
 import { bookingReservationStatus } from '~/components/operations-calendar/data/calendar-stays'
@@ -29,6 +31,8 @@ const props = defineProps<{
   days: CockpitDay[]
   /** Open task count per row id. */
   openTasks: Map<string, number>
+  /** Each room's housekeeping state today, by row id (`roomCleaningStatus`). */
+  roomCleaning?: Map<string, RoomCleaningStatus>
   /** Reservation ids whose Inbox conversation is marked Action needed. */
   actionNeeded?: Set<string>
   /** Double-booked stay ids (`conflictIds`). */
@@ -627,15 +631,29 @@ function onKeydown(event: KeyboardEvent) {
                 <div v-else class="flex min-w-0 flex-1 items-baseline gap-2">
                   <span class="truncate text-sm">{{ unitRowName(group, row) }}</span>
                 </div>
-                <Badge
-                  v-if="(openTasks.get(row.id) ?? 0) > 0"
-                  variant="destructive"
-                  class="ml-auto h-5 min-w-5 shrink-0 justify-center rounded-full px-1 text-[10px] tabular-nums"
-                  :title="tasksLabel(openTasks.get(row.id)!)"
-                  :aria-label="tasksLabel(openTasks.get(row.id)!)"
-                >
-                  {{ openTasks.get(row.id) }}
-                </Badge>
+                <div class="ml-auto flex shrink-0 items-center gap-1.5">
+                  <!-- Housekeeping today: icon only, the sentence in the tooltip -->
+                  <span
+                    v-if="roomCleaning?.get(row.id)"
+                    class="flex size-5 items-center justify-center rounded-full border"
+                    :class="roomCleaningMeta[roomCleaning.get(row.id)!.state].classes"
+                    role="img"
+                    :title="roomCleaning.get(row.id)!.detail"
+                    :aria-label="roomCleaning.get(row.id)!.detail"
+                    data-testid="cockpit-room-cleaning"
+                  >
+                    <Icon :name="ROOM_CLEANING_ICON" class="size-3" />
+                  </span>
+                  <Badge
+                    v-if="(openTasks.get(row.id) ?? 0) > 0"
+                    variant="destructive"
+                    class="h-5 min-w-5 justify-center rounded-full px-1 text-[10px] tabular-nums"
+                    :title="tasksLabel(openTasks.get(row.id)!)"
+                    :aria-label="tasksLabel(openTasks.get(row.id)!)"
+                  >
+                    {{ openTasks.get(row.id) }}
+                  </Badge>
+                </div>
               </div>
 
               <div

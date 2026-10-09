@@ -26,6 +26,7 @@ import {
   isLiveStay,
   MAX_CUSTOM_DAYS,
   monthSpans,
+  monthStart,
   nightlyRateOn,
   nowFraction,
   occupiesNight,
@@ -215,6 +216,12 @@ describe('ranges', () => {
     expect(addIsoMonths('2027-01-31', 1)).toBe('2027-02-28')
     expect(addIsoMonths('2026-12-15', 1)).toBe('2027-01-15')
     expect(addIsoMonths('2026-10-08', -1)).toBe('2026-09-08')
+  })
+
+  it('starts a month on its 1st', () => {
+    expect(monthStart('2026-10-08')).toBe('2026-10-01')
+    expect(monthStart('2026-10-01')).toBe('2026-10-01')
+    expect(rangeLength('month', monthStart('2026-02-14'), 0)).toBe(28)
   })
 
   it('shows a month as the days up to the same date next month', () => {

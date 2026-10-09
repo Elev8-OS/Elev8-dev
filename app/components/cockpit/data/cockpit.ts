@@ -37,6 +37,11 @@ export function addIsoMonths(iso: string, months: number): string {
   return target.toISOString().slice(0, 10)
 }
 
+/** The 1st of the month `iso` falls in: 1 Month always shows a whole calendar month. */
+export function monthStart(iso: string): string {
+  return `${iso.slice(0, 8)}01`
+}
+
 /**
  * How many days the board shows from `startKey`. 1 Month runs to the day
  * before the same date next month (8 Oct to 7 Nov); Custom is its own length,

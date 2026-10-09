@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Booking, Listing } from '~/components/listings/data/listings'
+import { otaIcon } from '~/components/channels/data/channels'
 import { stayBarClasses } from '~/components/listings/data/stay-bar'
 import ListingStayHoverCard from '~/components/listings/ListingStayHoverCard.vue'
 import { bookingReservationStatus } from '~/components/operations-calendar/data/calendar-stays'
@@ -14,8 +15,9 @@ import { reservationStatusLabels } from '~/components/reservations/data/reservat
  *
  * Status colours are the listing calendar's (`stayBarClasses`), unchanged. A
  * stay that has already left is drawn lighter. A cancelled stay is grey and
- * hatched, tucked under the live bars by the board. Details (times, guests,
- * channel) are in the hover card.
+ * hatched, tucked under the live bars by the board. The booking channel's logo
+ * sits on a small round chip before the name, so it reads on any status
+ * colour; times and guests are in the hover card.
  *
  * The root carries the grid placement; the bar is one button, and the Action
  * needed marker is a second button beside it (a button cannot sit inside
@@ -66,7 +68,8 @@ function formatShort(dateKey: string) {
 
 const label = computed(() => {
   const flags = `${props.actionNeeded ? ', action needed' : ''}${props.conflict ? ', double booked' : ''}`
-  return `${title.value}, ${formatShort(props.booking.checkIn)} to ${formatShort(props.booking.checkOut)}, ${reservationStatusLabels[status.value]}${flags}`
+  const channel = isBlock.value ? '' : `, ${props.booking.source}`
+  return `${title.value}${channel}, ${formatShort(props.booking.checkIn)} to ${formatShort(props.booking.checkOut)}, ${reservationStatusLabels[status.value]}${flags}`
 })
 
 /** Slanted where the stay really starts or ends, square where it runs off the view. */
@@ -134,6 +137,14 @@ function onDragStart(event: DragEvent) {
         <span v-if="actionNeeded" class="w-3 shrink-0" aria-hidden="true" />
         <Icon v-if="isBlock" name="lucide:ban" class="size-3 shrink-0" />
         <Icon v-if="conflict" name="lucide:triangle-alert" class="size-3 shrink-0" />
+        <span
+          v-if="!isBlock && booking.source"
+          class="flex size-5 shrink-0 items-center justify-center rounded-full bg-background text-foreground"
+          :title="booking.source"
+          data-testid="cockpit-bar-channel"
+        >
+          <Icon :name="otaIcon(booking.source)" class="size-3" aria-hidden="true" />
+        </span>
         <span class="truncate">{{ title }}</span>
       </button>
     </ListingStayHoverCard>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Booking, Listing } from '~/components/listings/data/listings'
+import { onBeforeUnmount } from 'vue'
 import { otaIcon } from '~/components/channels/data/channels'
 import { stayUnitNames } from '~/components/listings/data/calendar-rooms'
 import { stayBarClasses } from '~/components/listings/data/stay-bar'
@@ -11,6 +12,23 @@ import { useReservationsModule } from '~/composables/useReservationsModule'
 const props = defineProps<{ booking: Booking, listing: Listing }>()
 /** Optional: lets a caller close the card, e.g. when its bar is clicked and a sheet opens. Hover still opens it. */
 const open = defineModel<boolean>('open', { default: false })
+
+// Any scroll closes the card (capture catches scrolling boards too), so it never floats away from its bar.
+function closeOnScroll() {
+  open.value = false
+}
+watch(open, (isOpen) => {
+  if (typeof window === 'undefined')
+    return
+  if (isOpen)
+    window.addEventListener('scroll', closeOnScroll, { capture: true, passive: true })
+  else
+    window.removeEventListener('scroll', closeOnScroll, { capture: true })
+})
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined')
+    window.removeEventListener('scroll', closeOnScroll, { capture: true })
+})
 
 const { reservations, getCheckInTime, getCheckOutTime, getListingCheckInTime, getListingCheckOutTime } = useReservationsModule()
 

@@ -19,7 +19,8 @@ import CockpitCreateDialog from '~/components/cockpit/CockpitCreateDialog.vue'
 import CockpitFindAvailability from '~/components/cockpit/CockpitFindAvailability.vue'
 import CockpitTimeline from '~/components/cockpit/CockpitTimeline.vue'
 import CockpitTodayStrip from '~/components/cockpit/CockpitTodayStrip.vue'
-import { addIsoMonths, availableRowIds, buildCockpitGroups, COCKPIT_RANGES, cockpitDays, conflictIds, DEFAULT_STAY_FILTERS, filterGroups, groupsWithAction, hasStaysIn, listingCurrency, MAX_CUSTOM_DAYS, rangeLength, rowIdFor, todaySummary } from '~/components/cockpit/data/cockpit'
+import { addIsoMonths, availableRowIds, buildCockpitGroups, COCKPIT_RANGES, cockpitDays, conflictIds, DEFAULT_STAY_FILTERS, filterGroups, groupsWithAction, hasStaysIn, listingCurrency, MAX_CUSTOM_DAYS, monthStart, rangeLength, rowIdFor, todaySummary } from '~/components/cockpit/data/cockpit'
+import { roomCleaningStatus } from '~/components/cockpit/data/cockpit-cleaning'
 import { loadCockpitPrefs, saveCockpitPrefs } from '~/components/cockpit/data/cockpit-prefs'
 import { addIsoDays, isoDiffDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
@@ -31,6 +32,7 @@ import { isTaskCompleted } from '~/components/tasks/data/schema'
 import { Button } from '~/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '~/components/ui/sheet'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useInbox } from '~/composables/useInbox'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -41,6 +43,7 @@ definePageMeta({ layout: 'default' })
 const { pendingRequests } = useOwnerStayApprovals()
 const { reservations, assignRoom, unassignRoom, createReservation } = useReservationsModule()
 const { tasks } = useTaskStore()
+const { jobs: cleaningJobs } = useCleaningJobs()
 const inbox = useInbox()
 const { conversations } = inbox
 
@@ -70,10 +73,16 @@ const customRange = computed<DateRange>({
   },
 })
 
-/** Switching to Custom starts from the period on screen. */
+/** 1 Month always starts on the 1st, so the board shows a whole calendar month. */
+function boardStart(key: string) {
+  return range.value === 'month' ? monthStart(key) : key
+}
+
+/** Switching to Custom starts from the period on screen; switching to 1 Month snaps to the 1st. */
 watch(range, (next, previous) => {
   if (next === 'custom' && previous !== 'custom')
     customDays.value = rangeLength(previous, startKey.value, customDays.value)
+  startKey.value = boardStart(startKey.value)
 })
 
 /** "8 Oct to 4 Nov 2026" */
@@ -110,7 +119,7 @@ const periodTitle = computed(() => {
 })
 
 function goToToday() {
-  startKey.value = todayKey.value
+  startKey.value = boardStart(todayKey.value)
 }
 
 const search = ref('')
@@ -190,11 +199,24 @@ const openTasks = computed(() => {
   return counts
 })
 
+/** Each room's housekeeping state today (clean, dirty, cleaning, occupied), by row id. */
+const roomCleaning = computed(() => {
+  const states = new Map<string, NonNullable<ReturnType<typeof roomCleaningStatus>>>()
+  for (const group of groups.value) {
+    for (const row of group.rows) {
+      const status = roomCleaningStatus(row, group.listing.id, cleaningJobs.value, todayKey.value)
+      if (status)
+        states.set(row.id, status)
+    }
+  }
+  return states
+})
+
 const findOpen = ref(false)
 
 function applyAvailability(query: AvailabilityQuery) {
   availability.value = query
-  startKey.value = addIsoDays(query.checkIn, -1)
+  startKey.value = range.value === 'month' ? monthStart(query.checkIn) : addIsoDays(query.checkIn, -1)
 }
 
 function formatShort(key: string) {
@@ -400,6 +422,7 @@ function block(request: CockpitCreateRequest, reason: string) {
         :groups="visibleGroups"
         :days="days"
         :open-tasks="openTasks"
+        :room-cleaning="roomCleaning"
         :action-needed="actionNeeded"
         :conflicts="conflicts"
         :focus-ids="focusIds"
