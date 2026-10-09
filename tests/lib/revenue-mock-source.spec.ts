@@ -141,7 +141,7 @@ describe('mock source — scripted failures', () => {
 describe('mock source — lookups', () => {
   it('returns a diagnosis for a room that has one, and null for one that does not', async () => {
     const source = createMockRevenueSource()
-    expect(await settle(source.getRoomDiagnosis('room-suryas-2'))).not.toBeNull()
+    expect(await settle(source.getRoomDiagnosis('lst-14'))).not.toBeNull()
     expect(await settle(source.getRoomDiagnosis('room-does-not-exist'))).toBeNull()
   })
 

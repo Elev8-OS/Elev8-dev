@@ -23,6 +23,7 @@
 
 import type { NotAssessableRoom } from './contract'
 import type { HealthDomain, ObjectiveBasis } from './health'
+import { MANAGED_ROOM, managedRoomLabel, NOT_ASSESSABLE_ROOM } from './managed-rooms'
 
 /* ------------------------------------------------------------------ contract */
 
@@ -284,7 +285,7 @@ function rate(count: number, of: number): number {
  */
 export const roomDiagnoses: RoomDiagnosis[] = [
   {
-    roomId: 'room-suryas-2',
+    roomId: MANAGED_ROOM.canggu,
     contract: 'guaranteed_rent',
     gate: {
       stages: [
@@ -382,7 +383,7 @@ export const roomDiagnoses: RoomDiagnosis[] = [
   },
 
   {
-    roomId: 'room-bakti-2',
+    roomId: MANAGED_ROOM.ubud,
     contract: 'net_share',
     gate: {
       stages: [
@@ -480,7 +481,7 @@ export const roomDiagnoses: RoomDiagnosis[] = [
   },
 
   {
-    roomId: 'room-canggu-loft-1',
+    roomId: MANAGED_ROOM.pererenan,
     contract: 'gross_share',
     gate: {
       stages: [
@@ -585,10 +586,10 @@ export const roomDiagnoses: RoomDiagnosis[] = [
  * hypothetical.
  */
 export const notAssessableRooms: NotAssessableRoom[] = [
-  { roomId: 'room-uluwatu-2', name: 'Uluwatu Cliff House · Room 2', missing: 'no ranking data on either channel' },
-  { roomId: 'room-padma-1', name: 'Villa Padma · Room 1', missing: 'comp-set not resolved' },
-  { roomId: 'room-sanur-3', name: 'Sanur Beach House · Room 3', missing: 'location not resolved to official codes' },
-  { roomId: 'room-tabanan-1', name: 'Tabanan Villa · Room 1', missing: 'no ranking data on either channel' },
+  { roomId: NOT_ASSESSABLE_ROOM.kintamani, name: managedRoomLabel(NOT_ASSESSABLE_ROOM.kintamani).name, missing: 'no ranking data on either channel' },
+  { roomId: NOT_ASSESSABLE_ROOM.ubudBamboo, name: managedRoomLabel(NOT_ASSESSABLE_ROOM.ubudBamboo).name, missing: 'comp-set not resolved' },
+  { roomId: NOT_ASSESSABLE_ROOM.jimbaran, name: managedRoomLabel(NOT_ASSESSABLE_ROOM.jimbaran).name, missing: 'location not resolved to official codes' },
+  { roomId: NOT_ASSESSABLE_ROOM.ubudJungle, name: managedRoomLabel(NOT_ASSESSABLE_ROOM.ubudJungle).name, missing: 'no ranking data on either channel' },
 ]
 
 export function diagnosisFor(roomId: string): RoomDiagnosis | undefined {

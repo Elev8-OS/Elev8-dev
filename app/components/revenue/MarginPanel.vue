@@ -26,11 +26,7 @@ const props = defineProps<{
 }>()
 
 function amount(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: props.margin.currency,
-    maximumFractionDigits: 0,
-  }).format(value)
+  return `${props.margin.currency} ${value.toLocaleString(props.margin.currency === 'CHF' ? 'de-CH' : 'en-US', { maximumFractionDigits: 0 })}`
 }
 
 const objective = computed(() => objectiveForContract(props.contract))

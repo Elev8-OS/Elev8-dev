@@ -12,6 +12,7 @@ import ListingHeroCompact from '~/components/listings/ListingHeroCompact.vue'
 import ListingMaintenanceTab from '~/components/listings/ListingMaintenanceTab.vue'
 import ListingOverviewTab from '~/components/listings/ListingOverviewTab.vue'
 import ListingPricingTab from '~/components/listings/ListingPricingTab.vue'
+import ListingRevenueTab from '~/components/listings/ListingRevenueTab.vue'
 import ListingReviewsTab from '~/components/listings/ListingReviewsTab.vue'
 import ListingSettingsTab from '~/components/listings/ListingSettingsTab.vue'
 
@@ -32,7 +33,7 @@ function updateListing(updated: Listing) {
 const activeUnitId = computed(() => listing.value?.activeUnitId ?? null)
 const activeUnit = computed(() => listing.value ? getUnitById(listing.value, activeUnitId.value ?? '') : null)
 
-const TABS = ['overview', 'pricing', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'settings']
+const TABS = ['overview', 'pricing', 'revenue', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'settings']
 const customTabs = computed(() => listingCustomTabs(listing.value))
 const isTab = (tab: string) => TABS.includes(tab) || customTabs.value.some(t => customTabValue(t) === tab)
 // `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up steps" link; `?tab=custom:<id>` opens a custom tab.
@@ -109,6 +110,10 @@ function confirmRemoveTab() {
             <Icon name="lucide:dollar-sign" class="mr-1.5 size-3.5" />
             Pricing
           </TabsTrigger>
+          <TabsTrigger value="revenue">
+            <Icon name="lucide:trending-up" class="mr-1.5 size-3.5" />
+            Revenue
+          </TabsTrigger>
           <TabsTrigger value="calendar">
             <Icon name="lucide:calendar" class="mr-1.5 size-3.5" />
             Calendar
@@ -158,6 +163,10 @@ function confirmRemoveTab() {
 
       <TabsContent value="pricing" class="mt-6">
         <ListingPricingTab :listing="listing" :active-unit="activeUnit" @update="updateListing" />
+      </TabsContent>
+
+      <TabsContent value="revenue" class="mt-6">
+        <ListingRevenueTab :listing="listing" :active-unit="activeUnit" />
       </TabsContent>
 
       <TabsContent value="calendar" class="mt-6">

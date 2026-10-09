@@ -9,11 +9,14 @@ import type {
   ObjectiveBasis,
 } from '~/components/revenue/data/health'
 import { computed, ref } from 'vue'
+import { listings } from '~/components/listings/data/listings'
 import { emptyPortfolioQuery, isTerminalApplyState } from '~/components/revenue/data/contract'
 import {
   gateStageDomain,
   objectiveForContract,
 } from '~/components/revenue/data/diagnosis'
+import { revenueRooms } from '~/components/revenue/data/revenue-policy'
+import { useRevenuePolicy } from '~/composables/useRevenuePolicy'
 import { useRevenueSource } from '~/composables/useRevenueSource'
 
 export type ApplyScenario = 'success' | 'recompute_unavailable' | 'push_failed'
@@ -38,6 +41,9 @@ const SEVERITY_RANK: Record<HealthSeverity, number> = {
   info: 1,
 }
 
+/** Apply ended with the settings written (prices may still be catching up). */
+const SETTINGS_WRITTEN: ApplyState[] = ['live', 'recompute_unavailable', 'push_failed']
+
 /** How often the apply status is polled while it is in flight. */
 const APPLY_POLL_MS = 300
 
@@ -61,6 +67,9 @@ export function useRevenueHealth() {
   /** Why a finding was rejected. Adjusts thresholds and ceilings, never a model. */
   const rejections = useState<Record<string, RejectionReason>>('revenue-health-rejections', () => ({}))
   const expanded = useState<string | null>('revenue-health-expanded', () => null)
+  /** The room policy version each applied finding replaced, so a revert can restore it. */
+  const priorVersions = useState<Record<string, { roomKey: string, version: number }>>('revenue-health-prior-versions', () => ({}))
+  const policyStore = useRevenuePolicy()
 
   const filters = ref<RevenueHealthFilters>({
     search: '',
@@ -284,10 +293,40 @@ export function useRevenueHealth() {
       applyIds.value = { ...applyIds.value, [findingId]: accepted.applyId }
       setApplyState(findingId, accepted.state)
       await pollApplyStatus(findingId, accepted.applyId)
+      const final = applyStates.value[findingId]
+      if (final && SETTINGS_WRITTEN.includes(final))
+        writeToRoomPolicy(findingId)
     }
     catch (error) {
       loadError.value = error instanceof Error ? error.message : 'Could not apply that finding.'
     }
+  }
+
+  /**
+   * Apply writes a new version of the room's pricing policy (§15.4), the same
+   * policy the listing's Revenue tab edits and the pricing engine reads.
+   */
+  function writeToRoomPolicy(findingId: string) {
+    const finding = getFinding(findingId)
+    const changes = finding?.policyChanges
+    const room = finding ? revenueRooms(listings.value).find(r => r.key === finding.roomId) : undefined
+    if (!finding || !changes || !room)
+      return
+    const prior = policyStore.currentVersion(room.key)
+    const policy = policyStore.policyFor(room)
+    const next = {
+      ...policy,
+      base: {
+        price: changes.basePrice ?? policy.base.price,
+        minPrice: changes.minPrice ?? policy.base.minPrice,
+        maxPrice: changes.maxPrice ?? policy.base.maxPrice,
+      },
+      minStay: { ...policy.minStay, default: changes.minStay ?? policy.minStay.default },
+      orphanGap: changes.orphanGap ? { enabled: true, ...changes.orphanGap } : policy.orphanGap,
+    }
+    policyStore.savePolicy(room.key, next, `Applied from Listing Health: ${finding.headline}`)
+    if (prior)
+      priorVersions.value = { ...priorVersions.value, [findingId]: { roomKey: room.key, version: prior.version } }
   }
 
   async function revertFinding(findingId: string) {
@@ -300,6 +339,13 @@ export function useRevenueHealth() {
     catch (error) {
       loadError.value = error instanceof Error ? error.message : 'Could not revert that finding.'
       return
+    }
+
+    const prior = priorVersions.value[findingId]
+    if (prior) {
+      policyStore.restoreVersion(prior.roomKey, prior.version, `Reverted from Listing Health: back to version ${prior.version}`)
+      const { [findingId]: _drop, ...rest } = priorVersions.value
+      priorVersions.value = rest
     }
 
     const nextStates = { ...applyStates.value }

@@ -21,9 +21,14 @@ const gr = useGuestRegistration()
 
 type IntegrationId = 'whatsapp' | 'threecx' | 'smartlock' | 'payout' | 'minut' | 'email' | 'apoa' | 'avs' | 'feratel' | 'pricelabs'
 
-const openIntegration = ref<IntegrationId | null>(null)
+const SHEET_INTEGRATIONS: IntegrationId[] = ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs', 'feratel', 'pricelabs']
+
+// `?open=pricelabs` opens that integration's sheet, e.g. from Revenue settings.
+const route = useRoute()
+const requested = String(route.query.open ?? '') as IntegrationId
+const openIntegration = ref<IntegrationId | null>(SHEET_INTEGRATIONS.includes(requested) ? requested : null)
 const sheetOpen = computed({
-  get: () => ['whatsapp', 'threecx', 'smartlock', 'minut', 'email', 'apoa', 'avs', 'feratel', 'pricelabs'].includes(openIntegration.value ?? ''),
+  get: () => SHEET_INTEGRATIONS.includes(openIntegration.value as IntegrationId),
   set: (val) => {
     if (!val)
       openIntegration.value = null
