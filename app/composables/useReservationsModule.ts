@@ -1,11 +1,11 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { ExtensionDirection, ExtensionPaymentMethod, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
+import type { ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
 import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
-import { generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { usePromoRedemption } from '~/composables/usePromoRedemption'
@@ -449,6 +449,55 @@ export function useReservationsModule() {
     reservations.value = reservations.value.map(r =>
       r.id === id ? { ...r, ...patch } : r,
     )
+  }
+
+  /**
+   * Staff upload or replace one identity document. A guest holds at most one of
+   * each kind, so a new file replaces the old one. `guestId` is left unset for
+   * the main guest. The agreement is generated from the house rules, never uploaded.
+   */
+  function saveGuestDocument(reservationId: string, input: { guestId?: string, kind: Exclude<GuestDocument['kind'], 'agreement'>, fileName: string, url: string }): { success: boolean, error?: string } {
+    const r = reservations.value.find(x => x.id === reservationId)
+    if (!r)
+      return { success: false, error: 'Reservation not found.' }
+    const guest = input.guestId ? r.guests?.find(g => g.id === input.guestId) : undefined
+    if (input.guestId && !guest)
+      return { success: false, error: 'Guest not found on this reservation.' }
+    if (guest && input.kind === 'signature')
+      return { success: false, error: 'Only the main guest signs.' }
+    const guestName = guest?.name ?? r.guestName
+    const docs = r.identity?.documents ?? []
+    const existing = docs.find(d => d.kind === input.kind && d.guestId === input.guestId)
+    const label = DOCUMENT_KIND_LABELS[input.kind]
+    const doc: GuestDocument = {
+      id: existing?.id ?? `doc-${input.kind}-${Date.now()}`,
+      kind: input.kind,
+      ...(input.guestId ? { guestId: input.guestId } : {}),
+      name: `${label} — ${guestName}`,
+      url: input.url,
+      uploadedAt: new Date().toISOString(),
+      fileName: input.fileName,
+    }
+    const documents = existing ? docs.map(d => d.id === existing.id ? doc : d) : [...docs, doc]
+    const event = activityEvent('doc', existing ? 'Document replaced' : 'Document uploaded', `${label} for ${guestName} (${input.fileName}).`)
+    updateReservation(r.id, {
+      identity: { status: r.identity?.status ?? 'pending', ...r.identity, documents },
+      activity: [...r.activity, event],
+    })
+    return { success: true }
+  }
+
+  function removeGuestDocument(reservationId: string, documentId: string) {
+    const r = reservations.value.find(x => x.id === reservationId)
+    const doc = r?.identity?.documents.find(d => d.id === documentId)
+    if (!r || !doc || doc.kind === 'agreement')
+      return
+    const guestName = (doc.guestId && r.guests?.find(g => g.id === doc.guestId)?.name) || r.guestName
+    const event = activityEvent('doc', 'Document removed', `${DOCUMENT_KIND_LABELS[doc.kind]} for ${guestName}.`)
+    updateReservation(r.id, {
+      identity: { ...r.identity!, documents: r.identity!.documents.filter(d => d.id !== documentId) },
+      activity: [...r.activity, event],
+    })
   }
 
   function listingBasics(listingId: string) {
@@ -1005,6 +1054,8 @@ export function useReservationsModule() {
     updateGuestNotes,
     updateReservationStatus,
     updateReservation,
+    saveGuestDocument,
+    removeGuestDocument,
     getUnitConflicts,
     assignRoom,
     unassignRoom,

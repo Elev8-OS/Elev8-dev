@@ -154,16 +154,34 @@ describe('guest verification', () => {
     expect(wrapper.get('[data-testid="verification-mode-group"]').attributes('aria-checked')).toBe('true')
     expect(wrapper.get('[data-testid="verification-description"]').text()).toContain('only one guest needs to upload a document')
 
+    await wrapper.get('[data-testid="verification-all-guests-documents"]').trigger('click')
+    expect((wrapper.emitted('update')!.at(-1)![0] as typeof listing).guestVerification!.allGuestsUploadDocuments).toBe(true)
+
     await wrapper.get('[data-testid="verification-mode-none"]').trigger('click')
-    expect((wrapper.emitted('update')!.at(-1)![0] as typeof listing).guestVerification).toEqual({ mode: 'none', requireAddress: true, askBedConfiguration: true })
+    expect((wrapper.emitted('update')!.at(-1)![0] as typeof listing).guestVerification).toEqual({ mode: 'none', requireAddress: true, askBedConfiguration: true, allGuestsUploadDocuments: false })
 
     await wrapper.get('[data-testid="verification-beds"]').trigger('click')
     expect((wrapper.emitted('update')!.at(-1)![0] as typeof listing).guestVerification!.askBedConfiguration).toBe(false)
   })
 
+  it('offers the all-guests documents toggle only for Verify group', async () => {
+    const listing = { ...listings.value.find(l => l.id === 'lst-1')!, guestVerification: { mode: 'person' as const, requireAddress: false, askBedConfiguration: false, allGuestsUploadDocuments: false } }
+    const wrapper = mount(ListingGuestGuideTab, { props: { listing }, global: { components: COMPONENTS, stubs: { ...STUBS, ListingGuideContentSheet: true } } })
+    await wrapper.get('[data-testid="guide-nav-verification"]').trigger('click')
+    expect(wrapper.find('[data-testid="verification-all-guests-documents"]').exists()).toBe(false)
+  })
+
+  it('asks every guest for documents in Verify person, or Verify group with the toggle on', async () => {
+    const { everyGuestUploadsDocuments, listingGuestVerification } = await import('~/components/listings/data/guest-verification')
+    expect(everyGuestUploadsDocuments(listingGuestVerification({ guestVerification: { mode: 'person' } }))).toBe(true)
+    expect(everyGuestUploadsDocuments(listingGuestVerification({ guestVerification: { mode: 'group' } }))).toBe(false)
+    expect(everyGuestUploadsDocuments(listingGuestVerification({ guestVerification: { mode: 'group', allGuestsUploadDocuments: true } }))).toBe(true)
+    expect(everyGuestUploadsDocuments(listingGuestVerification({ guestVerification: { mode: 'none', allGuestsUploadDocuments: true } }))).toBe(false)
+  })
+
   it('defaults to verifying each person with no extra questions', async () => {
     const { listingGuestVerification } = await import('~/components/listings/data/guest-verification')
-    expect(listingGuestVerification({})).toEqual({ mode: 'person', requireAddress: false, askBedConfiguration: false })
+    expect(listingGuestVerification({})).toEqual({ mode: 'person', requireAddress: false, askBedConfiguration: false, allGuestsUploadDocuments: false })
   })
 })
 

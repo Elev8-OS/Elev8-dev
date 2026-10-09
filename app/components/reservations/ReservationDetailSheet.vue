@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import type { GuestDocument, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { GuestDocument, GuestOccupant, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
 import { toast } from 'vue-sonner'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
+import { everyGuestUploadsDocuments, listingGuestVerification } from '~/components/listings/data/guest-verification'
 import { listings } from '~/components/listings/data/listings'
 import { guestRatingForReservation } from '~/components/reservations/data/guest-rating'
-import { reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { DOCUMENT_KIND_LABELS, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
-import ReservationCancelExtensionDialog from '~/components/reservations/ReservationCancelExtensionDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
+import ReservationCancelExtensionDialog from '~/components/reservations/ReservationCancelExtensionDialog.vue'
 import ReservationCityTaxSection from '~/components/reservations/ReservationCityTaxSection.vue'
 import ReservationDamageProtectionSection from '~/components/reservations/ReservationDamageProtectionSection.vue'
 import ReservationExtensionsSection from '~/components/reservations/ReservationExtensionsSection.vue'
@@ -44,7 +45,7 @@ const emit = defineEmits<{
   'openGuest': [id: string]
 }>()
 
-const { reservations, updateReservationStatus, getCheckInTime, getCheckOutTime } = useReservationsModule()
+const { reservations, updateReservationStatus, getCheckInTime, getCheckOutTime, saveGuestDocument, removeGuestDocument } = useReservationsModule()
 const inbox = useInbox()
 
 /**
@@ -186,6 +187,108 @@ const docViewDoc = ref<GuestDocument | null>(null)
 
 const identityDocs = computed(() => reservation.value?.identity?.documents ?? [])
 
+// Documents are grouped per guest. The listing's verification settings decide which
+// slots each guest must fill: "Verify person", or "Verify group" with "All guests
+// must upload documents" on, asks every guest for a selfie and ID; otherwise only
+// the main guest uploads. Only the main guest (or the first one listed) ever signs.
+// Anything uploaded beyond that still shows under its owner.
+const verificationSettings = computed(() => {
+  const r = reservation.value
+  return listingGuestVerification(listings.value.find(l => l.id === r?.listingId))
+})
+const verificationMode = computed(() => verificationSettings.value.mode)
+const verifyEveryGuest = computed(() => !!reservation.value?.guests?.length && everyGuestUploadsDocuments(verificationSettings.value))
+
+interface DocSlot { kind: GuestDocument['kind'], doc?: GuestDocument }
+interface DocGroup { guest: GuestOccupant | null, isMain: boolean, slots: DocSlot[], required: number }
+
+const MAIN_GUEST_KINDS: GuestDocument['kind'][] = ['selfie', 'id', 'signature', 'agreement']
+
+function requiredKinds(isMain: boolean): GuestDocument['kind'][] {
+  if (verificationMode.value === 'none')
+    return []
+  if (isMain)
+    return MAIN_GUEST_KINDS
+  return verifyEveryGuest.value ? ['selfie', 'id'] : []
+}
+
+function slotsFor(owned: GuestDocument[], kinds: GuestDocument['kind'][]): DocSlot[] {
+  const extra = owned.filter(d => !kinds.includes(d.kind)).map(doc => ({ kind: doc.kind, doc }))
+  return [...kinds.map(kind => ({ kind, doc: owned.find(d => d.kind === kind) })), ...extra]
+}
+
+const docGroups = computed<DocGroup[]>(() => {
+  const guests = reservation.value?.guests ?? []
+  if (!guests.length) {
+    const kinds = requiredKinds(true)
+    return [{ guest: null, isMain: true, slots: slotsFor(identityDocs.value, kinds), required: kinds.length }]
+  }
+  const mainId = (guests.find(g => g.isPrimary) ?? guests[0])!.id
+  return guests.map((guest) => {
+    const isMain = guest.id === mainId
+    const kinds = requiredKinds(isMain)
+    const owned = identityDocs.value.filter(d => (d.guestId ?? mainId) === guest.id)
+    return { guest, isMain, slots: slotsFor(owned, kinds), required: kinds.length }
+  }).filter(g => g.slots.length)
+})
+
+const docsHint = computed(() => {
+  if (verifyEveryGuest.value)
+    return 'Every guest uploads a selfie and ID. Only the main guest signs the house rules.'
+  if (verificationMode.value === 'group')
+    return 'Only the main guest uploads documents and signs the house rules.'
+  return null
+})
+
+// Staff can upload a missing document or replace / remove one. One hidden file
+// input serves every slot; `pendingSlot` remembers which slot opened it.
+const docFileInput = ref<HTMLInputElement | null>(null)
+const pendingSlot = ref<{ group: DocGroup, kind: Exclude<GuestDocument['kind'], 'agreement'> } | null>(null)
+
+function canEditDoc(kind: GuestDocument['kind']): kind is Exclude<GuestDocument['kind'], 'agreement'> {
+  return kind !== 'agreement'
+}
+
+function pickDocFile(group: DocGroup, kind: GuestDocument['kind']) {
+  if (!canEditDoc(kind))
+    return
+  pendingSlot.value = { group, kind }
+  docFileInput.value?.click()
+}
+
+function onDocFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  const slot = pendingSlot.value
+  input.value = ''
+  pendingSlot.value = null
+  if (!file || !slot || !reservation.value)
+    return
+  const reservationId = reservation.value.id
+  const reader = new FileReader()
+  reader.onload = () => {
+    const result = saveGuestDocument(reservationId, {
+      guestId: slot.group.isMain ? undefined : slot.group.guest?.id,
+      kind: slot.kind,
+      fileName: file.name,
+      url: String(reader.result),
+    })
+    if (result.success)
+      toast.success(`${docKindMeta(slot.kind).label} saved`)
+    else
+      toast.error(result.error ?? 'Could not save the document')
+  }
+  reader.onerror = () => toast.error('Could not read that file')
+  reader.readAsDataURL(file)
+}
+
+function removeDoc(doc: GuestDocument) {
+  if (!reservation.value)
+    return
+  removeGuestDocument(reservation.value.id, doc.id)
+  toast.success(`${docKindMeta(doc.kind).label} removed`)
+}
+
 // The agreement is generated from the listing's house rules rather than stored,
 // so preview and download always show a real PDF.
 const { guides: guestGuides } = useGuestGuides()
@@ -244,13 +347,13 @@ onBeforeUnmount(revokeAgreementPreview)
 const verifiedCount = computed(() => reservation.value?.guests?.filter(g => g.identityVerified).length ?? 0)
 
 function docKindMeta(kind: GuestDocument['kind']) {
-  const map: Record<GuestDocument['kind'], { label: string, icon: string }> = {
-    id: { label: 'ID Document', icon: 'lucide:credit-card' },
-    selfie: { label: 'Selfie', icon: 'lucide:camera' },
-    signature: { label: 'Signature', icon: 'lucide:pen-line' },
-    agreement: { label: 'House Rules Agreement', icon: 'lucide:file-check-2' },
+  const icons: Record<GuestDocument['kind'], string> = {
+    id: 'lucide:credit-card',
+    selfie: 'lucide:camera',
+    signature: 'lucide:pen-line',
+    agreement: 'lucide:file-check-2',
   }
-  return map[kind]
+  return { label: DOCUMENT_KIND_LABELS[kind], icon: icons[kind] }
 }
 
 function fmtUploadTime(iso: string): string {
@@ -870,54 +973,140 @@ const guestGuideRoute = computed(() => {
                             </div>
                           </TabsContent>
                           <TabsContent value="documents" class="mt-3">
-                            <div v-if="identityDocs.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                            <input
+                              ref="docFileInput"
+                              type="file"
+                              accept="image/*,application/pdf"
+                              class="hidden"
+                              data-testid="reservation-doc-file-input"
+                              @change="onDocFileChange"
+                            >
+                            <div v-if="docGroups.length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
                               No documents uploaded yet.
                             </div>
 
-                            <div v-else class="space-y-2">
+                            <div v-else class="space-y-3">
+                              <p v-if="docsHint" class="flex items-start gap-1.5 text-[11px] text-muted-foreground" data-testid="reservation-docs-hint">
+                                <Icon name="lucide:info" class="mt-px size-3 shrink-0" />
+                                {{ docsHint }}
+                              </p>
                               <div
-                                v-for="doc in identityDocs"
-                                :key="doc.id"
-                                class="flex items-center gap-3 border p-2.5"
+                                v-for="group in docGroups"
+                                :key="group.guest?.id ?? 'all'"
+                                :class="group.guest && 'border'"
+                                :data-testid="group.guest ? `reservation-docs-guest-${group.guest.id}` : undefined"
                               >
-                                <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted/60">
-                                  <Icon :name="docKindMeta(doc.kind).icon" class="size-4 text-muted-foreground" />
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                  <p class="truncate text-sm font-medium">
-                                    {{ doc.name }}
-                                  </p>
-                                  <p class="text-[10px] text-muted-foreground">
-                                    {{ docKindMeta(doc.kind).label }}
-                                    <template v-if="doc.fileName">
-                                      · {{ doc.fileName }}
+                                <div v-if="group.guest" class="flex items-center gap-2.5 border-b bg-muted/30 px-3 py-2">
+                                  <BasePersonAvatar :name="group.guest.name" class="size-7" />
+                                  <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                      <p class="truncate text-sm font-medium">
+                                        {{ group.guest.name }}
+                                      </p>
+                                      <Badge v-if="group.isMain" variant="default" class="text-[9px] px-1 py-0">
+                                        Main
+                                      </Badge>
+                                    </div>
+                                    <p class="text-[10px] text-muted-foreground">
+                                      {{ categoryLabel(group.guest.category) }}
+                                    </p>
+                                  </div>
+                                  <span class="shrink-0 text-[10px] text-muted-foreground">
+                                    <template v-if="group.required">
+                                      {{ group.slots.filter(s => s.doc).length }}/{{ group.slots.length }} uploaded
                                     </template>
-                                    <template v-if="doc.uploadedAt">
-                                      · {{ fmtUploadTime(doc.uploadedAt) }}
+                                    <template v-else>
+                                      {{ group.slots.length }} {{ group.slots.length === 1 ? 'document' : 'documents' }}
                                     </template>
-                                  </p>
+                                  </span>
                                 </div>
-                                <div class="flex shrink-0 items-center gap-1">
-                                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" aria-label="Preview" @click="previewDoc(doc)">
-                                    <Icon name="lucide:eye" class="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    v-if="doc.kind === 'agreement'"
-                                    variant="ghost"
-                                    size="sm"
-                                    class="h-7 w-7 p-0"
-                                    title="Download"
-                                    aria-label="Download house rules agreement"
-                                    data-testid="reservation-download-agreement"
-                                    @click="downloadAgreement"
+                                <div class="space-y-2" :class="group.guest && 'p-2'">
+                                  <div
+                                    v-for="slot in group.slots"
+                                    :key="slot.doc?.id ?? `${group.guest?.id}-${slot.kind}`"
+                                    class="flex items-center gap-3 border p-2.5"
+                                    :class="!slot.doc && 'border-dashed'"
                                   >
-                                    <Icon name="lucide:download" class="size-3.5" />
-                                  </Button>
-                                  <a v-else-if="doc.url" :href="doc.url" :download="doc.fileName ?? doc.name" class="shrink-0">
-                                    <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Download">
-                                      <Icon name="lucide:download" class="size-3.5" />
-                                    </Button>
-                                  </a>
+                                    <div class="flex size-9 shrink-0 items-center justify-center rounded-md" :class="slot.doc ? 'bg-muted/60' : 'bg-muted/40'">
+                                      <Icon :name="docKindMeta(slot.kind).icon" class="size-4" :class="slot.doc ? 'text-muted-foreground' : 'text-muted-foreground/60'" />
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                      <template v-if="slot.doc">
+                                        <p class="truncate text-sm font-medium">
+                                          {{ slot.doc.name }}
+                                        </p>
+                                        <p class="text-[10px] text-muted-foreground">
+                                          {{ docKindMeta(slot.doc.kind).label }}
+                                          <template v-if="slot.doc.fileName">
+                                            · {{ slot.doc.fileName }}
+                                          </template>
+                                          <template v-if="slot.doc.uploadedAt">
+                                            · {{ fmtUploadTime(slot.doc.uploadedAt) }}
+                                          </template>
+                                        </p>
+                                      </template>
+                                      <template v-else>
+                                        <p class="truncate text-sm text-muted-foreground">
+                                          {{ docKindMeta(slot.kind).label }}
+                                        </p>
+                                        <p class="text-[10px] text-muted-foreground">
+                                          {{ slot.kind === 'agreement' ? 'Not signed yet' : 'Not uploaded yet' }}
+                                        </p>
+                                      </template>
+                                    </div>
+                                    <div class="flex shrink-0 items-center gap-1">
+                                      <template v-if="slot.doc">
+                                        <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Preview" aria-label="Preview" @click="previewDoc(slot.doc)">
+                                          <Icon name="lucide:eye" class="size-3.5" />
+                                        </Button>
+                                        <Button
+                                          v-if="slot.doc.kind === 'agreement'"
+                                          variant="ghost"
+                                          size="sm"
+                                          class="h-7 w-7 p-0"
+                                          title="Download"
+                                          aria-label="Download house rules agreement"
+                                          data-testid="reservation-download-agreement"
+                                          @click="downloadAgreement"
+                                        >
+                                          <Icon name="lucide:download" class="size-3.5" />
+                                        </Button>
+                                        <a v-else-if="slot.doc.url" :href="slot.doc.url" :download="slot.doc.fileName ?? slot.doc.name" class="shrink-0">
+                                          <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Download" aria-label="Download">
+                                            <Icon name="lucide:download" class="size-3.5" />
+                                          </Button>
+                                        </a>
+                                        <DropdownMenu v-if="canEditDoc(slot.doc.kind)">
+                                          <DropdownMenuTrigger as-child>
+                                            <Button variant="ghost" size="sm" class="h-7 w-7 p-0" aria-label="Document actions" data-testid="reservation-doc-actions">
+                                              <Icon name="lucide:ellipsis-vertical" class="size-3.5" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem data-testid="reservation-doc-replace" @click="pickDocFile(group, slot.kind)">
+                                              <Icon name="lucide:refresh-cw" class="size-3.5" />
+                                              Replace
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem class="text-destructive" data-testid="reservation-doc-remove" @click="removeDoc(slot.doc)">
+                                              <Icon name="lucide:trash-2" class="size-3.5" />
+                                              Remove
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </template>
+                                      <Button
+                                        v-else-if="canEditDoc(slot.kind)"
+                                        variant="outline"
+                                        size="sm"
+                                        class="h-7 gap-1 px-2 text-xs"
+                                        data-testid="reservation-doc-upload"
+                                        @click="pickDocFile(group, slot.kind)"
+                                      >
+                                        <Icon name="lucide:upload" class="size-3.5" />
+                                        Upload
+                                      </Button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -1460,6 +1649,12 @@ const guestGuideRoute = computed(() => {
             v-if="agreementPreviewUrl"
             :src="agreementPreviewUrl"
             :title="docViewDoc?.name ?? 'House Rules Agreement'"
+            class="h-[70vh] w-full rounded-md border"
+          />
+          <iframe
+            v-else-if="docViewDoc?.url?.startsWith('data:application/pdf')"
+            :src="docViewDoc.url"
+            :title="docViewDoc.name"
             class="h-[70vh] w-full rounded-md border"
           />
           <div v-else-if="docViewDoc?.url" class="flex items-center justify-center rounded-md border bg-muted/30 p-2">

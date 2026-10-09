@@ -11,12 +11,18 @@ export interface GuestVerificationSettings {
   requireAddress: boolean
   /** Ask the guests how they want the beds set up. */
   askBedConfiguration: boolean
+  /**
+   * "Verify group" only: every guest still uploads a selfie and ID, not just one.
+   * The main guest alone signs the house rules either way.
+   */
+  allGuestsUploadDocuments: boolean
 }
 
 export const DEFAULT_GUEST_VERIFICATION: GuestVerificationSettings = {
   mode: 'person',
   requireAddress: false,
   askBedConfiguration: false,
+  allGuestsUploadDocuments: false,
 }
 
 export const GUEST_VERIFICATION_MODES: Array<{ value: GuestVerificationMode, label: string, short: string, icon: string | null, description: string }> = [
@@ -50,4 +56,9 @@ export function listingGuestVerification(listing: { guestVerification?: Partial<
 /** The short name of a mode, e.g. "Group", for compact places like the tab's section list. */
 export function guestVerificationShortLabel(mode: GuestVerificationMode): string {
   return GUEST_VERIFICATION_MODES.find(m => m.value === mode)?.short ?? mode
+}
+
+/** Whether every guest, not only the main one, uploads a selfie and ID. */
+export function everyGuestUploadsDocuments(settings: GuestVerificationSettings): boolean {
+  return settings.mode === 'person' || (settings.mode === 'group' && settings.allGuestsUploadDocuments)
 }
