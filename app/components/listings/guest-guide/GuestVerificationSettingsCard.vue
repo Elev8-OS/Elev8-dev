@@ -45,6 +45,22 @@ function setMode(mode: GuestVerificationMode) {
     </p>
 
     <div class="flex flex-col gap-3">
+      <div v-if="settings.mode === 'group'" class="flex items-start gap-3">
+        <Switch
+          :model-value="settings.allGuestsUploadDocuments"
+          aria-label="All guests must upload documents"
+          data-testid="verification-all-guests-documents"
+          @update:model-value="set({ allGuestsUploadDocuments: Boolean($event) })"
+        />
+        <div class="cursor-pointer" @click="set({ allGuestsUploadDocuments: !settings.allGuestsUploadDocuments })">
+          <p class="text-sm font-medium">
+            All guests must upload documents
+          </p>
+          <p class="text-xs text-muted-foreground">
+            Every guest uploads a selfie and ID. Only the main guest signs the house rules.
+          </p>
+        </div>
+      </div>
       <div class="flex items-center gap-3">
         <Switch
           :model-value="settings.requireAddress"

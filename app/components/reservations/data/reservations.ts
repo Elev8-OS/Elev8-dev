@@ -52,11 +52,23 @@ export type IdentityVerificationStatus = 'verified' | 'pending' | 'not_started' 
 export interface GuestDocument {
   id: string
   kind: 'id' | 'selfie' | 'signature' | 'agreement'
+  /**
+   * The occupant who uploaded it. Unset means the main guest. Only the main guest
+   * signs, so signature and agreement never carry another guest's id.
+   */
+  guestId?: string
   name: string
   /** Mock file path; data: URIs can be previewed/downloaded */
   url?: string
   uploadedAt: string
   fileName?: string
+}
+
+export const DOCUMENT_KIND_LABELS: Record<GuestDocument['kind'], string> = {
+  id: 'ID Document',
+  selfie: 'Selfie',
+  signature: 'Signature',
+  agreement: 'House Rules Agreement',
 }
 
 export interface IdentityVerification {
@@ -796,6 +808,24 @@ export const initialReservations: ReservationEntry[] = [
           uploadedAt: '2026-07-08T10:00:00Z',
           fileName: 'house-rules-agreement.pdf',
         },
+        {
+          id: 'doc-selfie-michael',
+          kind: 'selfie',
+          guestId: 'occ-5',
+          name: 'Selfie — Michael Mitchell',
+          url: 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22600%22%20height%3D%22800%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23e8f0fe%22%2F%3E%3Ctext%20x%3D%22300%22%20y%3D%22380%22%20font-family%3D%22Arial%22%20font-size%3D%2230%22%20fill%3D%22%231a56c4%22%20text-anchor%3D%22middle%22%20font-weight%3D%22bold%22%3ESELFIE%3C%2Ftext%3E%3C%2Fsvg%3E',
+          uploadedAt: '2026-07-08T10:20:00Z',
+          fileName: 'selfie.jpg',
+        },
+        {
+          id: 'doc-id-michael',
+          kind: 'id',
+          guestId: 'occ-5',
+          name: 'Passport — Michael Mitchell',
+          url: 'data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22600%22%20height%3D%22800%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23e7f6ec%22%2F%3E%3Ctext%20x%3D%22300%22%20y%3D%22380%22%20font-family%3D%22Arial%22%20font-size%3D%2230%22%20fill%3D%22%231d7a44%22%20text-anchor%3D%22middle%22%20font-weight%3D%22bold%22%3EPassport%20%7C%20Michael%20Mitchell%3C%2Ftext%3E%3C%2Fsvg%3E',
+          uploadedAt: '2026-07-08T10:20:00Z',
+          fileName: 'michael-passport.jpg',
+        },
       ],
     },
     bookingNote: '** THIS RESERVATION HAS BEEN PRE-PAID ** BOOKING NOTE : Payment charge is USD 750.00 Approximate time of arrival: between 14:00 and 15:00 Meal Plan: There is no meal option with this room. Smoking Preference: Non-Smoking Payment Collect: OTA collect OTA Commission: 75.00',
@@ -1044,6 +1074,9 @@ export const initialReservations: ReservationEntry[] = [
       verifiedAt: '2026-07-19T11:00:00Z',
       idName: 'Erik Hoffmann',
       idDocName: 'Passport — Erik Hoffmann',
+      companions: [
+        { guestId: 'occ-9', name: 'Julia Hoffmann', idDocName: 'Passport — Julia Hoffmann' },
+      ],
     }),
     bookingNote: '** THIS RESERVATION HAS BEEN PRE-PAID ** BOOKING NOTE : Payment charge is EUR 1280.00 Approximate time of arrival: between 15:00 and 16:00 Meal Plan: There is no meal option with this room. Smoking Preference: Non-Smoking Payment Collect: OTA collect OTA Commission: 128.00',
     activity: [
@@ -1168,6 +1201,9 @@ export const initialReservations: ReservationEntry[] = [
       submittedAt: '2026-08-05T12:00:00Z',
       idName: 'Marta Kowalski',
       idDocName: 'Passport — Marta Kowalski',
+      companions: [
+        { guestId: 'occ-11', name: 'Tomasz Kowalski', idDocName: 'Passport — Tomasz Kowalski' },
+      ],
     }),
     bookingNote: '** THIS RESERVATION HAS BEEN PRE-PAID ** BOOKING NOTE : Payment charge is EUR 1200.00 Approximate time of arrival: between 13:00 and 14:00 Meal Plan: There is no meal option with this room. Smoking Preference: Non-Smoking Payment Collect: Direct Payment OTA Commission: 0.00',
     activity: [
@@ -1426,6 +1462,10 @@ export const initialReservations: ReservationEntry[] = [
       verifiedAt: '2026-08-03T10:30:00Z',
       idName: 'Emily Chen',
       idDocName: 'Passport — Emily Chen',
+      companions: [
+        { guestId: 'occ-2', name: 'Daniel Chen', idDocName: 'Passport — Daniel Chen' },
+        { guestId: 'occ-3', name: 'Lily Chen', idDocName: 'Passport — Lily Chen' },
+      ],
     }),
     bookingNote: '** THIS RESERVATION HAS BEEN PRE-PAID ** BOOKING NOTE : Payment charge is IDR 542087.253 Approximate time of arrival: between 21:00 and 22:00 Meal Plan: There is no meal option with this room. Smoking Preference: Non-Smoking Payment Collect: OTA collect OTA Commission: 3535352.00',
     activity: [
@@ -1869,6 +1909,8 @@ export function seedIdentity(partial: {
   hasSelfie?: boolean
   hasSignature?: boolean
   hasAgreement?: boolean
+  /** Other guests who already uploaded their selfie and ID ("Verify person" listings). */
+  companions?: Array<{ guestId: string, name: string, idDocName: string }>
 }): IdentityVerification {
   const docs: GuestDocument[] = []
   if (partial.hasSelfie !== false) {
@@ -1908,6 +1950,13 @@ export function seedIdentity(partial: {
       uploadedAt: partial.submittedAt ?? '',
       fileName: 'house-rules-agreement.pdf',
     })
+  }
+  for (const c of partial.companions ?? []) {
+    const slug = c.name.toLowerCase().replace(/[^a-z]+/g, '-')
+    docs.push(
+      { id: `doc-selfie-${slug}`, kind: 'selfie', guestId: c.guestId, name: `Selfie — ${c.name}`, url: docDataUri('SELFIE', 'blue'), uploadedAt: partial.submittedAt ?? '', fileName: 'selfie.jpg' },
+      { id: `doc-id-${slug}`, kind: 'id', guestId: c.guestId, name: c.idDocName, url: docDataUri(c.idDocName, 'green'), uploadedAt: partial.submittedAt ?? '', fileName: 'id-document.jpg' },
+    )
   }
   return { status: partial.status, submittedAt: partial.submittedAt, verifiedAt: partial.verifiedAt, documents: docs }
 }

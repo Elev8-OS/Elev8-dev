@@ -923,7 +923,7 @@ export const listings = ref<Listing[]>([
       bedrooms: 'The property has 5 bedrooms. Four of the bedrooms have king-sized beds, and one has a queen-sized bed. Each bedroom has its own private bathroom, with the master bedroom including a freestanding bathtub.',
       bathrooms: '5 bathrooms, each attached to a bedroom. The master bathroom includes a freestanding bathtub.',
     },
-    guestVerification: { mode: 'group', requireAddress: true, askBedConfiguration: true },
+    guestVerification: { mode: 'group', requireAddress: true, askBedConfiguration: true, allGuestsUploadDocuments: false },
     petPolicy: { allowed: true, packageIds: [] },
     guestGuide: {
       checkin: [
