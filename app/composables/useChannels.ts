@@ -27,6 +27,15 @@ export function mockExternalId(listingId: string, channel: string): string {
   return String(10000000 + (hash % 89999999))
 }
 
+/**
+ * OTA id of one room type of a multi-unit listing. Channels map room types (an
+ * Airbnb listing or a Booking.com room per type), but mappings are still kept
+ * per listing here, so the type's id is derived, stable on every load.
+ */
+export function roomTypeExternalId(listingId: string, typeId: string, channel: string): string {
+  return mockExternalId(`${listingId}:${typeId}`, channel)
+}
+
 function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }

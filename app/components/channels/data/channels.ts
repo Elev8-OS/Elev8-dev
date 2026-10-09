@@ -120,3 +120,30 @@ export const MAPPING_STATUS_LABEL: Record<ChannelMappingStatus, string> = {
   syncing: 'Syncing',
   error: 'Error',
 }
+
+/**
+ * Public page of a listing on its OTA, for "open on Airbnb" links. Built from
+ * the mapping's external id (Airbnb, Vrbo) or the account's property id
+ * (hotel-style channels). Null when the channel has no page to open or an id
+ * is missing.
+ */
+export function channelListingUrl(channel: string, externalId: string, propertyId = ''): string | null {
+  const ext = encodeURIComponent(externalId.trim())
+  const prop = encodeURIComponent(propertyId.trim())
+  switch (channel) {
+    case 'Airbnb':
+      return ext ? `https://www.airbnb.com/rooms/${ext}` : null
+    case 'Vrbo':
+      return ext ? `https://www.vrbo.com/${ext}` : null
+    case 'Booking.com':
+      return prop ? `https://www.booking.com/searchresults.html?dest_type=hotel&dest_id=${prop}` : null
+    case 'Expedia':
+      return prop ? `https://www.expedia.com/h${prop}.Hotel-Information` : null
+    case 'Agoda':
+      return prop ? `https://www.agoda.com/partners/partnersearch.aspx?hid=${prop}` : null
+    case 'Trip.com':
+      return prop ? `https://www.trip.com/hotels/detail/?hotelId=${prop}` : null
+    default:
+      return null
+  }
+}

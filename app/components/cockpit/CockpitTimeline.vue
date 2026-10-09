@@ -5,6 +5,7 @@ import type { Booking, Listing } from '~/components/listings/data/listings'
 import type { Task } from '~/components/tasks/data/schema'
 import { useEventListener } from '@vueuse/core'
 import CockpitBoardTools from '~/components/cockpit/CockpitBoardTools.vue'
+import CockpitChannelLinks from '~/components/cockpit/CockpitChannelLinks.vue'
 import CockpitListingScore from '~/components/cockpit/CockpitListingScore.vue'
 import CockpitRoomTasks from '~/components/cockpit/CockpitRoomTasks.vue'
 import CockpitStayBar from '~/components/cockpit/CockpitStayBar.vue'
@@ -698,14 +699,19 @@ function onKeydown(event: KeyboardEvent) {
           <!-- Listing header: name, then free units and the rate per night -->
           <div class="grid border-b bg-muted/30" :style="{ gridTemplateColumns: gridColumns }" data-testid="cockpit-group">
             <div class="sticky left-0 z-20 flex min-h-14 items-center gap-1 border-r bg-muted px-2">
-              <NuxtLink
-                :to="`/listings/${group.listing.id}`"
-                class="flex min-w-0 flex-1 flex-col rounded-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                :title="listingTitle(group.listing)"
-              >
-                <span class="truncate text-sm font-bold">{{ group.listing.name }}</span>
-                <span class="hidden truncate text-xs text-muted-foreground md:block">{{ group.unitCount > 1 ? `${group.unitCount} rooms, ` : '' }}{{ group.listing.location }}</span>
-              </NuxtLink>
+              <div class="flex min-w-0 flex-1 flex-col">
+                <NuxtLink
+                  :to="`/listings/${group.listing.id}`"
+                  class="flex min-w-0 flex-col rounded-sm hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  :title="listingTitle(group.listing)"
+                >
+                  <span class="truncate text-sm font-bold">{{ group.listing.name }}</span>
+                </NuxtLink>
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="hidden min-w-0 truncate text-xs text-muted-foreground md:block">{{ group.unitCount > 1 ? `${group.unitCount} rooms, ` : '' }}{{ group.listing.location }}</span>
+                  <CockpitChannelLinks v-if="!group.types.length" :listing="group.listing" />
+                </div>
+              </div>
               <CockpitListingScore :listing="group.listing" />
               <Button
                 variant="ghost"
@@ -754,7 +760,10 @@ function onKeydown(event: KeyboardEvent) {
               <div class="sticky left-0 z-20 flex min-h-12 items-center gap-1 border-r bg-card pr-2 pl-3 md:pl-4">
                 <div class="flex min-w-0 flex-1 flex-col">
                   <span class="truncate text-sm font-semibold">{{ section.type.name }}</span>
-                  <span class="hidden truncate text-xs text-muted-foreground md:block">{{ section.type.unitCount }} {{ section.type.unitCount === 1 ? 'room' : 'rooms' }}</span>
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span class="hidden truncate text-xs text-muted-foreground md:block">{{ section.type.unitCount }} {{ section.type.unitCount === 1 ? 'room' : 'rooms' }}</span>
+                    <CockpitChannelLinks :listing="group.listing" :room-type="section.type" />
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
