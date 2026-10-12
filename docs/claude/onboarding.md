@@ -76,6 +76,9 @@ substitute.
 `StatusBanner`. `app/pages/onboarding/index.vue` hosts all of them and picks the screen from
 `step`, so resume is free. A local `viewStep` lets the tenant walk backwards without rewinding
 the saved status.
+- **Finishing lands on the completion screen**, not the dashboard: `finish()` completes and
+  stays, and that screen's "Go to Dashboard" leaves. Only the opt-outs ("I will do this later",
+  "Continue in background") use `finishAndLeave()` and jump straight to `/`
 - `StepBranding` writes through `useTenantBranding`, so the logo it uploads is the same asset
   Settings shows. Skipping records `brandingSkipped`, it does not silently pass
 - `StepSelectPlan` states the package floor, both rates, and the **one year contract** on the

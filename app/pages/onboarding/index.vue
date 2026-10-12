@@ -206,9 +206,21 @@ function onImportDone(): void {
   finish()
 }
 
+/** Lands on the completion screen, whose "Go to Dashboard" leaves the wizard. */
 function finish(): void {
   completeOnboarding()
+  viewStep.value = null
+  showReconnect.value = false
   toast.success('Welcome to ELEV8.')
+}
+
+/** The tenant chose to skip or leave early, so the completion screen is skipped too. */
+function finishAndLeave(): void {
+  finish()
+  navigateTo('/')
+}
+
+function goToDashboard(): void {
   navigateTo('/')
 }
 
@@ -350,7 +362,7 @@ function handleLogout(): void {
             variant="ghost"
             size="sm"
             class="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-            @click="finish"
+            @click="finishAndLeave"
           >
             I will do this later
           </Button>
@@ -384,7 +396,7 @@ function handleLogout(): void {
             variant="ghost"
             size="sm"
             class="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-            @click="finish"
+            @click="finishAndLeave"
           >
             Continue in background
           </Button>
@@ -403,7 +415,7 @@ function handleLogout(): void {
             variant="ghost"
             size="sm"
             class="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-            @click="finish"
+            @click="finishAndLeave"
           >
             I will do this later
           </Button>
@@ -415,7 +427,7 @@ function handleLogout(): void {
             type="button"
             size="lg"
             class="w-full h-12 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs cursor-pointer"
-            @click="navigateTo('/')"
+            @click="goToDashboard"
           >
             Go to Dashboard
           </Button>
@@ -525,7 +537,7 @@ function handleLogout(): void {
 
       <!-- 4. Import progress -->
       <div v-else-if="current === 'import' && !showReconnect" class="mx-auto w-full max-w-2xl">
-        <OnboardingImportProgress @background="finish" @done="onImportDone" />
+        <OnboardingImportProgress @background="finishAndLeave" @done="onImportDone" />
       </div>
 
       <!-- 5. Reconnect channels -->
@@ -581,7 +593,7 @@ function handleLogout(): void {
                   <span class="text-[11px] font-medium text-emerald-600 flex items-center">+38% <Icon name="lucide:chevron-up" class="size-3" /></span>
                 </div>
                 <p class="mt-2 text-base font-bold">
-                  $13.4k
+                  USD 13.4k
                 </p>
                 <p class="text-[11px] text-muted-foreground">
                   Total Sales
@@ -615,7 +627,7 @@ function handleLogout(): void {
                   <span class="text-[11px] font-medium text-red-500 flex items-center">-16% <Icon name="lucide:chevron-down" class="size-3" /></span>
                 </div>
                 <p class="mt-2 text-base font-bold">
-                  $89.34k
+                  USD 89.34k
                 </p>
                 <p class="text-[11px] text-muted-foreground">
                   Total Profit
@@ -632,7 +644,7 @@ function handleLogout(): void {
                   <span class="text-[11px] font-medium text-emerald-600 flex items-center">+38% <Icon name="lucide:chevron-up" class="size-3" /></span>
                 </div>
                 <p class="mt-2 text-base font-bold">
-                  $1,200
+                  USD 1,200
                 </p>
                 <p class="text-[11px] text-muted-foreground">
                   Bookmarks
@@ -715,15 +727,15 @@ function handleLogout(): void {
                 <div class="space-y-2 pt-1 text-xs">
                   <div class="flex items-center justify-between p-2 rounded-lg bg-muted/30">
                     <span class="flex items-center gap-1.5 text-muted-foreground"><Icon name="lucide:wallet" class="size-3.5 text-emerald-600" /> Income</span>
-                    <span class="font-semibold">$5,550</span>
+                    <span class="font-semibold">USD 5,550</span>
                   </div>
                   <div class="flex items-center justify-between p-2 rounded-lg bg-muted/30">
                     <span class="flex items-center gap-1.5 text-muted-foreground"><Icon name="lucide:receipt" class="size-3.5 text-orange-600" /> Expense</span>
-                    <span class="font-semibold">$3,520</span>
+                    <span class="font-semibold">USD 3,520</span>
                   </div>
                   <div class="flex items-center justify-between p-2 rounded-lg bg-muted/30">
                     <span class="flex items-center gap-1.5 text-muted-foreground"><Icon name="lucide:badge-dollar-sign" class="size-3.5 text-yellow-600" /> Profit</span>
-                    <span class="font-semibold">$2,350</span>
+                    <span class="font-semibold">USD 2,350</span>
                   </div>
                 </div>
               </div>

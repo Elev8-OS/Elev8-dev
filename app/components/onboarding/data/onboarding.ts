@@ -1234,13 +1234,13 @@ export function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
 
+/** "USD 1,234.50": ISO code, never the symbol. Negatives read "USD -10.00". */
 export function formatUsd(value: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+  const amount = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
+  return `USD ${amount}`
 }
 
 // ── Order summary ────────────────────────────────────────────────────────────

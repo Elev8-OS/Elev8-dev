@@ -167,6 +167,38 @@ describe('onboarding page', () => {
     expect(screen(wrapper)).toBe('reconnect')
   })
 
+  it('lands on the finished panel, not the dashboard, after connecting channels', async () => {
+    const ob = useOnboarding()
+    ob.startTenant('owner@example.com')
+    ob.markEmailVerified()
+    ob.selectModel('PMS_CM')
+    ob.setStatus('integration_pending')
+
+    const wrapper = mount(OnboardingPage, { global: globalOptions })
+    expect(screen(wrapper)).toBe('channels')
+
+    await clickText(wrapper, 'Go to dashboard')
+    expect(wrapper.text()).toContain('Onboarding is complete')
+    expect(ob.isComplete.value).toBe(true)
+    expect(navigateTo).not.toHaveBeenCalled()
+
+    await clickText(wrapper, 'Go to Dashboard')
+    expect(navigateTo).toHaveBeenCalledWith('/')
+  })
+
+  it('goes straight to the dashboard when the tenant connects channels later', async () => {
+    const ob = useOnboarding()
+    ob.startTenant('owner@example.com')
+    ob.markEmailVerified()
+    ob.selectModel('PMS_CM')
+    ob.setStatus('integration_pending')
+
+    const wrapper = mount(OnboardingPage, { global: globalOptions })
+    await clickText(wrapper, 'I will do this later')
+    expect(ob.isComplete.value).toBe(true)
+    expect(navigateTo).toHaveBeenCalledWith('/')
+  })
+
   it('shows the finished panel to a tenant who is already onboarded', () => {
     const wrapper = mount(OnboardingPage, { global: globalOptions })
     expect(wrapper.text()).toContain('Onboarding is complete')
