@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import type { AuthSlide } from './AuthCarousel.vue'
+
 defineProps<{
   reverse?: boolean
+  /** Replaces the default quote panel with a carousel of these images. */
+  slides?: AuthSlide[]
 }>()
 </script>
 
@@ -9,7 +13,10 @@ defineProps<{
     class="relative flex items-center justify-center px-4 h-dvh lg:max-w-none lg:px-0"
     :class="{ 'flex-row-reverse': reverse }"
   >
-    <div class="relative hidden h-full flex-1 flex-col bg-muted p-10 text-white lg:flex dark:border-r">
+    <div v-if="slides?.length" class="relative hidden h-full min-w-0 flex-1 items-center justify-center overflow-hidden bg-white p-10 lg:flex dark:border-l">
+      <LayoutAuthCarousel :slides="slides" />
+    </div>
+    <div v-else class="relative hidden h-full flex-1 flex-col bg-muted p-10 text-white lg:flex dark:border-r">
       <div class="absolute inset-0 bg-zinc-900" />
       <div class="relative z-20 flex items-center text-lg font-medium">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="mr-2 h-6 w-6">
