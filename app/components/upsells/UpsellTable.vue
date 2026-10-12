@@ -2,6 +2,7 @@
 import type { UpsellService } from '@/components/upsells/data/upsell-services'
 import { toast } from 'vue-sonner'
 import { serviceGrantsLockAccess } from '@/components/upsells/data/lock-access'
+import { isExternalService } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
 import { hasRichTextTags, richTextToPlainText } from '~/lib/rich-text'
 
@@ -162,11 +163,18 @@ const categoryBadgeClass: Record<string, string> = {
                 {{ svc.category }}
               </span>
             </TableCell>
-            <TableCell class="text-right font-semibold tabular-nums whitespace-nowrap">
+            <TableCell v-if="isExternalService(svc)" class="text-right text-muted-foreground whitespace-nowrap">
+              —
+            </TableCell>
+            <TableCell v-else class="text-right font-semibold tabular-nums whitespace-nowrap">
               {{ priceRange(svc) }}
             </TableCell>
             <TableCell class="text-center">
-              <Badge variant="secondary">
+              <Badge v-if="isExternalService(svc)" variant="outline" class="gap-1">
+                <Icon name="lucide:external-link" class="h-3 w-3" />
+                External link
+              </Badge>
+              <Badge v-else variant="secondary">
                 {{ svc.items.length }} {{ svc.items.length === 1 ? 'item' : 'items' }}
               </Badge>
             </TableCell>
@@ -175,7 +183,10 @@ const categoryBadgeClass: Record<string, string> = {
                 {{ svc.assignedListings.length }} {{ svc.assignedListings.length === 1 ? 'listing' : 'listings' }}
               </Badge>
             </TableCell>
-            <TableCell class="text-center">
+            <TableCell v-if="isExternalService(svc)" class="text-center text-muted-foreground">
+              —
+            </TableCell>
+            <TableCell v-else class="text-center">
               <Badge :variant="svc.availability === 'always' ? 'default' : 'outline'" class="gap-1">
                 <Icon
                   :name="svc.availability === 'always' ? 'lucide:shopping-cart' : 'lucide:clock'"

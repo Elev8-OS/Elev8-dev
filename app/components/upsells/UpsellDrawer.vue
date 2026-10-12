@@ -2,6 +2,7 @@
 import type { LockAccessConfig } from '@/components/upsells/data/lock-access'
 import type {
   UpsellCategory,
+  UpsellFulfillment,
   UpsellItem,
   UpsellPriceUnit,
   UpsellService,
@@ -24,6 +25,7 @@ import { createDefaultLockAccessConfig } from '@/components/upsells/data/lock-ac
 import {
   BALI_LISTINGS,
   emptyVisibilityConditions,
+  isValidExternalUrl,
   PRICE_UNIT_CATEGORIES,
   PRICE_UNIT_OPTIONS,
   priceUnitSuffix,
@@ -32,6 +34,7 @@ import {
   UPSELL_CURRENCIES,
 } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
+import TimePicker from '~/components/base/TimePicker.vue'
 import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { TERN_PRODUCTS, ternPriceFor, ternSizeLabel } from '~/components/reservations/data/tern-products'
@@ -67,6 +70,12 @@ const formCategory = ref<UpsellService['category']>('Airport Transport')
 const formCurrency = ref('CHF')
 const formPriceUnit = ref<UpsellPriceUnit>('flat')
 const formAddToHousekeepingPrep = ref(false)
+const formServiceHoursEnabled = ref(false)
+const formServiceHoursStart = ref('09:00')
+const formServiceHoursEnd = ref('17:00')
+const formFulfillment = ref<UpsellFulfillment>('internal')
+const formExternalUrl = ref('')
+const externalUrlError = ref(false)
 
 /**
  * ⚠️ A Damage Protection service is not sold like the others: it sells one
@@ -77,6 +86,8 @@ const formAddToHousekeepingPrep = ref(false)
  */
 const isProtection = computed(() => formCategory.value === PROTECTION_CATEGORY)
 const hasPriceUnit = computed(() => PRICE_UNIT_CATEGORIES.includes(formCategory.value))
+/** A partner sells it: the guest only gets the link, so items, prices and ordering settings are hidden. */
+const isExternal = computed(() => hasPriceUnit.value && formFulfillment.value === 'external')
 
 /**
  * ⚠️ A Damage Protection upsell sells ONE package: a tier and its guest price,
@@ -104,7 +115,7 @@ const steps = computed(() => isProtection.value
     ]
   : [
       { id: 1, label: 'Basic Info' },
-      { id: 2, label: 'Items' },
+      ...(isExternal.value ? [] : [{ id: 2, label: 'Items' }]),
       { id: 3, label: 'Listings' },
       { id: 4, label: 'Visibility' },
       { id: 5, label: 'Settings' },
@@ -136,6 +147,10 @@ function nextStep() {
     return
   }
   nameError.value = false
+  if (currentStep.value === 1 && isExternal.value && !isValidExternalUrl(formExternalUrl.value)) {
+    externalUrlError.value = true
+    return
+  }
   const index = steps.value.findIndex(step => step.id === currentStep.value)
   goToStep(steps.value[index + 1]?.id ?? lastStepId.value)
 }
@@ -235,6 +250,12 @@ watch(() => props.open, (open) => {
       formCurrency.value = props.service.currency
       formPriceUnit.value = props.service.priceUnit ?? 'flat'
       formAddToHousekeepingPrep.value = props.service.addToHousekeepingPrep ?? false
+      formServiceHoursEnabled.value = !!props.service.serviceHours
+      formServiceHoursStart.value = props.service.serviceHours?.start ?? '09:00'
+      formServiceHoursEnd.value = props.service.serviceHours?.end ?? '17:00'
+      formFulfillment.value = props.service.fulfillment ?? 'internal'
+      formExternalUrl.value = props.service.externalUrl ?? ''
+      externalUrlError.value = false
       formImage.value = props.service.image
       formYoutubeLinks.value = [...props.service.youtubeLinks]
       formInternalNotes.value = props.service.internalNotes
@@ -264,6 +285,12 @@ watch(() => props.open, (open) => {
       formCurrency.value = formCategory.value === PROTECTION_CATEGORY ? 'USD' : 'CHF'
       formPriceUnit.value = 'flat'
       formAddToHousekeepingPrep.value = false
+      formServiceHoursEnabled.value = false
+      formServiceHoursStart.value = '09:00'
+      formServiceHoursEnd.value = '17:00'
+      formFulfillment.value = 'internal'
+      formExternalUrl.value = ''
+      externalUrlError.value = false
       formImage.value = undefined
       formYoutubeLinks.value = []
       formNewYoutubeLink.value = ''
@@ -566,10 +593,31 @@ function handleSave() {
       coverTier: packageTier.value,
     }]
   }
+  else if (isExternal.value) {
+    if (!isValidExternalUrl(formExternalUrl.value)) {
+      externalUrlError.value = true
+      toast.error('Enter a valid external link (https://...).')
+      goToStep(1)
+      return
+    }
+  }
   else if (formItems.value.length === 0) {
     toast.error('At least one item is required.')
     goToStep(2)
     return
+  }
+
+  if (hasPriceUnit.value && !isExternal.value && formServiceHoursEnabled.value) {
+    if (!formServiceHoursStart.value || !formServiceHoursEnd.value) {
+      toast.error('Set a start and end time for Service Hours.')
+      goToStep(1)
+      return
+    }
+    if (formServiceHoursEnd.value <= formServiceHoursStart.value) {
+      toast.error('Service Hours end time must be after the start time.')
+      goToStep(1)
+      return
+    }
   }
 
   const data = {
@@ -577,20 +625,26 @@ function handleSave() {
     description: formDescription.value.trim(),
     category: formCategory.value,
     currency: formCurrency.value,
-    priceUnit: hasPriceUnit.value ? formPriceUnit.value : undefined,
-    addToHousekeepingPrep: isProtection.value ? undefined : formAddToHousekeepingPrep.value,
+    priceUnit: hasPriceUnit.value && !isExternal.value ? formPriceUnit.value : undefined,
+    addToHousekeepingPrep: isProtection.value || isExternal.value ? undefined : formAddToHousekeepingPrep.value,
+    fulfillment: hasPriceUnit.value ? formFulfillment.value : undefined,
+    externalUrl: isExternal.value ? formExternalUrl.value.trim() : undefined,
+    serviceHours: hasPriceUnit.value && !isExternal.value && formServiceHoursEnabled.value
+      ? { start: formServiceHoursStart.value, end: formServiceHoursEnd.value }
+      : undefined,
     image: formImage.value,
     youtubeLinks: formYoutubeLinks.value,
     internalNotes: formInternalNotes.value.trim(),
     notificationUsers: formNotificationUsers.value,
-    pricingEnabled: formPricingEnabled.value,
+    pricingEnabled: isExternal.value ? false : formPricingEnabled.value,
     taxPercent: formTaxPercent.value,
     servicePercent: formServicePercent.value,
-    items: formItems.value,
+    // An external upsell sells nothing in Elev8: the partner link is all the guest gets.
+    items: isExternal.value ? [] : formItems.value,
     // A protection package is offered on every listing from Settings: it is assigned to none.
     assignedListings: isProtection.value ? [] : formListings.value,
     availability: formAvailability.value,
-    lockAccess: formLockAccess.value.enabled && !isProtection.value
+    lockAccess: formLockAccess.value.enabled && !isProtection.value && !isExternal.value
       ? {
           enabled: true,
           lockNames: [...formLockAccess.value.lockNames],
@@ -735,7 +789,57 @@ function onOpenChange(val: boolean) {
             </p>
           </div>
 
-          <div v-if="!isProtection" class="flex flex-col gap-2">
+          <div v-if="hasPriceUnit" class="flex flex-col gap-3" data-testid="upsell-fulfillment">
+            <Label>Upsell Type</Label>
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                class="flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50"
+                :class="formFulfillment === 'internal' ? 'border-primary bg-primary/5' : 'border-border'"
+                :aria-pressed="formFulfillment === 'internal'"
+                @click="formFulfillment = 'internal'"
+              >
+                <div class="flex items-center gap-2">
+                  <Icon name="lucide:store" class="size-4" />
+                  <span class="text-sm font-medium">Internal</span>
+                </div>
+                <span class="text-xs text-muted-foreground">Guests order and pay in Elev8</span>
+              </button>
+              <button
+                type="button"
+                class="flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors hover:bg-muted/50"
+                :class="formFulfillment === 'external' ? 'border-primary bg-primary/5' : 'border-border'"
+                :aria-pressed="formFulfillment === 'external'"
+                @click="formFulfillment = 'external'"
+              >
+                <div class="flex items-center gap-2">
+                  <Icon name="lucide:external-link" class="size-4" />
+                  <span class="text-sm font-medium">External</span>
+                </div>
+                <span class="text-xs text-muted-foreground">Guests book through a partner link</span>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="isExternal" class="flex flex-col gap-2">
+            <Label for="upsell-external-url">External Link <span class="text-destructive">*</span></Label>
+            <Input
+              id="upsell-external-url"
+              v-model="formExternalUrl"
+              type="url"
+              placeholder="https://partner.com/book"
+              :class="externalUrlError ? 'border-destructive' : ''"
+              @input="externalUrlError = false"
+            />
+            <p v-if="externalUrlError" class="text-xs text-destructive">
+              Enter a valid link starting with https://
+            </p>
+            <p v-else class="text-xs text-muted-foreground">
+              Guests only see this link. Orders, prices and payment stay with the partner.
+            </p>
+          </div>
+
+          <div v-if="!isProtection && !isExternal" class="flex flex-col gap-2">
             <Label>Currency</Label>
             <Select v-model="formCurrency">
               <SelectTrigger class="w-full">
@@ -752,7 +856,7 @@ function onOpenChange(val: boolean) {
             </p>
           </div>
 
-          <div v-if="hasPriceUnit" class="flex flex-col gap-2">
+          <div v-if="hasPriceUnit && !isExternal" class="flex flex-col gap-2">
             <Label>Unit Price</Label>
             <Select v-model="formPriceUnit">
               <SelectTrigger class="w-full">
@@ -769,7 +873,33 @@ function onOpenChange(val: boolean) {
             </p>
           </div>
 
-          <div v-if="!isProtection" class="flex items-start justify-between gap-4">
+          <div v-if="hasPriceUnit && !isExternal" class="flex flex-col gap-3" data-testid="upsell-service-hours">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex flex-col gap-0.5">
+                <Label for="upsell-service-hours">Service Hours</Label>
+                <p class="text-xs text-muted-foreground">
+                  Set the daily operating window. Guests can only schedule appointments during these times.
+                </p>
+              </div>
+              <Switch
+                id="upsell-service-hours"
+                :model-value="formServiceHoursEnabled"
+                @update:model-value="(v: boolean) => formServiceHoursEnabled = v"
+              />
+            </div>
+            <div v-if="formServiceHoursEnabled" class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-2">
+                <Label class="text-xs font-normal text-muted-foreground">Start time</Label>
+                <TimePicker v-model="formServiceHoursStart" :start-hour="0" :end-hour="23" />
+              </div>
+              <div class="flex flex-col gap-2">
+                <Label class="text-xs font-normal text-muted-foreground">End time</Label>
+                <TimePicker v-model="formServiceHoursEnd" :start-hour="0" :end-hour="23" />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!isProtection && !isExternal" class="flex items-start justify-between gap-4">
             <div class="flex flex-col gap-0.5">
               <Label for="upsell-housekeeping-prep">Add order to Housekeeping Preparation</Label>
               <p class="text-xs text-muted-foreground">
@@ -1146,9 +1276,9 @@ function onOpenChange(val: boolean) {
             </div>
           </div>
 
-          <Separator />
+          <Separator v-if="!isExternal" />
 
-          <div class="flex flex-col gap-3">
+          <div v-if="!isExternal" class="flex flex-col gap-3">
             <Label>Availability</Label>
             <div class="grid grid-cols-2 gap-3">
               <button
@@ -1178,10 +1308,10 @@ function onOpenChange(val: boolean) {
             </div>
           </div>
 
-          <Separator />
+          <Separator v-if="!isExternal" />
 
           <!-- Smart lock access granted by this service -->
-          <div class="flex flex-col gap-3">
+          <div v-if="!isExternal" class="flex flex-col gap-3">
             <div class="flex items-start justify-between gap-4">
               <div class="flex flex-col gap-0.5">
                 <Label class="flex items-center gap-2">
@@ -1291,7 +1421,7 @@ function onOpenChange(val: boolean) {
 
         <!-- Step 5: Settings -->
         <div v-if="currentStep === 5" class="flex flex-col gap-5 p-6">
-          <div v-if="!isProtection" class="flex flex-col gap-3">
+          <div v-if="!isProtection && !isExternal" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <Label>Tax and Service</Label>
               <div class="flex items-center gap-2">
@@ -1319,7 +1449,7 @@ function onOpenChange(val: boolean) {
             </div>
           </div>
 
-          <Separator v-if="!isProtection" />
+          <Separator v-if="!isProtection && !isExternal" />
 
           <div v-if="!isProtection" class="flex flex-col gap-2">
             <div class="flex flex-col gap-0.5">

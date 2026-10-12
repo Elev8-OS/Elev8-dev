@@ -4,7 +4,7 @@ import type { PromoCodeDiscountType, PromoCodeLengthOfStayTier } from './data/pr
 import type { UpsellService } from '~/components/upsells/data/upsell-services'
 import { computed, ref } from 'vue'
 import { listings as allListings } from '~/components/listings/data/listings'
-import { sellableServices } from '~/components/upsells/data/upsell-services'
+import { orderableServices } from '~/components/upsells/data/upsell-services'
 import { useUpsellServices } from '~/composables/useUpsellServices'
 import { PROMO_CODE_CURRENCIES, upsellServiceCoverage } from './data/promo-code-form'
 import { listingsWithoutFreeUpsell } from './data/promo-code-redemption'
@@ -124,8 +124,11 @@ function priceRange(service: UpsellService): string {
     : `${formatPrice(min, service.currency)} – ${formatPrice(max, service.currency)}`
 }
 
-/** Damage protection packages are bought in the guest guide's protection section, never discounted as an upsell. */
-const pickableServices = computed(() => sellableServices(upsellServices.value))
+/**
+ * Damage protection packages are bought in the guest guide's protection section, and
+ * external upsells are sold by a partner: neither is discounted as an upsell.
+ */
+const pickableServices = computed(() => orderableServices(upsellServices.value))
 
 const filteredServices = computed(() => {
   const query = search.value.trim().toLowerCase()

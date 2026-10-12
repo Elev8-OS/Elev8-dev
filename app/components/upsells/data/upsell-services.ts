@@ -244,7 +244,14 @@ export const PRICE_UNIT_OPTIONS: { value: UpsellPriceUnit, label: string }[] = [
 /** Currencies a service can be priced in (Basic Info). No conversion: items keep the typed amount. */
 export const UPSELL_CURRENCIES = ['IDR', 'USD', 'CHF', 'EUR', 'AUD', 'SGD', 'GBP'] as const
 
-/** Categories that show the Unit Price select in the drawer's Basic Info step. */
+export type UpsellFulfillment = 'internal' | 'external'
+
+export interface UpsellServiceHours {
+  start: string
+  end: string
+}
+
+/** Categories that show the Unit Price select and Service Hours in the drawer's Basic Info step. */
 export const PRICE_UNIT_CATEGORIES: UpsellCategory[] = ['Miscellaneous']
 
 /** Short suffix after an item price, empty for a flat fee. */
@@ -278,6 +285,18 @@ export interface UpsellService {
   priceUnit?: UpsellPriceUnit
   /** Orders for this service are added to the housekeeping preparation of the stay. Missing means off. */
   addToHousekeepingPrep?: boolean
+  /**
+   * Daily window (`HH:mm`, listing local time) guests can schedule this service in.
+   * Miscellaneous only; missing means any time.
+   */
+  serviceHours?: UpsellServiceHours
+  /**
+   * Miscellaneous only. `'external'`: a partner sells it and the guest only gets
+   * `externalUrl` (no items, prices or orders in Elev8). Missing means internal.
+   */
+  fulfillment?: UpsellFulfillment
+  /** The partner link an external service opens. Set only when `fulfillment` is `'external'`. */
+  externalUrl?: string
   image?: string
   youtubeLinks: string[]
   internalNotes: string
@@ -346,6 +365,27 @@ export const CATALOG_CATEGORIES: UpsellCategory[] = UPSPELL_CATEGORIES.filter(c 
 /** Upsells sold as upsells: everything except the damage protection packages. */
 export function sellableServices<T extends Pick<UpsellService, 'category'>>(services: T[]): T[] {
   return services.filter(s => !isProtectionService(s))
+}
+
+/** A partner sells it: the guest only gets the link, so Elev8 never takes an order for it. */
+export function isExternalService(service: Pick<UpsellService, 'fulfillment'>): boolean {
+  return service.fulfillment === 'external'
+}
+
+/** Upsells Elev8 takes an order for (inbox offer, promo code): sellable and not external. */
+export function orderableServices<T extends Pick<UpsellService, 'category' | 'fulfillment'>>(services: T[]): T[] {
+  return sellableServices(services).filter(s => !isExternalService(s))
+}
+
+/** Only http(s) links count as an external upsell link. */
+export function isValidExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim())
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+  }
+  catch {
+    return false
+  }
 }
 
 export const BALI_LISTINGS = [
@@ -677,6 +717,7 @@ export const mockUpsellServices: UpsellService[] = [
     description: 'Tropical breakfast served on a floating tray in your private pool. Prepared by our Canggu kitchen.',
     category: 'Miscellaneous',
     currency: 'IDR',
+    serviceHours: { start: '07:00', end: '11:00' },
     youtubeLinks: [],
     internalNotes: 'Canggu kitchen. Needs the order by 18:00 the day before.',
     notificationUsers: ['Komang Juliantara'],
@@ -713,6 +754,7 @@ export const mockUpsellServices: UpsellService[] = [
     description: 'Tropical breakfast served on a floating tray in your private pool. Prepared by our Ubud kitchen.',
     category: 'Miscellaneous',
     currency: 'IDR',
+    serviceHours: { start: '07:00', end: '11:00' },
     youtubeLinks: [],
     internalNotes: 'Ubud kitchen. Uluwatu and Jimbaran deliveries leave at 06:30.',
     notificationUsers: ['Komang Juliantara'],
@@ -737,6 +779,30 @@ export const mockUpsellServices: UpsellService[] = [
     visibilityMatchMode: 'all',
     createdAt: '2026-09-01T08:00:00Z',
     updatedAt: '2026-09-01T08:00:00Z',
+  },
+  // Sold by a partner: the guest only gets the booking link, Elev8 takes no order.
+  {
+    id: 'svc-015',
+    name: 'Nusa Penida Snorkeling Trip',
+    description: 'Full-day boat trip to Manta Point and Crystal Bay with our partner Bali Blue Tours. Book and pay on their site.',
+    category: 'Miscellaneous',
+    currency: 'IDR',
+    fulfillment: 'external',
+    externalUrl: 'https://balibluetours.example.com/nusa-penida-snorkeling',
+    youtubeLinks: [],
+    internalNotes: 'Partner pays a 10% commission monthly. Ask Made at Bali Blue Tours for the report.',
+    notificationUsers: [],
+    pricingEnabled: false,
+    taxPercent: 0,
+    servicePercent: 0,
+    items: [],
+    assignedListings: BALI_LISTINGS,
+    availability: 'always',
+    status: 'active',
+    visibility: emptyVisibilityConditions(),
+    visibilityMatchMode: 'all',
+    createdAt: '2026-10-12T08:00:00Z',
+    updatedAt: '2026-10-12T08:00:00Z',
   },
   {
     id: 'svc-pet-stay',
