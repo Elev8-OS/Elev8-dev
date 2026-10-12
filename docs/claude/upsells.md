@@ -26,8 +26,9 @@
 - **`UpsellNotificationList.vue`** — Staff notification list with unread/all filter, severity icons
 - **`UpsellCancelModal.vue`** — Decline reason textarea + handled-by toggle (guest/staff)
 
-#### Page (`app/pages/upsells.vue`)
-- 3 tabs: Catalog / Orders / Notifications with KPI cards
+#### Pages
+- **`app/pages/upsells.vue`**: the catalog only (Add Service menu, filter bar, `UpsellTable`, drawer). An old `?tab=orders` link redirects to `/upsell-orders`, keeping `?order=`.
+- **`app/pages/upsell-orders.vue`** (2026-10-12, was the Orders tab): KPI cards, `UpsellOrderTable`, `UpsellOrderDrawer`. `?order=<id>` opens that order's drawer on mount (the inbox offer card and the `UPSELL_*` alert routes link here). Sidebar: Upsells group, Orders, with the requested count badge.
 
 ### Upsells Inbox Integration (`app/components/inbox/`)
 

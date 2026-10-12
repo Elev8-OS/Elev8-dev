@@ -45,7 +45,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Tenant onboarding | `docs/claude/onboarding.md` | PMS models, pricing, server-validated promos, import, banners |
 | Analytics | `docs/claude/analytics.md` | `/analytics` portfolio KPIs, trend vs comparison, pace, channel mix, booking window, length of stay, origins, listing table; generated bookings, per-currency money |
 | GM dashboard | `docs/claude/gm-dashboard.md` | Role-gated portfolio dashboard, generated stays, sentiment panel |
-| App shell | `docs/claude/app-shell.md` | Notification Center, layout/header, Tasks, Kanban, Auth, Mail |
+| App shell | `docs/claude/app-shell.md` | Notification Center, layout/header, Tasks, Kanban, Auth |
 | Composables | `docs/claude/composables.md` | Table of every composable and its key exports |
 | File structure | `docs/claude/file-structure.md` | Directory tree reference |
 | shadcn-vue snippets | `docs/claude/shadcn-patterns.md` | Button/Dialog/Form/Sheet/DataTable boilerplate |

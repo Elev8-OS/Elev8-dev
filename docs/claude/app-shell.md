@@ -25,6 +25,7 @@
 - **LanguageSelector.vue** — Mockup language switcher (circle-flags SVGs from hatscripts.github.io). Popover dropdown with EN/DE/FR/ID/NL options. Flag icon + uppercase code in trigger button. Purely visual - no i18n integration.
 - **AppSidebar.vue** — No footer (user menu moved to topbar)
 - **SidebarNavLink.vue** — Unread count badge on Inbox link
+- **Sidebar layout** (`constants/menus.ts`, 2026-10-12): General keeps Home, Inbox, Analytics, Cockpit, Listing Health and Owner Portal as links; the rest sit in collapsible groups (Bookings: Reservations, Guest Registration; Properties: Listings, Channels; Upsells: Catalog, Orders, Damage Protection; Guest Experience: Review Hub, Guest Guides, Backfill Guides, Journeys; Marketing: Website Builder, Promo Codes, Booking Widget v1/v2; Finance). Apps keeps Platform Console and Kanban Board. An **Operations** section (own heading, after General) lists Tasks, Operations Calendar, Key Management, Inventory, Procurement and Users as plain links. `SidebarNavGroup.vue` opens a group that holds the current page and marks its header active while collapsed; it shows the requested upsell order count on Orders (and on the closed Upsells header). Labels truncate instead of wrapping; group headers carry no New pill. ⚠️ `AppSidebar` gates PMS_ONLY modules by title: group children are filtered by their own title and an emptied group is dropped, so a gated module (Cockpit, Review Hub, Website Builder) must keep its exact title, as a link or a child
 
 ### Tasks Module (`app/components/tasks/`)
 - **DataTable.vue** — TanStack table wrapper
@@ -41,6 +42,3 @@
 - **SignIn.vue**, **SignUp.vue**, **OTPForm.vue**, **OTPForm1.vue**, **OTPForm2.vue**, **ForgotPassword.vue**
 - Layout: `app/components/layout/Auth.vue`
 
-### Mail (`app/components/mail/`)
-- **Layout.vue**, **List.vue**, **Display.vue**, **Nav.vue**, **AccountSwitcher.vue**
-- Mock data: `app/components/mail/data/mails.ts`

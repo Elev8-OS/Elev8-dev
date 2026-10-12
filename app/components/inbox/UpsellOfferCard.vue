@@ -23,7 +23,7 @@ function handleWithdraw() {
 }
 
 function handleViewOrder() {
-  window.location.href = `/upsells?tab=orders&order=${props.offer.orderId}`
+  navigateTo({ path: '/upsell-orders', query: { order: props.offer.orderId } })
 }
 
 const statusConfig = {

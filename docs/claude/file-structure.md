@@ -138,14 +138,6 @@ app/
 │   │   ├── SidebarNavGroup.vue
 │   │   ├── SidebarNavHeader.vue
 │   │   └── SidebarNavLink.vue
-│   ├── mail/
-│   │   ├── AccountSwitcher.vue
-│   │   ├── Display.vue
-│   │   ├── Layout.vue
-│   │   ├── List.vue
-│   │   ├── Nav.vue
-│   │   └── data/
-│   │       └── mails.ts
 │   ├── navigation-menu/
 │   │   └── DemoItem.vue
 │   ├── settings/
@@ -234,7 +226,6 @@ app/
     │   ├── alert.vue
     │   ├── ... (all shadcn demos)
     │   └── tooltip.vue
-    ├── email.vue
     ├── finance/
     │   └── index.vue           # Finance page (Overview/Revenue/Costs/Integrations tabs)
     ├── inbox.vue

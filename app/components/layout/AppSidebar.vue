@@ -53,10 +53,16 @@ const { sidebar } = useAppSettings()
 const { moduleAvailable } = useOnboarding()
 const visibleMenu = computed<NavMenu[]>(() =>
   props.menu
-    // A NavSectionTitle carries no `title`, so it is never gated.
+    // A NavSectionTitle carries no `title`, so it is never gated. Group children are
+    // gated by their own title, and a group left with none is dropped.
     .map(group => ({
       ...group,
-      items: group.items.filter(item => !('title' in item) || moduleAvailable(item.title)),
+      items: group.items
+        .map(item => 'children' in item
+          ? { ...item, children: item.children.filter(child => moduleAvailable(child.title)) }
+          : item)
+        .filter(item => !('title' in item) || moduleAvailable(item.title))
+        .filter(item => !('children' in item) || item.children.length > 0),
     }))
     .filter(group => group.items.length > 0))
 </script>
