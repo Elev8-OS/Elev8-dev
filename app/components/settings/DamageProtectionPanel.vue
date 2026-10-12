@@ -15,10 +15,11 @@ import { DEFAULT_HOST_FALLBACK_DAYS, depositChannelsOf, HOST_FALLBACK_DAY_OPTION
 import PartnerPackageDialog from '~/components/damage-protection/PartnerPackageDialog.vue'
 import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
-import { PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
+import { listingNamesText, PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
 import { ternPriceFor } from '~/components/reservations/data/tern-products'
 import { useDamageProtection } from '~/composables/useDamageProtection'
+import { useTernActivation } from '~/composables/useTernActivation'
 import { useUpsellServices } from '~/composables/useUpsellServices'
 
 /**
@@ -274,15 +275,10 @@ const coveredCount = computed(() => listingRows.value.filter(r => r.covered).len
  * what the guest pays has no account to land in and no deposit card can be kept.
  */
 const unassignedRows = computed(() => listingRows.value.filter(r => !r.hasPayout))
-const unassignedNames = computed(() => {
-  const names = unassignedRows.value.map(r => r.name)
-  return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')
-})
-
-/** Narrow the table to the unassigned listings: the search matches the payout column. */
-function showUnassigned() {
-  listingSearch.value = NO_PAYOUT
-}
+/** Before activation the activation card already names them (Activate waits for them): one notice, not two. */
+const tern = useTernActivation()
+const showUnassignedAlert = computed(() => tern.isActive.value && unassignedRows.value.length > 0)
+const unassignedNames = computed(() => listingNamesText(unassignedRows.value.map(r => r.name)))
 
 // Search by name or payout, then page. A new search starts on page 1; a shrinking list never strands you past the end.
 const listingSearch = ref('')
@@ -303,6 +299,11 @@ const pagedRows = computed(() => {
 })
 
 watch(listingSearch, () => { currentPage.value = 1 })
+
+/** Narrow the table to the unassigned listings: the search matches the payout column. */
+function showUnassigned() {
+  listingSearch.value = NO_PAYOUT
+}
 watch(totalPages, (total) => {
   if (currentPage.value > total)
     currentPage.value = total
@@ -329,7 +330,7 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
 
     <TernActivationCard />
 
-    <Alert v-if="unassignedRows.length" variant="destructive" data-testid="protection-unassigned-payout">
+    <Alert v-if="showUnassignedAlert" variant="destructive" data-testid="protection-unassigned-payout">
       <Icon name="lucide:alert-circle" class="size-4" />
       <AlertTitle>
         {{ unassignedRows.length }} {{ unassignedRows.length === 1 ? 'listing is' : 'listings are' }} not assigned to a payout account

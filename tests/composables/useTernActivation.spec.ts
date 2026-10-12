@@ -1,5 +1,6 @@
 import type { ActivationDraft } from '~/components/reservations/data/tern-activation'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { listings } from '~/components/listings/data/listings'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useOnboarding } from '~/composables/useOnboarding'
 import { useTernActivation } from '~/composables/useTernActivation'
@@ -25,8 +26,18 @@ function draft(patch: Partial<ActivationDraft> = {}): ActivationDraft {
   }
 }
 
+const SEEDED_ACCOUNTS = payoutAccounts.value
+
 beforeEach(() => {
   localStorage.clear()
+  // Activation needs every listing on a payout account: the seed leaves some out, so the Stripe one takes them.
+  const assigned = new Set(SEEDED_ACCOUNTS.flatMap(a => a.listingIds))
+  const rest = listings.value.map(l => l.id).filter(id => !assigned.has(id))
+  payoutAccounts.value = SEEDED_ACCOUNTS.map(a => a.provider === 'stripe' ? { ...a, listingIds: [...a.listingIds, ...rest] } : a)
+})
+
+afterEach(() => {
+  payoutAccounts.value = SEEDED_ACCOUNTS
 })
 
 describe('useTernActivation', () => {
@@ -64,6 +75,15 @@ describe('useTernActivation', () => {
     await expect(tern.activate(draft(), 'X')).resolves.toEqual({ ok: false, reason: 'no_stripe_payout' })
     expect(tern.activation.value.status).toBe('not_activated')
     payoutAccounts.value = saved
+  })
+
+  it('refuses to activate while a listing has no payout account', async () => {
+    const tern = useTernActivation()
+    tern.replayActivation()
+    payoutAccounts.value = SEEDED_ACCOUNTS
+    expect(tern.unassignedListings.value.length).toBeGreaterThan(0)
+    await expect(tern.activate(draft(), 'X')).resolves.toEqual({ ok: false, reason: 'listings_without_payout' })
+    expect(tern.activation.value.status).toBe('not_activated')
   })
 
   it('activates: accepts the terms, stores the bank, and registers an organization on Tern', async () => {

@@ -2,7 +2,7 @@
 import { toast } from 'vue-sonner'
 import { protectionRefusalText } from '~/components/damage-protection/data/listing-protection'
 import TernActivationWizard from '~/components/damage-protection/TernActivationWizard.vue'
-import { bankAccountLabel, PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
+import { bankAccountLabel, listingNamesText, PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
 import { useDamageProtection } from '~/composables/useDamageProtection'
 import { useTernActivation } from '~/composables/useTernActivation'
 
@@ -12,6 +12,7 @@ import { useTernActivation } from '~/composables/useTernActivation'
  * until this says active.
  */
 const tern = useTernActivation()
+const dp = useDamageProtection()
 
 const wizardOpen = ref(false)
 const wizardMode = ref<'activate' | 'bank'>('activate')
@@ -23,8 +24,11 @@ function openWizard(mode: 'activate' | 'bank') {
 
 const activation = computed(() => tern.activation.value)
 
+/** Every listing needs a payout account before activation (owner's decision, 2026-10-12). Activate stays hidden until then. */
+const unassigned = computed(() => tern.unassignedListings.value)
+const unassignedNames = computed(() => listingNamesText(unassigned.value.map(l => l.name)))
+
 /** Off on every listing at once: no waiver, no deposit, the guest pays again. The package stays picked. */
-const dp = useDamageProtection()
 const protectionOn = computed(() => dp.settings.value.waiver || dp.settings.value.deposit)
 
 function turnOff() {
@@ -120,12 +124,28 @@ function when(iso?: string): string {
             <Icon name="lucide:alert-triangle" class="mt-0.5 size-3.5 shrink-0" />
             Connect a Stripe payout account first, in Payouts.
           </p>
+          <p
+            v-else-if="unassigned.length"
+            class="mt-2 flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400"
+            data-testid="tern-card-unassigned"
+          >
+            <Icon name="lucide:alert-triangle" class="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              Assign every listing to a payout account first, in Payouts. {{ unassigned.length }}
+              {{ unassigned.length === 1 ? 'is' : 'are' }} not assigned yet: {{ unassignedNames }}.
+            </span>
+          </p>
         </div>
       </div>
       <div>
         <NuxtLink v-if="!tern.hasStripePayout.value" :to="PAYOUT_SETTINGS_PATH">
           <Button size="sm" data-testid="tern-connect-stripe">
             Connect Stripe
+          </Button>
+        </NuxtLink>
+        <NuxtLink v-else-if="unassigned.length" :to="PAYOUT_SETTINGS_PATH">
+          <Button size="sm" data-testid="tern-assign-payouts">
+            Assign in Payouts
           </Button>
         </NuxtLink>
         <Button v-else size="sm" data-testid="tern-activate-open" @click="openWizard('activate')">

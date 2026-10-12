@@ -30,6 +30,21 @@ export function hasConnectedStripePayout(accounts: Pick<PayoutAccount, 'provider
   return accounts.some(a => a.provider === 'stripe' && a.status === 'connected')
 }
 
+/**
+ * The listings no payout account is assigned to. Activation is refused while
+ * there is one (`listings_without_payout`, owner's decision, 2026-10-12): what a
+ * guest pays for the waiver there would have no account to land in.
+ */
+export function listingsWithoutPayout<T extends { id: string }>(listings: T[], accounts: Pick<PayoutAccount, 'listingIds'>[]): T[] {
+  const assigned = new Set(accounts.flatMap(a => a.listingIds))
+  return listings.filter(l => !assigned.has(l.id))
+}
+
+/** "A, B, C and 2 more": the first three names, for a notice. */
+export function listingNamesText(names: string[]): string {
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')
+}
+
 /** Where the tenant connects it. */
 export const PAYOUT_SETTINGS_PATH = '/settings/payouts'
 

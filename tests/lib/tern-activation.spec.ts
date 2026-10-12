@@ -10,6 +10,8 @@ import {
   firstInvalidActivationStep,
   hasConnectedStripePayout,
   invoiceTemplateHasBank,
+  listingNamesText,
+  listingsWithoutPayout,
   ternPayoutTarget,
   ternRegistrationPayload,
   validateActivationStep,
@@ -140,5 +142,18 @@ describe('the Stripe payout activation needs', () => {
     expect(hasConnectedStripePayout([{ provider: 'stripe', status: 'connected' }])).toBe(true)
     expect(hasConnectedStripePayout([{ provider: 'stripe', status: 'needs_setup' }, { provider: 'xendit', status: 'connected' }])).toBe(false)
     expect(hasConnectedStripePayout([])).toBe(false)
+  })
+})
+
+describe('listings without a payout account', () => {
+  it('lists the ones no account is assigned to', () => {
+    const accounts = [{ listingIds: ['a', 'b'] }, { listingIds: ['c'] }]
+    expect(listingsWithoutPayout([{ id: 'a' }, { id: 'd' }, { id: 'c' }], accounts)).toEqual([{ id: 'd' }])
+    expect(listingsWithoutPayout([{ id: 'a' }], [])).toEqual([{ id: 'a' }])
+  })
+
+  it('names the first three and counts the rest', () => {
+    expect(listingNamesText(['A', 'B'])).toBe('A, B')
+    expect(listingNamesText(['A', 'B', 'C', 'D', 'E'])).toBe('A, B, C and 2 more')
   })
 })

@@ -1,9 +1,11 @@
 import type { ActivationDraft, TernActivation } from '~/components/reservations/data/tern-activation'
 import { computed } from 'vue'
+import { listings } from '~/components/listings/data/listings'
 import {
   bankDraftToAccount,
   firstInvalidActivationStep,
   hasConnectedStripePayout,
+  listingsWithoutPayout,
   TERN_ACTIVATION_TERMS_VERSION,
   ternPayoutTarget,
   validateBankDraft,
@@ -73,6 +75,9 @@ export function useTernActivation() {
   /** Activation needs a connected Stripe payout account first. */
   const hasStripePayout = computed(() => hasConnectedStripePayout(payoutAccounts.value))
 
+  /** And every listing assigned to a payout account: these are the ones still missing. */
+  const unassignedListings = computed(() => listingsWithoutPayout(listings.value, payoutAccounts.value))
+
   const isActive = computed(() => activation.value.status === 'active')
   const isRegistering = computed(() => activation.value.status === 'registering')
   /** Where Tern pays a claim, or null until the service is active. */
@@ -126,6 +131,8 @@ export function useTernActivation() {
       return { ok: false, reason: 'already_registering' }
     if (!hasStripePayout.value)
       return { ok: false, reason: 'no_stripe_payout' }
+    if (unassignedListings.value.length)
+      return { ok: false, reason: 'listings_without_payout' }
     const invalid = firstInvalidActivationStep(draft)
     if (invalid)
       return { ok: false, reason: `invalid_${invalid}` }
@@ -206,6 +213,7 @@ export function useTernActivation() {
     payoutTarget,
     subscriptionPaymentMethodId,
     hasStripePayout,
+    unassignedListings,
     hydrate,
     activate,
     updatePayoutBank,

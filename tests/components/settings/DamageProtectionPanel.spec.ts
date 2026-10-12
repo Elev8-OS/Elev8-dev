@@ -177,12 +177,16 @@ describe('settings, Damage protection', () => {
     expect(wrapper.find('[data-testid="protection-listing-empty"]').exists()).toBe(true)
   })
 
-  it('cannot switch the waiver on before activation, and offers the Activate button instead', () => {
+  it('cannot switch the waiver on before activation, and sends the tenant to Payouts while a listing has none', () => {
     useTernActivation().replayActivation()
     useDamageProtection().setProtectionSettings({ waiver: false })
     const wrapper = mountPanel()
     expect(switchIn(wrapper, 'protection-waiver-switch').attributes('disabled')).toBeDefined()
     expect(wrapper.find('[data-testid="protection-waiver-inactive"]').text()).toContain('Activate the damage waiver above')
-    expect(wrapper.find('[data-testid="tern-activate-open"]').exists()).toBe(true)
+    // The seed leaves some listings without a payout account: Activate waits for them.
+    expect(wrapper.find('[data-testid="tern-activate-open"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tern-assign-payouts"]').exists()).toBe(true)
+    // The activation card names them, so the page's own alert stays away: one notice, not two.
+    expect(wrapper.find('[data-testid="protection-unassigned-payout"]').exists()).toBe(false)
   })
 })

@@ -278,8 +278,15 @@ or a zero price.
 in the sidebar under Booking & Payments after Payouts; the worklist's **Settings** button and Billing's
 "Not activated" link point here). Top to bottom:
 - **`TernActivationCard`** with the **Activate** button (or Connect Stripe without a Stripe payout).
+  ⚠️ **Every listing on a payout account comes next** (owner's decision, 2026-10-12, no skipping):
+  `useTernActivation().unassignedListings` (`listingsWithoutPayout` in `tern-activation.ts`); while any
+  is left, `activate` refuses `listings_without_payout` (checked after `no_stripe_payout`), the card swaps
+  Activate for **Assign in Payouts** with a notice naming them (`tern-card-unassigned`), and the wizard
+  shows a notice (`tern-unassigned`), a Review row and keeps Activate disabled. Specs that activate assign
+  the leftover seed listings to the Stripe account first (the seed leaves some out).
 - **Unassigned payout alert** (`protection-unassigned-payout`, 2026-10-12): destructive `Alert` when any
-  listing has no payout account, naming up to three, with **Assign in Payouts** (`PAYOUT_SETTINGS_PATH`)
+  listing has no payout account AFTER activation (before it, the activation card's notice says the same,
+  so the page shows one notice, not two), naming up to three, with **Assign in Payouts** (`PAYOUT_SETTINGS_PATH`)
   and **Show them below** (sets the Listings search to "No payout account").
 - **Damage waiver** card: the switch (disabled until activated; once activation is undone it reads
   "Paused"), **Package, every listing**, read only (no picker, 2026-10-08: the waiver uses ONE upsell; "Paused" when

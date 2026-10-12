@@ -14,6 +14,7 @@ import {
   createActivationDraft,
   firstInvalidActivationStep,
   invoiceTemplateHasBank,
+  listingNamesText,
   PACKAGE_CURRENCY,
   PAYOUT_SETTINGS_PATH,
   TERN_ACTIVATION_TERMS,
@@ -239,6 +240,23 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           <NuxtLink :to="PAYOUT_SETTINGS_PATH" @click="open = false">
             <Button size="sm" variant="outline" class="h-7 text-xs">
               Connect Stripe
+            </Button>
+          </NuxtLink>
+        </div>
+        <!-- Then every listing on a payout account: Activate stays disabled until none is left. -->
+        <div
+          v-else-if="mode === 'activate' && tern.unassignedListings.value.length"
+          class="flex items-start gap-2 border-b bg-amber-500/5 px-6 py-3 text-sm"
+          data-testid="tern-unassigned"
+        >
+          <Icon name="lucide:alert-triangle" class="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <span class="flex-1">
+            Every listing needs a payout account before the damage waiver can be activated.
+            {{ tern.unassignedListings.value.length }} not assigned yet: {{ listingNamesText(tern.unassignedListings.value.map(l => l.name)) }}.
+          </span>
+          <NuxtLink :to="PAYOUT_SETTINGS_PATH" @click="open = false">
+            <Button size="sm" variant="outline" class="h-7 text-xs">
+              Assign in Payouts
             </Button>
           </NuxtLink>
         </div>
@@ -493,6 +511,12 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
                 {{ tern.hasStripePayout.value ? 'Connected' : 'Not connected yet' }}
               </dd>
               <dt class="text-muted-foreground">
+                Listings on a payout account
+              </dt>
+              <dd data-testid="tern-review-assigned">
+                {{ tern.unassignedListings.value.length ? `${tern.unassignedListings.value.length} not assigned yet` : 'All assigned' }}
+              </dd>
+              <dt class="text-muted-foreground">
                 Cover fees charged to
               </dt>
               <dd data-testid="tern-review-card">
@@ -564,7 +588,7 @@ const bankPreview = computed(() => bankDraftToAccount(draft.value.bank))
           <Button v-else-if="!isLast" data-testid="tern-next" @click="next">
             Next
           </Button>
-          <Button v-else :disabled="tern.isRegistering.value || !hasSubscriptionCard || !tern.hasStripePayout.value" data-testid="tern-activate" @click="activate">
+          <Button v-else :disabled="tern.isRegistering.value || !hasSubscriptionCard || !tern.hasStripePayout.value || tern.unassignedListings.value.length > 0" data-testid="tern-activate" @click="activate">
             <Icon v-if="tern.isRegistering.value" name="lucide:loader-2" class="mr-1.5 size-3.5 animate-spin" />
             {{ tern.isRegistering.value ? 'Activating…' : tern.activation.value.status === 'registration_failed' ? 'Try again' : 'Activate' }}
           </Button>

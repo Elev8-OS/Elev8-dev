@@ -1,5 +1,6 @@
 import type { DamageProtection, ReservationEntry, SavedCard } from '~/components/reservations/data/reservations'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { listings as allListings } from '~/components/listings/data/listings'
 import { seedProtectionSettings } from '~/components/reservations/data/damage-protection-seed'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useDamageProtection } from '~/composables/useDamageProtection'
@@ -1046,6 +1047,12 @@ describe('before the damage waiver is activated', () => {
   it('refuses host-paid and writes no cover until activation, then covers on the next sync', async () => {
     const tern = useTernActivation()
     tern.replayActivation()
+    // Activation needs every listing on a payout account: the Stripe one takes the rest.
+    const savedAccounts = payoutAccounts.value
+    onTestFinished(() => { payoutAccounts.value = savedAccounts })
+    const assigned = new Set(savedAccounts.flatMap(a => a.listingIds))
+    const rest = allListings.value.map(l => l.id).filter(id => !assigned.has(id))
+    payoutAccounts.value = savedAccounts.map(a => a.provider === 'stripe' ? { ...a, listingIds: [...a.listingIds, ...rest] } : a)
     const dp = useDamageProtection()
     seedReservation()
     expect(dp.setProtectionPayer('host')).toEqual({ ok: false, reason: 'waiver_not_activated' })

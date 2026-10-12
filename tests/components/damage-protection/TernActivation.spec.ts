@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { payoutAccounts } from '~/components/settings/data/payouts'
@@ -48,12 +48,33 @@ async function clickAndSettle(wrapper: ReturnType<typeof mountCard>, testid: str
   await nextTick()
 }
 
-beforeEach(() => {
+const SEEDED_ACCOUNTS = payoutAccounts.value
+
+beforeEach(async () => {
   localStorage.clear()
   vi.clearAllMocks()
+  // Activation needs every listing on a payout account: the seed leaves some out, so the Stripe one takes them.
+  const { listings } = await import('~/components/listings/data/listings')
+  const assigned = new Set(SEEDED_ACCOUNTS.flatMap(a => a.listingIds))
+  const rest = listings.value.map(l => l.id).filter(id => !assigned.has(id))
+  payoutAccounts.value = SEEDED_ACCOUNTS.map(a => a.provider === 'stripe' ? { ...a, listingIds: [...a.listingIds, ...rest] } : a)
+})
+
+afterEach(() => {
+  payoutAccounts.value = SEEDED_ACCOUNTS
 })
 
 describe('the damage waiver activation', () => {
+  it('refuses to activate until every listing has a payout account: Assign in Payouts instead of Activate', async () => {
+    useTernActivation().replayActivation()
+    payoutAccounts.value = SEEDED_ACCOUNTS
+    const wrapper = mountCard()
+    expect(wrapper.find('[data-testid="tern-activate-open"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tern-card-unassigned"]').text()).toContain('not assigned yet')
+    expect(wrapper.find('[data-testid="tern-assign-payouts"]').exists()).toBe(true)
+    expect(wrapper.find('a').attributes('href')).toBe('/settings/payouts')
+  })
+
   it('shows an active tenant where Tern pays, and offers to change the bank account', () => {
     const wrapper = mountCard()
     expect(wrapper.find('[data-testid="tern-activation-card"]').attributes('data-status')).toBe('active')
