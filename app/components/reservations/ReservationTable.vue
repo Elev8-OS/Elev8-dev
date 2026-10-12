@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import { useResizeObserver, useScroll } from '@vueuse/core'
 import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
 import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
 import { isActiveExtension } from '~/components/reservations/data/reservations'
@@ -88,18 +89,20 @@ type SortKey = 'guest' | 'listing' | 'checkIn' | 'checkOut' | 'nights' | 'guests
 const sortKey = ref<SortKey | null>(null)
 const sortDir = ref<'asc' | 'desc'>('asc')
 
-const sortableColumns: Array<{ key: SortKey, label: string, align?: 'right' }> = [
-  { key: 'guest', label: 'Guest' },
+// Fixed widths keep every page laid out the same; Listing (no width) takes the
+// remaining space and truncates.
+const sortableColumns: Array<{ key: SortKey, label: string, align?: 'right', width?: string }> = [
+  { key: 'guest', label: 'Guest', width: 'w-72' },
   { key: 'listing', label: 'Listing' },
-  { key: 'checkIn', label: 'Check-in' },
-  { key: 'checkOut', label: 'Check-out' },
-  { key: 'nights', label: 'Nights' },
-  { key: 'guests', label: 'Guests' },
-  { key: 'channel', label: 'Channel' },
-  { key: 'total', label: 'Total', align: 'right' },
-  { key: 'status', label: 'Status' },
-  { key: 'cityTax', label: 'City tax' },
-  { key: 'protection', label: 'Protection' },
+  { key: 'checkIn', label: 'Check-in', width: 'w-32' },
+  { key: 'checkOut', label: 'Check-out', width: 'w-32' },
+  { key: 'nights', label: 'Nights', width: 'w-20' },
+  { key: 'guests', label: 'Guests', width: 'w-20' },
+  { key: 'channel', label: 'Channel', width: 'w-28' },
+  { key: 'total', label: 'Total', align: 'right', width: 'w-32' },
+  { key: 'status', label: 'Status', width: 'w-36' },
+  { key: 'cityTax', label: 'City tax', width: 'w-32' },
+  { key: 'protection', label: 'Protection', width: 'w-36' },
 ]
 
 // City tax and protection sort by urgency, not by label: ascending puts what
@@ -250,6 +253,25 @@ watch(() => props.reservations, () => {
   page.value = 1
 })
 
+// Horizontal scroll cue: Guest stays pinned left and the actions menu right,
+// each casting an edge shadow while columns are hidden on that side.
+const scroller = ref<HTMLElement | null>(null)
+const { x: scrollX, arrivedState, measure } = useScroll(scroller)
+useResizeObserver(scroller, () => measure())
+watch(pagedRows, () => measure(), { flush: 'post' })
+
+const hiddenLeft = computed(() => scrollX.value > 0)
+const hiddenRight = computed(() => !arrivedState.right)
+
+// Sticky cells need an opaque fill, so the row tint is layered on top of
+// bg-background as a flat gradient instead of a translucent background.
+const stickyCell = 'sticky z-10 bg-background after:pointer-events-none after:absolute after:inset-y-0 after:w-4 after:to-transparent after:transition-opacity after:from-black/10 dark:after:from-black/40'
+const stickyLeft = computed(() => [stickyCell, 'left-0 after:right-0 after:translate-x-full after:bg-linear-to-r', hiddenLeft.value ? 'after:opacity-100' : 'after:opacity-0'])
+const stickyRight = computed(() => [stickyCell, 'right-0 after:left-0 after:-translate-x-full after:bg-linear-to-l', hiddenRight.value ? 'after:opacity-100' : 'after:opacity-0'])
+const headTint = 'bg-linear-to-r from-muted/50 to-muted/50'
+const childTint = 'bg-linear-to-r from-muted/20 to-muted/20 group-hover:from-muted/30 group-hover:to-muted/30'
+const rowTint = 'group-hover:bg-linear-to-r group-hover:from-muted/30 group-hover:to-muted/30'
+
 const pageNumbers = computed(() => {
   const pages = totalPages.value
   const current = page.value
@@ -271,15 +293,19 @@ const pageNumbers = computed(() => {
 
 <template>
   <div class="rounded-md border">
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+    <div ref="scroller" class="overflow-x-auto">
+      <table class="w-full min-w-[1650px] table-fixed text-sm">
+        <colgroup>
+          <col v-for="col in sortableColumns" :key="col.key" :class="col.width">
+          <col class="w-16">
+        </colgroup>
         <thead class="bg-muted/50 text-xs uppercase text-muted-foreground">
           <tr>
             <th
               v-for="col in sortableColumns"
               :key="col.key"
               class="px-4 py-3"
-              :class="col.align === 'right' ? 'text-right' : 'text-left'"
+              :class="[col.align === 'right' ? 'text-right' : 'text-left', col.key === 'guest' && [stickyLeft, headTint]]"
             >
               <button
                 type="button"
@@ -295,7 +321,7 @@ const pageNumbers = computed(() => {
                 />
               </button>
             </th>
-            <th class="px-4 py-3 text-left font-medium">
+            <th class="px-4 py-3 text-left font-medium" :class="[stickyRight, headTint]">
               <span class="sr-only">Actions</span>
             </th>
           </tr>
@@ -305,12 +331,12 @@ const pageNumbers = computed(() => {
             <!-- Nights added in place to a direct stay: one booking, so the row comes from the extension record. -->
             <tr
               v-if="inPlace"
-              class="cursor-pointer border-t border-dashed bg-muted/20 transition-colors hover:bg-muted/30"
+              class="group cursor-pointer border-t border-dashed bg-muted/20 transition-colors hover:bg-muted/30"
               data-testid="row-child-in-place"
               :data-row-id="r.id"
               @click="emit('openDetail', r)"
             >
-              <td class="py-2.5 pl-8 pr-4">
+              <td class="py-2.5 pl-8 pr-4" :class="[stickyLeft, childTint]">
                 <div class="flex items-center gap-2">
                   <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
                   <div class="min-w-0">
@@ -326,10 +352,10 @@ const pageNumbers = computed(() => {
               <td class="px-4 py-3">
                 <span class="text-muted-foreground">Same listing</span>
               </td>
-              <td class="px-4 py-3">
+              <td class="whitespace-nowrap px-4 py-3">
                 {{ fmtDate(inPlace.checkIn) }}
               </td>
-              <td class="px-4 py-3">
+              <td class="whitespace-nowrap px-4 py-3">
                 {{ fmtDate(inPlace.checkOut) }}
               </td>
               <td class="px-4 py-3">
@@ -341,7 +367,7 @@ const pageNumbers = computed(() => {
               <td class="px-4 py-3">
                 {{ r.channel }}
               </td>
-              <td class="px-4 py-3 text-right tabular-nums">
+              <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
                 {{ fmtCurrency(inPlace.ext.amount, inPlace.ext.currency) }}
               </td>
               <td class="px-4 py-3">
@@ -361,17 +387,17 @@ const pageNumbers = computed(() => {
               </td>
               <td class="px-4 py-3" />
               <td class="px-4 py-3" />
-              <td class="px-4 py-3" />
+              <td class="px-4 py-3" :class="[stickyRight, childTint]" />
             </tr>
             <tr
               v-else
-              class="hover:bg-muted/30 transition-colors cursor-pointer"
+              class="group hover:bg-muted/30 transition-colors cursor-pointer"
               :class="child ? 'border-t border-dashed bg-muted/20' : 'border-t'"
               :data-testid="child ? 'row-child' : undefined"
               :data-row-id="r.id"
               @click="emit('openDetail', r)"
             >
-              <td v-if="child" class="py-2.5 pl-8 pr-4">
+              <td v-if="child" class="py-2.5 pl-8 pr-4" :class="[stickyLeft, childTint]">
                 <div class="flex items-center gap-2">
                   <Icon name="lucide:corner-down-right" class="size-4 shrink-0 text-muted-foreground" />
                   <div class="min-w-0">
@@ -384,10 +410,10 @@ const pageNumbers = computed(() => {
                   </div>
                 </div>
               </td>
-              <td v-else class="px-4 py-3" @click.stop>
+              <td v-else class="px-4 py-3" :class="[stickyLeft, rowTint]" @click.stop>
                 <button
                   type="button"
-                  class="text-left hover:underline"
+                  class="block max-w-full text-left hover:underline"
                   @click="emit('openGuest', r.guestId)"
                 >
                   <ReservationGuestCell :name="r.guestName" :email="r.guestEmail">
@@ -408,14 +434,14 @@ const pageNumbers = computed(() => {
               </td>
               <td class="px-4 py-3">
                 <span v-if="child" class="text-muted-foreground">Same listing</span>
-                <NuxtLink v-else :to="`/listings/${r.listingId}`" class="text-foreground hover:underline">
+                <NuxtLink v-else :to="`/listings/${r.listingId}`" class="block truncate text-foreground hover:underline" :title="r.listingName">
                   {{ r.listingName }}
                 </NuxtLink>
               </td>
-              <td class="px-4 py-3">
+              <td class="whitespace-nowrap px-4 py-3">
                 {{ fmtDate(r.checkIn) }}
               </td>
-              <td class="px-4 py-3">
+              <td class="whitespace-nowrap px-4 py-3">
                 {{ fmtDate(r.checkOut) }}
               </td>
               <td class="px-4 py-3">
@@ -427,7 +453,7 @@ const pageNumbers = computed(() => {
               <td class="px-4 py-3">
                 {{ r.channel }}
               </td>
-              <td class="px-4 py-3 text-right tabular-nums">
+              <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
                 {{ fmtCurrency(r.totalPrice, r.currency) }}
               </td>
               <td class="px-4 py-3">
@@ -464,7 +490,7 @@ const pageNumbers = computed(() => {
                   :option="r.damageProtection?.option"
                 />
               </td>
-              <td class="px-4 py-3" @click.stop>
+              <td class="px-4 py-3" :class="[stickyRight, child ? childTint : rowTint]" @click.stop>
                 <DropdownMenu>
                   <DropdownMenuTrigger as-child>
                     <Button variant="ghost" size="sm" class="h-8 w-8 p-0">
