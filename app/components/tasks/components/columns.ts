@@ -77,6 +77,12 @@ export const columns: ColumnDef<Task>[] = [
             }, () => assignee.label)
           : null,
         h('span', { class: 'max-w-[300px] truncate font-medium' }, row.getValue('title')),
+        task.scheduleId
+          ? h('span', { class: 'shrink-0 text-muted-foreground', title: 'Made by a schedule' }, [
+              h(Icon, { 'name': 'lucide:repeat', 'class': 'size-3.5', 'aria-hidden': 'true' }),
+              h('span', { class: 'sr-only' }, 'Scheduled'),
+            ])
+          : null,
       ])
     },
   },
@@ -144,6 +150,17 @@ export const columns: ColumnDef<Task>[] = [
       return h(Badge, { variant: 'secondary', class: 'text-xs font-normal' }, 'Owner')
     },
     filterFn: (row, _id, value: string[]) => value.includes('true') === !!row.original.ownerVisible,
+  },
+  // Filter-only (hidden in `DataTable`): the title cell already marks a
+  // scheduled task with its repeat icon.
+  {
+    id: 'scheduled',
+    accessorFn: row => (row.scheduleId ? 'true' : 'false'),
+    header: () => h('span', { class: 'sr-only' }, 'Scheduled'),
+    cell: () => null,
+    enableSorting: false,
+    enableHiding: false,
+    filterFn: (row, _id, value: string[]) => value.includes('true') === !!row.original.scheduleId,
   },
   {
     id: 'actions',

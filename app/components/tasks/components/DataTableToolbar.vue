@@ -52,6 +52,12 @@ const listingOptions = BALI_LISTINGS.map(l => ({ value: l, label: shortListingNa
         title="Owner"
         :options="[{ value: 'true', label: 'Owner maintenance' }]"
       />
+      <DataTableFacetedFilter
+        v-if="table.getColumn('scheduled')"
+        :column="table.getColumn('scheduled')"
+        title="Scheduled"
+        :options="[{ value: 'true', label: 'From a schedule' }]"
+      />
       <Button
         v-if="isFiltered"
         variant="ghost"

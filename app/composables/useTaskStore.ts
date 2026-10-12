@@ -7,7 +7,11 @@ export function useTaskStore() {
   const tasks = useState<Task[]>('tasks', () => mockTasks.map(t => ({ ...t })))
   const { syncOnCreate, syncOnStatusChange, syncOnDelete } = useHostBuddyInventorySync()
 
-  function addTask(data: Omit<Task, 'id'>): Task {
+  /**
+   * `created` overrides parts of the "has created a new task" entry, e.g. a
+   * scheduled task credits whoever set up the schedule and notes it.
+   */
+  function addTask(data: Omit<Task, 'id'>, options: { created?: Partial<StatusUpdate> } = {}): Task {
     const id = `TASK-${Math.floor(1000 + Math.random() * 9000)}`
     const now = new Date().toISOString()
     // "<you> has created a new task for <listing>": the sentence is built from
@@ -18,11 +22,12 @@ export function useTaskStore() {
       id,
       createdAt: now,
       statusUpdates: [
-        { date: now, actor: { name: creator, kind: 'staff' }, kind: 'created', progress: 0 },
+        { date: now, actor: { name: creator, kind: 'staff' }, kind: 'created', progress: 0, ...options.created },
         ...(data.statusUpdates || []),
       ],
     }
-    tasks.value = [...tasks.value, task]
+    // Newest first, so a new task is on the first page of the table.
+    tasks.value = [task, ...tasks.value]
     syncOnCreate(task)
     return task
   }

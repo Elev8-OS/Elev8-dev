@@ -2,9 +2,11 @@
 import type { Task } from '@/components/tasks/data/schema'
 import { toast } from 'vue-sonner'
 import { assigneeOptions, priorities, statuses } from '@/components/tasks/data/data'
+import { describeRecurrence } from '@/components/tasks/data/schedule'
 import { progressKindFor, timelineSentence } from '@/components/tasks/data/timeline'
 import { useCurrentDashboardUser } from '@/composables/useCurrentDashboardUser'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
+import { useTaskSchedules } from '@/composables/useTaskSchedules'
 import { useTaskStore } from '@/composables/useTaskStore'
 import { listings } from '~/components/listings/data/listings'
 
@@ -18,6 +20,11 @@ const emit = defineEmits<{
 }>()
 
 const { addStatusUpdate, addImage } = useTaskStore()
+
+// A task a schedule made shows the rule it repeats on; a deleted schedule
+// leaves the task with nothing to show.
+const { schedules } = useTaskSchedules()
+const taskSchedule = computed(() => props.task?.scheduleId ? schedules.value.find(s => s.id === props.task!.scheduleId) ?? null : null)
 
 /** Tasks store the listing NAME; a listing with rooms shows the task's room (or "Whole property"). */
 const taskListingHasRooms = computed(() => {
@@ -337,6 +344,15 @@ function formatDate(iso: string): string {
                 </p>
                 <p class="font-medium">
                   {{ getAssigneeLabel(task.assignee) }}
+                </p>
+              </div>
+              <div v-if="taskSchedule" data-testid="task-detail-schedule">
+                <p class="text-xs text-muted-foreground">
+                  Repeats
+                </p>
+                <p class="flex items-center gap-1.5 font-medium">
+                  <Icon name="lucide:repeat" class="size-3.5 shrink-0 text-muted-foreground" />
+                  {{ describeRecurrence(taskSchedule) }}
                 </p>
               </div>
               <div>

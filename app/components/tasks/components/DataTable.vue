@@ -29,7 +29,7 @@ const props = defineProps<DataTableProps>()
 
 const sorting = ref<SortingState>([])
 const columnFilters = ref<ColumnFiltersState>([])
-const columnVisibility = ref<VisibilityState>({})
+const columnVisibility = ref<VisibilityState>({ scheduled: false })
 const rowSelection = ref({})
 
 const table = useVueTable({

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import CreateTaskDialog from '~/components/inbox/CreateTaskDialog.vue'
 import { readableTimestamp, roomIdFor } from '~/components/inbox/data/internal'
+import { addDays, todayKey } from '~/components/tasks/data/schedule'
 import NewTaskDialog from '~/components/tasks/NewTaskDialog.vue'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -10,6 +11,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useInternalInbox } from '~/composables/useInternalInbox'
 import { useMessageActions } from '~/composables/useMessageActions'
+import { useTaskSchedules } from '~/composables/useTaskSchedules'
 import { useTaskStore } from '~/composables/useTaskStore'
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
@@ -183,5 +185,72 @@ describe('creating a task from messages', () => {
     // Nothing is posted back into the room.
     expect(internal.messagesFor(HOUSEKEEPING_LST1)).toHaveLength(roomBefore)
     expect(useMessageActions().taskOpen.value).toBe(false)
+  })
+})
+
+describe('repeating a task', () => {
+  // A Select that can be driven: the first one in the form is Priority, the
+  // second is Repeat, then Ends.
+  const SelectStub = { name: 'SelectStub', props: ['modelValue'], emits: ['update:modelValue'], template: '<div><slot /></div>' }
+
+  function mountRepeatable(props: Record<string, unknown> = {}) {
+    return mount(NewTaskDialog as never, {
+      props: { 'open': true, 'onUpdate:open': () => {}, ...props },
+      global: { components, stubs: { ...stubs, Select: SelectStub } },
+    })
+  }
+
+  function buttonNamed(wrapper: ReturnType<typeof mount>, name: string) {
+    return wrapper.findAll('button').find(b => b.text() === name)
+  }
+
+  beforeEach(() => {
+    useTaskSchedules().schedules.value = []
+  })
+
+  it('turns the form into a schedule that needs a first due date', async () => {
+    const wrapper = mountRepeatable()
+    await wrapper.find('#new-task-instructions').setValue('Weekly pool cleaning')
+    await wrapper.findAllComponents(SelectStub)[1]!.vm.$emit('update:modelValue', 'weekly')
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="new-task-repeat-rule"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('Needs owner approval')
+    const create = buttonNamed(wrapper, 'Create Schedule')!
+    expect(create.attributes('disabled')).toBeDefined()
+
+    await wrapper.find('#new-task-due-date').setValue(todayKey())
+    await nextTick()
+    expect(wrapper.find('[data-testid="new-task-repeat-summary"]').text()).toContain('The first task appears today')
+    await create.trigger('click')
+
+    const { schedules } = useTaskSchedules()
+    expect(schedules.value).toHaveLength(1)
+    expect(schedules.value[0]).toMatchObject({ title: 'Weekly pool cleaning', frequency: 'weekly', startDate: todayKey() })
+    // Today's occurrence is within the lead time, so its task exists already.
+    expect(useTaskStore().tasks.value.some(t => t.scheduleId === schedules.value[0]!.id)).toBe(true)
+  })
+
+  it('edits an existing schedule', async () => {
+    const { schedules, addSchedule } = useTaskSchedules()
+    const { schedule } = addSchedule({
+      instructions: 'AC service',
+      listings: [],
+      priority: 'high',
+      frequency: 'monthly',
+      interval: 3,
+      weekdays: [],
+      startDate: addDays(todayKey(), 30),
+      end: { type: 'never' },
+      leadDays: 3,
+    })
+    const wrapper = mountRepeatable({ open: false })
+    await wrapper.setProps({ open: true, schedule })
+    await nextTick()
+
+    expect(wrapper.find('h2').text()).toBe('Edit Schedule')
+    await wrapper.find('#new-task-instructions').setValue('AC service and filter clean')
+    await buttonNamed(wrapper, 'Save Schedule')!.trigger('click')
+    expect(schedules.value[0]).toMatchObject({ title: 'AC service and filter clean', frequency: 'monthly', interval: 3 })
   })
 })

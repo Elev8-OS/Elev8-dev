@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import type { ScheduleEnd, ScheduleFrequency, TaskSchedule, TaskScheduleInput } from '@/components/tasks/data/schedule'
 import type { NewTaskPrefill, Task } from '@/components/tasks/data/schema'
 import { toast } from 'vue-sonner'
 import { listings } from '@/components/listings/data/listings'
 import { assigneeOptions, priorities } from '@/components/tasks/data/data'
+import { addDays, describeRecurrence, formatDay, FREQUENCY_UNIT, parseDay, todayKey, WEEKDAY_ORDER, WEEKDAY_SHORT } from '@/components/tasks/data/schedule'
 import { taskTitleFromInstructions } from '@/components/tasks/data/task-title'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
+import { useTaskSchedules } from '@/composables/useTaskSchedules'
 import { useTaskStore } from '@/composables/useTaskStore'
 
 /**
@@ -17,9 +20,16 @@ import { useTaskStore } from '@/composables/useTaskStore'
  * **Instructions** (required). It is stored in `Task.description`, and the
  * task's title is its first line (`taskTitleFromInstructions`), so existing
  * tasks and every reader of either field carry on unchanged.
+ *
+ * **Repeat** turns the task into a schedule (`useTaskSchedules`): the due date
+ * becomes the first due date, the listing picker takes several listings (one
+ * task each), and owner approval is hidden (a quote is per job, not per
+ * schedule). Passing `schedule` opens the form on that schedule to edit it.
  */
 const props = defineProps<{
   prefill?: NewTaskPrefill | null
+  /** Edit this schedule instead of creating a task. */
+  schedule?: TaskSchedule | null
   /** An extra line under the dialog description, e.g. where the task came from. */
   context?: string
 }>()
@@ -27,14 +37,25 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Fired before the dialog closes, so the caller can still read its own state. */
   created: [task: Task]
+  /** A schedule was created or saved. */
+  scheduled: [schedule: TaskSchedule]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
 
 const { addTask } = useTaskStore()
 const { ownerForTask, notifyApprovalRequested } = useTaskOwnerApproval()
+const { addSchedule, updateSchedule } = useTaskSchedules()
 
-const newListing = ref('')
+const isEditingSchedule = computed(() => !!props.schedule)
+
+/** Several listings when repeating (one task each), at most one otherwise. */
+const selectedListings = ref<string[]>([])
+const newListing = computed({
+  get: () => selectedListings.value[0] ?? '',
+  set: (name: string) => { selectedListings.value = name ? [name] : [] },
+})
+
 const assignee = ref('')
 const assigneeType = ref<'role' | 'person'>('role')
 const dueDate = ref('')
@@ -58,6 +79,96 @@ const newEstimatedCost = ref<number>(0)
 
 /** The owner who would be asked, derived from the selected listing. */
 const approvalOwner = computed(() => ownerForTask({ listing: newListing.value }))
+
+// --- Repeat -------------------------------------------------------------------
+const repeat = ref<'none' | ScheduleFrequency>('none')
+const isRepeating = computed(() => repeat.value !== 'none')
+const repeatInterval = ref(1)
+const repeatWeekdays = ref<number[]>([])
+const endType = ref<ScheduleEnd['type']>('never')
+const endDate = ref('')
+const endCount = ref(10)
+const leadDays = ref(2)
+
+watch(repeat, (value, previous) => {
+  if (value === 'none') {
+    selectedListings.value = selectedListings.value.slice(0, 1)
+    return
+  }
+  if (previous === 'none')
+    needsOwnerApproval.value = false
+  defaultWeekday()
+})
+
+// Weekly starts on the weekday of the first due date, whichever is set first.
+function defaultWeekday() {
+  if (repeat.value === 'weekly' && !repeatWeekdays.value.length && dueDate.value)
+    repeatWeekdays.value = [parseDay(dueDate.value).getDay()]
+}
+watch(() => dueDate.value, defaultWeekday)
+
+function toggleWeekday(day: number) {
+  repeatWeekdays.value = repeatWeekdays.value.includes(day)
+    ? repeatWeekdays.value.filter(d => d !== day)
+    : [...repeatWeekdays.value, day]
+}
+
+const scheduleEnd = computed<ScheduleEnd>(() => {
+  if (endType.value === 'on' && endDate.value)
+    return { type: 'on', date: endDate.value }
+  if (endType.value === 'after')
+    return { type: 'after', count: Math.max(1, Math.floor(endCount.value || 1)) }
+  return { type: 'never' }
+})
+
+const scheduleRule = computed(() => ({
+  frequency: (isRepeating.value ? repeat.value : 'weekly') as ScheduleFrequency,
+  interval: Math.max(1, Math.floor(repeatInterval.value || 1)),
+  weekdays: repeat.value === 'weekly' ? repeatWeekdays.value : [],
+  startDate: dueDate.value,
+  end: scheduleEnd.value,
+}))
+
+const repeatSummary = computed(() => {
+  if (!isRepeating.value || !dueDate.value)
+    return ''
+  return describeRecurrence(scheduleRule.value)
+})
+
+/** When the first task appears: lead time before the first due date, never before today. */
+const firstCreatedOn = computed(() => {
+  if (!dueDate.value)
+    return ''
+  const day = addDays(dueDate.value, -Math.max(0, leadDays.value || 0))
+  return day <= todayKey() ? 'today' : formatDay(day)
+})
+
+const intervalUnit = computed(() => {
+  if (!isRepeating.value)
+    return ''
+  const [one, many] = FREQUENCY_UNIT[repeat.value as ScheduleFrequency]
+  return repeatInterval.value === 1 ? one : many
+})
+
+const listingButtonLabel = computed(() => {
+  if (selectedListings.value.length > 1)
+    return `${selectedListings.value.length} listings`
+  return newListing.value || (isRepeating.value ? 'Select listings' : 'Select a listing')
+})
+
+const canSubmit = computed(() => {
+  if (!newTitle.value.trim())
+    return false
+  if (!isRepeating.value)
+    return true
+  if (!dueDate.value)
+    return false
+  if (repeat.value === 'weekly' && !repeatWeekdays.value.length)
+    return false
+  if (endType.value === 'on' && (!endDate.value || endDate.value < dueDate.value))
+    return false
+  return true
+})
 
 // Listing picker state
 const listingPopoverOpen = ref(false)
@@ -110,9 +221,16 @@ function toggleListingTag(tag: string) {
 
 function selectListing(listingId: string) {
   const listing = listings.value.find(l => l.id === listingId)
-  if (listing) {
-    newListing.value = listing.name
+  if (!listing)
+    return
+  // Repeating: toggle and keep the picker open to pick more.
+  if (isRepeating.value) {
+    selectedListings.value = selectedListings.value.includes(listing.name)
+      ? selectedListings.value.filter(n => n !== listing.name)
+      : [...selectedListings.value, listing.name]
+    return
   }
+  newListing.value = listing.name
   listingPopoverOpen.value = false
   listingSearch.value = ''
 }
@@ -145,7 +263,14 @@ function removeNewImage(index: number) {
 }
 
 function resetForm() {
-  newListing.value = ''
+  selectedListings.value = []
+  repeat.value = 'none'
+  repeatInterval.value = 1
+  repeatWeekdays.value = []
+  endType.value = 'never'
+  endDate.value = ''
+  endCount.value = 10
+  leadDays.value = 2
   needsOwnerApproval.value = false
   newEstimatedCost.value = 0
   assignee.value = ''
@@ -169,14 +294,76 @@ function applyPrefill(prefill: NewTaskPrefill) {
   newImages.value = [...(prefill.images ?? [])]
 }
 
-// Opening fills the form from the prefill; closing, however it happens
-// (Cancel, Escape, a click outside, or after Create), clears it.
+function applySchedule(schedule: TaskSchedule) {
+  newInstructions.value = schedule.instructions
+  selectedListings.value = [...schedule.listings]
+  const option = assigneeOptions.find(o => o.value === schedule.assignee)
+  assignee.value = option?.value ?? ''
+  assigneeType.value = option?.type ?? 'role'
+  newPriority.value = schedule.priority
+  newImages.value = [...(schedule.images ?? [])]
+  dueDate.value = schedule.startDate
+  repeatInterval.value = schedule.interval
+  repeatWeekdays.value = [...schedule.weekdays]
+  endType.value = schedule.end.type
+  endDate.value = schedule.end.type === 'on' ? schedule.end.date : ''
+  endCount.value = schedule.end.type === 'after' ? schedule.end.count : 10
+  leadDays.value = schedule.leadDays
+  repeat.value = schedule.frequency
+}
+
+// Opening fills the form from the schedule or the prefill; closing, however
+// it happens (Cancel, Escape, a click outside, or after Create), clears it.
 watch(open, (isOpen) => {
-  if (isOpen && props.prefill)
+  if (isOpen && props.schedule)
+    applySchedule(props.schedule)
+  else if (isOpen && props.prefill)
     applyPrefill(props.prefill)
   else if (!isOpen)
     resetForm()
 })
+
+function scheduleInput(): TaskScheduleInput {
+  return {
+    ...scheduleRule.value,
+    instructions: newInstructions.value.trim(),
+    listings: [...selectedListings.value],
+    assignee: assignee.value || undefined,
+    assigneeType: assignee.value ? assigneeType.value : undefined,
+    priority: newPriority.value,
+    images: newImages.value.length ? [...newImages.value] : undefined,
+    leadDays: Math.max(0, Math.floor(leadDays.value || 0)),
+  }
+}
+
+function createdCount(count: number): string {
+  return count === 1 ? '1 task created for the first date' : `${count} tasks created for the first date`
+}
+
+function handleSaveSchedule() {
+  if (props.schedule) {
+    const created = updateSchedule(props.schedule.id, scheduleInput())
+    toast.success(created.length ? `Schedule saved, ${createdCount(created.length)}.` : 'Schedule saved. Changes apply to the next tasks.')
+    emit('scheduled', props.schedule)
+  }
+  else {
+    const { schedule, created } = addSchedule(scheduleInput())
+    toast.success(created.length
+      ? `Schedule created, ${createdCount(created.length)}.`
+      : `Schedule created. The first task appears ${firstCreatedOn.value === 'today' ? 'today' : `on ${firstCreatedOn.value}`}.`)
+    emit('scheduled', schedule)
+  }
+  open.value = false
+}
+
+function handleSubmit() {
+  if (!canSubmit.value)
+    return
+  if (isRepeating.value || isEditingSchedule.value)
+    handleSaveSchedule()
+  else
+    handleCreateTask()
+}
 
 function handleCreateTask() {
   if (!newTitle.value.trim())
@@ -219,18 +406,21 @@ function handleCreateTask() {
   open.value = false
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0]
-}
+// Local date: `toISOString()` reads a Bali morning as yesterday.
+const todayDate = todayKey()
 
-const todayDate = formatDate(new Date())
+const submitLabel = computed(() => {
+  if (isEditingSchedule.value)
+    return 'Save Schedule'
+  return isRepeating.value ? 'Create Schedule' : 'Create Task'
+})
 </script>
 
 <template>
   <Dialog v-model:open="open">
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
-        <DialogTitle>New Task</DialogTitle>
+        <DialogTitle>{{ isEditingSchedule ? 'Edit Schedule' : 'New Task' }}</DialogTitle>
         <DialogDescription :class="{ 'sr-only': !context }">
           {{ context || 'Describe the task for your team.' }}
         </DialogDescription>
@@ -254,7 +444,7 @@ const todayDate = formatDate(new Date())
           <Popover v-model:open="listingPopoverOpen">
             <PopoverTrigger as-child>
               <Button variant="outline" class="w-full justify-between">
-                {{ newListing || 'Select a listing' }}
+                <span class="truncate">{{ listingButtonLabel }}</span>
                 <Icon name="lucide:chevrons-up-down" class="size-4 opacity-50" />
               </Button>
             </PopoverTrigger>
@@ -339,7 +529,7 @@ const todayDate = formatDate(new Date())
                             </Badge>
                           </div>
                         </div>
-                        <Icon v-if="newListing === listing.name" name="lucide:check" class="size-4 text-primary mt-1" />
+                        <Icon v-if="selectedListings.includes(listing.name)" name="lucide:check" class="size-4 text-primary mt-1" />
                       </div>
                     </CommandItem>
                   </CommandGroup>
@@ -347,10 +537,14 @@ const todayDate = formatDate(new Date())
               </Command>
             </PopoverContent>
           </Popover>
+          <p v-if="isRepeating" class="text-xs text-muted-foreground">
+            Each listing gets its own task every time.
+          </p>
         </div>
 
-        <!-- Owner cost approval — holds the task until the owner decides. -->
-        <div class="rounded-md border p-3 space-y-3">
+        <!-- Owner cost approval — holds the task until the owner decides. Not
+             offered on a schedule: a quote is for one job. -->
+        <div v-if="!isRepeating" class="rounded-md border p-3 space-y-3">
           <div
             class="flex items-start gap-2.5 cursor-pointer"
             role="checkbox"
@@ -456,13 +650,106 @@ const todayDate = formatDate(new Date())
 
         <div class="grid grid-cols-2 gap-3">
           <div class="flex flex-col gap-1.5">
-            <Label>Due Date</Label>
-            <Input v-model="dueDate" type="date" :min="todayDate" />
+            <Label for="new-task-due-date">
+              {{ isRepeating ? 'First due date' : 'Due Date' }}
+              <span v-if="isRepeating" class="text-destructive">*</span>
+            </Label>
+            <Input id="new-task-due-date" v-model="dueDate" type="date" :min="todayDate" />
           </div>
           <div class="flex flex-col gap-1.5">
-            <Label>&nbsp;</Label>
-            <!-- spacer for grid alignment -->
+            <Label>Repeat</Label>
+            <Select v-model="repeat">
+              <SelectTrigger data-testid="new-task-repeat">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <!-- A schedule being edited cannot be turned back into one task. -->
+                <SelectItem v-if="!isEditingSchedule" value="none">
+                  Does not repeat
+                </SelectItem>
+                <SelectItem value="daily">
+                  Daily
+                </SelectItem>
+                <SelectItem value="weekly">
+                  Weekly
+                </SelectItem>
+                <SelectItem value="monthly">
+                  Monthly
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        </div>
+
+        <!-- Repeat rule: only when the task repeats. -->
+        <div v-if="isRepeating" class="space-y-4 rounded-md border p-3" data-testid="new-task-repeat-rule">
+          <div class="flex flex-wrap items-center gap-2 text-sm">
+            <Label for="new-task-interval" class="font-normal">Every</Label>
+            <Input id="new-task-interval" v-model.number="repeatInterval" type="number" min="1" step="1" class="h-8 w-16" />
+            <span>{{ intervalUnit }}</span>
+          </div>
+
+          <div v-if="repeat === 'weekly'" class="flex flex-col gap-1.5">
+            <Label>On</Label>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="day in WEEKDAY_ORDER"
+                :key="day"
+                type="button"
+                class="h-8 w-11 rounded-md border text-xs font-medium transition-colors"
+                :class="repeatWeekdays.includes(day) ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'"
+                :aria-pressed="repeatWeekdays.includes(day)"
+                @click="toggleWeekday(day)"
+              >
+                {{ WEEKDAY_SHORT[day] }}
+              </button>
+            </div>
+            <p v-if="!repeatWeekdays.length" class="text-xs text-destructive">
+              Pick at least one day.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1.5">
+              <Label>Ends</Label>
+              <Select v-model="endType">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="never">
+                    Never
+                  </SelectItem>
+                  <SelectItem value="on">
+                    On a date
+                  </SelectItem>
+                  <SelectItem value="after">
+                    After a number of times
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div v-if="endType === 'on'" class="flex flex-col gap-1.5">
+              <Label for="new-task-end-date">Last date</Label>
+              <Input id="new-task-end-date" v-model="endDate" type="date" :min="dueDate || todayDate" />
+            </div>
+            <div v-else-if="endType === 'after'" class="flex flex-col gap-1.5">
+              <Label for="new-task-end-count">Times</Label>
+              <Input id="new-task-end-count" v-model.number="endCount" type="number" min="1" step="1" />
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 text-sm">
+            <span>Create each task</span>
+            <Input id="new-task-lead-days" v-model.number="leadDays" type="number" min="0" step="1" class="h-8 w-16" aria-label="Days before the due date" />
+            <span>{{ leadDays === 1 ? 'day' : 'days' }} before it is due</span>
+          </div>
+
+          <p v-if="repeatSummary" class="flex items-start gap-1.5 text-xs text-muted-foreground" data-testid="new-task-repeat-summary">
+            <Icon name="lucide:repeat" class="mt-0.5 size-3.5 shrink-0" />
+            <span>{{ repeatSummary }}. The first task appears {{ firstCreatedOn === 'today' ? 'today' : `on ${firstCreatedOn}` }}.</span>
+          </p>
+          <p v-else class="text-xs text-muted-foreground">
+            Pick the first due date to start the schedule.
+          </p>
         </div>
 
         <div class="flex flex-col gap-1.5">
@@ -498,8 +785,8 @@ const todayDate = formatDate(new Date())
         <Button variant="outline" @click="open = false">
           Cancel
         </Button>
-        <Button :disabled="!newTitle.trim()" @click="handleCreateTask">
-          Create Task
+        <Button :disabled="!canSubmit" @click="handleSubmit">
+          {{ submitLabel }}
         </Button>
       </DialogFooter>
     </DialogContent>
