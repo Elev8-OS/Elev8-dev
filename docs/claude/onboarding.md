@@ -27,6 +27,12 @@ endpoint imports the same catalog, so the price shown and the price validated ca
   Enterprise 1000, two price columns). `perUnitPlanForUnits` picks the tier from the unit
   count, `billableUnits` applies the **package floor** (2 units on Growth still bills 5),
   `perBookingRate(plan, model)` picks the column
+- **Revenue Management add-on**: `REVENUE_MANAGEMENT_ADDON` (USD per unit per month,
+  ⚠️ placeholder price) is opt-in on both plan types and stored as
+  `subscription.revenueManagement`. It bills the units the tenant runs (no package floor, no
+  yearly discount), follows the per unit cycle, and bills monthly on per booking.
+  `addOnsFor` feeds `OrderSummary.addOns`; `subtotalFor` = `planAmount` + add-ons, and on per
+  booking the add-on is the only `nextPeriodAmount`
 - **`buildOrderSummary`** produces subtotal, discount and total as three separate numbers,
   plus `nextPeriodAmount`. A `first_invoice` promo (the default) leaves that at the **normal**
   price, which is what the summary must state

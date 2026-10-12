@@ -17,6 +17,8 @@ import {
   perUnitAmount,
   perUnitPlanForUnits,
   perUnitRate,
+  REVENUE_MANAGEMENT_ADDON,
+  revenueManagementAmount,
 } from '~/components/onboarding/data/onboarding'
 
 const emit = defineEmits<{ (e: 'next'): void, (e: 'back'): void }>()
@@ -37,6 +39,15 @@ const perBookingCode = ref(
 const perUnitPlan = computed(() => perUnitPlanForUnits(Math.max(1, unitCount.value)))
 const perUnitBillable = computed(() => billableUnits(Math.max(1, unitCount.value), perUnitPlan.value))
 const perUnitTotal = computed(() => perUnitAmount(Math.max(1, unitCount.value), perUnitPlan.value, billingCycle.value))
+
+const revenueManagement = ref(state.value.subscription.revenueManagement ?? false)
+/** Per booking has no billing cycle, so the add-on bills monthly there. */
+const addOnCycle = computed<BillingCycle>(() => pricingModel.value === 'per_unit' ? billingCycle.value : 'monthly')
+const addOnAmount = computed(() => revenueManagementAmount(unitCount.value, addOnCycle.value))
+
+function toggleRevenueManagement(): void {
+  revenueManagement.value = !revenueManagement.value
+}
 
 const selectedPerBooking = computed(() =>
   PER_BOOKING_PLANS.find(p => p.code === perBookingCode.value) ?? null)
@@ -77,6 +88,7 @@ function submit(): void {
     planCode: pricingModel.value === 'per_unit' ? perUnitPlan.value.code : perBookingCode.value!,
     billingCycle: billingCycle.value,
     unitCount: Math.max(1, unitCount.value),
+    revenueManagement: revenueManagement.value,
   })
   emit('next')
 }
@@ -354,5 +366,81 @@ function submit(): void {
         </div>
       </TabsContent>
     </Tabs>
+
+    <!-- ── Add-on: Revenue Management (both plan types) ─────────────── -->
+    <section class="flex flex-col gap-3">
+      <div>
+        <h3 class="text-base font-semibold tracking-tight text-foreground">
+          Add-ons
+        </h3>
+        <p class="text-xs text-muted-foreground mt-0.5">
+          Optional. You can add or remove these later in Settings.
+        </p>
+      </div>
+
+      <div
+        class="flex flex-col gap-3 rounded-xl border p-4 shadow-xs transition-all cursor-pointer select-none"
+        :class="revenueManagement
+          ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
+          : 'border-border/80 bg-card hover:border-primary/50'"
+        role="checkbox"
+        :aria-checked="revenueManagement"
+        tabindex="0"
+        @click="toggleRevenueManagement"
+        @keydown.space.prevent="toggleRevenueManagement"
+      >
+        <div class="flex items-start gap-3">
+          <div
+            class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors"
+            :class="revenueManagement ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+          >
+            <Icon v-if="revenueManagement" name="lucide:check" class="size-3" />
+          </div>
+          <div class="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div class="min-w-0">
+              <p class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Icon name="lucide:trending-up" class="size-4 text-muted-foreground" />
+                {{ REVENUE_MANAGEMENT_ADDON.name }}
+              </p>
+              <p class="mt-0.5 text-xs text-muted-foreground">
+                Our revenue team sets and adjusts your nightly prices against demand and your
+                comparable set, so you do not have to.
+              </p>
+            </div>
+            <div class="shrink-0 sm:text-right">
+              <p class="whitespace-nowrap text-sm font-bold tabular-nums text-foreground">
+                {{ formatPrice(REVENUE_MANAGEMENT_ADDON.monthlyPerUnit) }}
+                <span class="text-xs font-normal text-muted-foreground">/ unit / month</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per booking has no unit count above, so ask here. -->
+        <div
+          v-if="revenueManagement && pricingModel === 'per_booking'"
+          class="flex items-center gap-3 border-t border-border/60 pt-3 pl-7"
+          @click.stop
+        >
+          <Label for="ob-rm-units" class="text-xs font-semibold text-foreground whitespace-nowrap">
+            Units to manage
+          </Label>
+          <Input
+            id="ob-rm-units"
+            v-model.number="unitCount"
+            type="number"
+            min="1"
+            class="w-24 h-9 text-sm"
+            inputmode="numeric"
+          />
+        </div>
+
+        <p v-if="revenueManagement" class="border-t border-border/60 pt-3 pl-7 text-xs text-muted-foreground">
+          {{ Math.max(1, unitCount) }} {{ Math.max(1, unitCount) === 1 ? 'unit' : 'units' }} ·
+          <span class="font-semibold tabular-nums text-foreground">{{ formatPrice(addOnAmount) }}</span>
+          billed {{ addOnCycle }}, on top of your plan.
+        </p>
+      </div>
+    </section>
   </form>
 </template>

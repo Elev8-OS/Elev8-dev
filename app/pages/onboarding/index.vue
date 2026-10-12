@@ -10,8 +10,6 @@ const {
   step,
   pmsModel,
   integrationPath,
-  orderSummary,
-  isSavingPayment,
   isConnectingPms,
   isImporting,
   declinePaymentMethod,
@@ -247,7 +245,7 @@ function handleLogout(): void {
 <template>
   <div class="min-h-screen bg-background flex flex-col lg:flex-row">
     <!-- Left Column (matches reference Image 1 & Image 2) -->
-    <aside class="w-full lg:w-[380px] xl:w-[440px] shrink-0 bg-muted/20 border-b lg:border-b-0 lg:border-r border-border/70 flex flex-col justify-between p-6 sm:p-8 lg:p-12">
+    <aside class="w-full lg:w-[380px] xl:w-[440px] shrink-0 lg:sticky lg:top-0 lg:h-screen lg:self-start lg:overflow-y-auto bg-muted/20 border-b lg:border-b-0 lg:border-r border-border/70 flex flex-col justify-between p-6 sm:p-8 lg:p-12">
       <div class="flex flex-col">
         <!-- Top navigation: Back button & Logout button -->
         <div class="h-9 mb-4 flex items-center justify-between">
@@ -338,30 +336,6 @@ function handleLogout(): void {
         >
           Next
         </Button>
-
-        <!-- 6. Payment step -->
-        <div v-else-if="current === 'payment'" class="flex flex-col gap-2">
-          <Button
-            type="submit"
-            form="ob-payment-form"
-            size="lg"
-            :disabled="isSavingPayment"
-            class="w-full h-12 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs cursor-pointer"
-          >
-            <Icon v-if="isSavingPayment" name="lucide:loader-2" class="mr-2 size-4 animate-spin" />
-            Next
-          </Button>
-          <Button
-            v-if="orderSummary?.total === 0"
-            variant="ghost"
-            size="sm"
-            :disabled="isSavingPayment"
-            class="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-            @click="onDeclineCard"
-          >
-            Continue without saving a card
-          </Button>
-        </div>
 
         <!-- 7. Integration: Channels -->
         <div v-else-if="current === 'integration' && integrationPath === 'channels'" class="flex flex-col gap-2">
@@ -536,6 +510,7 @@ function handleLogout(): void {
           v-else
           @next="onPaid"
           @back="go('select_plan')"
+          @skip-card="onDeclineCard"
         />
       </div>
 

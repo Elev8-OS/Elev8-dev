@@ -210,6 +210,7 @@ export function useOnboarding() {
     planCode: string
     billingCycle: BillingCycleInput
     unitCount: number
+    revenueManagement?: boolean
   }): void {
     const perBooking = perBookingPlanByCode(input.planCode)
     patch({
@@ -220,6 +221,7 @@ export function useOnboarding() {
         planCode: input.planCode,
         billingCycle: input.pricingModel === 'per_unit' ? input.billingCycle : null,
         unitCount: input.unitCount,
+        revenueManagement: input.revenueManagement ?? false,
         quotaTotal: perBooking?.quota ?? null,
         quotaRemaining: perBooking?.quota ?? null,
         status: 'pending',
@@ -241,6 +243,8 @@ export function useOnboarding() {
       planCode: sub.planCode,
       billingCycle: sub.billingCycle,
       unitCount: sub.unitCount,
+      // Absent on a subscription saved before the add-on existed.
+      revenueManagement: sub.revenueManagement ?? false,
     }
   })
 
@@ -341,7 +345,8 @@ export function useOnboarding() {
         subscription: { ...state.value.subscription, status: 'payment_failed' },
       })
       // The promo stays applied so a retry does not lose it.
-      return { ok: false, message: 'Your card was declined. Try another card, your code is still applied.' }
+      const promoNote = appliedPromo.value ? ` Your code ${appliedPromo.value.code} is still applied.` : ''
+      return { ok: false, message: `Nothing was charged. Check the card details or use a different card.${promoNote}` }
     }
 
     const now = new Date().toISOString()

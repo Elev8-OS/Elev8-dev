@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue'
 import type { TenantProfile } from '~/components/onboarding/data/onboarding'
-import { toast } from 'vue-sonner'
+import { nextTick } from 'vue'
 import {
   COUNTRY_OPTIONS,
   countryByCode,
@@ -9,69 +10,77 @@ import {
   LANGUAGE_OPTIONS,
   TIMEZONE_OPTIONS,
 } from '~/components/onboarding/data/onboarding'
-import { cloneTenantBranding } from '~/components/settings/data/branding'
-import { useTenantBranding } from '~/composables/useTenantBranding'
-import { fileToBrandingAsset } from '~/lib/branding-assets'
 
 const emit = defineEmits<{ (e: 'next'): void }>()
 
 const { state, saveProfile } = useOnboarding()
-const { branding, saveBranding: persistBranding } = useTenantBranding()
 
 const draft = ref<TenantProfile>({ ...createDefaultProfile(), ...state.value.profile })
 const errors = ref<Record<string, string>>({})
 
-// If a branding logo is already stored in settings, keep draft in sync
-if (!draft.value.logoUrl && branding.value.primaryLogo?.dataUrl) {
-  draft.value.logoUrl = branding.value.primaryLogo.dataUrl
-}
-
-const logoFileInput = ref<HTMLInputElement | null>(null)
-const isUploadingLogo = ref(false)
-const logoPreview = computed(() => draft.value.logoUrl || branding.value.primaryLogo?.dataUrl || '')
-
-async function onLogoSelected(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file)
-    return
-  isUploadingLogo.value = true
-  try {
-    const asset = await fileToBrandingAsset(file, 'primaryLogo')
-    draft.value.logoUrl = asset.dataUrl
-    await persistBranding({
-      ...cloneTenantBranding(branding.value),
-      primaryLogo: asset,
-    })
-    toast.success('Logo uploaded successfully')
-  }
-  catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to upload logo'
-    toast.error(message)
-  }
-  finally {
-    isUploadingLogo.value = false
-  }
-}
-
-async function removeLogo(): Promise<void> {
-  draft.value.logoUrl = ''
-  await persistBranding({
-    ...cloneTenantBranding(branding.value),
-    primaryLogo: null,
-  })
-  toast.info('Logo removed')
-}
-
-/** The dial code is picked separately so the stored value stays E.164. */
-const dialCode = ref(deriveDialCode(draft.value.phoneNumber))
+/**
+ * The dial code is picked separately so the stored value stays E.164. The picker
+ * holds a country, not a dial code, since several countries share one (+1, +44, +7).
+ */
+const phoneCountry = ref(derivePhoneCountry(draft.value.phoneNumber))
+const dialCode = computed(() => countryByCode(phoneCountry.value)?.dialCode ?? '+62')
 const localNumber = ref(draft.value.phoneNumber.replace(dialCode.value, ''))
 
-function deriveDialCode(phone: string): string {
-  const match = COUNTRY_OPTIONS.find(c => phone.startsWith(c.dialCode))
-  return match?.dialCode ?? '+62'
+function flagUrl(code: string): string {
+  return `https://hatscripts.github.io/circle-flags/flags/${code.toLowerCase()}.svg`
 }
+
+function derivePhoneCountry(phone: string): string {
+  const own = countryByCode(draft.value.country)
+  if (own && phone.startsWith(own.dialCode))
+    return own.code
+  const match = COUNTRY_OPTIONS.find(c => phone.startsWith(c.dialCode))
+  return match?.code ?? 'ID'
+}
+
+/** Shows the offset and zone name next to the IANA id, sorted west to east. */
+function timezoneInfo(tz: string): { offset: string, minutes: number, name: string } {
+  const now = new Date()
+  const part = (style: 'longOffset' | 'long') =>
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: style })
+      .formatToParts(now)
+      .find(p => p.type === 'timeZoneName')
+      ?.value ?? ''
+  const offset = part('longOffset') === 'GMT' ? 'GMT+00:00' : part('longOffset')
+  const [, sign, h, m] = offset.match(/([+-])(\d{2}):(\d{2})/) ?? []
+  const minutes = sign ? (Number(h) * 60 + Number(m)) * (sign === '-' ? -1 : 1) : 0
+  return { offset, minutes, name: part('long') }
+}
+
+const timezoneOptions = TIMEZONE_OPTIONS
+  .map(tz => ({ value: tz, ...timezoneInfo(tz) }))
+  .sort((a, b) => a.minutes - b.minutes || a.value.localeCompare(b.value))
+
+/** The select trigger only copies item text, so flags and offsets are rendered here. */
+const selectedCountry = computed(() => countryByCode(draft.value.country))
+const selectedPhoneCountry = computed(() => countryByCode(phoneCountry.value))
+const selectedTimezone = computed(() => timezoneOptions.find(tz => tz.value === draft.value.timezone))
+
+const phoneInput = ref<ComponentPublicInstance | null>(null)
+
+/** Typed letters never reach the field. */
+function onPhoneBeforeInput(event: InputEvent): void {
+  if (event.inputType === 'insertText' && event.data && /\D/.test(event.data))
+    event.preventDefault()
+}
+
+// Paste and autofill skip the check above, so strip here and force the field to match.
+watch(localNumber, (value) => {
+  const digits = value.replace(/\D/g, '')
+  if (digits === value)
+    return
+  localNumber.value = digits
+  nextTick(() => {
+    const el = phoneInput.value?.$el as HTMLInputElement | undefined
+    if (el && el.value !== digits)
+      el.value = digits
+  })
+})
 
 watch([dialCode, localNumber], () => {
   draft.value.phoneNumber = `${dialCode.value}${localNumber.value.replace(/\D/g, '')}`
@@ -91,7 +100,7 @@ function onCountryChange(code: string): void {
   const country = countryByCode(code)
   if (!country)
     return
-  dialCode.value = country.dialCode
+  phoneCountry.value = country.code
   if (!currencyTouched.value)
     draft.value.operatingCurrency = country.currency
   if (!timezoneTouched.value)
@@ -110,72 +119,6 @@ function submit(): void {
 
 <template>
   <form id="ob-profile-form" class="flex flex-col gap-6" @submit.prevent="submit">
-    <!-- Centered Logo Upload Component at the top -->
-    <div class="flex flex-col items-center justify-center gap-2 pb-1">
-      <div class="relative">
-        <input
-          ref="logoFileInput"
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
-          aria-label="Upload brand logo"
-          class="hidden"
-          @change="onLogoSelected"
-        >
-
-        <!-- Preview when logo is uploaded -->
-        <div
-          v-if="logoPreview"
-          class="group relative flex size-24 sm:size-28 items-center justify-center overflow-hidden rounded-2xl border border-border/80 bg-background p-2 shadow-xs transition-all hover:border-primary/60"
-        >
-          <img
-            :src="logoPreview"
-            alt="Brand logo"
-            class="max-h-full max-w-full object-contain"
-          >
-          <!-- Hover overlay to change logo -->
-          <button
-            type="button"
-            class="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
-            @click="logoFileInput?.click()"
-          >
-            <Icon name="lucide:camera" class="size-4" />
-            <span class="text-[10px] font-medium">Change</span>
-          </button>
-          <!-- Delete button -->
-          <button
-            type="button"
-            class="absolute right-1.5 top-1.5 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-xs transition-transform hover:scale-110 cursor-pointer"
-            aria-label="Remove logo"
-            @click.stop="removeLogo"
-          >
-            <Icon name="lucide:x" class="size-3" />
-          </button>
-        </div>
-
-        <!-- Upload trigger when no logo -->
-        <button
-          v-else
-          type="button"
-          class="group flex size-24 sm:size-28 flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 p-2 text-center shadow-xs transition-all hover:border-primary/60 hover:bg-muted/40 cursor-pointer"
-          :disabled="isUploadingLogo"
-          @click="logoFileInput?.click()"
-        >
-          <Icon
-            :name="isUploadingLogo ? 'lucide:loader-2' : 'lucide:image-plus'"
-            class="size-7 text-muted-foreground transition-colors group-hover:text-primary stroke-[1.5]"
-            :class="[isUploadingLogo && 'animate-spin']"
-          />
-          <span class="text-xs font-medium leading-tight text-muted-foreground transition-colors group-hover:text-foreground">
-            {{ isUploadingLogo ? 'Uploading' : 'Upload logo' }}
-          </span>
-          <span class="text-[10px] text-muted-foreground/70">PNG, JPG, WebP</span>
-        </button>
-      </div>
-      <p class="text-xs text-muted-foreground">
-        Brand or property logo
-      </p>
-    </div>
-
     <!-- Company Name, Brand Name, and Email -->
     <div class="grid gap-4 sm:grid-cols-2">
       <div class="grid gap-1.5">
@@ -222,10 +165,16 @@ function submit(): void {
         <Label for="ob-country" class="text-xs font-medium">Country</Label>
         <Select :model-value="draft.country" @update:model-value="(v) => onCountryChange(String(v))">
           <SelectTrigger id="ob-country" :aria-invalid="Boolean(errors.country)">
-            <SelectValue placeholder="Select a country" />
+            <SelectValue placeholder="Select a country">
+              <span v-if="selectedCountry" class="flex items-center gap-2">
+                <img :src="flagUrl(selectedCountry.code)" alt="" class="size-4 shrink-0 rounded-full">
+                {{ selectedCountry.name }}
+              </span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem v-for="c in COUNTRY_OPTIONS" :key="c.code" :value="c.code">
+              <img :src="flagUrl(c.code)" alt="" class="size-4 shrink-0 rounded-full">
               {{ c.name }}
             </SelectItem>
           </SelectContent>
@@ -280,11 +229,18 @@ function submit(): void {
           @update:model-value="(v) => { draft.timezone = String(v); timezoneTouched = true }"
         >
           <SelectTrigger id="ob-timezone" :aria-invalid="Boolean(errors.timezone)">
-            <SelectValue placeholder="Select a timezone" />
+            <SelectValue placeholder="Select a timezone">
+              <span v-if="selectedTimezone" class="flex min-w-0 items-center gap-2">
+                <span class="shrink-0 tabular-nums text-muted-foreground">{{ selectedTimezone.offset }}</span>
+                <span class="truncate">{{ selectedTimezone.value }}</span>
+              </span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem v-for="tz in TIMEZONE_OPTIONS" :key="tz" :value="tz">
-              {{ tz }}
+            <SelectItem v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+              <span class="shrink-0 tabular-nums text-muted-foreground">{{ tz.offset }}</span>
+              <span class="shrink-0">{{ tz.value }}</span>
+              <span class="truncate text-muted-foreground">{{ tz.name }}</span>
             </SelectItem>
           </SelectContent>
         </Select>
@@ -297,23 +253,33 @@ function submit(): void {
       <div class="grid gap-1.5">
         <Label for="ob-phone" class="text-xs font-medium">Phone number</Label>
         <div class="flex gap-2">
-          <Select v-model="dialCode">
-            <SelectTrigger id="ob-phone-code" class="w-28" aria-label="Country calling code">
-              <SelectValue />
+          <Select v-model="phoneCountry">
+            <SelectTrigger id="ob-phone-code" class="w-32" aria-label="Country calling code">
+              <SelectValue>
+                <span v-if="selectedPhoneCountry" class="flex items-center gap-2">
+                  <img :src="flagUrl(selectedPhoneCountry.code)" alt="" class="size-4 shrink-0 rounded-full">
+                  {{ selectedPhoneCountry.dialCode }} {{ selectedPhoneCountry.code }}
+                </span>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem v-for="c in COUNTRY_OPTIONS" :key="c.code" :value="c.dialCode">
+              <SelectItem v-for="c in COUNTRY_OPTIONS" :key="c.code" :value="c.code">
+                <img :src="flagUrl(c.code)" alt="" class="size-4 shrink-0 rounded-full">
                 {{ c.dialCode }} {{ c.code }}
               </SelectItem>
             </SelectContent>
           </Select>
           <Input
             id="ob-phone"
+            ref="phoneInput"
             v-model="localNumber"
+            type="tel"
+            autocomplete="tel-national"
             class="flex-1"
             inputmode="numeric"
             placeholder="81234567890"
             :aria-invalid="Boolean(errors.phoneNumber)"
+            @beforeinput="onPhoneBeforeInput"
           />
         </div>
         <p v-if="errors.phoneNumber" class="text-xs text-destructive">

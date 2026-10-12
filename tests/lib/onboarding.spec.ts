@@ -14,6 +14,8 @@ import {
   perBookingRate,
   perUnitAmount,
   perUnitPlanForUnits,
+  REVENUE_MANAGEMENT_ADDON,
+  revenueManagementAmount,
   searchProviders,
   stepForStatus,
   subtotalFor,
@@ -176,6 +178,42 @@ describe('order summary', () => {
   it('caps a fixed discount at the subtotal', () => {
     const huge = { ...ONBOARDING_PROMO_CODES[0]!, discountType: 'fixed' as const, discountValue: 99999 }
     expect(discountFor(subtotalFor(perUnitSelection), huge)).toBe(subtotalFor(perUnitSelection))
+  })
+
+  describe('revenue management add-on', () => {
+    const rate = REVENUE_MANAGEMENT_ADDON.monthlyPerUnit
+
+    it('adds nothing when the tenant opts out', () => {
+      const summary = buildOrderSummary({ ...perUnitSelection, revenueManagement: false }, null)
+      expect(summary.addOns).toEqual([])
+      expect(summary.subtotal).toBe(summary.planAmount)
+    })
+
+    it('bills the units run, not the package floor, on top of a per unit plan', () => {
+      const summary = buildOrderSummary({ ...perUnitSelection, unitCount: 2, revenueManagement: true }, null)
+      expect(summary.planAmount).toBe(5 * 59)
+      expect(summary.addOns[0]!.amount).toBe(2 * rate)
+      expect(summary.subtotal).toBe(5 * 59 + 2 * rate)
+      expect(summary.nextPeriodAmount).toBe(5 * 59 + 2 * rate)
+    })
+
+    it('follows a yearly cycle with twelve months up front', () => {
+      expect(revenueManagementAmount(8, 'yearly')).toBe(8 * rate * 12)
+    })
+
+    it('bills monthly on per booking and quotes that as the only recurring charge', () => {
+      const summary = buildOrderSummary({
+        pmsModel: 'PMS_CM',
+        pricingModel: 'per_booking',
+        planCode: 'PER_BOOKING_STARTER',
+        billingCycle: null,
+        unitCount: 4,
+        revenueManagement: true,
+      }, null)
+      expect(summary.subtotal).toBe(695 + 4 * rate)
+      expect(summary.nextPeriodAmount).toBe(4 * rate)
+      expect(summary.nextPeriodLabel).toBe('next month')
+    })
   })
 })
 

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance, Ref } from 'vue'
+import { nextTick } from 'vue'
 import { toast } from 'vue-sonner'
 import { formatUsd, PER_UNIT_CONTRACT_MONTHS, pmsModelOption } from '~/components/onboarding/data/onboarding'
 
-const emit = defineEmits<{ (e: 'next'): void, (e: 'back'): void }>()
+const emit = defineEmits<{ (e: 'next'): void, (e: 'back'): void, (e: 'skipCard'): void }>()
 
 const {
   state,
@@ -12,6 +14,7 @@ const {
   removePromo,
   submitPayment,
   status,
+  isSavingPayment,
 } = useOnboarding()
 
 const codeInput = ref(appliedPromo.value?.code ?? '')
@@ -28,23 +31,49 @@ const cardExpiry = ref('')
 const cardCvc = ref('')
 const cardPostal = ref(state.value.profile.zipCode || '')
 
-function formatCardNumber(e: Event) {
-  const target = e.target as HTMLInputElement
-  const raw = target.value.replace(/\D/g, '').slice(0, 16)
-  const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ')
-  cardNumber.value = formatted
+/**
+ * Formatting runs through v-model and a watcher. Binding `:value` + `@input` on the
+ * shadcn Input gave it two writers (its own internal v-model and ours), so typed
+ * digits jumped and doubled.
+ */
+function formatCardNumber(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 16).replace(/(\d{4})(?=\d)/g, '$1 ')
 }
 
-function formatExpiry(e: Event) {
-  const target = e.target as HTMLInputElement
-  const raw = target.value.replace(/\D/g, '').slice(0, 4)
-  if (raw.length >= 3) {
-    cardExpiry.value = `${raw.slice(0, 2)} / ${raw.slice(2)}`
-  }
-  else {
-    cardExpiry.value = raw
-  }
+function formatExpiry(value: string): string {
+  const raw = value.replace(/\D/g, '').slice(0, 4)
+  return raw.length >= 3 ? `${raw.slice(0, 2)} / ${raw.slice(2)}` : raw
 }
+
+const cardNumberInput = ref<ComponentPublicInstance | null>(null)
+const cardExpiryInput = ref<ComponentPublicInstance | null>(null)
+
+/**
+ * When a stripped character leaves the text equal to what is already rendered (a
+ * letter, a seventeenth digit), Vue sees no change and the input keeps showing it.
+ */
+function applyFormatted(target: Ref<string>, formatted: string, input: ComponentPublicInstance | null): void {
+  target.value = formatted
+  nextTick(() => {
+    const el = input?.$el as HTMLInputElement | undefined
+    if (el && el.value !== formatted)
+      el.value = formatted
+  })
+}
+
+watch(cardNumber, (value) => {
+  const formatted = formatCardNumber(value)
+  if (formatted !== value)
+    applyFormatted(cardNumber, formatted, cardNumberInput.value)
+})
+
+watch(cardExpiry, (value, previous) => {
+  // Deleting back over " / " must not re-add it, or backspace gets stuck.
+  const deletedIntoSlash = value.length < (previous?.length ?? 0) && /\/\s*$/.test(value)
+  const formatted = deletedIntoSlash ? value.replace(/\s*\/\s*$/, '') : formatExpiry(value)
+  if (formatted !== value)
+    applyFormatted(cardExpiry, formatted, cardExpiryInput.value)
+})
 
 const summary = computed(() => orderSummary.value)
 const model = computed(() => state.value.pmsModel)
@@ -129,11 +158,13 @@ async function onPay(): Promise<void> {
             <div class="relative">
               <Input
                 id="ob-cc-number"
-                :value="cardNumber"
+                ref="cardNumberInput"
+                v-model="cardNumber"
                 placeholder="4242 •••• •••• 4242"
                 maxlength="19"
+                inputmode="numeric"
+                autocomplete="cc-number"
                 class="font-mono tracking-wider pl-9"
-                @input="formatCardNumber"
               />
               <Icon name="lucide:lock" class="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             </div>
@@ -145,11 +176,13 @@ async function onPay(): Promise<void> {
               <Label for="ob-cc-expiry" class="text-xs font-medium">Expiration date</Label>
               <Input
                 id="ob-cc-expiry"
-                :value="cardExpiry"
+                ref="cardExpiryInput"
+                v-model="cardExpiry"
                 placeholder="MM / YY"
                 maxlength="7"
+                inputmode="numeric"
+                autocomplete="cc-exp"
                 class="font-mono"
-                @input="formatExpiry"
               />
             </div>
             <div class="grid gap-1.5">
@@ -194,6 +227,14 @@ async function onPay(): Promise<void> {
           <p class="text-xs text-muted-foreground">
             {{ summary.planDetail }}
           </p>
+          <div v-for="addOn in summary.addOns" :key="addOn.name" class="mt-2">
+            <p class="text-xs font-medium text-foreground">
+              + {{ addOn.name }}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {{ addOn.detail }}
+            </p>
+          </div>
         </div>
 
         <!-- Promo field -->
@@ -233,6 +274,24 @@ async function onPay(): Promise<void> {
 
         <!-- Price breakdown -->
         <dl class="flex flex-col gap-2 border-t border-border/60 pt-4 text-xs">
+          <template v-if="summary.addOns.length">
+            <div class="flex justify-between gap-2">
+              <dt class="text-muted-foreground">
+                Plan
+              </dt>
+              <dd class="tabular-nums font-medium">
+                {{ formatUsd(summary.planAmount) }}
+              </dd>
+            </div>
+            <div v-for="addOn in summary.addOns" :key="addOn.name" class="flex justify-between gap-2">
+              <dt class="text-muted-foreground">
+                {{ addOn.name }}
+              </dt>
+              <dd class="tabular-nums font-medium">
+                {{ formatUsd(addOn.amount) }}
+              </dd>
+            </div>
+          </template>
           <div class="flex justify-between gap-2">
             <dt class="text-muted-foreground">
               Subtotal
@@ -255,6 +314,30 @@ async function onPay(): Promise<void> {
           </div>
         </dl>
 
+        <div class="flex flex-col gap-1">
+          <Button
+            type="submit"
+            size="lg"
+            :disabled="isSavingPayment"
+            class="w-full h-11 text-sm font-medium"
+          >
+            <Icon v-if="isSavingPayment" name="lucide:loader-2" class="mr-2 size-4 animate-spin" />
+            <Icon v-else name="lucide:lock" class="mr-2 size-4" />
+            {{ isSavingPayment ? 'Processing payment' : summary.total > 0 ? `Pay ${formatUsd(summary.total)}` : 'Activate plan' }}
+          </Button>
+          <Button
+            v-if="summary.total === 0"
+            type="button"
+            variant="ghost"
+            size="sm"
+            :disabled="isSavingPayment"
+            class="text-xs text-muted-foreground hover:text-foreground"
+            @click="emit('skipCard')"
+          >
+            Continue without saving a card
+          </Button>
+        </div>
+
         <p v-if="summary.discountIsFirstInvoiceOnly && summary.nextPeriodAmount !== null" class="text-[11px] text-muted-foreground">
           This discount covers your first invoice only. From {{ summary.nextPeriodLabel }} you pay
           {{ formatUsd(summary.nextPeriodAmount) }}.
@@ -267,10 +350,10 @@ async function onPay(): Promise<void> {
         <!-- Payment failure message -->
         <div v-if="hasFailed" class="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
           <p class="text-xs font-medium text-destructive">
-            Payment did not go through
+            Your card was declined
           </p>
           <p class="mt-1 text-xs text-destructive/90">
-            {{ paymentError || 'Try another card. Your details are still saved.' }}
+            {{ paymentError || 'Nothing was charged. Check the card details or use a different card.' }}
           </p>
         </div>
         <p v-else-if="paymentError" class="text-xs text-destructive">
