@@ -23,6 +23,9 @@ const STUBS = {
   CardDescription: passthrough,
   CardContent: passthrough,
   Badge: passthrough,
+  Alert: passthrough,
+  AlertTitle: passthrough,
+  AlertDescription: passthrough,
   Dialog: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
   Select: { name: 'SelectStub', props: ['modelValue'], emits: ['update:modelValue'], template: '<div :data-value="modelValue"><slot /></div>' },
   SelectTrigger: passthrough,
@@ -44,8 +47,8 @@ const STUBS = {
   TernActivationWizard: true,
 }
 
-function mountPanel() {
-  return mount(DamageProtectionPanel, { global: { components: { Button, Input, Label }, stubs: STUBS } })
+function mountPanel(props: { showListings?: boolean } = { showListings: true }) {
+  return mount(DamageProtectionPanel, { props, global: { components: { Button, Input, Label }, stubs: STUBS } })
 }
 
 function switchIn(wrapper: ReturnType<typeof mountPanel>, testid: string) {
@@ -64,7 +67,28 @@ describe('settings, Damage protection', () => {
     expect(wrapper.find('[data-testid="tern-activation-card"]').exists()).toBe(true)
     const rows = wrapper.findAll('[data-testid="protection-listing-row"]')
     expect(rows.length).toBeGreaterThan(3)
-    expect(rows.find(r => r.text().includes('IDR'))?.text()).toContain('Not covered')
+    const idr = rows.find(r => r.text().includes('IDR, DOKU'))?.text()
+    expect(idr).toContain('Waiver only')
+    expect(idr).toContain('converted to IDR by DOKU at payment')
+  })
+
+  it('hides the Listings table by default, and the alert\'s link to it', () => {
+    const wrapper = mountPanel({})
+    expect(wrapper.find('[data-testid="protection-listings"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="protection-unassigned-payout"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="protection-unassigned-show"]').exists()).toBe(false)
+  })
+
+  it('warns about listings with no payout account and narrows the table to them', async () => {
+    const wrapper = mountPanel()
+    const alert = wrapper.find('[data-testid="protection-unassigned-payout"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('not assigned to a payout account')
+    expect(alert.find('[data-testid="protection-unassigned-assign"]').attributes('href')).toBe('/settings/payouts')
+    await alert.find('[data-testid="protection-unassigned-show"]').trigger('click')
+    const rows = wrapper.findAll('[data-testid="protection-listing-row"]')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every(r => r.text().includes('No payout account'))).toBe(true)
   })
 
   it('keeps the deposit on and locked while the waiver is on', async () => {
@@ -123,7 +147,7 @@ describe('settings, Damage protection', () => {
     const cell = () => wrapper.find('[data-testid="protection-deposit-lst-1"]')
     expect(cell().text()).toContain('USD 500.00')
     expect(cell().text()).toContain('Default')
-    // IDR listings are not covered: no deposit to set there.
+    // IDR listings are not on Stripe: the waiver only, no deposit card to set there.
     expect(wrapper.find('[data-testid="protection-deposit-lst-3"]').text()).toContain('No deposit')
 
     await cell().find('[data-testid="protection-deposit-edit"]').trigger('click')

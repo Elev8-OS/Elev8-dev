@@ -58,7 +58,7 @@ export function blockText(block: ListingPolicyBlock, pkg: { currency: string } |
     case 'no_deposit_channel':
       return 'Pick at least one booking channel for the deposit: no guest is asked right now.'
     case 'currency_mismatch':
-      return `The package is priced in ${pkg?.currency ?? 'another currency'}, but this listing is paid out in ${payoutCurrency ?? 'another currency'}. Nothing is converted, so it is not covered.`
+      return `The package is priced in ${pkg?.currency ?? 'another currency'}, but this listing is paid out with Stripe in ${payoutCurrency ?? 'another currency'}. Stripe payouts are not converted, so it is not covered.`
   }
 }
 

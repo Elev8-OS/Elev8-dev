@@ -85,6 +85,18 @@ describe('listingPolicy', () => {
     expect(listingPolicy(ON, null, LISTING, 'USD')).toEqual({ policy: null, block: 'no_package' })
     expect(listingPolicy({ ...ON, waiver: false, deposit: false }, BRONZE, LISTING, 'USD')).toEqual({ policy: null, block: 'nothing_offered' })
     expect(listingPolicy(ON, BRONZE, LISTING, 'IDR')).toEqual({ policy: null, block: 'currency_mismatch' })
+    expect(listingPolicy(ON, BRONZE, LISTING, 'IDR', 'stripe')).toEqual({ policy: null, block: 'currency_mismatch' })
+  })
+
+  it('covers a non-Stripe listing in another currency: the policy stays in the package currency, the gateway converts', () => {
+    for (const provider of ['doku', 'xendit']) {
+      const built = listingPolicy(ON, BRONZE, LISTING, 'IDR', provider)
+      expect(built.policy).toMatchObject({ currency: 'USD', offers: ['waiver', 'deposit'] })
+      expect('convertTo' in built && built.convertTo).toBe('IDR')
+    }
+    // Same currency: nothing to convert.
+    const same = listingPolicy(ON, BRONZE, LISTING, 'USD', 'doku')
+    expect('convertTo' in same && same.convertTo).toBeNull()
   })
 
   it('takes a deposit only with the waiver off, in the payout currency', () => {

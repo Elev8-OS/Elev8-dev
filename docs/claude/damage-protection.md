@@ -32,8 +32,14 @@ per-listing setup of 2026-10-06). There is no Protection tab on the listing deta
   freezing, host cover, Tern sync, billing) still reads `DamageProtectionPolicy`, unchanged. No policy,
   with the reason in `block`: `no_package`, `nothing_offered`, `no_deposit_channel`,
   `no_payout_currency`, `currency_mismatch` (the package currency is not the listing's payout
-  currency; no conversion, ever, so the IDR listings are not covered by a USD package). A listing with
-  no payout account still runs the waiver, in the package's currency.
+  currency AND the payout is on Stripe). A listing with no payout account still runs the waiver, in the
+  package's currency.
+- ⚠️ **Non-Stripe gateways convert** (owner's decision, 2026-10-12): `listingPolicy(..., payoutCurrency,
+  payoutProvider)` builds the policy for a DOKU or Xendit listing in another currency
+  (`gatewayConverts(provider)`: any provider but Stripe). The policy stays in the PACKAGE currency (USD),
+  so billing, Tern sync and claims are unchanged; the gateway converts what the guest pays into the payout
+  currency at payment. `listingProtection(id).convertTo` names that payout currency (null when nothing is
+  converted). Elev8 never converts an amount itself. Stripe in another currency is still `currency_mismatch`.
 - ⚠️ **One setup for every stay length.** Extending a stay only adds packages at the frozen price and
   never re-opens the choice.
 - **Deposit channels**: a deposit ON ITS OWN is asked on `depositChannels` (absent = Direct only).
@@ -50,8 +56,9 @@ per-listing setup of 2026-10-06). There is no Protection tab on the listing deta
   a protection upsell. Reads: `settings`, `currentPackage`, `packages`, `listingProtection(listingId)`
   (`policy`, `block`, `currency`), `payerFor(listingId)` (tenant-wide; the argument is kept for call sites).
 - Seed (`seedProtectionSettings`): waiver on with `svc-dp-bronze` (USD 39), deposit USD 500 (Direct
-  when alone), guest pays. Covers lst-1, lst-2, lst-18 (USD Stripe) and the listings with no payout
-  account; lst-3/4/5 (IDR) are not covered. The demo stays keep the terms frozen on them, the Silver
+  when alone), guest pays. Covers every listing: lst-1, lst-2, lst-18 (USD Stripe), lst-3/4/5 (IDR on
+  DOKU/Xendit, converted by the gateway; waiver only, no deposit card) and the listings with no payout
+  account. Specs that need an unprotected listing move lst-3's account to Stripe (`withStripeIdr`). The demo stays keep the terms frozen on them, the Silver
   long stay on lst-18 included.
 
 - ⚠️ **Three states per property, nothing else** (owner's decision, 2026-09-25):
@@ -116,9 +123,9 @@ per-listing setup of 2026-10-06). There is no Protection tab on the listing deta
   `useReservationFolio.commit()` REPLACES `priceDetails.extras` outright, so a second writer
   of that field is silently wiped by the next posting. Excess damage is posted to the folio
   BY HAND: deciding a guest owes more than they agreed is a judgement call.
-- ⚠️ **No currency conversion, ever.** A package priced in another currency than the listing's
-  payout account builds no policy (`currency_mismatch`); the Settings page's Listings table marks such
-  listings "Not covered", and the upsell drawer refuses a package in a currency Elev8 Cover does not price.
+- ⚠️ **Elev8 never converts an amount.** A package priced in another currency than a Stripe listing's
+  payout account builds no policy (`currency_mismatch`; a DOKU/Xendit gateway converts, see above); the
+  Settings page's Listings table marks such listings "Not covered", and the upsell drawer refuses a package in a currency Elev8 Cover does not price.
 - **States**: `awaiting_choice` → `waiver_active`, or `card_on_file` → `deposit_released`
   (closed, nothing charged) / `deposit_charged` / `charge_failed` (retryable), plus `cancelled`.
   Buckets (derived): `on_file` until check-out, then `decision_due`, `decision_overdue` past
@@ -271,6 +278,9 @@ or a zero price.
 in the sidebar under Booking & Payments after Payouts; the worklist's **Settings** button and Billing's
 "Not activated" link point here). Top to bottom:
 - **`TernActivationCard`** with the **Activate** button (or Connect Stripe without a Stripe payout).
+- **Unassigned payout alert** (`protection-unassigned-payout`, 2026-10-12): destructive `Alert` when any
+  listing has no payout account, naming up to three, with **Assign in Payouts** (`PAYOUT_SETTINGS_PATH`)
+  and **Show them below** (sets the Listings search to "No payout account").
 - **Damage waiver** card: the switch (disabled until activated; once activation is undone it reads
   "Paused"), **Package, every listing**, read only (no picker, 2026-10-08: the waiver uses ONE upsell; "Paused" when
   its upsell is inactive) with **Edit package**, which opens `PartnerPackageDialog`: the SAME partner
@@ -282,9 +292,11 @@ in the sidebar under Booking & Payments after Payouts; the worklist's **Settings
   pays disabled until activation and the waiver on) and, under Guest pays, the host-cover fallback.
 - **Deposit** card: switch (on and locked while the waiver is on), card limit and decision days (saved
   on blur), Booking channels chips (locked while the waiver is on).
-- **Listings** card: every listing with its payout and what its guests are offered under these settings
+- **Listings** card, ⚠️ HIDDEN for now (2026-10-12): rendered only with the panel's `showListings`
+  prop, which the page does not pass (the specs do). The alert's "Show them below" hides with it. When shown:
+  every listing with its payout and what its guests are offered under these settings
   (Waiver or deposit / Waiver only / Deposit only / Waiver, host pays / Not covered, with the `blockText`
-  reason, the no-Stripe note or the undersized flag), and a **Deposit** column (2026-10-08): the default
+  reason, the gateway conversion note, the no-Stripe note or the undersized flag), and a **Deposit** column (2026-10-08): the default
   or the listing's own amount ("Default" / "Custom"), edited in place (pencil, Enter saves, Escape
   cancels, typing the default clears the override) with **Reset** on a custom one. "No deposit" where no
   guest can leave a card (no deposit offered, not Stripe, host pays, not covered). The amount is frozen on a

@@ -159,7 +159,8 @@ export function useDamageProtection() {
   const currentPackage = computed<ProtectionPackage | null>(() => selectedPackage(upsellServices.value, settings.value))
 
   function buildFor(listing: { id: string }) {
-    return listingPolicy(settings.value, currentPackage.value, listing, payoutAccountFor(listing.id)?.currency ?? null)
+    const account = payoutAccountFor(listing.id)
+    return listingPolicy(settings.value, currentPackage.value, listing, account?.currency ?? null, account?.provider ?? null)
   }
 
   /**
@@ -325,6 +326,8 @@ export function useDamageProtection() {
       currency: payoutAccountFor(listingId)?.currency ?? null,
       policy: built.policy,
       block: built.policy ? null : built.block,
+      /** The payout currency the gateway converts the guest's payment into, when it differs from the policy's. */
+      convertTo: built.policy ? built.convertTo : null,
     }
   }
 

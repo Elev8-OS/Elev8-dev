@@ -15,6 +15,7 @@ import { DEFAULT_HOST_FALLBACK_DAYS, depositChannelsOf, HOST_FALLBACK_DAY_OPTION
 import PartnerPackageDialog from '~/components/damage-protection/PartnerPackageDialog.vue'
 import TernActivationCard from '~/components/damage-protection/TernActivationCard.vue'
 import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
+import { PAYOUT_SETTINGS_PATH } from '~/components/reservations/data/tern-activation'
 import { formatProtectionAmount } from '~/components/reservations/data/damage-protection'
 import { ternPriceFor } from '~/components/reservations/data/tern-products'
 import { useDamageProtection } from '~/composables/useDamageProtection'
@@ -26,6 +27,11 @@ import { useUpsellServices } from '~/composables/useUpsellServices'
  * picks the package), then runs on every listing with one package. The deposit
  * comes with the waiver; on its own it can be offered without one.
  */
+const props = withDefaults(defineProps<{
+  /** The per-listing table, hidden for now (2026-10-12); the specs still mount it. */
+  showListings?: boolean
+}>(), { showListings: false })
+
 const dp = useDamageProtection()
 const { services } = useUpsellServices()
 
@@ -181,6 +187,12 @@ function toggleChannel(channel: BookingChannel) {
 
 // ------------------------------------------------------- per listing
 
+const NO_PAYOUT = 'No payout account'
+
+function providerLabel(provider: string): string {
+  return provider === 'stripe' ? 'Stripe' : provider.toUpperCase()
+}
+
 /** What each listing ends up offering under these settings. Only the deposit amount is set per listing. */
 const listingRows = computed(() => listings.value.map((listing) => {
   const state = dp.listingProtection(listing.id)
@@ -212,14 +224,21 @@ const listingRows = computed(() => listings.value.map((listing) => {
     depositCurrency: currency ?? '',
     depositAmount: custom ?? settings.value.depositLimit,
     depositCustom: custom !== undefined,
-    payout: account ? `${account.currency}, ${account.provider === 'stripe' ? 'Stripe' : account.provider.toUpperCase()}` : 'No payout account',
+    payout: account ? `${account.currency}, ${providerLabel(account.provider)}` : NO_PAYOUT,
+    hasPayout: account !== null,
     offered,
     covered: offered !== 'Not covered',
     note: state.block
       ? blockText(state.block, pkg.value, state.currency)
-      : waiver && !takesCard && settings.value.deposit && payer.value === 'guest'
-        ? 'No Stripe payout account, so no deposit card here.'
-        : waiver ? undersizedText(pkg.value, listing.capacity) : null,
+      : [
+          state.convertTo && account && pkg.value && waiver
+            ? `The guest pays ${formatProtectionAmount(pkg.value.guestPrice, pkg.value.currency)}, converted to ${state.convertTo} by ${providerLabel(account.provider)} at payment.`
+            : null,
+          waiver && !takesCard && settings.value.deposit && payer.value === 'guest'
+            ? (account ? 'Not paid out with Stripe, so no deposit card here.' : 'No payout account, so no deposit card here.')
+            : null,
+          waiver ? undersizedText(pkg.value, listing.capacity) : null,
+        ].filter(Boolean).join(' ') || null,
   }
 }))
 // One row's deposit is edited in place; Enter or Save writes it, Escape cancels.
@@ -249,6 +268,21 @@ function resetDeposit(row: { id: string, name: string }) {
 }
 
 const coveredCount = computed(() => listingRows.value.filter(r => r.covered).length)
+
+/**
+ * Listings no payout account is assigned to. The waiver still runs on them, but
+ * what the guest pays has no account to land in and no deposit card can be kept.
+ */
+const unassignedRows = computed(() => listingRows.value.filter(r => !r.hasPayout))
+const unassignedNames = computed(() => {
+  const names = unassignedRows.value.map(r => r.name)
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')
+})
+
+/** Narrow the table to the unassigned listings: the search matches the payout column. */
+function showUnassigned() {
+  listingSearch.value = NO_PAYOUT
+}
 
 // Search by name or payout, then page. A new search starts on page 1; a shrinking list never strands you past the end.
 const listingSearch = ref('')
@@ -294,6 +328,30 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
     </div>
 
     <TernActivationCard />
+
+    <Alert v-if="unassignedRows.length" variant="destructive" data-testid="protection-unassigned-payout">
+      <Icon name="lucide:alert-circle" class="size-4" />
+      <AlertTitle>
+        {{ unassignedRows.length }} {{ unassignedRows.length === 1 ? 'listing is' : 'listings are' }} not assigned to a payout account
+      </AlertTitle>
+      <AlertDescription>
+        <p>
+          {{ unassignedNames }}. What guests pay for the damage waiver has no account to land in, and no deposit card
+          can be kept. Assign them to a payout account.
+        </p>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" class="h-7 text-xs" as-child>
+            <NuxtLink :to="PAYOUT_SETTINGS_PATH" data-testid="protection-unassigned-assign">
+              <Icon name="lucide:landmark" class="mr-1 size-3.5" />
+              Assign in Payouts
+            </NuxtLink>
+          </Button>
+          <Button v-if="props.showListings" size="sm" variant="ghost" class="h-7 text-xs" data-testid="protection-unassigned-show" @click="showUnassigned">
+            Show {{ unassignedRows.length === 1 ? 'it' : 'them' }} below
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
 
     <!-- Damage waiver -->
     <Card data-testid="protection-waiver">
@@ -539,13 +597,14 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
     </Card>
 
     <!-- Listings: what each one offers, and its deposit -->
-    <Card data-testid="protection-listings">
+    <Card v-if="props.showListings" data-testid="protection-listings">
       <CardHeader>
         <CardTitle>Listings</CardTitle>
         <CardDescription>
           {{ coveredCount }} of {{ listingRows.length }} listings covered. What guests on each listing are offered under
-          the settings above, and each listing's deposit: the default, or its own amount in its payout currency. A
-          listing paid out in another currency than the package is not covered: nothing is converted.
+          the settings above, and each listing's deposit: the default, or its own amount in its payout currency. On DOKU
+          or Xendit, a package in another currency is converted into the payout currency by the gateway at payment; a
+          Stripe listing paid out in another currency than the package is not covered.
         </CardDescription>
       </CardHeader>
       <CardContent class="flex flex-col gap-4">

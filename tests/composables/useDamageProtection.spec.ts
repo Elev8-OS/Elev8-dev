@@ -124,10 +124,22 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+/** lst-3's IDR account moved to Stripe, which does not convert: the USD package leaves it unprotected. */
+function withStripeIdr(run: () => void) {
+  const saved = payoutAccounts.value
+  payoutAccounts.value = saved.map(a => a.listingIds.includes('lst-3') ? { ...a, provider: 'stripe' as const } : a)
+  try {
+    run()
+  }
+  finally {
+    payoutAccounts.value = saved
+  }
+}
+
 describe('policy lookup', () => {
-  it('returns null for a listing paid out in another currency, and the listing\'s own policy otherwise', () => {
+  it('returns the listing\'s own policy, also on a non-Stripe listing paid out in another currency', () => {
     const dp = useDamageProtection()
-    expect(dp.policyFor('lst-3', 5)).toBeNull()
+    expect(dp.policyFor('lst-3', 5)?.id).toBe('lp-lst-3')
     expect(dp.policyFor('lst-1', 5)?.id).toBe('lp-lst-1')
   })
 
@@ -244,11 +256,20 @@ describe('one setting for every listing', () => {
     expect(dp.listingProtection('lst-17').block).toBe('no_payout_currency')
   })
 
-  it('never protects a listing paid out in another currency than the package: nothing is converted', () => {
+  it('protects a DOKU or Xendit listing in another currency: the gateway converts the USD package', () => {
     const dp = useDamageProtection()
-    // lst-3 settles IDR; the package is USD.
-    expect(dp.listingMode('lst-3')).toBe('off')
-    expect(dp.listingProtection('lst-3').block).toBe('currency_mismatch')
+    // lst-3 settles IDR on DOKU, lst-4 on Xendit; the package is USD.
+    for (const id of ['lst-3', 'lst-4']) {
+      expect(dp.listingMode(id)).toBe('guest_paid')
+      expect(dp.listingProtection(id)).toMatchObject({ block: null, convertTo: 'IDR', policy: { currency: 'USD' } })
+    }
+    // A Stripe listing in the package's currency converts nothing.
+    expect(dp.listingProtection('lst-1').convertTo).toBeNull()
+    // Stripe in another currency does not convert: not covered.
+    withStripeIdr(() => {
+      expect(dp.listingMode('lst-3')).toBe('off')
+      expect(dp.listingProtection('lst-3').block).toBe('currency_mismatch')
+    })
   })
 
   it('stays off the Upsells page: no catalog row, no create or filter category', async () => {
@@ -406,7 +427,9 @@ describe('recordChoice', () => {
 
   it('refuses when not offered and when terms are unaccepted', () => {
     seedReservation({ listingId: 'lst-3' })
-    expect(useDamageProtection().recordChoice('res-dp-1', ACCEPT_WAIVER)).toEqual({ ok: false, reason: 'not_offered' })
+    withStripeIdr(() => {
+      expect(useDamageProtection().recordChoice('res-dp-1', ACCEPT_WAIVER)).toEqual({ ok: false, reason: 'not_offered' })
+    })
     seedReservation()
     expect(useDamageProtection().recordChoice('res-dp-1', { option: 'waiver', termsAccepted: false }))
       .toEqual({ ok: false, reason: 'invalid_choice' })
@@ -750,10 +773,12 @@ describe('the worklist', () => {
     seedReservation({ id: 'res-a', listingId: 'lst-3' })
     seedReservation({ id: 'res-b', status: 'blocked' })
     seedReservation({ id: 'res-c', status: 'owner_request' })
-    const ids = useDamageProtection().rows.value.map(r => r.reservation.id)
-    expect(ids).not.toContain('res-a')
-    expect(ids).not.toContain('res-b')
-    expect(ids).not.toContain('res-c')
+    withStripeIdr(() => {
+      const ids = useDamageProtection().rows.value.map(r => r.reservation.id)
+      expect(ids).not.toContain('res-a')
+      expect(ids).not.toContain('res-b')
+      expect(ids).not.toContain('res-c')
+    })
   })
 
   it('leaves a saved card on file until check-out, then asks for a decision', () => {

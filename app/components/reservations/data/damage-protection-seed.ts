@@ -8,9 +8,9 @@ const SEEDED_AT = '2026-09-01T00:00:00.000Z'
  * with the `svc-dp-bronze` package and, with it, the deposit (a card on file,
  * up to 500 in each listing's currency). Guest-paid.
  *
- * Only listings paid out in USD (lst-1, lst-2, lst-18, on the Stripe account in
- * `payouts.ts`) or with no payout account run it: the IDR listings build no
- * policy, since nothing is converted. Stays already protected keep the terms
+ * Every listing runs it: USD on the Stripe account (lst-1, lst-2, lst-18 in
+ * `payouts.ts`), the IDR listings on DOKU and Xendit (the gateway converts the
+ * USD package at payment) and the listings with no payout account. Stays already protected keep the terms
  * frozen on them (the demo's Silver long stay on lst-18 among them).
  */
 export const seedProtectionSettings: ProtectionSettings = {

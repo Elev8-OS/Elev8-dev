@@ -194,6 +194,15 @@ export type ListingPolicyBlock
     | 'currency_mismatch'
 
 /**
+ * Whether the payout gateway takes a payment in another currency and converts
+ * it into the payout currency. Every gateway but Stripe does (owner's decision,
+ * 2026-10-12); a listing with no payout account has nothing to convert into.
+ */
+export function gatewayConverts(provider: string | null): boolean {
+  return provider !== null && provider !== 'stripe'
+}
+
+/**
  * The listing's policy under the tenant's settings, or why there is none.
  *
  * - The WAIVER needs the tenant's package (`pkg`, from `selectedPackage`):
@@ -201,15 +210,19 @@ export type ListingPolicyBlock
  * - The DEPOSIT needs no package: on its own it is charged in the listing's
  *   payout currency.
  *
- * ⚠️ No currency conversion, ever: a listing paid out in another currency than
- * the package builds no policy (`currency_mismatch`).
+ * ⚠️ Currency: a Stripe listing paid out in another currency than the package
+ * builds no policy (`currency_mismatch`). A listing on any other gateway (DOKU,
+ * Xendit) is covered: the policy stays in the package's currency and the
+ * gateway converts what the guest pays into the payout currency at payment
+ * (`convertTo`). Elev8 itself never converts an amount.
  */
 export function listingPolicy(
   settings: Pick<ProtectionSettings, 'waiver' | 'deposit' | 'depositLimit' | 'depositOverrides' | 'settleWithinDays' | 'depositChannels' | 'updatedAt'>,
   pkg: ProtectionPackage | null,
   listing: { id: string },
   payoutCurrency: string | null,
-): { policy: DamageProtectionPolicy, pkg: ProtectionPackage | null } | { policy: null, block: ListingPolicyBlock } {
+  payoutProvider: string | null = null,
+): { policy: DamageProtectionPolicy, pkg: ProtectionPackage | null, convertTo: string | null } | { policy: null, block: ListingPolicyBlock } {
   if (settings.waiver && !pkg)
     return { policy: null, block: 'no_package' }
   const waiverOn = settings.waiver && pkg !== null
@@ -222,7 +235,9 @@ export function listingPolicy(
   const currency = waiverOn ? pkg!.currency : payoutCurrency
   if (!currency)
     return { policy: null, block: 'no_payout_currency' }
-  if ((payoutCurrency && currency !== payoutCurrency) || !PROTECTION_CURRENCIES.includes(currency as ProtectionCurrency))
+  // Only a waiver can differ from the payouts' currency, and only a non-Stripe gateway converts it.
+  const convertTo = payoutCurrency && currency !== payoutCurrency && gatewayConverts(payoutProvider) ? payoutCurrency : null
+  if ((payoutCurrency && currency !== payoutCurrency && !convertTo) || !PROTECTION_CURRENCIES.includes(currency as ProtectionCurrency))
     return { policy: null, block: 'currency_mismatch' }
 
   const offered = { waiver: waiverOn, deposit: settings.deposit }
@@ -230,6 +245,7 @@ export function listingPolicy(
     .filter((o): o is 'waiver' | 'deposit' => o !== null)
   return {
     pkg: waiverOn ? pkg : null,
+    convertTo,
     policy: {
       id: listingPolicyId(listing.id),
       name: waiverOn ? pkg!.serviceName : 'Deposit',
