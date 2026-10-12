@@ -4,13 +4,24 @@ import { toast } from 'vue-sonner'
 import { serviceGrantsLockAccess } from '@/components/upsells/data/lock-access'
 import { isExternalService } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
+import UpsellListingsSheet from '~/components/upsells/UpsellListingsSheet.vue'
 import { hasRichTextTags, richTextToPlainText } from '~/lib/rich-text'
 
 const emit = defineEmits<{
   openDrawer: [service: UpsellService | null]
 }>()
 
-const { filteredServices, toggleStatus, deleteService, filterCategory, filterStatus, filterListing, filterLockAccess, searchQuery } = useUpsellServices()
+const { services, filteredServices, toggleStatus, deleteService, filterCategory, filterStatus, filterListing, filterLockAccess, searchQuery } = useUpsellServices()
+
+// Listings column: a shortcut sheet to assign listings without the full drawer.
+const listingsSheetOpen = ref(false)
+const listingsSheetServiceId = ref<string | null>(null)
+const listingsSheetService = computed(() => services.value.find(s => s.id === listingsSheetServiceId.value) ?? null)
+
+function openListingsSheet(service: UpsellService) {
+  listingsSheetServiceId.value = service.id
+  listingsSheetOpen.value = true
+}
 
 // Paging over the filtered list. A filter or search change starts on page 1; a shrinking list never strands you past the end.
 const PAGE_SIZES = [10, 20, 30, 50]
@@ -37,9 +48,28 @@ function openEdit(service: UpsellService) {
   emit('openDrawer', service)
 }
 
-function handleToggleStatus(id: string) {
-  toggleStatus(id)
-  toast.success('Service status updated.')
+// Activating is instant; deactivating takes the upsell away from guests, so it asks first.
+// The open flag is separate: the dialog closes before the action's click handler runs.
+const deactivateOpen = ref(false)
+const deactivateTarget = ref<UpsellService | null>(null)
+
+function handleToggleStatus(service: UpsellService) {
+  if (service.status === 'active') {
+    deactivateTarget.value = service
+    deactivateOpen.value = true
+    return
+  }
+  toggleStatus(service.id)
+  toast.success(`${service.name} is active.`)
+}
+
+function confirmDeactivate() {
+  const service = deactivateTarget.value
+  if (!service)
+    return
+  toggleStatus(service.id)
+  toast.success(`${service.name} is inactive.`)
+  deactivateOpen.value = false
 }
 
 function handleDelete(id: string) {
@@ -91,7 +121,6 @@ const categoryBadgeClass: Record<string, string> = {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead class="w-12" />
             <TableHead>Name</TableHead>
             <TableHead>Category</TableHead>
             <TableHead class="text-right">
@@ -114,7 +143,7 @@ const categoryBadgeClass: Record<string, string> = {
         </TableHeader>
         <TableBody>
           <TableRow v-if="filteredServices.length === 0">
-            <TableCell colspan="9" class="py-12 text-center text-sm text-muted-foreground">
+            <TableCell colspan="8" class="py-12 text-center text-sm text-muted-foreground">
               No upsell services match the selected filters.
             </TableCell>
           </TableRow>
@@ -125,11 +154,6 @@ const categoryBadgeClass: Record<string, string> = {
             class="cursor-pointer hover:bg-muted/50"
             @click="openEdit(svc)"
           >
-            <TableCell>
-              <div class="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
-                <Icon name="lucide:image" class="h-5 w-5 text-muted-foreground" />
-              </div>
-            </TableCell>
             <TableCell>
               <div class="flex items-center gap-1.5">
                 <p class="font-medium">
@@ -178,10 +202,17 @@ const categoryBadgeClass: Record<string, string> = {
                 {{ svc.items.length }} {{ svc.items.length === 1 ? 'item' : 'items' }}
               </Badge>
             </TableCell>
-            <TableCell class="text-center">
-              <Badge variant="secondary">
+            <TableCell class="text-center" @click.stop>
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-7 gap-1.5 rounded-full px-3 text-xs font-medium"
+                :aria-label="`Assign listings for ${svc.name}`"
+                @click="openListingsSheet(svc)"
+              >
+                <Icon name="lucide:house" class="size-3.5" />
                 {{ svc.assignedListings.length }} {{ svc.assignedListings.length === 1 ? 'listing' : 'listings' }}
-              </Badge>
+              </Button>
             </TableCell>
             <TableCell v-if="isExternalService(svc)" class="text-center text-muted-foreground">
               —
@@ -196,9 +227,13 @@ const categoryBadgeClass: Record<string, string> = {
               </Badge>
             </TableCell>
             <TableCell class="text-center">
-              <Badge :variant="svc.status === 'active' ? 'default' : 'secondary'">
-                {{ svc.status === 'active' ? 'Active' : 'Inactive' }}
-              </Badge>
+              <div class="flex justify-center" @click.stop>
+                <Switch
+                  :model-value="svc.status === 'active'"
+                  :aria-label="svc.status === 'active' ? `Deactivate ${svc.name}` : `Activate ${svc.name}`"
+                  @update:model-value="handleToggleStatus(svc)"
+                />
+              </div>
             </TableCell>
             <TableCell @click.stop>
               <DropdownMenu>
@@ -212,7 +247,7 @@ const categoryBadgeClass: Record<string, string> = {
                     <Icon name="lucide:pencil" class="mr-2 h-4 w-4" />
                     Edit
                   </DropdownMenuItem>
-                  <DropdownMenuItem @click="handleToggleStatus(svc.id)">
+                  <DropdownMenuItem @click="handleToggleStatus(svc)">
                     <Icon
                       :name="svc.status === 'active' ? 'lucide:eye-off' : 'lucide:eye'"
                       class="mr-2 h-4 w-4"
@@ -270,5 +305,24 @@ const categoryBadgeClass: Record<string, string> = {
         </div>
       </div>
     </div>
+
+    <UpsellListingsSheet v-model:open="listingsSheetOpen" :service="listingsSheetService" />
+
+    <AlertDialog v-model:open="deactivateOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Deactivate {{ deactivateTarget?.name }}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Guests will no longer see or order this upsell. Existing orders are not affected. You can turn it back on at any time.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction @click="confirmDeactivate">
+            Deactivate
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
