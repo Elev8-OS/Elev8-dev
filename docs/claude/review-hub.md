@@ -133,6 +133,8 @@ interface ReviewRecord {
 - All scores in 0-10 Channex format, realistic tags on Airbnb records
 - 10 SOR records with cleaning_score 2-5, house_rule_flags 0-3, communication_score 3-5
 
+**Analytics saved views** (`useReviewAnalytics`, `analytics/ReviewAnalyticsFilters.vue`): the Listings `SavedViewsDropdown` with `current-user-id`, so views are **personal or public** with the same rules as Listings (`listings.md`). `storedViews` holds every user's views, `savedViews` is a computed of what the current user may see; `fetchViews` falls back to Default when the remembered view is gone.
+
 ### Used by the listing detail page
 The listing Reviews and Overview tabs read `feedItems` for one listing (`app/components/listings/data/listing-reviews.ts`) and reuse `FeedTable` + `DetailDrawer`. `sortFeedItems` is exported so they order rows like the hub. Changing `FeedTable` / `DetailDrawer` props or emits affects `ListingReviewsTab.vue` too.
 

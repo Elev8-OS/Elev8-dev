@@ -1,7 +1,8 @@
 import type { SavedView, SavedViewVisibility, ViewState } from '~/types/saved-views'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
+import { useSavedViewOwner } from '~/composables/useSavedViewOwner'
+import { isVisibleTo, isOwnView as ownedBy, ownershipFor, visibilityToast, withOwnership } from '~/lib/saved-view-ownership'
 import { DEFAULT_VIEW, SEED_PUBLIC_VIEWS } from '~/types/saved-views'
 
 // Every user's custom views live under one key: it stands in for the server,
@@ -50,23 +51,13 @@ function stateOf(view: SavedView): ViewState {
 }
 
 export function useSavedViews() {
-  const { currentUser, currentUserId } = useCurrentDashboardUser()
-  const currentUserName = computed(() => currentUser.value?.name ?? 'Komang Juliantara')
+  const { owner, currentUserId } = useSavedViewOwner()
 
-  /**
-   * Views saved before visibility existed carry no `visibility` and a
-   * `createdBy` of `current-user`: they become personal views of whoever loads them.
-   */
-  function normalize(view: Partial<SavedView> & { id: string, name: string }): SavedView {
-    const legacyOwner = !view.createdBy || view.createdBy === 'current-user'
-    return {
-      ...DEFAULT_VIEW,
-      ...view,
-      isDefault: undefined,
-      visibility: view.visibility ?? 'personal',
-      createdBy: legacyOwner ? currentUserId.value : view.createdBy!,
-      createdByName: view.createdByName ?? (legacyOwner ? currentUserName.value : 'Teammate'),
-    } as SavedView
+  // Fills fields a view saved by an older build lacks; ownership comes from the view only.
+  const { isDefault: _isDefault, visibility: _v, createdBy: _by, createdByName: _byName, ...VIEW_FIELDS } = DEFAULT_VIEW
+
+  function normalize(view: SavedView): SavedView {
+    return withOwnership({ ...VIEW_FIELDS, ...view }, owner.value)
   }
 
   function readStoredViews(): SavedView[] {
@@ -88,11 +79,11 @@ export function useSavedViews() {
   const isLoading = ref(false)
 
   function isOwnView(view: Pick<SavedView, 'createdBy' | 'isDefault'>): boolean {
-    return !view.isDefault && view.createdBy === currentUserId.value
+    return ownedBy(view, currentUserId.value)
   }
 
   function isVisible(view: SavedView): boolean {
-    return view.visibility === 'public' || isOwnView(view)
+    return isVisibleTo(view, currentUserId.value)
   }
 
   /** Default View first, then what this user can see, newest first. */
@@ -200,9 +191,7 @@ export function useSavedViews() {
       id: generateId(),
       name,
       ...state,
-      visibility,
-      createdBy: currentUserId.value,
-      createdByName: currentUserName.value,
+      ...ownershipFor(owner.value, visibility),
       createdAt: now,
       updatedAt: now,
     }
@@ -300,7 +289,7 @@ export function useSavedViews() {
     commit(allViews.value.map(v => v.id === viewId ? updatedView : v))
     if (activeView.value?.id === viewId)
       activeView.value = updatedView
-    toast.success(visibility === 'public' ? 'View shared with your team.' : 'View is now personal.')
+    toast.success(visibilityToast(visibility))
   }
 
   return {

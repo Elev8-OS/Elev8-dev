@@ -5,11 +5,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultAnalyticsFilters, useAnalytics } from '~/composables/useAnalytics'
 import { DEFAULT_VIEW_ID, sameFilters, useAnalyticsSavedViews } from '~/composables/useAnalyticsSavedViews'
+import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 
 vi.mock('vue-sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
 beforeEach(() => {
   localStorage.clear()
+  useCurrentDashboardUser().setCurrentUserId('user-1')
 })
 
 describe('sameFilters', () => {
@@ -136,5 +138,72 @@ describe('useAnalyticsSavedViews', () => {
     views.resetToDefault()
     expect(views.activeView.value.id).toBe(DEFAULT_VIEW_ID)
     expect(filters.value).toEqual(defaultAnalyticsFilters())
+  })
+
+  describe('personal and public views', () => {
+    /** Switches user and starts a fresh session on the same browser storage. */
+    function sessionAs(userId: string) {
+      useCurrentDashboardUser().setCurrentUserId(userId)
+      useState('analytics-views-restored').value = false
+      useState<unknown[]>('analytics-saved-views').value = []
+      useState('analytics-active-view').value = DEFAULT_VIEW_ID
+      const views = useAnalyticsSavedViews()
+      views.restore()
+      return views
+    }
+
+    it('stamps a new view with its creator, personal unless Public is picked', () => {
+      const views = useAnalyticsSavedViews()
+      views.saveAs('Mine')
+      views.saveAs('Team', 'public')
+      const byName = Object.fromEntries(views.savedViews.value.map(v => [v.name, v]))
+      expect(byName.Mine).toMatchObject({ visibility: 'personal', createdBy: 'user-1', createdByName: 'Komang Juliantara' })
+      expect(byName.Team!.visibility).toBe('public')
+    })
+
+    it('shows a teammate only the public views', () => {
+      const views = useAnalyticsSavedViews()
+      views.saveAs('Mine')
+      views.saveAs('Team', 'public')
+      const made = sessionAs('user-2')
+      expect(made.savedViews.value.map(v => v.name)).toEqual(['Default View', 'Team'])
+    })
+
+    it('lets a teammate use a public view but not change it', () => {
+      const { setScope } = useAnalytics()
+      const views = useAnalyticsSavedViews()
+      setScope('regions', ['Bali'])
+      views.saveAs('Team', 'public')
+      const team = views.activeView.value
+
+      const made = sessionAs('user-2')
+      made.loadView(team.id)
+      setScope('channels', ['Direct'])
+      expect(made.isDirty.value).toBe(true)
+      expect(made.canUpdateActiveView.value).toBe(false)
+      made.updateActiveView()
+      made.renameView(team.id, 'Hijacked')
+      made.setViewVisibility(team.id, 'personal')
+      made.deleteView(team.id)
+      expect(made.savedViews.value.find(v => v.id === team.id)).toMatchObject({ name: 'Team', visibility: 'public', filters: { channels: [] } })
+    })
+
+    it('un-sharing hides the view from teammates, and their remembered active view falls back to Default', () => {
+      const views = useAnalyticsSavedViews()
+      views.saveAs('Team', 'public')
+      const id = views.activeView.value.id
+      localStorage.setItem('elev8-analytics-active-view', JSON.stringify(id))
+      views.setViewVisibility(id, 'personal')
+
+      const made = sessionAs('user-2')
+      expect(made.savedViews.value.map(v => v.id)).toEqual([DEFAULT_VIEW_ID])
+      expect(made.activeView.value.id).toBe(DEFAULT_VIEW_ID)
+    })
+
+    it('treats a view saved before visibility existed as a personal view of the loader', () => {
+      localStorage.setItem('elev8-analytics-saved-views', JSON.stringify([{ id: 'old', name: 'Old', filters: defaultAnalyticsFilters(), createdAt: '2026-01-01', updatedAt: '2026-01-01' }]))
+      const views = sessionAs('user-1')
+      expect(views.savedViews.value.find(v => v.id === 'old')).toMatchObject({ visibility: 'personal', createdBy: 'user-1' })
+    })
   })
 })

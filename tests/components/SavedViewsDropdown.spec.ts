@@ -48,7 +48,7 @@ describe('savedViewsDropdown', () => {
   it('emits load-view when a view is clicked', async () => {
     const wrapper = mountDropdown({ savedViews: [{ id: '1', name: 'My View' }] })
     await wrapper.find('[data-testid="view-item-1"]').trigger('click')
-    expect(wrapper.emitted('load-view')?.[0]).toEqual(['1'])
+    expect(wrapper.emitted('loadView')?.[0]).toEqual(['1'])
   })
 
   describe('without currentUserId (Analytics, Review Hub)', () => {
@@ -57,7 +57,7 @@ describe('savedViewsDropdown', () => {
       await wrapper.find('[data-testid="save-as-option"]').trigger('click')
       expect(wrapper.find('[data-testid="visibility-public"]').exists()).toBe(false)
       await wrapper.find('[data-testid="save-confirm"]').trigger('click')
-      expect(wrapper.emitted('save-as')?.[0]).toEqual(['New View 1', 'personal'])
+      expect(wrapper.emitted('saveAs')?.[0]).toEqual(['New View 1', 'personal'])
     })
 
     it('keeps a flat list with edit actions on every custom view', () => {
@@ -86,7 +86,7 @@ describe('savedViewsDropdown', () => {
       await wrapper.find('[data-testid="visibility-public"]').trigger('click')
       expect(wrapper.text()).toContain('Everyone on your team can use it.')
       await wrapper.find('[data-testid="save-confirm"]').trigger('click')
-      expect(wrapper.emitted('save-as')?.[0]).toEqual(['New View 1', 'public'])
+      expect(wrapper.emitted('saveAs')?.[0]).toEqual(['New View 1', 'public'])
     })
 
     it('hides rename, delete and share on a teammate view', () => {
@@ -102,7 +102,7 @@ describe('savedViewsDropdown', () => {
       await wrapper.find('[data-testid="toggle-visibility-mine-per"]').trigger('click')
       await wrapper.find('[data-testid="toggle-visibility-mine-pub"]').trigger('click')
       expect(wrapper.emitted('setVisibility')).toEqual([['mine-per', 'public'], ['mine-pub', 'personal']])
-      expect(wrapper.emitted('load-view')).toBeUndefined()
+      expect(wrapper.emitted('loadView')).toBeUndefined()
     })
   })
 })

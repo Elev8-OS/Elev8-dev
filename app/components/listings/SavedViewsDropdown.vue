@@ -1,15 +1,16 @@
 <script setup lang="ts">
+import type { SavedViewVisibility } from '~/lib/saved-view-ownership'
 import { Icon } from '#components'
 import { computed, nextTick, ref } from 'vue'
 import DeleteViewDialog from '~/components/listings/DeleteViewDialog.vue'
 import UnsavedChangesDialog from '~/components/listings/UnsavedChangesDialog.vue'
+import SavedViewVisibilityPicker from '~/components/shared/SavedViewVisibilityPicker.vue'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 
-type Visibility = 'personal' | 'public'
+type Visibility = SavedViewVisibility
 
 /**
  * Only what the menu reads, so any page's view shape fits (Listings, Review
@@ -41,16 +42,16 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'load-view': [viewId: string]
-  'save-as': [name: string, visibility: Visibility]
-  'update': []
-  'delete': [viewId: string]
-  'rename': [viewId: string, newName: string]
-  'setVisibility': [viewId: string, visibility: Visibility]
-  'reset': []
-  'confirm-load': []
+  loadView: [viewId: string]
+  saveAs: [name: string, visibility: Visibility]
+  update: []
+  delete: [viewId: string]
+  rename: [viewId: string, newName: string]
+  setVisibility: [viewId: string, visibility: Visibility]
+  reset: []
+  confirmLoad: []
   /** The unsaved-changes prompt was dismissed; the parent clears its pending view. */
-  'cancelLoad': []
+  cancelLoad: []
 }>()
 
 const viewSearch = ref('')
@@ -68,12 +69,6 @@ function isOwn(view: ViewLike): boolean {
 
 function canManage(view: ViewLike): boolean {
   return !view.isDefault && isOwn(view)
-}
-
-function setNewViewVisibility(value: unknown) {
-  // A single ToggleGroup emits undefined when the pressed item is clicked again.
-  if (value === 'personal' || value === 'public')
-    newViewVisibility.value = value
 }
 // Template refs on the shadcn `Input` hold the component, not the element;
 // `focusAndSelect` reaches the `<input>` through `$el` either way.
@@ -117,7 +112,7 @@ function confirmSave() {
     return
   }
 
-  emit('save-as', newViewName.value.trim(), newViewVisibility.value)
+  emit('saveAs', newViewName.value.trim(), newViewVisibility.value)
   saveMode.value = false
   newViewName.value = ''
 }
@@ -188,7 +183,7 @@ const sections = computed<ViewSection[]>(() => {
 })
 
 function handleLoadView(viewId: string) {
-  emit('load-view', viewId)
+  emit('loadView', viewId)
 }
 </script>
 
@@ -239,28 +234,7 @@ function handleLoadView(viewId: string) {
               maxlength="50"
               @keydown="handleSaveKeydown"
             />
-            <div v-if="showVisibility" class="space-y-1">
-              <ToggleGroup
-                :model-value="newViewVisibility"
-                type="single"
-                variant="outline"
-                size="sm"
-                class="w-full"
-                @update:model-value="setNewViewVisibility"
-              >
-                <ToggleGroupItem value="personal" class="h-7 flex-1 gap-1.5 text-xs" data-testid="visibility-personal">
-                  <Icon name="lucide:user" class="size-3.5" />
-                  Personal
-                </ToggleGroupItem>
-                <ToggleGroupItem value="public" class="h-7 flex-1 gap-1.5 text-xs" data-testid="visibility-public">
-                  <Icon name="lucide:users" class="size-3.5" />
-                  Public
-                </ToggleGroupItem>
-              </ToggleGroup>
-              <p class="text-xs text-muted-foreground">
-                {{ newViewVisibility === 'public' ? 'Everyone on your team can use it. Only you can edit it.' : 'Only you can see it.' }}
-              </p>
-            </div>
+            <SavedViewVisibilityPicker v-if="showVisibility" v-model="newViewVisibility" />
             <div class="flex gap-2">
               <Button
                 variant="outline"
@@ -467,7 +441,7 @@ function handleLoadView(viewId: string) {
       :open="!!pendingTarget"
       :target-view-name="pendingTarget.name"
       @update:open="(open: boolean) => !open && emit('cancelLoad')"
-      @confirm="emit('confirm-load')"
+      @confirm="emit('confirmLoad')"
       @cancel="emit('cancelLoad')"
     />
   </div>

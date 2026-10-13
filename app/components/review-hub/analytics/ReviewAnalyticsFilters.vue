@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DateRange } from 'reka-ui'
+import type { SavedViewVisibility } from '~/lib/saved-view-ownership'
 import type { AnalyticsChannelFilter, AnalyticsComparisonMode, AnalyticsPeriodPreset } from '~/types/review-analytics'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { computed, ref, watch } from 'vue'
@@ -24,6 +25,8 @@ const {
   isLoading,
   fetchViews,
   saveCurrentAs,
+  setViewVisibility,
+  currentUserId,
   loadView,
   confirmLoadView,
   updateActiveView,
@@ -173,8 +176,8 @@ function handleConfirmLoadView() {
   }
 }
 
-function handleSaveAs(name: string) {
-  saveCurrentAs(name, getCurrentViewState())
+function handleSaveAs(name: string, visibility: SavedViewVisibility) {
+  saveCurrentAs(name, getCurrentViewState(), visibility)
 }
 
 function handleUpdateView() {
@@ -204,13 +207,16 @@ function handleResetView() {
       :is-loading="isLoading"
       :can-update-active-view="canUpdateActiveView"
       :pending-view-id="pendingViewId"
+      :current-user-id="currentUserId"
       @load-view="handleLoadView"
       @save-as="handleSaveAs"
       @update="handleUpdateView"
       @delete="deleteView"
       @rename="renameView"
+      @set-visibility="setViewVisibility"
       @reset="handleResetView"
       @confirm-load="handleConfirmLoadView"
+      @cancel-load="pendingViewId = null"
     />
 
     <!-- Channel -->

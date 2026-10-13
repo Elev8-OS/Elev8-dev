@@ -1,4 +1,5 @@
 import type { ReviewSource } from '~/components/review-hub/data/types'
+import type { SavedViewOwnership } from '~/lib/saved-view-ownership'
 
 // --- Analytics Filters ---
 export type AnalyticsChannelFilter = 'all' | ReviewSource
@@ -28,10 +29,9 @@ export interface ReviewAnalyticsViewState {
   comparison: AnalyticsComparisonMode
 }
 
-export interface ReviewAnalyticsSavedView extends ReviewAnalyticsViewState {
+export interface ReviewAnalyticsSavedView extends ReviewAnalyticsViewState, SavedViewOwnership {
   id: string
   name: string
-  createdBy: string
   createdAt: string
   updatedAt: string
   isDefault?: boolean
@@ -46,7 +46,9 @@ export const DEFAULT_ANALYTICS_VIEW: ReviewAnalyticsSavedView = {
   dateTo: null,
   period: '30d',
   comparison: 'previous_year',
+  visibility: 'public',
   createdBy: 'system',
+  createdByName: 'System',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   isDefault: true,

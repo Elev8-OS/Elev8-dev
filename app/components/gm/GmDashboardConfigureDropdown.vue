@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { GmSavedView } from '~/composables/useGmSavedViews'
-import { ref } from 'vue'
+import type { SavedViewVisibility } from '~/lib/saved-view-ownership'
+import { computed, ref } from 'vue'
+import SavedViewVisibilityPicker from '~/components/shared/SavedViewVisibilityPicker.vue'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import {
@@ -32,16 +34,25 @@ const views = useGmSavedViews()
 // Save Dialog state
 const isSaveDialogOpen = ref(false)
 const newViewName = ref('')
+const newViewVisibility = ref<SavedViewVisibility>('personal')
+
+/** Default first, then own views, then teammates' public views. */
+const viewSections = computed(() => [
+  { key: 'default', label: null, views: views.savedViews.value.filter(v => v.isDefault) },
+  { key: 'mine', label: 'My views', views: views.savedViews.value.filter(v => !v.isDefault && views.isOwn(v)) },
+  { key: 'team', label: 'Shared by team', views: views.savedViews.value.filter(v => !v.isDefault && !views.isOwn(v)) },
+].filter(s => s.views.length > 0))
 
 function openSaveDialog() {
   const nextNum = views.savedViews.value.filter(v => !v.isDefault).length + 1
   newViewName.value = `Custom View ${nextNum}`
+  newViewVisibility.value = 'personal'
   isSaveDialogOpen.value = true
 }
 
 function handleConfirmSave() {
   if (newViewName.value.trim()) {
-    views.saveCurrentAs(newViewName.value.trim())
+    views.saveCurrentAs(newViewName.value.trim(), newViewVisibility.value)
     isSaveDialogOpen.value = false
     newViewName.value = ''
   }
@@ -189,56 +200,92 @@ function handleConfirmRename() {
           </span>
         </div>
 
-        <div class="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-          <div
-            v-for="view in views.savedViews.value"
-            :key="view.id"
-            class="group/item flex items-center justify-between rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent cursor-pointer"
-            :class="views.activeViewId.value === view.id ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-100 font-medium' : 'text-foreground'"
-            @click="views.loadView(view.id)"
-          >
-            <div class="flex items-center gap-2 min-w-0">
-              <Icon
-                :name="views.activeViewId.value === view.id ? 'lucide:check' : 'lucide:layout'"
-                class="size-3.5 shrink-0"
-                :class="views.activeViewId.value === view.id ? 'text-sky-600 dark:text-sky-400' : 'text-muted-foreground/60'"
-              />
-              <span class="truncate">{{ view.name }}</span>
-              <Badge
-                v-if="view.isDefault"
-                variant="outline"
-                class="text-[9px] h-3.5 px-1 text-muted-foreground shrink-0"
-              >
-                Default
-              </Badge>
-            </div>
-
-            <!-- Action buttons for custom views (rename, delete) -->
+        <div class="flex flex-col gap-0.5 max-h-56 overflow-y-auto">
+          <template v-for="section in viewSections" :key="section.key">
             <div
-              v-if="!view.isDefault"
-              class="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100"
-              @click.stop
+              v-if="section.label"
+              class="px-2 pt-1.5 pb-0.5 text-[10px] font-medium text-muted-foreground"
+              :data-testid="`gm-section-${section.key}`"
             >
-              <Button
-                variant="ghost"
-                size="icon"
-                class="size-5 rounded hover:bg-muted"
-                title="Rename view"
-                @click="startRename(view)"
-              >
-                <Icon name="lucide:pencil" class="size-3 text-muted-foreground" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="size-5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                title="Delete view"
-                @click="views.deleteView(view.id)"
-              >
-                <Icon name="lucide:trash-2" class="size-3" />
-              </Button>
+              {{ section.label }}
             </div>
-          </div>
+            <div
+              v-for="view in section.views"
+              :key="view.id"
+              class="group/item flex items-center justify-between rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent cursor-pointer"
+              :class="views.activeViewId.value === view.id ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-100 font-medium' : 'text-foreground'"
+              :data-testid="`gm-view-${view.id}`"
+              @click="views.loadView(view.id)"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <Icon
+                  :name="views.activeViewId.value === view.id ? 'lucide:check' : 'lucide:layout'"
+                  class="size-3.5 shrink-0"
+                  :class="views.activeViewId.value === view.id ? 'text-sky-600 dark:text-sky-400' : 'text-muted-foreground/60'"
+                />
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="truncate">{{ view.name }}</span>
+                    <Icon
+                      v-if="!view.isDefault && view.visibility === 'public' && views.isOwn(view)"
+                      name="lucide:users"
+                      class="size-3 shrink-0 text-muted-foreground"
+                      title="Shared with your team"
+                    />
+                  </div>
+                  <div v-if="!view.isDefault && !views.isOwn(view)" class="text-[10px] text-muted-foreground truncate">
+                    by {{ view.createdByName }}
+                  </div>
+                </div>
+                <Badge
+                  v-if="view.isDefault"
+                  variant="outline"
+                  class="text-[9px] h-3.5 px-1 text-muted-foreground shrink-0"
+                >
+                  Default
+                </Badge>
+              </div>
+
+              <!-- Actions on own custom views (share, rename, delete) -->
+              <div
+                v-if="!view.isDefault && views.isOwn(view)"
+                class="flex items-center gap-0.5 opacity-0 group-hover/item:opacity-100"
+                @click.stop
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="size-5 rounded hover:bg-muted"
+                  :title="view.visibility === 'public' ? 'Make personal' : 'Share with team'"
+                  :aria-label="view.visibility === 'public' ? 'Make personal' : 'Share with team'"
+                  :data-testid="`gm-toggle-visibility-${view.id}`"
+                  @click="views.setViewVisibility(view.id, view.visibility === 'public' ? 'personal' : 'public')"
+                >
+                  <Icon :name="view.visibility === 'public' ? 'lucide:user' : 'lucide:users'" class="size-3 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="size-5 rounded hover:bg-muted"
+                  title="Rename view"
+                  aria-label="Rename view"
+                  @click="startRename(view)"
+                >
+                  <Icon name="lucide:pencil" class="size-3 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="size-5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                  title="Delete view"
+                  aria-label="Delete view"
+                  @click="views.deleteView(view.id)"
+                >
+                  <Icon name="lucide:trash-2" class="size-3" />
+                </Button>
+              </div>
+            </div>
+          </template>
         </div>
 
         <!-- Saved Views Actions -->
@@ -296,6 +343,9 @@ function handleConfirmRename() {
             class="h-9 text-sm"
             @keydown.enter="handleConfirmSave"
           />
+          <div class="mt-3">
+            <SavedViewVisibilityPicker v-model="newViewVisibility" />
+          </div>
         </div>
 
         <DialogFooter class="gap-2">

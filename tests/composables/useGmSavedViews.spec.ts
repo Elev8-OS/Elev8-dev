@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useGmDashboardWidgets } from '~/composables/useGmDashboardWidgets'
 import {
-  DEFAULT_GM_VIEW,
-  STORAGE_KEY_GM_ACTIVE_VIEW_ID,
   STORAGE_KEY_GM_SAVED_VIEWS,
   useGmSavedViews,
 } from '~/composables/useGmSavedViews'
@@ -10,6 +9,7 @@ import {
 describe('useGmSavedViews', () => {
   beforeEach(() => {
     localStorage.clear()
+    useCurrentDashboardUser().setCurrentUserId('user-1')
     const { resetToDefaults } = useGmDashboardWidgets()
     resetToDefaults()
     const { resetToDefaultView } = useGmSavedViews()
@@ -130,5 +130,55 @@ describe('useGmSavedViews', () => {
       expect.stringContaining('Persisted View'),
     )
     setItemSpy.mockRestore()
+  })
+
+  describe('personal and public views', () => {
+    it('stamps a new view with its creator, personal unless Public is picked', () => {
+      const { saveCurrentAs } = useGmSavedViews()
+      expect(saveCurrentAs('Mine')).toMatchObject({ visibility: 'personal', createdBy: 'user-1', createdByName: 'Komang Juliantara' })
+      expect(saveCurrentAs('Team', 'public').visibility).toBe('public')
+    })
+
+    it('shows a teammate only the public views, and their active view falls back to Default', () => {
+      const { saveCurrentAs } = useGmSavedViews()
+      saveCurrentAs('Team', 'public')
+      const mine = saveCurrentAs('Mine')
+
+      useCurrentDashboardUser().setCurrentUserId('user-2')
+      const made = useGmSavedViews()
+      expect(made.savedViews.value.map(v => v.name)).toEqual(['Default Overview', 'Team'])
+      expect(made.activeViewId.value).toBe(mine.id)
+      expect(made.activeView.value.id).toBe('default')
+    })
+
+    it('lets a teammate use a public view but not change it', () => {
+      const { setWidgetSpan } = useGmDashboardWidgets()
+      const team = useGmSavedViews().saveCurrentAs('Team', 'public')
+
+      useCurrentDashboardUser().setCurrentUserId('user-2')
+      const made = useGmSavedViews()
+      made.loadView(team.id)
+      setWidgetSpan('occupancy_flow', 12)
+      expect(made.isDirty.value).toBe(true)
+      expect(made.canUpdateActiveView.value).toBe(false)
+      made.updateActiveView()
+      made.renameView(team.id, 'Hijacked')
+      made.setViewVisibility(team.id, 'personal')
+      made.deleteView(team.id)
+
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY_GM_SAVED_VIEWS) ?? '[]')
+      expect(stored).toHaveLength(1)
+      expect(stored[0]).toMatchObject({ name: 'Team', visibility: 'public' })
+      expect(stored[0].widgets).toEqual(team.widgets)
+    })
+
+    it('shares and un-shares an own view', () => {
+      const { saveCurrentAs, setViewVisibility, savedViews } = useGmSavedViews()
+      const mine = saveCurrentAs('Mine')
+      setViewVisibility(mine.id, 'public')
+      expect(savedViews.value.find(v => v.id === mine.id)?.visibility).toBe('public')
+      setViewVisibility(mine.id, 'personal')
+      expect(savedViews.value.find(v => v.id === mine.id)?.visibility).toBe('personal')
+    })
   })
 })

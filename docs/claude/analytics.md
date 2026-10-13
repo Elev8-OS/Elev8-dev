@@ -176,6 +176,11 @@ cancellation rate.
   view with unsaved edits sets `pendingViewId`; the dropdown's prompt confirms or emits
   `cancelLoad`. Names are unique case-insensitively, "Default View" included. Deleting the active
   view falls back to Default and keeps the filters on screen.
+  - **Personal or public** (same rules as Listings, see `listings.md`): `saveAs(name, visibility)`
+    stamps `visibility`, `createdBy`, `createdByName` (`lib/saved-view-ownership.ts`). The store
+    holds every user's views; `savedViews` filters to own + public. Only the creator can update,
+    rename, delete or `setViewVisibility`; `canUpdateActiveView` is false on a teammate's view.
+    `restore()` skips a remembered view the user can no longer see.
   - The dropdown was changed for this: props are structural (`{ id, name, isDefault? }`, which
     also cleared two Review Hub type errors), a new `cancelLoad` event (the prompt used to assign
     to a computed and could not close), and the name / rename inputs now focus through `$el`

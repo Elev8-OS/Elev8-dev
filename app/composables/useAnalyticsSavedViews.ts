@@ -1,12 +1,15 @@
 import type { AnalyticsFilters } from '~/composables/useAnalytics'
+import type { SavedViewOwnership, SavedViewVisibility } from '~/lib/saved-view-ownership'
 import { toast } from 'vue-sonner'
 import { defaultAnalyticsFilters, useAnalytics } from '~/composables/useAnalytics'
+import { useSavedViewOwner } from '~/composables/useSavedViewOwner'
+import { isOwnView, isVisibleTo, ownershipFor, visibilityToast, withOwnership } from '~/lib/saved-view-ownership'
 
 /**
  * A named snapshot of every Analytics filter. Presets are stored as presets,
  * so "Last 30 days" keeps rolling; only a custom range is stored as dates.
  */
-export interface AnalyticsSavedView {
+export interface AnalyticsSavedView extends SavedViewOwnership {
   id: string
   name: string
   filters: AnalyticsFilters
@@ -24,6 +27,9 @@ export const DEFAULT_ANALYTICS_VIEW: AnalyticsSavedView = {
   name: 'Default View',
   filters: defaultAnalyticsFilters(),
   isDefault: true,
+  visibility: 'public',
+  createdBy: 'system',
+  createdByName: 'System',
   createdAt: '1970-01-01T00:00:00.000Z',
   updatedAt: '1970-01-01T00:00:00.000Z',
 }
@@ -80,8 +86,12 @@ function writeStorage(key: string, value: unknown) {
 
 export function useAnalyticsSavedViews() {
   const { filters } = useAnalytics()
+  const { owner, currentUserId } = useSavedViewOwner()
 
-  /** Custom views only; the Default View is never stored. */
+  /**
+   * Custom views of every user in this browser (it stands in for the server);
+   * the Default View is never stored. `savedViews` is what this user may see.
+   */
   const customViews = useState<AnalyticsSavedView[]>('analytics-saved-views', () => [])
   const activeViewId = useState<string>('analytics-active-view', () => DEFAULT_VIEW_ID)
   const pendingViewId = useState<string | null>('analytics-pending-view', () => null)
@@ -89,13 +99,28 @@ export function useAnalyticsSavedViews() {
 
   const savedViews = computed(() => [
     DEFAULT_ANALYTICS_VIEW,
-    ...[...customViews.value].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    ...customViews.value
+      .filter(v => isVisibleTo(v, currentUserId.value))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
   ])
   const activeView = computed(() => savedViews.value.find(v => v.id === activeViewId.value) ?? DEFAULT_ANALYTICS_VIEW)
 
   /** Only a custom view can be dirty; the Default View is a starting point, not a promise. */
   const isDirty = computed(() => !activeView.value.isDefault && !sameFilters(activeView.value.filters, filters.value))
-  const canUpdateActiveView = computed(() => isDirty.value)
+  // A teammate's public view can be used and tweaked, but changes go into a new view.
+  const canUpdateActiveView = computed(() => isDirty.value && isOwnView(activeView.value, currentUserId.value))
+
+  /** The stored view if this user created it, else a toast saying who can change it. */
+  function ownViewOrToast(id: string, action: string): AnalyticsSavedView | null {
+    const view = customViews.value.find(v => v.id === id)
+    if (!view)
+      return null
+    if (!isOwnView(view, currentUserId.value)) {
+      toast.error(`Only ${view.createdByName} can ${action} this view.`)
+      return null
+    }
+    return view
+  }
 
   function persist() {
     writeStorage(VIEWS_KEY, customViews.value)
@@ -107,9 +132,10 @@ export function useAnalyticsSavedViews() {
     if (restored.value)
       return
     restored.value = true
-    customViews.value = readStorage<AnalyticsSavedView[]>(VIEWS_KEY, [])
+    customViews.value = readStorage<AnalyticsSavedView[]>(VIEWS_KEY, []).map(v => withOwnership(v, owner.value))
     const id = readStorage<string>(ACTIVE_KEY, DEFAULT_VIEW_ID)
-    const view = customViews.value.find(v => v.id === id)
+    // A view since deleted, un-shared or owned by another user of this browser is skipped.
+    const view = savedViews.value.find(v => v.id === id && !v.isDefault)
     if (view) {
       activeViewId.value = view.id
       filters.value = snapshot(view.filters)
@@ -150,7 +176,7 @@ export function useAnalyticsSavedViews() {
     pendingViewId.value = null
   }
 
-  function saveAs(name: string) {
+  function saveAs(name: string, visibility: SavedViewVisibility = 'personal') {
     if (nameTaken(name)) {
       toast.error('A view with this name already exists.')
       return
@@ -160,18 +186,19 @@ export function useAnalyticsSavedViews() {
       id: `aview_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: name.trim(),
       filters: snapshot(filters.value),
+      ...ownershipFor(owner.value, visibility),
       createdAt: now,
       updatedAt: now,
     }
     customViews.value = [...customViews.value, view]
     activeViewId.value = view.id
     persist()
-    toast.success(`View "${view.name}" saved`)
+    toast.success(visibility === 'public' ? `View "${view.name}" saved and shared with your team` : `View "${view.name}" saved`)
   }
 
   function updateActiveView() {
     const id = activeViewId.value
-    if (activeView.value.isDefault)
+    if (activeView.value.isDefault || !ownViewOrToast(id, 'update'))
       return
     customViews.value = customViews.value.map(v =>
       v.id === id ? { ...v, filters: snapshot(filters.value), updatedAt: new Date().toISOString() } : v)
@@ -180,6 +207,8 @@ export function useAnalyticsSavedViews() {
   }
 
   function renameView(id: string, name: string) {
+    if (!ownViewOrToast(id, 'rename'))
+      return
     if (nameTaken(name, id)) {
       toast.error('A view with this name already exists.')
       return
@@ -191,13 +220,24 @@ export function useAnalyticsSavedViews() {
 
   /** Deleting the active view keeps the filters on screen, now under the Default View. */
   function deleteView(id: string) {
-    const view = customViews.value.find(v => v.id === id)
+    const view = ownViewOrToast(id, 'delete')
+    if (!view)
+      return
     customViews.value = customViews.value.filter(v => v.id !== id)
     if (activeViewId.value === id)
       activeViewId.value = DEFAULT_VIEW_ID
     persist()
-    if (view)
-      toast.info(`View "${view.name}" deleted`)
+    toast.info(`View "${view.name}" deleted`)
+  }
+
+  function setViewVisibility(id: string, visibility: SavedViewVisibility) {
+    const view = ownViewOrToast(id, 'change who can see')
+    if (!view || view.visibility === visibility)
+      return
+    customViews.value = customViews.value.map(v =>
+      v.id === id ? { ...v, visibility, updatedAt: new Date().toISOString() } : v)
+    persist()
+    toast.success(visibilityToast(visibility))
   }
 
   function resetToDefault() {
@@ -218,6 +258,8 @@ export function useAnalyticsSavedViews() {
     updateActiveView,
     renameView,
     deleteView,
+    setViewVisibility,
     resetToDefault,
+    currentUserId,
   }
 }

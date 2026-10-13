@@ -1,4 +1,5 @@
 import type { ScoreCategory } from '~/components/review-hub/data/types'
+import type { SavedViewVisibility } from '~/lib/saved-view-ownership'
 import type {
   AnalyticsCategoryScore,
   AnalyticsCategoryTag,
@@ -15,6 +16,8 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { buildAnalyticsReviewRecords } from '~/components/review-hub/data/mock-review-analytics'
 import { getCategoryDisplayLabel, getTagLabel, getTagSentiment } from '~/components/review-hub/data/types'
+import { useSavedViewOwner } from '~/composables/useSavedViewOwner'
+import { isOwnView, isVisibleTo, ownershipFor, visibilityToast, withOwnership } from '~/lib/saved-view-ownership'
 import { DEFAULT_ANALYTICS_VIEW } from '~/types/review-analytics'
 
 // --- localStorage helpers (same pattern as useSavedViews) ---
@@ -86,15 +89,18 @@ export function useReviewAnalytics() {
   const comparisonMode = useState<AnalyticsComparisonMode>('review-analytics-comparison', () => 'previous_year')
 
   // --- Saved views (analytics-scoped) ---
-  const savedViews = ref<ReviewAnalyticsSavedView[]>(loadFromLocalStorage(VIEWS_KEY, [DEFAULT_ANALYTICS_VIEW]))
+  // `storedViews` holds every user's custom views in this browser (it stands in for
+  // the server); `savedViews` is the Default View plus what this user may see.
+  const { owner, currentUserId } = useSavedViewOwner()
+  const storedViews = ref<ReviewAnalyticsSavedView[]>(readStoredViews())
+  const savedViews = computed(() => sortViews([
+    DEFAULT_ANALYTICS_VIEW,
+    ...storedViews.value.filter(v => isVisibleTo(v, currentUserId.value)),
+  ]))
   const activeView = ref<ReviewAnalyticsSavedView | null>(loadFromLocalStorage(ACTIVE_VIEW_KEY, DEFAULT_ANALYTICS_VIEW))
   const currentState = ref<ReviewAnalyticsViewState | null>(loadFromLocalStorage(CURRENT_STATE_KEY, null))
   const pendingViewId = ref<string | null>(loadFromLocalStorage(PENDING_VIEW_ID_KEY, null))
   const isLoading = ref(false)
-
-  watch(savedViews, (newVal) => {
-    saveToLocalStorage(VIEWS_KEY, newVal.filter(v => !v.isDefault))
-  }, { deep: true })
 
   watch(activeView, (newVal) => {
     saveToLocalStorage(ACTIVE_VIEW_KEY, newVal)
@@ -497,7 +503,33 @@ export function useReviewAnalytics() {
     )
   })
 
-  const canUpdateActiveView = computed(() => activeView.value !== null && !activeView.value.isDefault && isDirty.value)
+  // A teammate's public view can be used and tweaked, but changes go into a new view.
+  const canUpdateActiveView = computed(() => activeView.value !== null && isOwnView(activeView.value, currentUserId.value) && isDirty.value)
+
+  function readStoredViews(): ReviewAnalyticsSavedView[] {
+    return loadFromLocalStorage<ReviewAnalyticsSavedView[]>(VIEWS_KEY, [])
+      .filter(v => !v.isDefault)
+      .map(v => withOwnership(v, owner.value))
+  }
+
+  function commitViews(views: ReviewAnalyticsSavedView[]) {
+    storedViews.value = views
+    saveToLocalStorage(VIEWS_KEY, views)
+  }
+
+  /** The stored view if this user created it, else a toast saying who can change it. */
+  function ownViewOrToast(viewId: string, action: string): ReviewAnalyticsSavedView | null {
+    const view = storedViews.value.find(v => v.id === viewId)
+    if (!view) {
+      toast.error(`Cannot ${action} this view.`)
+      return null
+    }
+    if (!isOwnView(view, currentUserId.value)) {
+      toast.error(`Only ${view.createdByName} can ${action} this view.`)
+      return null
+    }
+    return view
+  }
 
   function sortViews(views: ReviewAnalyticsSavedView[]): ReviewAnalyticsSavedView[] {
     return [...views].sort((a, b) => {
@@ -512,9 +544,14 @@ export function useReviewAnalytics() {
   async function fetchViews() {
     isLoading.value = true
     try {
-      const customViews = loadFromLocalStorage<ReviewAnalyticsSavedView[]>(VIEWS_KEY, [])
-      savedViews.value = sortViews([DEFAULT_ANALYTICS_VIEW, ...customViews])
-      if (!activeView.value) {
+      storedViews.value = readStoredViews()
+      // The remembered view may since have been deleted or un-shared, or belong to
+      // another user of this browser: fall back to Default.
+      const active = activeView.value && savedViews.value.find(v => v.id === activeView.value!.id)
+      if (active) {
+        activeView.value = active
+      }
+      else {
         activeView.value = DEFAULT_ANALYTICS_VIEW
         currentState.value = getCurrentViewState()
       }
@@ -527,7 +564,7 @@ export function useReviewAnalytics() {
     }
   }
 
-  async function saveCurrentAs(name: string, state: ReviewAnalyticsViewState) {
+  async function saveCurrentAs(name: string, state: ReviewAnalyticsViewState, visibility: SavedViewVisibility = 'personal') {
     const exists = savedViews.value.find(v => !v.isDefault && v.name.toLowerCase() === name.toLowerCase())
     if (exists) {
       toast.error('A view with this name already exists.')
@@ -540,15 +577,14 @@ export function useReviewAnalytics() {
         id: generateViewId(),
         name,
         ...state,
-        createdBy: 'current-user',
+        ...ownershipFor(owner.value, visibility),
         createdAt: now,
         updatedAt: now,
       }
-      savedViews.value = sortViews([...savedViews.value, newView])
-      saveToLocalStorage(VIEWS_KEY, savedViews.value.filter(v => !v.isDefault))
+      commitViews([...storedViews.value, newView])
       activeView.value = newView
       currentState.value = state
-      toast.success('View saved!')
+      toast.success(visibility === 'public' ? 'View saved and shared with your team.' : 'View saved!')
     }
     catch (error) {
       if (error instanceof Error && error.message !== 'Duplicate view name') {
@@ -603,12 +639,14 @@ export function useReviewAnalytics() {
   async function updateActiveView(state: ReviewAnalyticsViewState) {
     if (!activeView.value || activeView.value.isDefault)
       return
+    const view = ownViewOrToast(activeView.value.id, 'update')
+    if (!view)
+      return
     isLoading.value = true
     try {
       const now = new Date().toISOString()
-      const updatedView: ReviewAnalyticsSavedView = { ...activeView.value, ...state, updatedAt: now }
-      savedViews.value = sortViews(savedViews.value.map(v => v.id === updatedView.id ? updatedView : v))
-      saveToLocalStorage(VIEWS_KEY, savedViews.value.filter(v => !v.isDefault))
+      const updatedView: ReviewAnalyticsSavedView = { ...view, ...state, updatedAt: now }
+      commitViews(storedViews.value.map(v => v.id === updatedView.id ? updatedView : v))
       activeView.value = updatedView
       currentState.value = state
       toast.success('View updated!')
@@ -628,10 +666,11 @@ export function useReviewAnalytics() {
       toast.error('Cannot delete Default view.')
       return
     }
+    if (!ownViewOrToast(viewId, 'delete'))
+      return
     isLoading.value = true
     try {
-      savedViews.value = savedViews.value.filter(v => v.id !== viewId)
-      saveToLocalStorage(VIEWS_KEY, savedViews.value.filter(v => !v.isDefault))
+      commitViews(storedViews.value.filter(v => v.id !== viewId))
       if (activeView.value?.id === viewId) {
         activeView.value = DEFAULT_ANALYTICS_VIEW
         currentState.value = { channel: 'all', listings: [], dateFrom: null, dateTo: null, period: '30d', comparison: 'previous_year' }
@@ -653,6 +692,8 @@ export function useReviewAnalytics() {
       toast.error('Cannot rename Default view.')
       return
     }
+    if (!ownViewOrToast(viewId, 'rename'))
+      return
     const exists = savedViews.value.find(v => !v.isDefault && v.id !== viewId && v.name.toLowerCase() === newName.toLowerCase())
     if (exists) {
       toast.error('A view with this name already exists.')
@@ -661,8 +702,7 @@ export function useReviewAnalytics() {
     isLoading.value = true
     try {
       const updatedView: ReviewAnalyticsSavedView = { ...view, name: newName, updatedAt: new Date().toISOString() }
-      savedViews.value = sortViews(savedViews.value.map(v => v.id === viewId ? updatedView : v))
-      saveToLocalStorage(VIEWS_KEY, savedViews.value.filter(v => !v.isDefault))
+      commitViews(storedViews.value.map(v => v.id === viewId ? updatedView : v))
       if (activeView.value?.id === viewId)
         activeView.value = updatedView
       toast.success('View renamed!')
@@ -676,6 +716,17 @@ export function useReviewAnalytics() {
     finally {
       isLoading.value = false
     }
+  }
+
+  async function setViewVisibility(viewId: string, visibility: SavedViewVisibility) {
+    const view = ownViewOrToast(viewId, 'change who can see')
+    if (!view || view.visibility === visibility)
+      return
+    const updatedView: ReviewAnalyticsSavedView = { ...view, visibility, updatedAt: new Date().toISOString() }
+    commitViews(storedViews.value.map(v => v.id === viewId ? updatedView : v))
+    if (activeView.value?.id === viewId)
+      activeView.value = updatedView
+    toast.success(visibilityToast(visibility))
   }
 
   async function resetToDefault() {
@@ -740,6 +791,8 @@ export function useReviewAnalytics() {
     updateActiveView,
     deleteView,
     renameView,
+    setViewVisibility,
     resetToDefault,
+    currentUserId,
   }
 }

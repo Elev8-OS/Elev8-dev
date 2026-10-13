@@ -1,11 +1,8 @@
-/**
- * Who can see a saved view. `personal` views are visible to their creator only;
- * `public` views are visible to everyone in the tenant, but only the creator
- * can update, rename, delete or un-share them.
- */
-export type SavedViewVisibility = 'personal' | 'public'
+import type { SavedViewOwnership } from '~/lib/saved-view-ownership'
 
-export interface SavedView {
+export type { SavedViewVisibility } from '~/lib/saved-view-ownership'
+
+export interface SavedView extends SavedViewOwnership {
   id: string
   name: string
   searchValue: string
@@ -13,11 +10,6 @@ export interface SavedView {
   activeAiFilter: string | null
   columnVisibility: Record<string, boolean>
   pageSize: number
-  visibility: SavedViewVisibility
-  /** User id of the creator (`user-1` etc.), `system` for the Default View. */
-  createdBy: string
-  /** Creator name snapshot, shown on public views from teammates. */
-  createdByName: string
   createdAt: string
   updatedAt: string
   isDefault?: boolean // Marks Default view as immutable

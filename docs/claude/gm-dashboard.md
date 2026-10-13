@@ -60,6 +60,14 @@ the listing location), `revenueRange` (`14d` | `30d`), `kpis`, `dayFlow`, `reven
 `revenueRangeMetrics`, `todayBookings`, `selectedBookings`, `stripDays`, `stripOccupancy`,
 `setSelectedDate`, `shiftStrip`, `goToToday`.
 
+#### Saved layouts (`useGmSavedViews.ts`, Configure menu `GmDashboardConfigureDropdown.vue`)
+- A saved view is a widget layout. **Personal or public**, same rules as Listings (`listings.md`):
+  the save dialog has the shared `SavedViewVisibilityPicker`; `storedViews` (useState) holds every
+  user's views and `savedViews` is the Default Overview plus own and public ones; the menu groups
+  them into "My views" and "Shared by team" ("by <name>"). Share, rename and delete show on own
+  views only, and `canUpdateActiveView` is false on a teammate's view. If `activeViewId` points at
+  a view the user cannot see, `activeView` reads as the Default Overview.
+
 #### Components
 - **`GmDashboard.vue`** — shell: header (persona line, unverified-arrivals badge, region `Select`,
   link to the operations calendar), the KPI row, then a 3-column grid — both charts in a 2-column
