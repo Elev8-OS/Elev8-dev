@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ColumnDef, ColumnFiltersState, SortingState, VisibilityState } from '@tanstack/vue-table'
 import type { Listing } from '~/components/listings/data/listings'
-import type { ViewState } from '~/types/saved-views'
+import type { SavedViewVisibility, ViewState } from '~/types/saved-views'
 import { Icon } from '#components'
 import {
   FlexRender,
@@ -228,6 +228,7 @@ const {
   isDirty,
   canUpdateActiveView,
   pendingViewId,
+  currentUserId,
   isLoading: savedViewsLoading,
   fetchViews,
   saveCurrentAs,
@@ -236,6 +237,7 @@ const {
   updateActiveView,
   deleteView,
   renameView,
+  setViewVisibility,
   resetToDefault,
 } = useSavedViews()
 
@@ -353,9 +355,9 @@ function handleConfirmLoadView() {
   }
 }
 
-function handleSaveAs(name: string) {
+function handleSaveAs(name: string, visibility: SavedViewVisibility) {
   const state = getCurrentViewState()
-  saveCurrentAs(name, state)
+  saveCurrentAs(name, state, visibility)
 }
 
 function handleUpdateView() {
@@ -465,13 +467,16 @@ function handleRenameView(viewId: string, newName: string) {
         :is-loading="savedViewsLoading"
         :can-update-active-view="canUpdateActiveView"
         :pending-view-id="pendingViewId"
+        :current-user-id="currentUserId"
         @load-view="handleLoadView"
         @save-as="handleSaveAs"
         @update="handleUpdateView"
         @delete="handleDeleteView"
         @rename="handleRenameView"
+        @set-visibility="setViewVisibility"
         @reset="handleResetView"
         @confirm-load="handleConfirmLoadView"
+        @cancel-load="pendingViewId = null"
       />
     </div>
 

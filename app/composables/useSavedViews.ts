@@ -1,16 +1,19 @@
-import type { SavedView, ViewState } from '~/types/saved-views'
-import { DEFAULT_VIEW } from '~/types/saved-views'
+import type { SavedView, SavedViewVisibility, ViewState } from '~/types/saved-views'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
+import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
+import { DEFAULT_VIEW, SEED_PUBLIC_VIEWS } from '~/types/saved-views'
 
+// Every user's custom views live under one key: it stands in for the server,
+// and each user only sees their own personal views plus everyone's public ones.
 const STORAGE_KEY = 'elev8-saved-views'
 const ACTIVE_VIEW_KEY = 'elev8-active-view'
 const CURRENT_STATE_KEY = 'elev8-current-state'
 const PENDING_VIEW_ID_KEY = 'elev8-pending-view-id'
+const SEEDED_KEY = 'elev8-saved-views-seeded'
 
-// Load from localStorage helper
 function loadFromLocalStorage<T>(key: string, defaultValue: T): T {
-  if (typeof window === 'undefined')
+  if (typeof localStorage === 'undefined')
     return defaultValue
   try {
     const data = localStorage.getItem(key)
@@ -21,31 +24,82 @@ function loadFromLocalStorage<T>(key: string, defaultValue: T): T {
   }
 }
 
-// Save to localStorage helper
 function saveToLocalStorage<T>(key: string, value: T): void {
-  if (typeof window === 'undefined')
+  if (typeof localStorage === 'undefined')
     return
   try {
     localStorage.setItem(key, JSON.stringify(value))
   }
-  catch (error) {
+  catch {
     toast.error(`Could not save ${key} to storage.`)
   }
 }
 
+function sortByUpdatedDesc(views: SavedView[]): SavedView[] {
+  return [...views].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+}
+
+function stateOf(view: SavedView): ViewState {
+  return {
+    searchValue: view.searchValue,
+    activeTagFilter: view.activeTagFilter,
+    activeAiFilter: view.activeAiFilter,
+    columnVisibility: view.columnVisibility,
+    pageSize: view.pageSize,
+  }
+}
+
 export function useSavedViews() {
-  // Initialize from localStorage
-  const savedViews = ref<SavedView[]>(loadFromLocalStorage(STORAGE_KEY, [DEFAULT_VIEW]))
+  const { currentUser, currentUserId } = useCurrentDashboardUser()
+  const currentUserName = computed(() => currentUser.value?.name ?? 'Komang Juliantara')
+
+  /**
+   * Views saved before visibility existed carry no `visibility` and a
+   * `createdBy` of `current-user`: they become personal views of whoever loads them.
+   */
+  function normalize(view: Partial<SavedView> & { id: string, name: string }): SavedView {
+    const legacyOwner = !view.createdBy || view.createdBy === 'current-user'
+    return {
+      ...DEFAULT_VIEW,
+      ...view,
+      isDefault: undefined,
+      visibility: view.visibility ?? 'personal',
+      createdBy: legacyOwner ? currentUserId.value : view.createdBy!,
+      createdByName: view.createdByName ?? (legacyOwner ? currentUserName.value : 'Teammate'),
+    } as SavedView
+  }
+
+  function readStoredViews(): SavedView[] {
+    const stored = loadFromLocalStorage<SavedView[]>(STORAGE_KEY, []).filter(v => !v.isDefault).map(normalize)
+    // Seed once per browser, also into a store that already holds views,
+    // so a seed view its creator deleted does not come back.
+    if (loadFromLocalStorage<boolean>(SEEDED_KEY, false))
+      return stored
+    const seeded = [...stored, ...SEED_PUBLIC_VIEWS.filter(s => !stored.some(v => v.id === s.id))]
+    saveToLocalStorage(STORAGE_KEY, seeded)
+    saveToLocalStorage(SEEDED_KEY, true)
+    return seeded
+  }
+
+  const allViews = ref<SavedView[]>(readStoredViews())
   const activeView = ref<SavedView | null>(loadFromLocalStorage(ACTIVE_VIEW_KEY, DEFAULT_VIEW))
   const currentState = ref<ViewState | null>(loadFromLocalStorage(CURRENT_STATE_KEY, null))
   const pendingViewId = ref<string | null>(loadFromLocalStorage(PENDING_VIEW_ID_KEY, null))
   const isLoading = ref(false)
 
-  // Watch for changes and persist to localStorage
-  watch(savedViews, (newVal) => {
-    const customViews = newVal.filter(v => !v.isDefault)
-    saveToLocalStorage(STORAGE_KEY, customViews)
-  }, { deep: true })
+  function isOwnView(view: Pick<SavedView, 'createdBy' | 'isDefault'>): boolean {
+    return !view.isDefault && view.createdBy === currentUserId.value
+  }
+
+  function isVisible(view: SavedView): boolean {
+    return view.visibility === 'public' || isOwnView(view)
+  }
+
+  /** Default View first, then what this user can see, newest first. */
+  const savedViews = computed<SavedView[]>(() => [
+    DEFAULT_VIEW,
+    ...sortByUpdatedDesc(allViews.value.filter(isVisible)),
+  ])
 
   watch(activeView, (newVal) => {
     saveToLocalStorage(ACTIVE_VIEW_KEY, newVal)
@@ -67,76 +121,64 @@ export function useSavedViews() {
 
     return (
       av.searchValue !== cs.searchValue
-      || JSON.stringify(av.activeTagFilter.sort()) !== JSON.stringify(cs.activeTagFilter.sort())
+      || JSON.stringify([...av.activeTagFilter].sort()) !== JSON.stringify([...cs.activeTagFilter].sort())
       || av.activeAiFilter !== cs.activeAiFilter
       || JSON.stringify(av.columnVisibility) !== JSON.stringify(cs.columnVisibility)
       || av.pageSize !== cs.pageSize
     )
   })
 
+  // A teammate's public view can be used and tweaked, but changes go into a new view.
   const canUpdateActiveView = computed(() => {
-    return activeView.value !== null && !activeView.value.isDefault && isDirty.value
+    return activeView.value !== null && isOwnView(activeView.value) && isDirty.value
   })
 
-  function getViewsFromStorage(): SavedView[] {
-    // Always include DEFAULT_VIEW with custom views from localStorage
-    const customViews = loadFromLocalStorage<SavedView[]>(STORAGE_KEY, [])
-    return [DEFAULT_VIEW, ...customViews]
-  }
-
-  function saveViewsToStorage(views: SavedView[]): void {
-    if (typeof window === 'undefined')
-      return
-    const customViews = views.filter(v => !v.isDefault)
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(customViews))
-    }
-    catch {
-      toast.error('Could not save views to storage.')
-    }
+  function commit(views: SavedView[]): void {
+    allViews.value = views
+    saveToLocalStorage(STORAGE_KEY, views)
   }
 
   function generateId(): string {
     return `view_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
   }
 
-  function resetToDefault(): void {
+  function activateDefault(): void {
     activeView.value = DEFAULT_VIEW
-    currentState.value = {
-      searchValue: DEFAULT_VIEW.searchValue,
-      activeTagFilter: DEFAULT_VIEW.activeTagFilter,
-      activeAiFilter: DEFAULT_VIEW.activeAiFilter,
-      columnVisibility: DEFAULT_VIEW.columnVisibility,
-      pageSize: DEFAULT_VIEW.pageSize,
-    }
+    currentState.value = stateOf(DEFAULT_VIEW)
+  }
+
+  function resetToDefault(): void {
+    activateDefault()
     toast.info('Reset to default view')
+  }
+
+  /** Finds a view this user may change, or explains why not. */
+  function ownViewOrToast(viewId: string, action: string): SavedView | null {
+    const view = allViews.value.find(v => v.id === viewId)
+    if (!view) {
+      toast.error(`Cannot ${action} this view.`)
+      return null
+    }
+    if (!isOwnView(view)) {
+      toast.error(`Only ${view.createdByName} can ${action} this view.`)
+      return null
+    }
+    return view
   }
 
   async function fetchViews() {
     isLoading.value = true
     try {
-      // Load custom views from localStorage and merge with DEFAULT_VIEW
-      const customViews = loadFromLocalStorage<SavedView[]>(STORAGE_KEY, [])
-      const views = [DEFAULT_VIEW, ...customViews]
-      savedViews.value = views.sort((a, b) => {
-        // Default view always first
-        if (a.isDefault) return -1
-        if (b.isDefault) return 1
-        // Custom views by updatedAt descending
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      })
-      if (!activeView.value) {
-        activeView.value = DEFAULT_VIEW
-        currentState.value = {
-          searchValue: DEFAULT_VIEW.searchValue,
-          activeTagFilter: DEFAULT_VIEW.activeTagFilter,
-          activeAiFilter: DEFAULT_VIEW.activeAiFilter,
-          columnVisibility: DEFAULT_VIEW.columnVisibility,
-          pageSize: DEFAULT_VIEW.pageSize,
-        }
-      }
+      allViews.value = readStoredViews()
+      // The stored active view may since have been deleted or un-shared by its creator,
+      // or belong to another user of this browser: fall back to Default.
+      const active = activeView.value && savedViews.value.find(v => v.id === activeView.value!.id)
+      if (!active)
+        activateDefault()
+      else
+        activeView.value = active
     }
-    catch (error) {
+    catch {
       toast.error('Could not load saved views.')
     }
     finally {
@@ -144,48 +186,30 @@ export function useSavedViews() {
     }
   }
 
-  async function saveCurrentAs(name: string, state: ViewState) {
-    // Check for duplicate name
+  async function saveCurrentAs(name: string, state: ViewState, visibility: SavedViewVisibility = 'personal') {
     const exists = savedViews.value.find(v =>
       !v.isDefault && v.name.toLowerCase() === name.toLowerCase(),
     )
     if (exists) {
       toast.error('A view with this name already exists.')
-      throw new Error('Duplicate view name')
+      return
     }
 
-    isLoading.value = true
-    try {
-      const now = new Date().toISOString()
-      const newView: SavedView = {
-        id: generateId(),
-        name,
-        ...state,
-        createdBy: 'current-user',
-        createdAt: now,
-        updatedAt: now,
-      }
-
-      const updatedViews = [...savedViews.value, newView].sort((a, b) => {
-        if (a.isDefault) return -1
-        if (b.isDefault) return 1
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      })
-      savedViews.value = updatedViews
-      saveViewsToStorage(updatedViews)
-      activeView.value = newView
-      currentState.value = state
-      toast.success('View saved!')
+    const now = new Date().toISOString()
+    const newView: SavedView = {
+      id: generateId(),
+      name,
+      ...state,
+      visibility,
+      createdBy: currentUserId.value,
+      createdByName: currentUserName.value,
+      createdAt: now,
+      updatedAt: now,
     }
-    catch (error) {
-      if (error instanceof Error && error.message !== 'Duplicate view name') {
-        toast.error('Failed to save view. Try again.')
-        throw error
-      }
-    }
-    finally {
-      isLoading.value = false
-    }
+    commit([...allViews.value, newView])
+    activeView.value = newView
+    currentState.value = state
+    toast.success(visibility === 'public' ? 'View saved and shared with your team.' : 'View saved.')
   }
 
   async function loadView(viewId: string) {
@@ -195,169 +219,100 @@ export function useSavedViews() {
       return
     }
 
-    // Check for unsaved changes
     if (isDirty.value && activeView.value && !activeView.value.isDefault) {
       pendingViewId.value = viewId
       return view // Return view for confirmation dialog
     }
 
     activeView.value = view
-    currentState.value = {
-      searchValue: view.searchValue,
-      activeTagFilter: view.activeTagFilter,
-      activeAiFilter: view.activeAiFilter,
-      columnVisibility: view.columnVisibility,
-      pageSize: view.pageSize,
-    }
+    currentState.value = stateOf(view)
     pendingViewId.value = null
     return view
   }
 
   async function confirmLoadView(viewId: string) {
     const view = savedViews.value.find(v => v.id === viewId)
-    if (!view) {
+    if (!view)
       return
-    }
     activeView.value = view
-    currentState.value = {
-      searchValue: view.searchValue,
-      activeTagFilter: view.activeTagFilter,
-      activeAiFilter: view.activeAiFilter,
-      columnVisibility: view.columnVisibility,
-      pageSize: view.pageSize,
-    }
+    currentState.value = stateOf(view)
     pendingViewId.value = null
   }
 
   async function updateActiveView(state: ViewState) {
     if (!activeView.value || activeView.value.isDefault)
       return
+    const view = ownViewOrToast(activeView.value.id, 'update')
+    if (!view)
+      return
 
-    isLoading.value = true
-    try {
-      const now = new Date().toISOString()
-      const updatedView: SavedView = {
-        ...activeView.value,
-        ...state,
-        updatedAt: now,
-      }
-
-      const updatedViews = savedViews.value.map(v =>
-        v.id === updatedView.id ? updatedView : v,
-      ).sort((a, b) => {
-        if (a.isDefault) return -1
-        if (b.isDefault) return 1
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      })
-      savedViews.value = updatedViews
-      saveViewsToStorage(updatedViews)
-      activeView.value = updatedView
-      currentState.value = state
-      toast.success('View updated!')
-    }
-    catch (error) {
-      toast.error('Update failed. Try again.')
-      throw error
-    }
-    finally {
-      isLoading.value = false
-    }
+    const updatedView: SavedView = { ...view, ...state, updatedAt: new Date().toISOString() }
+    commit(allViews.value.map(v => v.id === updatedView.id ? updatedView : v))
+    activeView.value = updatedView
+    currentState.value = state
+    toast.success('View updated.')
   }
 
   async function deleteView(viewId: string) {
-    const viewToDelete = savedViews.value.find(v => v.id === viewId)
-    if (!viewToDelete || viewToDelete.isDefault) {
+    if (viewId === DEFAULT_VIEW.id) {
       toast.error('Cannot delete Default view.')
       return
     }
+    if (!ownViewOrToast(viewId, 'delete'))
+      return
 
-    isLoading.value = true
-    try {
-      const updatedViews = savedViews.value.filter(v => v.id !== viewId)
-      savedViews.value = updatedViews
-      saveViewsToStorage(updatedViews)
-
-      // Fallback to Default if active view was deleted
-      if (activeView.value?.id === viewId) {
-        activeView.value = DEFAULT_VIEW
-        currentState.value = {
-          searchValue: DEFAULT_VIEW.searchValue,
-          activeTagFilter: DEFAULT_VIEW.activeTagFilter,
-          activeAiFilter: DEFAULT_VIEW.activeAiFilter,
-          columnVisibility: DEFAULT_VIEW.columnVisibility,
-          pageSize: DEFAULT_VIEW.pageSize,
-        }
-      }
-      toast.success('View deleted!')
-    }
-    catch (error) {
-      toast.error('Could not delete view.')
-      throw error
-    }
-    finally {
-      isLoading.value = false
-    }
+    commit(allViews.value.filter(v => v.id !== viewId))
+    if (activeView.value?.id === viewId)
+      activateDefault()
+    toast.success('View deleted.')
   }
 
   async function renameView(viewId: string, newName: string) {
-    const view = savedViews.value.find(v => v.id === viewId)
-    if (!view || view.isDefault) {
+    if (viewId === DEFAULT_VIEW.id) {
       toast.error('Cannot rename Default view.')
       return
     }
+    const view = ownViewOrToast(viewId, 'rename')
+    if (!view)
+      return
 
-    // Check for duplicate name (excluding current view)
     const exists = savedViews.value.find(v =>
       !v.isDefault && v.id !== viewId && v.name.toLowerCase() === newName.toLowerCase(),
     )
     if (exists) {
       toast.error('A view with this name already exists.')
-      throw new Error('Duplicate view name')
+      return
     }
 
-    isLoading.value = true
-    try {
-      const updatedView: SavedView = {
-        ...view,
-        name: newName,
-        updatedAt: new Date().toISOString(),
-      }
+    const updatedView: SavedView = { ...view, name: newName, updatedAt: new Date().toISOString() }
+    commit(allViews.value.map(v => v.id === viewId ? updatedView : v))
+    if (activeView.value?.id === viewId)
+      activeView.value = updatedView
+    toast.success('View renamed.')
+  }
 
-      const updatedViews = savedViews.value.map(v =>
-        v.id === viewId ? updatedView : v,
-      ).sort((a, b) => {
-        if (a.isDefault) return -1
-        if (b.isDefault) return 1
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      })
-      savedViews.value = updatedViews
-      saveViewsToStorage(updatedViews)
+  async function setViewVisibility(viewId: string, visibility: SavedViewVisibility) {
+    const view = ownViewOrToast(viewId, 'change who can see')
+    if (!view || view.visibility === visibility)
+      return
 
-      if (activeView.value?.id === viewId) {
-        activeView.value = updatedView
-      }
-
-      toast.success('View renamed!')
-    }
-    catch (error) {
-      if (error instanceof Error && error.message !== 'Duplicate view name') {
-        toast.error('Rename failed. Try again.')
-        throw error
-      }
-    }
-    finally {
-      isLoading.value = false
-    }
+    const updatedView: SavedView = { ...view, visibility, updatedAt: new Date().toISOString() }
+    commit(allViews.value.map(v => v.id === viewId ? updatedView : v))
+    if (activeView.value?.id === viewId)
+      activeView.value = updatedView
+    toast.success(visibility === 'public' ? 'View shared with your team.' : 'View is now personal.')
   }
 
   return {
     savedViews,
     activeView,
     currentState,
+    currentUserId,
     isDirty,
     canUpdateActiveView,
     pendingViewId,
     isLoading,
+    isOwnView,
     fetchViews,
     saveCurrentAs,
     loadView,
@@ -365,6 +320,7 @@ export function useSavedViews() {
     updateActiveView,
     deleteView,
     renameView,
+    setViewVisibility,
     resetToDefault,
   }
 }
