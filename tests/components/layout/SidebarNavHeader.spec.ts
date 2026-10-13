@@ -7,19 +7,18 @@ vi.mock('~/components/ui/sidebar', () => ({
   useSidebar: () => ({ isMobile: false }),
 }))
 
-const teams = [{ name: 'Acme Inc', logo: 'i-lucide-gallery-vertical-end', plan: 'Enterprise' }]
 const stubs = {
   SidebarMenu: { template: '<div><slot /></div>' },
   SidebarMenuItem: { template: '<div><slot /></div>' },
   SidebarMenuButton: { template: '<button><slot /></button>' },
-  DropdownMenu: { template: '<div><slot /></div>' },
-  DropdownMenuTrigger: { template: '<div><slot /></div>' },
-  DropdownMenuContent: { template: '<div><slot /></div>' },
-  DropdownMenuLabel: { template: '<div><slot /></div>' },
-  DropdownMenuItem: { template: '<div><slot /></div>' },
-  DropdownMenuShortcut: { template: '<span><slot /></span>' },
-  DropdownMenuSeparator: true,
-  Icon: { props: ['name'], template: '<span data-testid="fallback-team-icon" :data-name="name" />' },
+  Popover: { template: '<div><slot /></div>' },
+  PopoverTrigger: { template: '<div><slot /></div>' },
+  PopoverContent: { template: '<div><slot /></div>' },
+  Separator: true,
+  Input: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">' },
+  Badge: { template: '<span><slot /></span>' },
+  NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+  Icon: { props: ['name'], template: '<span :data-name="name" />' },
 }
 
 beforeEach(() => {
@@ -30,10 +29,10 @@ beforeEach(() => {
 
 // eslint-disable-next-line test/prefer-lowercase-title
 describe('SidebarNavHeader branding', () => {
-  it('keeps the existing team icon without a primary logo', () => {
-    const wrapper = mount(SidebarNavHeader, { props: { teams }, global: { stubs } })
+  it('shows the active tenant initials without a primary logo', () => {
+    const wrapper = mount(SidebarNavHeader, { global: { stubs } })
     expect(wrapper.find('[data-testid="sidebar-brand-logo"]').exists()).toBe(false)
-    expect(wrapper.find('[data-name="i-lucide-gallery-vertical-end"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="sidebar-tenant-initials"]').text()).toBe('BV')
   })
 
   it('renders the saved primary logo in the workspace avatar', () => {
@@ -42,7 +41,30 @@ describe('SidebarNavHeader branding', () => {
       ...branding.value,
       primaryLogo: { name: 'logo.png', type: 'image/png', size: 1, dataUrl: 'data:image/png;base64,AA==' },
     }
-    const wrapper = mount(SidebarNavHeader, { props: { teams }, global: { stubs } })
+    const wrapper = mount(SidebarNavHeader, { global: { stubs } })
     expect(wrapper.get('[data-testid="sidebar-brand-logo"]').attributes('src')).toBe(branding.value.primaryLogo!.dataUrl)
+  })
+})
+
+// eslint-disable-next-line test/prefer-lowercase-title
+describe('SidebarNavHeader tenant switcher', () => {
+  it('lists tenants with their subscription and filters by search', async () => {
+    const wrapper = mount(SidebarNavHeader, { global: { stubs } })
+    expect(wrapper.findAll('[data-testid="tenant-option"]')).toHaveLength(10)
+    expect(wrapper.text()).toContain('Pro · Per Property · 32 units')
+
+    await wrapper.get('[data-testid="tenant-search"]').setValue('swiss')
+    const options = wrapper.findAll('[data-testid="tenant-option"]')
+    expect(options).toHaveLength(1)
+    expect(options[0]!.text()).toContain('Swiss Alpine Retreats')
+  })
+
+  it('switches the active tenant on select and links to all tenants', async () => {
+    const wrapper = mount(SidebarNavHeader, { global: { stubs } })
+    const swiss = wrapper.findAll('[data-testid="tenant-option"]').find(o => o.text().includes('Swiss Alpine'))!
+    await swiss.trigger('click')
+    expect(wrapper.get('[data-testid="sidebar-tenant-initials"]').text()).toBe('SA')
+    expect(wrapper.text()).toContain('Enterprise · Per Property')
+    expect(wrapper.get('a[href="/platform-console/tenants"]').text()).toContain('All tenants')
   })
 })

@@ -21,30 +21,6 @@ function resolveNavItemComponent(item: NavLink | NavGroup | NavSectionTitle): an
   return resolveComponent('LayoutSidebarNavLink')
 }
 
-const teams: {
-  name: string
-  logo: string
-  plan: string
-}[] = props.showTeams
-  ? [
-      {
-        name: 'Acme Inc',
-        logo: 'i-lucide-gallery-vertical-end',
-        plan: 'Enterprise',
-      },
-      {
-        name: 'Acme Corp.',
-        logo: 'i-lucide-audio-waveform',
-        plan: 'Startup',
-      },
-      {
-        name: 'Evil Corp.',
-        logo: 'i-lucide-command',
-        plan: 'Free',
-      },
-    ]
-  : []
-
 const { sidebar } = useAppSettings()
 
 // A PMS_ONLY tenant does not get every module. Those entries are removed from
@@ -76,7 +52,7 @@ const visibleMenu = computed<NavMenu[]>(() =>
   -->
   <Sidebar :collapsible="sidebar?.collapsible" :side="sidebar?.side" :variant="sidebar?.variant" class="h-full">
     <SidebarHeader>
-      <LayoutSidebarNavHeader v-if="showTeams" :teams="teams" />
+      <LayoutSidebarNavHeader v-if="showTeams" />
       <Search v-if="showSearch" />
     </SidebarHeader>
     <SidebarContent>
