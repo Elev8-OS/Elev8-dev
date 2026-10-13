@@ -1,7 +1,7 @@
 /**
- * A task has no Title field of its own: the title (what the table, the
- * detail sheet and a room's "task created" line show) is the first line of
- * its Instructions, trimmed to fit a table row.
+ * A task's Title is typed in the New Task form (at most `TASK_TITLE_MAX`
+ * characters). When the form opens prefilled with instructions only (a task
+ * raised from inbox messages), it suggests their first line as the title.
  */
 export const TASK_TITLE_MAX = 80
 

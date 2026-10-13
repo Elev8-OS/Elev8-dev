@@ -1,5 +1,5 @@
 import type { Task } from '@/components/tasks/data/schema'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useTaskStore } from './useTaskStore'
 
 export const selectedTaskRef = ref<Task | null>(null)
@@ -24,8 +24,19 @@ export function useTaskDetail() {
     selectedTaskRef.value = null
   }
 
+  // The ref holds what was clicked; the sheet reads the live task from the
+  // store, so a progress update, an edit or a reassign shows straight away.
+  // A task that is not in the store (or was deleted) falls back to the copy.
+  const { tasks } = useTaskStore()
+  const selectedTask = computed<Task | null>(() => {
+    const picked = selectedTaskRef.value
+    if (!picked)
+      return null
+    return tasks.value.find(t => t.id === picked.id) ?? picked
+  })
+
   return {
-    selectedTask: selectedTaskRef,
+    selectedTask,
     openTaskDetail,
     openTaskDetailById,
     closeTaskDetail,

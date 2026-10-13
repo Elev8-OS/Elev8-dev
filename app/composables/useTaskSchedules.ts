@@ -2,7 +2,6 @@ import type { TaskSchedule, TaskScheduleInput } from '@/components/tasks/data/sc
 import type { Task } from '@/components/tasks/data/schema'
 import { describeRecurrence, dueOccurrences, generatedKey, todayKey } from '@/components/tasks/data/schedule'
 import { mockTaskSchedules } from '@/components/tasks/data/schedules-mock'
-import { taskTitleFromInstructions } from '@/components/tasks/data/task-title'
 import { useCurrentDashboardUser } from './useCurrentDashboardUser'
 import { useTaskStore } from './useTaskStore'
 
@@ -41,7 +40,7 @@ export function useTaskSchedules() {
             assigneeType: schedule.assignee ? schedule.assigneeType : undefined,
             priority: schedule.priority,
             listing,
-            description: schedule.instructions,
+            description: schedule.instructions || undefined,
             dueDate,
             images: schedule.images?.length ? [...schedule.images] : undefined,
             scheduleId: schedule.id,
@@ -65,7 +64,6 @@ export function useTaskSchedules() {
     const schedule: TaskSchedule = {
       ...input,
       id: `SCH-${Math.floor(1000 + Math.random() * 9000)}`,
-      title: taskTitleFromInstructions(input.instructions),
       status: 'active',
       createdAt: new Date().toISOString(),
       createdBy: creatorName(),
@@ -81,7 +79,7 @@ export function useTaskSchedules() {
    */
   function updateSchedule(id: string, input: TaskScheduleInput): Task[] {
     schedules.value = schedules.value.map(s => s.id === id
-      ? { ...s, ...input, title: taskTitleFromInstructions(input.instructions) }
+      ? { ...s, ...input }
       : s)
     return generateDueTasks()
   }

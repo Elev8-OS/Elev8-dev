@@ -27,7 +27,7 @@ function schedule(over: Partial<TaskSchedule> = {}): TaskSchedule {
 }
 
 function input(over: Partial<TaskScheduleInput> = {}): TaskScheduleInput {
-  const { id, title, status, createdAt, createdBy, generated, ...rest } = schedule()
+  const { id, status, createdAt, createdBy, generated, ...rest } = schedule()
   return { ...rest, ...over }
 }
 

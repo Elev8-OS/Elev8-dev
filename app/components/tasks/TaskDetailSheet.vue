@@ -3,11 +3,13 @@ import type { Task } from '@/components/tasks/data/schema'
 import { toast } from 'vue-sonner'
 import { assigneeOptions, priorities, statuses } from '@/components/tasks/data/data'
 import { describeRecurrence } from '@/components/tasks/data/schedule'
+import { canEditTask, canReassignTask, personOptionFor, reassignTargets } from '@/components/tasks/data/task-permissions'
 import { progressKindFor, timelineSentence } from '@/components/tasks/data/timeline'
 import { useCurrentDashboardUser } from '@/composables/useCurrentDashboardUser'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskSchedules } from '@/composables/useTaskSchedules'
 import { useTaskStore } from '@/composables/useTaskStore'
+import { useUsers } from '@/composables/useUsers'
 import { listings } from '~/components/listings/data/listings'
 
 const props = defineProps<{
@@ -19,7 +21,7 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
-const { addStatusUpdate, addImage } = useTaskStore()
+const { addStatusUpdate, addImage, reassignTask } = useTaskStore()
 
 // A task a schedule made shows the rule it repeats on; a deleted schedule
 // leaves the task with nothing to show.
@@ -33,6 +35,70 @@ const taskListingHasRooms = computed(() => {
 })
 const { currentUser } = useCurrentDashboardUser()
 const { isBlockedOnOwner, startBlockedReason, completeWithReceipt } = useTaskOwnerApproval()
+const { users } = useUsers()
+
+// --- Edit and reassign (rules in `data/task-permissions.ts`) -----------------
+
+const canEdit = computed(() => !!props.task && canEditTask(props.task, currentUser.value))
+const canReassign = computed(() => !!props.task && canReassignTask(props.task, currentUser.value))
+const editOpen = ref(false)
+
+/** "Take this task": a role's (or nobody's) task the current user can pick up. */
+const takeOption = computed(() => {
+  const task = props.task
+  if (!task || !canReassign.value || (task.assigneeType === 'person' && task.assignee))
+    return undefined
+  return personOptionFor(currentUser.value)
+})
+
+function takeTask() {
+  const task = props.task
+  const me = takeOption.value
+  if (!task || !me)
+    return
+  const from = task.assignee ? getAssigneeLabel(task.assignee) : 'nobody'
+  if (reassignTask(task.id, me, `Taken from ${from}.`))
+    toast.success('The task is yours now.')
+}
+
+const reassignOpen = ref(false)
+const reassignTo = ref('')
+const reassignReason = ref('')
+const reassignSearch = ref('')
+
+const reassignOptions = computed(() => props.task
+  ? reassignTargets(props.task, { users: users.value, listings: listings.value })
+  : [])
+
+const filteredReassignOptions = computed(() => {
+  const query = reassignSearch.value.trim().toLowerCase()
+  return reassignOptions.value.filter(o => !query || o.label.toLowerCase().includes(query))
+})
+
+const reassignChoice = computed(() => reassignOptions.value.find(o => o.value === reassignTo.value))
+const canSubmitReassign = computed(() => !!reassignChoice.value && !!reassignReason.value.trim())
+
+function openReassign() {
+  reassignTo.value = ''
+  reassignReason.value = ''
+  reassignSearch.value = ''
+  reassignOpen.value = true
+}
+
+function submitReassign() {
+  const task = props.task
+  const to = reassignChoice.value
+  if (!task || !to || !canSubmitReassign.value)
+    return
+  if (!reassignTask(task.id, to, reassignReason.value))
+    return
+  // Mock: no delivery behind it. The new assignee and the creator are the
+  // two people a handover concerns.
+  const creator = task.statusUpdates?.find(u => u.kind === 'created')?.actor?.name
+  const told = [to.label, creator && creator !== currentUser.value?.name ? creator : null].filter(Boolean).join(' and ')
+  toast.success(`Reassigned to ${to.label}. ${told} ${told.includes(' and ') ? 'are' : 'is'} notified.`)
+  reassignOpen.value = false
+}
 
 // --- Owner cost approval gate ----------------------------------------------
 
@@ -286,9 +352,22 @@ function formatDate(iso: string): string {
       <template v-if="task">
         <!-- Header -->
         <SheetHeader class="shrink-0 border-b px-6 py-5">
-          <SheetTitle class="text-lg leading-tight">
-            {{ task.title }}
-          </SheetTitle>
+          <div class="flex items-start gap-3 pr-8">
+            <SheetTitle class="min-w-0 flex-1 text-lg leading-tight">
+              {{ task.title }}
+            </SheetTitle>
+            <Button
+              v-if="canEdit"
+              variant="outline"
+              size="sm"
+              class="h-7 shrink-0 text-xs"
+              data-testid="task-edit"
+              @click="editOpen = true"
+            >
+              <Icon name="lucide:pencil" class="mr-1 size-3" />
+              Edit
+            </Button>
+          </div>
         </SheetHeader>
 
         <!-- Scrollable body -->
@@ -345,6 +424,25 @@ function formatDate(iso: string): string {
                 <p class="font-medium">
                   {{ getAssigneeLabel(task.assignee) }}
                 </p>
+                <div v-if="canReassign" class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <button
+                    type="button"
+                    class="text-xs font-medium text-primary hover:underline"
+                    data-testid="task-reassign"
+                    @click="openReassign"
+                  >
+                    Reassign
+                  </button>
+                  <button
+                    v-if="takeOption"
+                    type="button"
+                    class="text-xs font-medium text-primary hover:underline"
+                    data-testid="task-take"
+                    @click="takeTask"
+                  >
+                    Take this task
+                  </button>
+                </div>
               </div>
               <div v-if="taskSchedule" data-testid="task-detail-schedule">
                 <p class="text-xs text-muted-foreground">
@@ -654,6 +752,85 @@ function formatDate(iso: string): string {
             Next
           </Button>
         </div>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Edit: the same form as New Task, without Repeat, approval or Assignee. -->
+    <TasksNewTaskDialog v-model:open="editOpen" :task="task" />
+
+    <!-- Reassign: hand the task on, with the reason the next person reads. -->
+    <Dialog v-model:open="reassignOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reassign task</DialogTitle>
+          <DialogDescription>
+            Now with {{ getAssigneeLabel(task?.assignee) }}. Status and progress stay as they are.
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-4">
+          <div class="space-y-1.5">
+            <Label>Reassign to <span class="text-destructive">*</span></Label>
+            <div class="rounded-md border">
+              <Command>
+                <CommandInput v-model="reassignSearch" placeholder="Search roles or people..." />
+                <CommandList class="max-h-56">
+                  <CommandEmpty>No match found.</CommandEmpty>
+                  <CommandGroup v-if="filteredReassignOptions.some(o => o.type === 'person')" heading="People">
+                    <CommandItem
+                      v-for="opt in filteredReassignOptions.filter(o => o.type === 'person')"
+                      :key="opt.value"
+                      :value="opt.label"
+                      class="cursor-pointer"
+                      :data-testid="`reassign-option-${opt.value}`"
+                      @select="reassignTo = opt.value"
+                    >
+                      <Icon name="lucide:user" class="size-4 text-muted-foreground" />
+                      <span>{{ opt.label }}</span>
+                      <Icon v-if="reassignTo === opt.value" name="lucide:check" class="ml-auto size-4 text-primary" />
+                    </CommandItem>
+                  </CommandGroup>
+                  <CommandGroup v-if="filteredReassignOptions.some(o => o.type === 'role')" heading="Roles">
+                    <CommandItem
+                      v-for="opt in filteredReassignOptions.filter(o => o.type === 'role')"
+                      :key="opt.value"
+                      :value="opt.label"
+                      class="cursor-pointer"
+                      :data-testid="`reassign-option-${opt.value}`"
+                      @select="reassignTo = opt.value"
+                    >
+                      <Icon name="lucide:badge" class="size-4 text-muted-foreground" />
+                      <span>{{ opt.label }}</span>
+                      <Icon v-if="reassignTo === opt.value" name="lucide:check" class="ml-auto size-4 text-primary" />
+                    </CommandItem>
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </div>
+            <p v-if="task?.listing" class="text-xs text-muted-foreground">
+              Only people with access to {{ task.listing }} are listed.
+            </p>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="task-reassign-reason">Reason <span class="text-destructive">*</span></Label>
+            <Textarea
+              id="task-reassign-reason"
+              v-model="reassignReason"
+              rows="3"
+              placeholder="e.g. Made is on site today and can check it this afternoon."
+            />
+            <p class="text-xs text-muted-foreground">
+              Shown in the timeline and to the new assignee.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="reassignOpen = false">
+            Cancel
+          </Button>
+          <Button :disabled="!canSubmitReassign" data-testid="task-reassign-submit" @click="submitReassign">
+            Reassign
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 

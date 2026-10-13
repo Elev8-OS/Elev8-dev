@@ -22,8 +22,9 @@ export type ScheduleStatus = 'active' | 'paused'
 
 export interface TaskSchedule {
   id: string
-  /** First line of `instructions`, like a task's title. */
+  /** Typed in the form; becomes the title of every task the schedule makes. */
   title: string
+  /** Optional, may be empty. */
   instructions: string
   /** Listing NAMES (what `Task.listing` stores). Each occurrence makes one task per listing; empty = one task with no listing. */
   listings: string[]
@@ -51,7 +52,7 @@ export interface TaskSchedule {
   generated: string[]
 }
 
-export type TaskScheduleInput = Omit<TaskSchedule, 'id' | 'title' | 'status' | 'createdAt' | 'createdBy' | 'generated'>
+export type TaskScheduleInput = Omit<TaskSchedule, 'id' | 'status' | 'createdAt' | 'createdBy' | 'generated'>
 
 export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 /** Monday-first, the order the weekday picker shows. */

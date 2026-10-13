@@ -5,7 +5,7 @@ import { toast } from 'vue-sonner'
 import { listings } from '@/components/listings/data/listings'
 import { assigneeOptions, priorities } from '@/components/tasks/data/data'
 import { addDays, describeRecurrence, formatDay, FREQUENCY_UNIT, parseDay, todayKey, WEEKDAY_ORDER, WEEKDAY_SHORT } from '@/components/tasks/data/schedule'
-import { taskTitleFromInstructions } from '@/components/tasks/data/task-title'
+import { TASK_TITLE_MAX, taskTitleFromInstructions } from '@/components/tasks/data/task-title'
 import { useTaskOwnerApproval } from '@/composables/useTaskOwnerApproval'
 import { useTaskSchedules } from '@/composables/useTaskSchedules'
 import { useTaskStore } from '@/composables/useTaskStore'
@@ -16,20 +16,28 @@ import { useTaskStore } from '@/composables/useTaskStore'
  * the same way (owner approval, images) instead of the
  * inbox keeping a thinner form of its own.
  *
- * ⚠️ There is no Title and no Description field: the only text field is
- * **Instructions** (required). It is stored in `Task.description`, and the
- * task's title is its first line (`taskTitleFromInstructions`), so existing
- * tasks and every reader of either field carry on unchanged.
+ * Two text fields: **Title** (required, what the table, cards and rooms show)
+ * and **Instructions** (optional, stored in `Task.description`). A prefill
+ * with instructions but no title (a task raised from inbox messages) suggests
+ * their first line as the title (`taskTitleFromInstructions`).
  *
  * **Repeat** turns the task into a schedule (`useTaskSchedules`): the due date
  * becomes the first due date, the listing picker takes several listings (one
  * task each), and owner approval is hidden (a quote is per job, not per
  * schedule). Passing `schedule` opens the form on that schedule to edit it.
+ *
+ * Passing `task` opens it as **Edit Task** (`useTaskStore().editTask`, which
+ * logs "changed the …" in the timeline). Edit has no Repeat, no owner
+ * approval and no Assignee: who does the task changes through Reassign in the
+ * detail sheet, which asks for a reason. The listing is locked once an owner
+ * was asked to approve a quote, since the owner comes from the listing.
  */
 const props = defineProps<{
   prefill?: NewTaskPrefill | null
   /** Edit this schedule instead of creating a task. */
   schedule?: TaskSchedule | null
+  /** Edit this task instead of creating one. */
+  task?: Task | null
   /** An extra line under the dialog description, e.g. where the task came from. */
   context?: string
 }>()
@@ -39,15 +47,20 @@ const emit = defineEmits<{
   created: [task: Task]
   /** A schedule was created or saved. */
   scheduled: [schedule: TaskSchedule]
+  /** An edited task was saved. */
+  saved: [task: Task]
 }>()
 
 const open = defineModel<boolean>('open', { default: false })
 
-const { addTask } = useTaskStore()
+const { addTask, editTask } = useTaskStore()
 const { ownerForTask, notifyApprovalRequested } = useTaskOwnerApproval()
 const { addSchedule, updateSchedule } = useTaskSchedules()
 
 const isEditingSchedule = computed(() => !!props.schedule)
+const isEditingTask = computed(() => !!props.task)
+/** The owner was asked about a quote for this listing, so it stays put. */
+const listingLocked = computed(() => !!props.task?.ownerApprovalRequired)
 
 /** Several listings when repeating (one task each), at most one otherwise. */
 const selectedListings = ref<string[]>([])
@@ -66,9 +79,8 @@ const priorityFlagClass: Record<string, string> = {
   medium: 'text-blue-500',
   low: 'text-green-500',
 }
+const newTitle = ref('')
 const newInstructions = ref('')
-/** Derived, never typed: the first line of the instructions. */
-const newTitle = computed(() => taskTitleFromInstructions(newInstructions.value))
 const newImages = ref<string[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 
@@ -156,9 +168,36 @@ const listingButtonLabel = computed(() => {
   return newListing.value || (isRepeating.value ? 'Select listings' : 'Select a listing')
 })
 
+/** What the edit would save, compared field by field by `editTask`. */
+function taskEdit() {
+  return {
+    title: newTitle.value.trim(),
+    description: newInstructions.value.trim() || undefined,
+    listing: newListing.value || undefined,
+    priority: newPriority.value,
+    dueDate: dueDate.value || undefined,
+    images: newImages.value.length ? [...newImages.value] : undefined,
+  }
+}
+
+const hasTaskChanges = computed(() => {
+  const task = props.task
+  if (!task)
+    return false
+  const edit = taskEdit()
+  return edit.title !== task.title
+    || (edit.description ?? '') !== (task.description ?? '')
+    || (edit.listing ?? '') !== (task.listing ?? '')
+    || edit.priority !== task.priority
+    || (edit.dueDate ?? '') !== (task.dueDate ?? '')
+    || JSON.stringify(edit.images ?? []) !== JSON.stringify(task.images ?? [])
+})
+
 const canSubmit = computed(() => {
   if (!newTitle.value.trim())
     return false
+  if (isEditingTask.value)
+    return hasTaskChanges.value
   if (!isRepeating.value)
     return true
   if (!dueDate.value)
@@ -277,6 +316,7 @@ function resetForm() {
   assigneeType.value = 'role'
   dueDate.value = ''
   newPriority.value = 'medium'
+  newTitle.value = ''
   newInstructions.value = ''
   newImages.value = []
   listingSearch.value = ''
@@ -291,10 +331,12 @@ function applyPrefill(prefill: NewTaskPrefill) {
   assignee.value = option?.value ?? ''
   assigneeType.value = option?.type ?? 'role'
   newInstructions.value = prefill.instructions ?? ''
+  newTitle.value = prefill.title ?? taskTitleFromInstructions(newInstructions.value)
   newImages.value = [...(prefill.images ?? [])]
 }
 
 function applySchedule(schedule: TaskSchedule) {
+  newTitle.value = schedule.title
   newInstructions.value = schedule.instructions
   selectedListings.value = [...schedule.listings]
   const option = assigneeOptions.find(o => o.value === schedule.assignee)
@@ -312,10 +354,22 @@ function applySchedule(schedule: TaskSchedule) {
   repeat.value = schedule.frequency
 }
 
-// Opening fills the form from the schedule or the prefill; closing, however
-// it happens (Cancel, Escape, a click outside, or after Create), clears it.
+function applyTask(task: Task) {
+  newTitle.value = task.title
+  newInstructions.value = task.description ?? ''
+  newListing.value = task.listing ?? ''
+  newPriority.value = task.priority
+  dueDate.value = task.dueDate ?? ''
+  newImages.value = [...(task.images ?? [])]
+}
+
+// Opening fills the form from the task, the schedule or the prefill; closing,
+// however it happens (Cancel, Escape, a click outside, or after Create),
+// clears it.
 watch(open, (isOpen) => {
-  if (isOpen && props.schedule)
+  if (isOpen && props.task)
+    applyTask(props.task)
+  else if (isOpen && props.schedule)
     applySchedule(props.schedule)
   else if (isOpen && props.prefill)
     applyPrefill(props.prefill)
@@ -326,6 +380,7 @@ watch(open, (isOpen) => {
 function scheduleInput(): TaskScheduleInput {
   return {
     ...scheduleRule.value,
+    title: newTitle.value.trim(),
     instructions: newInstructions.value.trim(),
     listings: [...selectedListings.value],
     assignee: assignee.value || undefined,
@@ -356,10 +411,21 @@ function handleSaveSchedule() {
   open.value = false
 }
 
+function handleSaveTask() {
+  const task = props.task!
+  const changes = editTask(task.id, taskEdit())
+  if (changes.length)
+    toast.success('Task updated')
+  emit('saved', task)
+  open.value = false
+}
+
 function handleSubmit() {
   if (!canSubmit.value)
     return
-  if (isRepeating.value || isEditingSchedule.value)
+  if (isEditingTask.value)
+    handleSaveTask()
+  else if (isRepeating.value || isEditingSchedule.value)
     handleSaveSchedule()
   else
     handleCreateTask()
@@ -369,7 +435,7 @@ function handleCreateTask() {
   if (!newTitle.value.trim())
     return
   const created = addTask({
-    title: newTitle.value,
+    title: newTitle.value.trim(),
     status: 'not started',
     assignee: assignee.value || undefined,
     assigneeType: assignee.value ? assigneeType.value : undefined,
@@ -409,7 +475,15 @@ function handleCreateTask() {
 // Local date: `toISOString()` reads a Bali morning as yesterday.
 const todayDate = todayKey()
 
+const dialogTitle = computed(() => {
+  if (isEditingTask.value)
+    return 'Edit Task'
+  return isEditingSchedule.value ? 'Edit Schedule' : 'New Task'
+})
+
 const submitLabel = computed(() => {
+  if (isEditingTask.value)
+    return 'Save Changes'
   if (isEditingSchedule.value)
     return 'Save Schedule'
   return isRepeating.value ? 'Create Schedule' : 'Create Task'
@@ -420,30 +494,40 @@ const submitLabel = computed(() => {
   <Dialog v-model:open="open">
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
-        <DialogTitle>{{ isEditingSchedule ? 'Edit Schedule' : 'New Task' }}</DialogTitle>
-        <DialogDescription :class="{ 'sr-only': !context }">
+        <DialogTitle>{{ dialogTitle }}</DialogTitle>
+        <DialogDescription v-if="isEditingTask">
+          Changes show in the task's timeline.
+        </DialogDescription>
+        <DialogDescription v-else :class="{ 'sr-only': !context }">
           {{ context || 'Describe the task for your team.' }}
         </DialogDescription>
       </DialogHeader>
       <div class="flex flex-col gap-4 py-2">
         <div class="flex flex-col gap-1.5">
-          <Label for="new-task-instructions">Instructions <span class="text-destructive">*</span></Label>
+          <Label for="new-task-title">Title <span class="text-destructive">*</span></Label>
+          <Input
+            id="new-task-title"
+            v-model="newTitle"
+            :maxlength="TASK_TITLE_MAX"
+            placeholder="e.g. AC not cooling in the master bedroom"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1.5">
+          <Label for="new-task-instructions">Instructions</Label>
           <Textarea
             id="new-task-instructions"
             v-model="newInstructions"
-            placeholder="e.g. AC Split tidak dingin di Villa Merapi. Check the filter and the outdoor unit."
+            placeholder="e.g. Check the filter and the outdoor unit. Turn the breaker off before opening the housing."
             rows="4"
           />
-          <p class="text-xs text-muted-foreground">
-            The first line becomes the task title.
-          </p>
         </div>
 
         <div class="flex flex-col gap-1.5">
           <Label>Listing</Label>
           <Popover v-model:open="listingPopoverOpen">
             <PopoverTrigger as-child>
-              <Button variant="outline" class="w-full justify-between">
+              <Button variant="outline" class="w-full justify-between" :disabled="listingLocked">
                 <span class="truncate">{{ listingButtonLabel }}</span>
                 <Icon name="lucide:chevrons-up-down" class="size-4 opacity-50" />
               </Button>
@@ -540,11 +624,14 @@ const submitLabel = computed(() => {
           <p v-if="isRepeating" class="text-xs text-muted-foreground">
             Each listing gets its own task every time.
           </p>
+          <p v-else-if="listingLocked" class="text-xs text-muted-foreground">
+            The owner of this listing was asked to approve the quote, so the listing cannot change.
+          </p>
         </div>
 
         <!-- Owner cost approval — holds the task until the owner decides. Not
              offered on a schedule: a quote is for one job. -->
-        <div v-if="!isRepeating" class="rounded-md border p-3 space-y-3">
+        <div v-if="!isRepeating && !isEditingTask" class="rounded-md border p-3 space-y-3">
           <div
             class="flex items-start gap-2.5 cursor-pointer"
             role="checkbox"
@@ -588,7 +675,8 @@ const submitLabel = computed(() => {
         </div>
 
         <div class="grid grid-cols-2 gap-3">
-          <div class="flex flex-col gap-1.5">
+          <!-- Editing: who does it changes through Reassign, with a reason. -->
+          <div v-if="!isEditingTask" class="flex flex-col gap-1.5">
             <Label>Assignee</Label>
             <Popover v-model:open="assigneePopoverOpen">
               <PopoverTrigger as-child>
@@ -656,7 +744,7 @@ const submitLabel = computed(() => {
             </Label>
             <Input id="new-task-due-date" v-model="dueDate" type="date" :min="todayDate" />
           </div>
-          <div class="flex flex-col gap-1.5">
+          <div v-if="!isEditingTask" class="flex flex-col gap-1.5">
             <Label>Repeat</Label>
             <Select v-model="repeat">
               <SelectTrigger data-testid="new-task-repeat">

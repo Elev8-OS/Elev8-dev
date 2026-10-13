@@ -70,31 +70,42 @@ beforeEach(() => {
 })
 
 describe('new task form', () => {
-  it('asks for Instructions only: no Title, no Description', () => {
+  it('asks for a required Title and optional Instructions, no Description', () => {
     const wrapper = mountWith(NewTaskDialog, { open: true })
     const labels = wrapper.findAll('label').map(l => l.text().replace(/\s+/g, ' ').trim())
-    expect(labels).toContain('Instructions *')
-    expect(labels.some(l => l.startsWith('Title'))).toBe(false)
+    expect(labels).toContain('Title *')
+    expect(labels).toContain('Instructions')
     expect(labels).not.toContain('Description')
   })
 
-  it('keeps Create disabled until there are instructions', async () => {
+  it('keeps Create disabled until there is a title, instructions alone are not enough', async () => {
     const wrapper = mountWith(NewTaskDialog, { open: true })
     expect(createButton(wrapper).attributes('disabled')).toBeDefined()
-    await wrapper.find('#new-task-instructions').setValue('Fix the pool pump')
+    await wrapper.find('#new-task-instructions').setValue('Turn the breaker off first.')
+    expect(createButton(wrapper).attributes('disabled')).toBeDefined()
+    await wrapper.find('#new-task-title').setValue('Fix the pool pump')
     expect(createButton(wrapper).attributes('disabled')).toBeUndefined()
   })
 
-  it('titles the task from the first line and stores the whole text as instructions', async () => {
+  it('stores the typed title and the instructions separately', async () => {
     const { tasks } = useTaskStore()
     const before = tasks.value.length
     const wrapper = mountWith(NewTaskDialog, { 'open': true, 'onUpdate:open': () => {} })
-    await wrapper.find('#new-task-instructions').setValue('Fix the pool pump\nTurn the breaker off before opening the housing.')
+    await wrapper.find('#new-task-title').setValue('  Fix the pool pump ')
+    await wrapper.find('#new-task-instructions').setValue('Turn the breaker off before opening the housing.')
     await createButton(wrapper).trigger('click')
 
     expect(tasks.value).toHaveLength(before + 1)
     const created = tasks.value.find(t => t.title === 'Fix the pool pump')!
-    expect(created.description).toBe('Fix the pool pump\nTurn the breaker off before opening the housing.')
+    expect(created.description).toBe('Turn the breaker off before opening the housing.')
+  })
+
+  it('creates a task with a title and no instructions', async () => {
+    const { tasks } = useTaskStore()
+    const wrapper = mountWith(NewTaskDialog, { 'open': true, 'onUpdate:open': () => {} })
+    await wrapper.find('#new-task-title').setValue('Restock towels')
+    await createButton(wrapper).trigger('click')
+    expect(tasks.value.find(t => t.title === 'Restock towels')!.description).toBeUndefined()
   })
 
   it('fills in from a prefill when it opens', async () => {
@@ -105,6 +116,8 @@ describe('new task form', () => {
     })
     await nextTick()
     expect((wrapper.find('#new-task-instructions').element as HTMLTextAreaElement).value).toBe('AC is warm\nCheck the filter.')
+    // No title in the prefill: the first line is suggested.
+    expect((wrapper.find('#new-task-title').element as HTMLInputElement).value).toBe('AC is warm')
     expect(wrapper.text()).toContain(LISTING)
     expect(wrapper.find('img[src="blob:ac"]').exists()).toBe(true)
   })
@@ -117,6 +130,7 @@ describe('new task form', () => {
     await wrapper.setProps({ open: true })
     await nextTick()
     expect((wrapper.find('#new-task-instructions').element as HTMLTextAreaElement).value).toBe('')
+    expect((wrapper.find('#new-task-title').element as HTMLInputElement).value).toBe('')
   })
 })
 
@@ -210,7 +224,7 @@ describe('repeating a task', () => {
 
   it('turns the form into a schedule that needs a first due date', async () => {
     const wrapper = mountRepeatable()
-    await wrapper.find('#new-task-instructions').setValue('Weekly pool cleaning')
+    await wrapper.find('#new-task-title').setValue('Weekly pool cleaning')
     await wrapper.findAllComponents(SelectStub)[1]!.vm.$emit('update:modelValue', 'weekly')
     await nextTick()
 
@@ -234,7 +248,8 @@ describe('repeating a task', () => {
   it('edits an existing schedule', async () => {
     const { schedules, addSchedule } = useTaskSchedules()
     const { schedule } = addSchedule({
-      instructions: 'AC service',
+      title: 'AC service',
+      instructions: 'Clean the filters.',
       listings: [],
       priority: 'high',
       frequency: 'monthly',
@@ -249,7 +264,8 @@ describe('repeating a task', () => {
     await nextTick()
 
     expect(wrapper.find('h2').text()).toBe('Edit Schedule')
-    await wrapper.find('#new-task-instructions').setValue('AC service and filter clean')
+    expect((wrapper.find('#new-task-title').element as HTMLInputElement).value).toBe('AC service')
+    await wrapper.find('#new-task-title').setValue('AC service and filter clean')
     await buttonNamed(wrapper, 'Save Schedule')!.trigger('click')
     expect(schedules.value[0]).toMatchObject({ title: 'AC service and filter clean', frequency: 'monthly', interval: 3 })
   })

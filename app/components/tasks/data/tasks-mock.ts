@@ -185,6 +185,26 @@ export const mockTasks: Task[] = [
     ],
     createdAt: '2026-06-23T07:00:00Z',
   },
+  // Created by a manager and assigned to the logged-in user, so Reassign
+  // (with its listing filter: Wayan Adi has no access to Villa Luwa) and
+  // the creator-only Edit can be tried from a cold start.
+  {
+    id: 'TASK-HANDOVER-001',
+    title: 'Check the outdoor shower drain',
+    status: 'in progress',
+    assignee: 'komang-juliantara',
+    assigneeType: 'person',
+    priority: 'medium',
+    listing: '5BR Pool the R Villa Luwa – Serene near Canggu',
+    description: 'Guests reported water pooling around the outdoor shower. Clear the drain cover and check the pipe under the deck.',
+    dueDate: demoDay(2),
+    progress: 20,
+    statusUpdates: [
+      { date: `${demoDay(-1)}T01:00:00Z`, actor: { name: 'Made Wirawan', kind: 'staff' }, kind: 'created', progress: 0 },
+      { date: `${demoDay(-1)}T04:30:00Z`, actor: { name: 'Komang Juliantara', kind: 'staff' }, kind: 'progress', progress: 20, note: 'Asked the guests for a photo, waiting for a time to go in.' },
+    ],
+    createdAt: `${demoDay(-1)}T01:00:00Z`,
+  },
   {
     id: 'TASK-004',
     title: 'Ganti kunci pintu belakang',

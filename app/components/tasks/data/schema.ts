@@ -5,11 +5,16 @@ export const statusUpdateSchema = z.object({
   /**
    * What happened, which the timeline turns into its sentence ("… has created
    * a new task for …", "… is 31% through the task", "… has completed the
-   * task", see `timelineSentence`). Absent on entries that carry their own
+   * task", "… changed the title", "… reassigned the task to …", see
+   * `timelineSentence`). Absent on entries that carry their own
    * sentence in `note` (a quote sent, an owner's decision).
    */
-  kind: z.enum(['created', 'progress', 'completed']).optional(),
+  kind: z.enum(['created', 'progress', 'completed', 'edited', 'reassigned']).optional(),
   note: z.string().optional(),
+  /** `edited`: what changed, as the words the sentence lists ("title", "due date"). */
+  changes: z.array(z.string()).optional(),
+  /** `reassigned`: who the task went to (its label, frozen like the actor's name). */
+  assignedTo: z.string().optional(),
   progress: z.number().min(0).max(100).optional(),
   images: z.array(z.string()).optional(),
   /** Who did this. Drives the avatar and the bold name in the timeline. */
@@ -119,10 +124,12 @@ export type Task = z.infer<typeof taskSchema>
 
 /**
  * What a caller can fill in before the New Task form opens (a task raised from
- * inbox messages). `instructions` lands in `Task.description`, and its first
- * line becomes the title: there is no separate title to prefill.
+ * inbox messages). `instructions` lands in `Task.description`. Without a
+ * `title`, the form suggests the first line of the instructions, which the
+ * user can then change.
  */
 export interface NewTaskPrefill {
+  title?: string
   /** Listing NAME, which is what `Task.listing` stores. */
   listing?: string
   assignee?: string
