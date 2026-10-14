@@ -45,6 +45,7 @@ const cleaningMock = vi.hoisted(() => ({
 
 vi.mock('~/composables/useCleaningJobs', () => ({
   useCleaningJobs: () => cleaningMock,
+  listingHasCleaningSteps: () => true,
 }))
 
 const smartLockMock = vi.hoisted(() => ({

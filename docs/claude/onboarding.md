@@ -94,6 +94,12 @@ the saved status.
   one banner per page rule true
 - `app/pages/index.vue` mounts `<OnboardingChecklistCard>`. Note it sits in the non GRO branch:
   the GRO persona is cross tenant staff and gets `GroDashboard` instead
+- The checklist's **Set up cleaning** links to `/cleaning-setup` (`cleaning/CleaningSetupWizard.vue`):
+  three optional steps over company defaults that are ALREADY active (a new tenant's listings can
+  be cleaned from day one): what the tenant manages picks the check-out checklist (villa or studio;
+  "a mix" overrides check-out on the picked apartments), the company schedule (`cleaning/CleaningScheduleFields.vue`, same fields as Settings > Cleaning,
+  incl. "When empty", default Monday and Thursday; `useCleaningScheduleDefault`), and the default cleaners. Finish or "Skip, use the defaults"
+  completes `setup_cleaning`. Model in `docs/claude/listings.md` (cleaning checklists)
 - `LayoutAppSidebar` filters `navMenu` through `moduleAvailable(item.title)`, so a `PMS_ONLY`
   tenant loses four entries. A `NavSectionTitle` has no `title` and is never gated
 

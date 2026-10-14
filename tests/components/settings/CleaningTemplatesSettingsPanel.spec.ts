@@ -26,6 +26,14 @@ const STUBS = {
   AlertDialogFooter: passthrough,
   AlertDialogCancel: passthrough,
   AlertDialogAction: { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+  Select: { name: 'Select', props: ['modelValue'], emits: ['update:modelValue'], template: '<div :data-value="modelValue"><slot /></div>' },
+  SelectTrigger: passthrough,
+  SelectValue: true,
+  SelectContent: passthrough,
+  SelectItem: { props: ['value'], template: '<div data-testid="option" :data-value="value"><slot /></div>' },
+  Label: passthrough,
+  CompanyCleaningScheduleCard: { template: '<div data-testid="company-cleaning-schedule" />' },
+  CleaningTemplateAssignDialog: { props: ['open', 'template'], template: '<div v-if="open" data-testid="assign-dialog">{{ template?.name }}</div>' },
   CleaningTemplateSheet: { props: ['open', 'template'], template: '<div v-if="open" data-testid="template-sheet">{{ template ? template.name : \'new\' }}</div>' },
 }
 
@@ -38,22 +46,30 @@ beforeEach(() => {
 })
 
 describe('cleaningTemplatesSettingsPanel', () => {
-  it('lists every template, default first', () => {
-    const cards = mountPanel().findAll('[data-testid="template-card"]')
-    expect(cards).toHaveLength(useCleaningStepTemplates().templates.value.length)
-    expect(cards[0]!.attributes('data-default')).toBeDefined()
-    expect(cards[0]!.text()).toContain('Default')
+  it('lists every template and the company default per cleaning type', () => {
+    const wrapper = mountPanel()
+    expect(wrapper.find('[data-testid="company-cleaning-schedule"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="template-card"]')).toHaveLength(useCleaningStepTemplates().templates.value.length)
+    const select = (type: string) => wrapper.findAllComponents({ name: 'Select' }).find(s => s.attributes('data-testid') === `type-default-select-${type}`)!
+    expect(select('check_out').props('modelValue')).toBe('cst-villa')
+    expect(select('daily').props('modelValue')).toBe('cst-daily')
+    const villa = wrapper.findAll('[data-testid="template-card"]').find(c => c.get('h3').text() === 'Villa standard')!
+    expect(villa.get('[data-testid="template-usage"]').text()).toContain('Default for check-out cleaning')
   })
 
-  it('sets another template as default', async () => {
+  it('changes a type\'s default', async () => {
     const wrapper = mountPanel()
-    const second = wrapper.findAll('[data-testid="template-card"]')[1]!
-    const name = second.get('h3').text()
-    await second.get('[data-testid="template-set-default"]').trigger('click')
+    const select = wrapper.findAllComponents({ name: 'Select' }).find(s => s.attributes('data-testid') === 'type-default-select-check_out')!
+    select.vm.$emit('update:modelValue', 'cst-studio')
     await nextTick()
-    const first = wrapper.findAll('[data-testid="template-card"]')[0]!
-    expect(first.get('h3').text()).toBe(name)
-    expect(wrapper.findAll('[data-testid="template-card"][data-default]')).toHaveLength(1)
+    expect(useCleaningStepTemplates().defaultFor('check_out')!.id).toBe('cst-studio')
+  })
+
+  it('opens Assign to listings for a template', async () => {
+    const wrapper = mountPanel()
+    const studio = wrapper.findAll('[data-testid="template-card"]').find(c => c.get('h3').text() === 'Studio / apartment')!
+    await studio.get('[data-testid="template-assign"]').trigger('click')
+    expect(wrapper.get('[data-testid="assign-dialog"]').text()).toBe('Studio / apartment')
   })
 
   it('opens the editor for a new template and for an existing one', async () => {
@@ -65,18 +81,28 @@ describe('cleaningTemplatesSettingsPanel', () => {
     expect(wrapper.get('[data-testid="template-sheet"]').text()).toBe(card.get('h3').text())
   })
 
-  it('deletes after confirming', async () => {
+  it('deletes an unused template after confirming', async () => {
     const wrapper = mountPanel()
     const before = wrapper.findAll('[data-testid="template-card"]').length
-    await wrapper.findAll('[data-testid="template-card"]')[1]!.get('[data-testid="template-delete"]').trigger('click')
+    const studio = wrapper.findAll('[data-testid="template-card"]').find(c => c.get('h3').text() === 'Studio / apartment')!
+    await studio.get('[data-testid="template-delete"]').trigger('click')
+    expect(wrapper.find('[data-testid="template-delete-replacement"]').exists()).toBe(false)
     await wrapper.get('[data-testid="template-delete-confirm"]').trigger('click')
     expect(wrapper.findAll('[data-testid="template-card"]')).toHaveLength(before - 1)
   })
 
-  it('shows each template\'s cleaning types', () => {
-    const cards = mountPanel().findAll('[data-testid="template-card"]')
-    const daily = cards.find(c => c.get('h3').text() === 'Daily refresh')!
-    expect(daily.get('[data-testid="template-types"]').text()).toContain('Daily cleaning')
-    expect(daily.get('[data-testid="template-types"]').text()).toContain('Mid-stay cleaning')
+  it('asks for a replacement before deleting a template in use', async () => {
+    const wrapper = mountPanel()
+    const before = wrapper.findAll('[data-testid="template-card"]').length
+    const daily = wrapper.findAll('[data-testid="template-card"]').find(c => c.get('h3').text() === 'Daily refresh')!
+    await daily.get('[data-testid="template-delete"]').trigger('click')
+    const replacement = wrapper.findAllComponents({ name: 'Select' }).find(s => s.attributes('data-testid') === 'template-delete-replacement')!
+    await wrapper.get('[data-testid="template-delete-confirm"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="template-card"]')).toHaveLength(before)
+    replacement.vm.$emit('update:modelValue', 'cst-villa')
+    await nextTick()
+    await wrapper.get('[data-testid="template-delete-confirm"]').trigger('click')
+    expect(wrapper.findAll('[data-testid="template-card"]')).toHaveLength(before - 1)
+    expect(useCleaningStepTemplates().defaultFor('daily')!.id).toBe('cst-villa')
   })
 })

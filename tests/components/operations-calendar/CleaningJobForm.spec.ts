@@ -241,6 +241,8 @@ describe('cleaningJobForm checklist template', () => {
           SelectValue: true,
           SelectContent: { template: '<div><slot /></div>' },
           SelectItem: { name: 'SelectItem', props: ['value'], template: '<div :data-value="value"><slot /></div>' },
+          SelectGroup: { template: '<div><slot /></div>' },
+          SelectLabel: { template: '<div><slot /></div>' },
           NuxtLink: true,
           GuestInfoCard: true,
           ListingPicker: true,
@@ -252,6 +254,11 @@ describe('cleaningJobForm checklist template', () => {
     })
   }
 
+  async function openPicker(wrapper: ReturnType<typeof mountNew>) {
+    await wrapper.get('[data-testid="cleaning-checklist-change"]').trigger('click')
+    await nextTick()
+  }
+
   function selectNamed(wrapper: ReturnType<typeof mountNew>, testid: string) {
     return wrapper.findAllComponents({ name: 'Select' }).find(s => s.attributes('data-testid') === testid)!
   }
@@ -261,37 +268,37 @@ describe('cleaningJobForm checklist template', () => {
     return wrapper.emitted('save')![0]![0] as CleaningJobInput
   }
 
-  it('offers only the templates written for the cleaning type', async () => {
+  it('shows the listing\'s checklist for the type, collapsed, and follows the type', async () => {
     const wrapper = mountNew()
     await nextTick()
-    const items = () => selectNamed(wrapper, 'cleaning-checklist').findAll('[data-value]').map(i => i.attributes('data-value'))
-    expect(items()).toContain('cst-villa')
-    expect(items()).not.toContain('cst-daily')
+    // lst-1 overrides check-out with Deep clean (seed); daily follows the company default.
+    expect(wrapper.get('[data-testid="cleaning-checklist-current"]').text()).toContain('Deep clean')
     selectNamed(wrapper, 'cleaning-type').vm.$emit('update:modelValue', 'daily')
     await nextTick()
-    expect(items()).toContain('cst-daily')
-    expect(items()).not.toContain('cst-villa')
+    expect(wrapper.get('[data-testid="cleaning-checklist-current"]').text()).toContain('Daily refresh')
+    expect(wrapper.get('[data-testid="cleaning-checklist-summary"]').text()).toContain('Daily refresh')
+    expect('steps' in await save(wrapper)).toBe(false)
   })
 
-  it('saves a copy of the picked template\'s steps', async () => {
+  it('offers every template on Change, after the listing\'s own', async () => {
     const wrapper = mountNew()
     await nextTick()
+    await openPicker(wrapper)
+    const items = selectNamed(wrapper, 'cleaning-checklist').findAll('[data-value]').map(i => i.attributes('data-value'))
+    expect(items[0]).toBe('listing')
+    expect(items).toEqual(expect.arrayContaining(['cst-villa', 'cst-studio', 'cst-deep', 'cst-daily']))
+  })
+
+  it('saves a copy of the picked template\'s steps, with its name', async () => {
+    const wrapper = mountNew()
+    await nextTick()
+    await openPicker(wrapper)
     selectNamed(wrapper, 'cleaning-checklist').vm.$emit('update:modelValue', 'cst-studio')
     await nextTick()
     expect(wrapper.get('[data-testid="cleaning-checklist-summary"]').text()).toContain('Studio / apartment')
     const input = await save(wrapper)
     expect(input.steps!.map(s => s.title)).toEqual(['Room', 'Kitchenette', 'Bathroom'])
     expect(input.steps![0]!.id).not.toBe('studio-room')
-  })
-
-  it('leaves the listing\'s steps to createJob by default, and drops a template the new type does not fit', async () => {
-    const wrapper = mountNew()
-    await nextTick()
-    selectNamed(wrapper, 'cleaning-checklist').vm.$emit('update:modelValue', 'cst-villa')
-    await nextTick()
-    selectNamed(wrapper, 'cleaning-type').vm.$emit('update:modelValue', 'daily')
-    await nextTick()
-    expect(wrapper.get('[data-testid="cleaning-checklist-summary"]').text()).toContain('Listing\'s cleaning steps')
-    expect('steps' in await save(wrapper)).toBe(false)
+    expect(input.checklistName).toBe('Studio / apartment')
   })
 })

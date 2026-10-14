@@ -1,32 +1,50 @@
-import type { CleaningStepTemplate, CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
+import type { CleaningChecklistLibrary, CleaningStepTemplate, CleaningTemplateType, CleaningTypeDefaults } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { computed } from 'vue'
-import { CLEANING_STEP_TEMPLATES_STORAGE_KEY, normalizeCleaningTypes, SEED_CLEANING_STEP_TEMPLATES } from '~/components/cleaning/data/cleaning-step-templates'
+import {
+  CLEANING_STEP_TEMPLATES_STORAGE_KEY,
+  CLEANING_TEMPLATE_TYPES,
+  CLEANING_TYPE_DEFAULTS_STORAGE_KEY,
+  completeTypeDefaults,
+  listingChecklistOverrides,
+  SEED_CLEANING_STEP_TEMPLATES,
+  SEED_CLEANING_TYPE_DEFAULTS,
+} from '~/components/cleaning/data/cleaning-step-templates'
 import { cloneCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+import { listings } from '~/components/listings/data/listings'
 
-/**
- * Templates saved before cleaning types existed have none: a seed gets its
- * seeded types back, any other a check-out clean (what every template was).
- */
-function withCleaningTypes(template: CleaningStepTemplate): CleaningStepTemplate {
-  const types = normalizeCleaningTypes(template.cleaningTypes)
-  if (types.length)
-    return { ...template, cleaningTypes: types }
-  const seed = SEED_CLEANING_STEP_TEMPLATES.find(t => t.id === template.id)
-  return { ...template, cleaningTypes: seed ? [...seed.cleaningTypes] : ['check_out'] }
+/** Drops the retired `isDefault` and `cleaningTypes` fields from a stored template. */
+function withoutRetiredFields(template: CleaningStepTemplate & { isDefault?: boolean, cleaningTypes?: unknown }): CleaningStepTemplate {
+  const { isDefault: _default, cleaningTypes: _types, ...rest } = template
+  return rest
+}
+
+function readStorage<T>(key: string): T | null {
+  if (typeof localStorage === 'undefined')
+    return null
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? 'null') as T | null
+  }
+  catch {
+    return null
+  }
+}
+
+function writeStorage(key: string, value: unknown) {
+  if (typeof localStorage === 'undefined')
+    return
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  }
+  catch {
+    // Quota or unavailable storage: the in-memory state still works.
+  }
 }
 
 function loadInitialTemplates(): CleaningStepTemplate[] {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(CLEANING_STEP_TEMPLATES_STORAGE_KEY) ?? 'null')
-      if (Array.isArray(parsed) && parsed.length > 0)
-        return parsed.map(withCleaningTypes)
-    }
-    catch {
-      // Unreadable storage: fall back to the seed.
-    }
-  }
+  const parsed = readStorage<CleaningStepTemplate[]>(CLEANING_STEP_TEMPLATES_STORAGE_KEY)
+  if (Array.isArray(parsed) && parsed.length > 0)
+    return parsed.map(withoutRetiredFields)
   return JSON.parse(JSON.stringify(SEED_CLEANING_STEP_TEMPLATES))
 }
 
@@ -34,58 +52,80 @@ function newTemplateId() {
   return `cst-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 }
 
+/** Listings whose effective overrides name the template, for any type. */
+function listingsOverriding(id: string, templates: readonly CleaningStepTemplate[]) {
+  return listings.value.filter(l => Object.values(listingChecklistOverrides(l.maintenance, templates)).includes(id))
+}
+
 /**
- * The tenant's cleaning step templates (Settings > Cleaning Templates).
- * Exactly one is the default whenever any exist: setting one clears the rest,
- * deleting the default promotes the first remaining. The last template cannot
- * be deleted, so there is always a default to offer.
+ * The tenant's cleaning step templates (Settings > Cleaning) and the
+ * company default per cleaning type. Every type always has a default while any
+ * template exists (`completeTypeDefaults`), and a new tenant starts with
+ * `SEED_CLEANING_TYPE_DEFAULTS`, active at once. The last template cannot be
+ * deleted; one still in use needs a replacement.
  */
 export function useCleaningStepTemplates() {
   const templates = useState<CleaningStepTemplate[]>('cleaning-step-templates', () => loadInitialTemplates())
+  const typeDefaults = useState<CleaningTypeDefaults>('cleaning-type-defaults', () =>
+    completeTypeDefaults(readStorage<CleaningTypeDefaults>(CLEANING_TYPE_DEFAULTS_STORAGE_KEY) ?? SEED_CLEANING_TYPE_DEFAULTS, templates.value))
 
   function persist() {
-    if (typeof localStorage === 'undefined')
-      return
-    try {
-      localStorage.setItem(CLEANING_STEP_TEMPLATES_STORAGE_KEY, JSON.stringify(templates.value))
-    }
-    catch {
-      // Quota or unavailable storage: the in-memory list still works.
-    }
+    writeStorage(CLEANING_STEP_TEMPLATES_STORAGE_KEY, templates.value)
+    writeStorage(CLEANING_TYPE_DEFAULTS_STORAGE_KEY, typeDefaults.value)
   }
 
-  const defaultTemplate = computed(() => templates.value.find(t => t.isDefault) ?? templates.value[0] ?? null)
+  const library = computed<CleaningChecklistLibrary>(() => ({ templates: templates.value, typeDefaults: typeDefaults.value }))
 
-  /** Default first, then by name. */
-  const sortedTemplates = computed(() =>
-    [...templates.value].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name)),
-  )
+  /** By name. */
+  const sortedTemplates = computed(() => [...templates.value].sort((a, b) => a.name.localeCompare(b.name)))
 
   function getTemplate(id: string) {
     return templates.value.find(t => t.id === id)
   }
 
-  function createTemplate(input: { name: string, description?: string, cleaningTypes?: CleaningTemplateType[], sections: CleaningStepSection[], isDefault?: boolean }): CleaningStepTemplate {
-    const cleaningTypes = normalizeCleaningTypes(input.cleaningTypes)
+  /** The company default for a type. */
+  function defaultFor(type: CleaningTemplateType): CleaningStepTemplate | null {
+    return getTemplate(typeDefaults.value[type] ?? '') ?? null
+  }
+
+  /** What a listing editor offers first ("Use …"): the check-out default. */
+  const defaultTemplate = computed(() => defaultFor('check_out') ?? sortedTemplates.value[0] ?? null)
+
+  /** The types a template is the company default for, in canonical order. */
+  function defaultTypesOf(id: string): CleaningTemplateType[] {
+    return CLEANING_TEMPLATE_TYPES.filter(type => typeDefaults.value[type] === id)
+  }
+
+  /** How many listings override a type with the template. */
+  function listingUsageOf(id: string): number {
+    return listingsOverriding(id, templates.value).length
+  }
+
+  function setTypeDefault(type: CleaningTemplateType, id: string) {
+    if (!getTemplate(id))
+      return
+    typeDefaults.value = { ...typeDefaults.value, [type]: id }
+    persist()
+  }
+
+  function createTemplate(input: { name: string, description?: string, sections: CleaningStepSection[] }): CleaningStepTemplate {
     const now = new Date().toISOString()
-    const isDefault = Boolean(input.isDefault) || templates.value.length === 0
     const template: CleaningStepTemplate = {
       id: newTemplateId(),
       name: input.name.trim() || 'Untitled template',
       description: input.description?.trim() || undefined,
-      cleaningTypes: cleaningTypes.length ? cleaningTypes : ['check_out'],
-      isDefault,
       sections: cloneCleaningSteps(input.sections),
       createdAt: now,
       updatedAt: now,
     }
-    const rest = isDefault ? templates.value.map(t => ({ ...t, isDefault: false })) : templates.value
-    templates.value = [...rest, template]
+    templates.value = [...templates.value, template]
+    // The first template ever becomes every type's default.
+    typeDefaults.value = completeTypeDefaults(typeDefaults.value, templates.value)
     persist()
     return template
   }
 
-  function updateTemplate(id: string, patch: Partial<Pick<CleaningStepTemplate, 'name' | 'description' | 'cleaningTypes' | 'sections'>>) {
+  function updateTemplate(id: string, patch: Partial<Pick<CleaningStepTemplate, 'name' | 'description' | 'sections'>>) {
     const now = new Date().toISOString()
     templates.value = templates.value.map(t => t.id === id
       ? {
@@ -93,18 +133,9 @@ export function useCleaningStepTemplates() {
           ...patch,
           name: patch.name !== undefined ? (patch.name.trim() || 'Untitled template') : t.name,
           description: patch.description !== undefined ? (patch.description.trim() || undefined) : t.description,
-          // An empty pick keeps what the template had: at least one type, always.
-          cleaningTypes: normalizeCleaningTypes(patch.cleaningTypes).length ? normalizeCleaningTypes(patch.cleaningTypes) : t.cleaningTypes,
           updatedAt: now,
         }
       : t)
-    persist()
-  }
-
-  function setDefaultTemplate(id: string) {
-    if (!getTemplate(id))
-      return
-    templates.value = templates.value.map(t => ({ ...t, isDefault: t.id === id }))
     persist()
   }
 
@@ -112,16 +143,42 @@ export function useCleaningStepTemplates() {
     const source = getTemplate(id)
     if (!source)
       return null
-    return createTemplate({ name: `${source.name} (copy)`, description: source.description, cleaningTypes: source.cleaningTypes, sections: source.sections })
+    return createTemplate({ name: `${source.name} (copy)`, description: source.description, sections: source.sections })
   }
 
-  /** False, deleting nothing, for the last remaining template. */
-  function deleteTemplate(id: string): boolean {
-    const target = getTemplate(id)
-    if (!target || templates.value.length <= 1)
+  /** In use as a company default or by a listing override: deleting needs a replacement. */
+  function isTemplateInUse(id: string): boolean {
+    return defaultTypesOf(id).length > 0 || listingUsageOf(id) > 0
+  }
+
+  /**
+   * Deletes a template. One in use moves every default and listing override
+   * that names it onto `replacementId`, so no type is left without a checklist.
+   * False, deleting nothing, for the last template, or one in use with no
+   * valid replacement.
+   */
+  function deleteTemplate(id: string, replacementId?: string): boolean {
+    if (!getTemplate(id) || templates.value.length <= 1)
       return false
-    const next = templates.value.filter(t => t.id !== id)
-    templates.value = target.isDefault ? next.map((t, i) => ({ ...t, isDefault: i === 0 })) : next
+    if (isTemplateInUse(id)) {
+      if (!replacementId || replacementId === id || !getTemplate(replacementId))
+        return false
+      typeDefaults.value = Object.fromEntries(
+        Object.entries(typeDefaults.value).map(([type, tid]) => [type, tid === id ? replacementId : tid]),
+      ) as CleaningTypeDefaults
+      const using = new Set(listingsOverriding(id, templates.value).map(l => l.id))
+      listings.value = listings.value.map((l) => {
+        if (!using.has(l.id))
+          return l
+        const overrides = listingChecklistOverrides(l.maintenance, templates.value)
+        const cleaningTemplates = Object.fromEntries(
+          Object.entries(overrides).map(([type, value]) => [type, value === id ? replacementId : value]),
+        )
+        return { ...l, maintenance: { ...l.maintenance, cleaningTemplates } }
+      })
+    }
+    templates.value = templates.value.filter(t => t.id !== id)
+    typeDefaults.value = completeTypeDefaults(typeDefaults.value, templates.value)
     persist()
     return true
   }
@@ -129,11 +186,17 @@ export function useCleaningStepTemplates() {
   return {
     templates,
     sortedTemplates,
+    typeDefaults,
+    library,
     defaultTemplate,
+    defaultFor,
+    defaultTypesOf,
+    listingUsageOf,
+    isTemplateInUse,
     getTemplate,
+    setTypeDefault,
     createTemplate,
     updateTemplate,
-    setDefaultTemplate,
     duplicateTemplate,
     deleteTemplate,
   }

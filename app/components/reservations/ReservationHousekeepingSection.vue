@@ -454,7 +454,7 @@ function openAddCleaning() {
               <span>
                 {{ CLEANING_STEPS_REQUIRED_MESSAGE }}
                 <NuxtLink :to="`/listings/${reservation.listingId}?tab=maintenance`" class="font-medium underline">
-                  Set up steps
+                  Set up checklists
                 </NuxtLink>
               </span>
             </div>

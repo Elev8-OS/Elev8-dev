@@ -1766,10 +1766,10 @@ export const CHECKLIST_ITEMS: ChecklistItemMeta[] = [
   {
     code: 'setup_cleaning',
     title: 'Set up cleaning',
-    description: 'Create a cleaning schedule so housekeeping can start on the app.',
+    description: 'Cleaning already runs on starter checklists. Check them, the schedule for new bookings and who cleans.',
     icon: 'lucide:brush-cleaning',
-    link: '/operations-calendar',
-    cta: 'Go to Operations Calendar',
+    link: '/cleaning-setup',
+    cta: 'Review cleaning setup',
     requiresModule: null,
     optional: false,
   },

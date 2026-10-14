@@ -10,6 +10,8 @@ import type { ReservationEntry } from '~/components/reservations/data/reservatio
 import { toast } from 'vue-sonner'
 import DatePicker from '~/components/base/DatePicker.vue'
 import TimePicker from '~/components/base/TimePicker.vue'
+import { CLEANING_SOURCE_LABELS } from '~/components/cleaning/data/cleaning-jobs'
+import { cleaningTemplateTypeFor, resolveListingChecklist } from '~/components/cleaning/data/cleaning-step-templates'
 import { listings } from '~/components/listings/data/listings'
 import {
   CLEANING_TYPE_OPTIONS,
@@ -26,6 +28,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useCleaningScheduleDefault } from '~/composables/useCleaningScheduleDefault'
+import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = defineProps<{
@@ -104,9 +108,9 @@ const listing = computed(() => {
   return listings.value.find(l => l.id === props.reservation!.listingId) ?? null
 })
 
-const listingDefaultConfig = computed(() => {
-  return listing.value?.maintenance?.defaultCleaningSchedule ?? null
-})
+// The listing's own default, else the company default.
+const { scheduleFor } = useCleaningScheduleDefault()
+const listingDefaultConfig = computed(() => listing.value ? scheduleFor(listing.value) : null)
 
 const listingDefaultSummary = computed(() => {
   return formatListingCleaningSummary(listingDefaultConfig.value)
@@ -232,12 +236,8 @@ const canSave = computed(() => {
   return true
 })
 
-function handleSave() {
-  const r = props.reservation
-  if (!r || !canSave.value)
-    return
-
-  const schedule: ReservationCleaningSchedule = {
+function buildSchedule(r: ReservationEntry): ReservationCleaningSchedule {
+  return {
     type: cleaningType.value,
     startDate: effectiveStartDate.value || r.checkIn,
     time: cleaningTime.value || '11:00',
@@ -251,6 +251,32 @@ function handleSave() {
         }
       : undefined,
   }
+}
+
+// --- Checklist per cleaning type, shown before saving ---
+// Each generated job takes the checklist its type resolves to on the listing;
+// a type with none is not scheduled, so it is named here rather than skipped silently.
+const { library } = useCleaningStepTemplates()
+const checklistPreview = computed(() => {
+  const r = props.reservation
+  if (!r || !canSave.value)
+    return []
+  const inputs = generateCleaningJobsForReservation({ reservation: r, schedule: buildSchedule(r), cleaners: props.cleanerOptions })
+  const types = [...new Set(inputs.map(i => cleaningTemplateTypeFor(i.source)))]
+  return types.map(type => ({
+    type,
+    label: CLEANING_SOURCE_LABELS[type],
+    checklist: resolveListingChecklist(listing.value?.maintenance, type, library.value),
+  }))
+})
+const typesWithoutChecklist = computed(() => checklistPreview.value.filter(row => !row.checklist))
+
+function handleSave() {
+  const r = props.reservation
+  if (!r || !canSave.value)
+    return
+
+  const schedule = buildSchedule(r)
 
   const jobInputs: CleaningJobInput[] = generateCleaningJobsForReservation({
     reservation: r,
@@ -258,13 +284,19 @@ function handleSave() {
     cleaners: props.cleanerOptions,
   })
 
-  // Apply jobs to cleaning store
-  applyReservationSchedule(r.id, jobInputs)
+  // Apply jobs to cleaning store. A type with no steps on the listing (no
+  // template and no own steps) is dropped there, so count what was added.
+  const added = applyReservationSchedule(r.id, jobInputs)
+  const skipped = jobInputs.length - added.length
 
   // Persist schedule on reservation
   updateReservation(r.id, { cleaningSchedule: schedule })
 
-  toast.success(`Cleaning schedule saved — ${jobInputs.length} cleaning${jobInputs.length === 1 ? '' : 's'} scheduled`)
+  const summary = `Cleaning schedule saved: ${added.length} cleaning${added.length === 1 ? '' : 's'} scheduled`
+  if (skipped)
+    toast.warning(`${summary}. ${skipped} skipped: no checklist for that cleaning type on this listing.`)
+  else
+    toast.success(summary)
   emit('applied', schedule)
   emit('update:open', false)
 }
@@ -560,6 +592,24 @@ function handleClear() {
             No cleanings generated with current configuration.
           </div>
         </div>
+      </div>
+
+      <div v-if="checklistPreview.length" class="mx-6 mb-3 flex flex-col gap-1.5 rounded-md border bg-muted/20 px-3 py-2 text-xs" data-testid="cleaning-schedule-checklists">
+        <p v-for="row in checklistPreview" :key="row.type" class="flex items-center justify-between gap-2">
+          <span class="text-muted-foreground">{{ row.label }}</span>
+          <span v-if="row.checklist" class="flex items-center gap-1 font-medium">
+            <Icon name="lucide:list-checks" class="size-3 text-muted-foreground" />
+            {{ row.checklist.name }}
+          </span>
+          <span v-else class="font-medium text-amber-700 dark:text-amber-300">No checklist</span>
+        </p>
+        <p v-if="typesWithoutChecklist.length" class="flex items-start gap-1.5 text-amber-800 dark:text-amber-200" data-testid="cleaning-schedule-missing-checklist">
+          <Icon name="lucide:triangle-alert" class="mt-0.5 size-3 shrink-0" />
+          <span>
+            {{ typesWithoutChecklist.map(r => r.label).join(', ') }} will not be scheduled: this listing has no checklist for it.
+            <NuxtLink v-if="listing" :to="`/listings/${listing.id}?tab=maintenance`" class="font-medium underline">Set up checklists</NuxtLink>
+          </span>
+        </p>
       </div>
 
       <div

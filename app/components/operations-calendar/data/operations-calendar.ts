@@ -11,11 +11,11 @@ import { mockUpsellOrders } from '~/components/upsells/data/upsell-orders'
 
 export type CalendarEventType = 'guest_stay' | 'owner_stay' | 'cleaning' | 'task' | 'upsell'
 
-export type CleaningType = 'daily' | 'check_out' | 'mid_stay' | 'custom'
+export type CleaningType = 'daily' | 'check_out' | 'mid_stay' | 'custom' | 'vacant'
 
-/** Map a `CleaningJobSource` (incl. legacy aliases) to the 4 canonical cleaning types. */
+/** Map a `CleaningJobSource` (incl. legacy aliases) to the canonical cleaning types. */
 export function normalizeCleaningType(source: CleaningJobSource | string | undefined): CleaningType {
-  if (source === 'daily' || source === 'check_out' || source === 'mid_stay' || source === 'custom')
+  if (source === 'daily' || source === 'check_out' || source === 'mid_stay' || source === 'custom' || source === 'vacant')
     return source
   if (source === 'checkout')
     return 'check_out'
@@ -27,6 +27,7 @@ export const cleaningTypeLabels: Record<CleaningType, string> = {
   check_out: 'Check-out cleaning',
   mid_stay: 'Mid-stay cleaning',
   custom: 'Custom cleaning',
+  vacant: 'Vacant upkeep',
 }
 
 export const cleaningTypeIcons: Record<CleaningType, string> = {
@@ -34,6 +35,7 @@ export const cleaningTypeIcons: Record<CleaningType, string> = {
   check_out: 'lucide:log-out',
   mid_stay: 'lucide:clock-4',
   custom: 'lucide:settings-2',
+  vacant: 'lucide:house',
 }
 
 export const cleaningTypeVariants: Record<CleaningType, 'default' | 'secondary' | 'outline'> = {
@@ -41,6 +43,7 @@ export const cleaningTypeVariants: Record<CleaningType, 'default' | 'secondary' 
   check_out: 'default',
   mid_stay: 'secondary',
   custom: 'outline',
+  vacant: 'outline',
 }
 
 export interface CalendarEvent {

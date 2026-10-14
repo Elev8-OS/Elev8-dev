@@ -1,3 +1,4 @@
+import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import type { ListingGuideContent } from '~/components/listings/data/guest-guide-content'
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
@@ -246,6 +247,13 @@ export interface ListingMaintenance {
    * no cleaning can be scheduled for the listing (see `cleaning-steps.ts`).
    */
   cleaningSteps?: CleaningStepSection[]
+  /**
+   * Per cleaning type, the template (Settings > Cleaning) its jobs
+   * copy their checklist from, e.g. `{ daily: 'cst-daily', check_out: 'cst-deep' }`.
+   * A live reference, resolved when a job is created. A type left out, or whose
+   * template was deleted, uses `cleaningSteps`. See `resolveListingCleaningSteps`.
+   */
+  cleaningTemplates?: Partial<Record<CleaningTemplateType, string>>
   tasks: MaintenanceTask[]
 }
 
@@ -858,6 +866,8 @@ export const listings = ref<Listing[]>([
     ],
     maintenance: {
       cleaningSteps: cleaningStepTemplate(),
+      // Overrides the company default for check-out (`cleaning-step-templates.ts`).
+      cleaningTemplates: { check_out: 'cst-deep' },
       cleaningSchedule: [
         { task: 'Pool cleaning', frequency: 'daily' },
         { task: 'Garden maintenance', frequency: 'weekly' },

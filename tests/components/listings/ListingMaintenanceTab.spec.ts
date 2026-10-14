@@ -1,3 +1,4 @@
+import type { Listing } from '~/components/listings/data/listings'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
@@ -9,6 +10,7 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 import { useTaskDetail } from '~/composables/useTaskDetail'
 import { useTaskStore } from '~/composables/useTaskStore'
 
@@ -30,6 +32,9 @@ const STUBS = {
   TaskDetailSheet: { props: ['open', 'task'], template: '<div v-if="open" data-testid="task-sheet">{{ task?.title }}</div>' },
   CalendarEventDetailDialog: { props: ['open', 'event'], template: '<div v-if="open" data-testid="cleaning-sheet">{{ event?.id }}</div>' },
   StaffMultiSelectDropdown: true,
+  // Emits as the real sheet does: a choice for its type, or a request to write custom steps.
+  ListingTypeChecklistSheet: { props: ['open', 'type'], emits: ['save', 'editCustom', 'update:open'], template: '<div v-if="open" data-testid="checklist-sheet" :data-type="type"><button data-testid="checklist-sheet-default" @click="$emit(\'save\', type, null)" /><button data-testid="checklist-sheet-custom" @click="$emit(\'editCustom\', type)" /></div>' },
+  NuxtLink: true,
   ListingCleaningStepsSheet: { props: ['open', 'steps'], emits: ['save', 'update:open'], template: '<div v-if="open" data-testid="steps-sheet"><button data-testid="sheet-save" @click="$emit(\'save\', [{ id: \'s\', title: \'All\', steps: [{ id: \'1\', label: \'Mop\' }] }])" /></div>' },
 }
 const COMPONENTS = { Badge, Button, Card }
@@ -103,30 +108,82 @@ describe('listingMaintenanceTab', () => {
     expect(wrapper.find('[data-testid="cleaning-sheet"]').exists()).toBe(true)
   })
 
-  it('locks New cleaning and the default cleaning for a listing without steps', () => {
-    const listing = listings.value.find(l => !hasCleaningSteps(l))!
-    const wrapper = mountTab(listing)
-    expect(wrapper.find('[data-testid="cleaning-steps-required"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="new-cleaning"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-testid="configure-default-cleaning"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-testid="edit-cleaning-steps"]').text()).toContain('Set up')
-  })
+  describe('checklists', () => {
+    /** No company default for any type, so a listing without overrides has no checklist. */
+    function withoutCompanyDefaults(run: () => void) {
+      const { typeDefaults } = useCleaningStepTemplates()
+      const saved = typeDefaults.value
+      typeDefaults.value = {}
+      try {
+        run()
+      }
+      finally {
+        typeDefaults.value = saved
+      }
+    }
+    const lst = (id: string) => listings.value.find(l => l.id === id)!
 
-  it('leaves them open for a listing with steps', () => {
-    const listing = listings.value.find(l => hasCleaningSteps(l))!
-    const wrapper = mountTab(listing)
-    expect(wrapper.find('[data-testid="cleaning-steps-required"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="new-cleaning"]').attributes('disabled')).toBeUndefined()
-    expect(wrapper.get('[data-testid="configure-default-cleaning"]').attributes('disabled')).toBeUndefined()
-  })
+    it('shows each type\'s checklist and where it comes from', () => {
+      // lst-1 overrides check-out with Deep clean (seed).
+      const wrapper = mountTab(lst('lst-1'))
+      expect(wrapper.get('[data-testid="type-checklist-check_out"]').text()).toContain('Deep clean')
+      expect(wrapper.get('[data-testid="type-checklist-origin-check_out"]').text()).toBe('Override')
+      expect(wrapper.get('[data-testid="type-checklist-daily"]').text()).toContain('Daily refresh')
+      expect(wrapper.get('[data-testid="type-checklist-origin-daily"]').text()).toBe('Default')
+    })
 
-  it('saves steps from the sheet onto the listing', async () => {
-    const listing = listings.value.find(l => !hasCleaningSteps(l))!
-    const wrapper = mountTab(listing)
-    await wrapper.get('[data-testid="edit-cleaning-steps"]').trigger('click')
-    await wrapper.get('[data-testid="sheet-save"]').trigger('click')
-    const updated = wrapper.emitted('update')![0]![0] as typeof listing
-    expect(hasCleaningSteps(updated)).toBe(true)
+    it('leaves a listing with no own steps open, on the company defaults', () => {
+      const wrapper = mountTab(listings.value.find(l => !hasCleaningSteps(l))!)
+      expect(wrapper.find('[data-testid="cleaning-steps-required"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="new-cleaning"]').attributes('disabled')).toBeUndefined()
+      expect(wrapper.get('[data-testid="configure-default-cleaning"]').attributes('disabled')).toBeUndefined()
+    })
+
+    it('locks New cleaning and the default cleaning when no type has a checklist', () => {
+      withoutCompanyDefaults(() => {
+        const wrapper = mountTab(listings.value.find(l => !hasCleaningSteps(l))!)
+        expect(wrapper.find('[data-testid="cleaning-steps-required"]').exists()).toBe(true)
+        expect(wrapper.get('[data-testid="new-cleaning"]').attributes('disabled')).toBeDefined()
+        expect(wrapper.get('[data-testid="configure-default-cleaning"]').attributes('disabled')).toBeDefined()
+        expect(wrapper.get('[data-testid="type-checklist-daily"]').text()).toContain('No checklist')
+      })
+    })
+
+    it('saves a type\'s choice from its sheet, back to the default', async () => {
+      const wrapper = mountTab(lst('lst-1'))
+      await wrapper.get('[data-testid="type-checklist-check_out"]').trigger('click')
+      expect(wrapper.get('[data-testid="checklist-sheet"]').attributes('data-type')).toBe('check_out')
+      await wrapper.get('[data-testid="checklist-sheet-default"]').trigger('click')
+      const updated = wrapper.emitted('update')![0]![0] as Listing
+      expect(updated.maintenance.cleaningTemplates).toEqual({})
+    })
+
+    it('saves custom steps and points the type that asked for them at them', async () => {
+      const wrapper = mountTab(lst('lst-2'))
+      await wrapper.get('[data-testid="type-checklist-daily"]').trigger('click')
+      await wrapper.get('[data-testid="checklist-sheet-custom"]').trigger('click')
+      await nextTick()
+      await wrapper.get('[data-testid="sheet-save"]').trigger('click')
+      const updated = wrapper.emitted('update')![0]![0] as Listing
+      expect(updated.maintenance.cleaningTemplates).toEqual({ daily: 'custom' })
+      expect(updated.maintenance.cleaningSteps).toEqual([{ id: 's', title: 'All', steps: [{ id: '1', label: 'Mop' }] }])
+    })
+
+    it('shows the company schedule for new bookings until the listing overrides it', () => {
+      const plain = { ...lst('lst-2'), maintenance: { ...lst('lst-2').maintenance, defaultCleaningSchedule: undefined } }
+      const wrapper = mountTab(plain)
+      expect(wrapper.get('[data-testid="default-cleaning-origin"]').text()).toBe('Default')
+      expect(wrapper.find('[data-testid="default-cleaning-reset"]').exists()).toBe(false)
+    })
+
+    it('resets an overridden schedule to the company default', async () => {
+      const listing = listings.value.find(l => l.maintenance.defaultCleaningSchedule)!
+      const wrapper = mountTab(listing)
+      expect(wrapper.get('[data-testid="default-cleaning-origin"]').text()).toBe('Override')
+      await wrapper.get('[data-testid="default-cleaning-reset"]').trigger('click')
+      const updated = wrapper.emitted('update')![0]![0] as Listing
+      expect(updated.maintenance.defaultCleaningSchedule).toBeUndefined()
+    })
   })
 
   it('opens the Operations Calendar create sheet for this listing, today', async () => {

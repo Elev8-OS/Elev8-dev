@@ -2,14 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { describeListingCleaning } from '~/components/reservations/data/cleaning-schedule'
 
 describe('describeListingCleaning', () => {
-  it('describes daily cleaning from check-in day', () => {
+  it('describes a daily schedule as the daily routine: every day, booked or not', () => {
     expect(describeListingCleaning({ type: 'daily', time: '11:00', startOffset: 'check_in' }))
-      .toBe('Cleaned every day of the stay at 11:00, from check-in day.')
-  })
-
-  it('describes the day after check-in', () => {
-    expect(describeListingCleaning({ type: 'daily', time: '10:00', startOffset: 'day_after_check_in' }))
-      .toBe('Cleaned every day of the stay at 10:00, from the day after check-in.')
+      .toBe('Cleaned at 11:00: daily cleaning with guests in, check-out cleaning when they leave, vacant upkeep every Mon and Thu while empty.')
   })
 
   it('describes a check-out cleaning', () => {

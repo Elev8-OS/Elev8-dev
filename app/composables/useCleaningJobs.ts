@@ -1,10 +1,13 @@
-import type { CleaningFilters, CleaningJob, CleaningJobInput } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningFilters, CleaningJob, CleaningJobInput, CleaningJobSource } from '~/components/cleaning/data/cleaning-jobs'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { cleanerOptions, cleaningJobs } from '~/components/cleaning/data/cleaning-jobs'
-import { cleaningDateKey, resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
-import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+import { cleaningDateKey, resolveStayForCleaning, routineDayType } from '~/components/cleaning/data/cleaning-link'
+import { cleaningTemplateTypeFor, listingCanBeCleaned, resolveListingChecklist } from '~/components/cleaning/data/cleaning-step-templates'
 import { listings } from '~/components/listings/data/listings'
 import { allStays } from '~/components/operations-calendar/data/calendar-stays'
+import { vacantCleaningDue } from '~/components/reservations/data/cleaning-schedule'
+import { useCleaningScheduleDefault } from '~/composables/useCleaningScheduleDefault'
+import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 import { useNotifications } from '~/composables/useNotifications'
 // useReservationsModule imports this module too. The cycle is safe because
 // neither calls the other at module load, only inside functions.
@@ -22,23 +25,39 @@ function stayIdFor(job: Pick<CleaningJob, 'listingId' | 'unitId' | 'scheduledAt'
 }
 
 /**
- * ⚠️ The cleaning-steps gate: a listing with no cleaning steps gets no new
- * cleaning, from any path. A listing id this app does not hold has nothing to
- * check against and passes.
+ * ⚠️ The cleaning-steps gate: a listing with no checklist gets no new cleaning,
+ * from any path. With a `source`, whether that cleaning type resolves to a
+ * checklist (listing override, else company default; `resolveListingChecklist`);
+ * without one, whether any type does. A listing id this app does not hold has
+ * nothing to check against and passes.
  */
-export function listingHasCleaningSteps(listingId: string): boolean {
+export function listingHasCleaningSteps(listingId: string, source?: CleaningJobSource): boolean {
   const listing = listings.value.find(l => l.id === listingId)
-  return !listing || hasCleaningSteps(listing)
+  if (!listing)
+    return true
+  const type = source ? cleaningTemplateTypeFor(source) : undefined
+  return listingCanBeCleaned(listing.maintenance, useCleaningStepTemplates().library.value, type)
 }
 
 /**
- * A fresh copy of the listing's cleaning steps for a job's checklist, or
- * undefined when the listing has none. A copy, never the listing's own array:
- * the job's checklist is a snapshot (`CleaningJob.steps`).
+ * A fresh copy of the checklist a cleaning of `source` uses on the listing, and
+ * its name, for a job (`CleaningJob.steps` / `checklistName`); undefined when
+ * there is none. A copy, never the original array: the job's checklist is a
+ * snapshot.
  */
-export function cleaningStepsSnapshot(listingId: string): CleaningStepSection[] | undefined {
-  const steps = listings.value.find(l => l.id === listingId)?.maintenance?.cleaningSteps
-  return steps?.length ? JSON.parse(JSON.stringify(steps)) : undefined
+export function cleaningChecklistSnapshot(listingId: string, source: CleaningJobSource = 'custom'): { steps: CleaningStepSection[], checklistName: string } | undefined {
+  const listing = listings.value.find(l => l.id === listingId)
+  if (!listing)
+    return undefined
+  const resolved = resolveListingChecklist(listing.maintenance, cleaningTemplateTypeFor(source), useCleaningStepTemplates().library.value)
+  return resolved ? { steps: JSON.parse(JSON.stringify(resolved.sections)), checklistName: resolved.name } : undefined
+}
+
+/** The input's own steps when it brings them, else the listing's checklist for its type. */
+function checklistFields(input: Pick<CleaningJob, 'listingId' | 'source' | 'steps' | 'checklistName'>) {
+  if (input.steps)
+    return { steps: input.steps, checklistName: input.checklistName }
+  return cleaningChecklistSnapshot(input.listingId, input.source) ?? { steps: undefined, checklistName: undefined }
 }
 
 /**
@@ -51,15 +70,25 @@ function linkSeed(seed: CleaningJob[]): CleaningJob[] {
     const linked = job.reservationId ? job : { ...job, reservationId: stayIdFor(job) }
     if (linked.steps || linked.status === 'done')
       return linked
-    const steps = cleaningStepsSnapshot(linked.listingId)
-    return steps ? { ...linked, steps } : linked
+    const snapshot = cleaningChecklistSnapshot(linked.listingId, linked.source)
+    return snapshot ? { ...linked, ...snapshot } : linked
   })
+}
+
+/** How far ahead the daily routine keeps cleanings (`syncRoutineCleanings`). */
+export const ROUTINE_HORIZON_DAYS = 14
+
+/** Local YYYY-MM-DD, the same day the property sees for a local midnight. */
+function formatDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 export function useCleaningJobs() {
   // Seeded jobs with no stay recorded are linked on load, by the same rule a
   // new job is: a seed that says null means "not recorded", not "none".
   const jobs = useState<CleaningJob[]>('cleaning-jobs', () => linkSeed(cleaningJobs.value))
+  /** Routine days the user deleted or cancelled ("listingId|YYYY-MM-DD"): the routine never refills them. */
+  const routineSkips = useState<string[]>('cleaning-routine-skips', () => [])
 
   const syncedJobs = computed(() => jobs.value)
 
@@ -127,11 +156,11 @@ export function useCleaningJobs() {
    * the backstop for the automatic paths.
    */
   function createJob(input: CleaningJobInput): CleaningJob | null {
-    if (!listingHasCleaningSteps(input.listingId))
+    if (!input.steps?.length && !listingHasCleaningSteps(input.listingId, input.source))
       return null
     const job: CleaningJob = {
       ...input,
-      steps: input.steps ?? cleaningStepsSnapshot(input.listingId),
+      ...checklistFields(input),
       reservationId: input.reservationId || stayIdFor(input),
       id: `cln-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     }
@@ -161,8 +190,8 @@ export function useCleaningJobs() {
         // A job moved to another listing before it starts takes that listing's steps.
         const notStarted = next.status !== 'in_progress' && next.status !== 'done'
         const recopy = next.listingId !== job.listingId && notStarted && !('steps' in patch)
-        const steps = recopy ? cleaningStepsSnapshot(next.listingId) : next.steps
-        return { ...next, steps, reservationId: stayIdFor(next) }
+        const checklist = recopy ? (cleaningChecklistSnapshot(next.listingId, next.source) ?? { steps: undefined, checklistName: undefined }) : {}
+        return { ...next, ...checklist, reservationId: stayIdFor(next) }
       }
       if (movedDate)
         return { ...next, reservationId: stayIdFor(next) ?? job.reservationId ?? null }
@@ -171,16 +200,19 @@ export function useCleaningJobs() {
   }
 
   function deleteJob(id: string) {
+    const job = jobs.value.find(j => j.id === id)
+    if (job?.routine)
+      routineSkips.value = [...routineSkips.value, `${job.listingId}|${cleaningDateKey(job.scheduledAt)}`]
     jobs.value = jobs.value.filter(job => job.id !== id)
   }
 
   function applyReservationSchedule(reservationId: string, newJobs: CleaningJobInput[]) {
     const preserved = jobs.value.filter(j => !(j.reservationId === reservationId && j.status !== 'done'))
     // A listing with no cleaning steps gets no jobs (`listingHasCleaningSteps`).
-    const allowed = newJobs.filter(input => listingHasCleaningSteps(input.listingId))
+    const allowed = newJobs.filter(input => listingHasCleaningSteps(input.listingId, input.source))
     const added: CleaningJob[] = allowed.map((input, idx) => ({
       ...input,
-      steps: input.steps ?? cleaningStepsSnapshot(input.listingId),
+      ...checklistFields(input),
       id: `cln-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
     }))
     jobs.value = [...preserved, ...added]
@@ -245,7 +277,10 @@ export function useCleaningJobs() {
   function createFromCheckout(reservation: { id: string, listingId: string, listingName: string, checkOut: string, guestName?: string }) {
     const { createGuestActivityAlert } = useNotifications()
     const scheduledAt = `${reservation.checkOut}T11:00:00+08:00`
-    const job = createJob({
+    // The daily routine may already have that departure's check-out cleaning.
+    const existing = jobs.value.find(j => j.listingId === reservation.listingId && j.status !== 'cancelled' && j.status !== 'done'
+      && cleaningDateKey(j.scheduledAt) === reservation.checkOut && (j.source === 'check_out' || j.source === 'checkout'))
+    const job = existing ?? createJob({
       listingId: reservation.listingId,
       listingName: reservation.listingName,
       scheduledAt,
@@ -270,6 +305,119 @@ export function useCleaningJobs() {
     })
 
     return job
+  }
+
+  /**
+   * ⚠️ The daily routine: a listing whose cleaning schedule (its own, else the
+   * company default; `useCleaningScheduleDefault`) is DAILY is cleaned every
+   * day, booked or not. For each such listing and each day from `today` to
+   * `ROUTINE_HORIZON_DAYS` ahead it keeps exactly one cleaning, typed by the day
+   * (`routineDayType`): daily with a guest in, check-out on departure day, vacant
+   * upkeep when empty, but only on the days `schedule.vacant` makes due
+   * (default Monday and Thursday). Each takes its type's checklist (`cleaningChecklistSnapshot`);
+   * a type with none is skipped, as everywhere.
+   * - A day that already has a cleaning not made by the routine (by hand, or a
+   *   booking's own customised schedule) is left to it; routine jobs not yet
+   *   started that day are removed.
+   * - A routine job not yet started is retyped (and its checklist re-copied)
+   *   when a booking changes what the day needs, e.g. vacant becomes check-out.
+   * - Routine jobs not yet started on a listing that left the daily schedule
+   *   are removed. Started and done jobs are never touched.
+   * Idempotent, so it is safe on every mount and after every booking change.
+   */
+  function syncRoutineCleanings(today: Date = new Date()) {
+    const { scheduleFor } = useCleaningScheduleDefault()
+    const stays = allStays(listings.value, useReservationsModule().reservations.value)
+    const notStarted = (j: CleaningJob) => j.status === 'draft' || j.status === 'scheduled' || j.status === 'confirmed'
+    const days = Array.from({ length: ROUTINE_HORIZON_DAYS }, (_, i) => {
+      const d = new Date(today)
+      d.setDate(d.getDate() + i)
+      return formatDateKey(d)
+    })
+    const firstDay = days[0]!
+    const routineListings = new Map(listings.value
+      .map(l => [l.id, scheduleFor(l)] as const)
+      .filter(([, schedule]) => schedule.type === 'daily'))
+
+    let next = jobs.value.filter(j =>
+      // A listing that left the routine loses its upcoming routine jobs.
+      !(j.routine && notStarted(j) && !routineListings.has(j.listingId) && cleaningDateKey(j.scheduledAt) >= firstDay))
+
+    for (const [listingId, schedule] of routineListings) {
+      const listing = listings.value.find(l => l.id === listingId)!
+      const time = schedule.time || '11:00'
+      const cleanerIds = schedule.assigneeIds?.length ? [...schedule.assigneeIds] : (schedule.assigneeId && schedule.assigneeId !== 'unassigned' ? [schedule.assigneeId] : [])
+      // The listing's last cleaning before the window: where "every N days" counts from.
+      let lastCleaned: string | null = next
+        .filter(j => j.listingId === listingId && j.status !== 'cancelled' && cleaningDateKey(j.scheduledAt) < firstDay)
+        .map(j => cleaningDateKey(j.scheduledAt))
+        .sort()
+        .at(-1) ?? null
+      for (const day of days) {
+        const hasCleaning = () => next.some(j => j.listingId === listingId && j.status !== 'cancelled' && cleaningDateKey(j.scheduledAt) === day)
+        const stepDay = () => {
+          if (hasCleaning())
+            lastCleaned = day
+        }
+        if (routineSkips.value.includes(`${listingId}|${day}`)) {
+          stepDay()
+          continue
+        }
+        // One day's plan; returns early instead of `continue` so `stepDay` always runs after.
+        const planDay = () => {
+          const sameDay = next.filter(j => j.listingId === listingId && cleaningDateKey(j.scheduledAt) === day)
+          // A routine day the user cancelled stays cancelled.
+          if (sameDay.some(j => j.routine && j.status === 'cancelled'))
+            return
+          const onDay = sameDay.filter(j => j.status !== 'cancelled')
+          if (onDay.some(j => !j.routine)) {
+            next = next.filter(j => !(j.routine && notStarted(j) && onDay.includes(j)))
+            return
+          }
+          const source: CleaningJobSource = routineDayType(listingId, day, stays, schedule.startOffset)
+          const existing = onDay.find(j => j.routine)
+          // An empty day is cleaned only when due (`vacantCleaningDue`, default Mon and Thu).
+          if (source === 'vacant' && !vacantCleaningDue(day, lastCleaned, schedule.vacant)) {
+            if (existing && notStarted(existing))
+              next = next.filter(j => j.id !== existing.id)
+            return
+          }
+          if (existing) {
+            if (existing.source === source || !notStarted(existing))
+              return
+            const checklist = cleaningChecklistSnapshot(listingId, source)
+            next = checklist
+              ? next.map(j => j.id === existing.id ? { ...j, source, ...checklist, priority: source === 'check_out' ? 'high' as const : 'normal' as const, reservationId: stayIdFor(j) } : j)
+              : next.filter(j => j.id !== existing.id)
+            return
+          }
+          const checklist = cleaningChecklistSnapshot(listingId, source)
+          if (!checklist)
+            return
+          const draft = { listingId, unitId: null, scheduledAt: `${day}T${time}:00+08:00` }
+          next = [...next, {
+            ...draft,
+            listingName: listing.name,
+            cleanerIds,
+            cleanerNames: resolveCleanerNames(cleanerIds),
+            teamName: 'Housekeeping',
+            status: 'scheduled',
+            priority: source === 'check_out' ? 'high' : 'normal',
+            durationMinutes: source === 'check_out' ? 180 : 90,
+            notes: '',
+            source,
+            recurrence: null,
+            routine: true,
+            ...checklist,
+            reservationId: stayIdFor(draft),
+            id: `cln-rt-${listingId}-${day}`,
+          }]
+        }
+        planDay()
+        stepDay()
+      }
+    }
+    jobs.value = next
   }
 
   function resolveCleanerNames(cleanerIds: string[]) {
@@ -306,5 +454,6 @@ export function useCleaningJobs() {
     joinCleanerNames,
     resolveListingName,
     listingHasCleaningSteps,
+    syncRoutineCleanings,
   }
 }

@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import type { CleaningStepTemplate, CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
+import type { CleaningStepTemplate } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { toast } from 'vue-sonner'
 import CleaningStepsEditor from '~/components/cleaning/CleaningStepsEditor.vue'
-import { CLEANING_SOURCE_ICONS, CLEANING_SOURCE_LABELS } from '~/components/cleaning/data/cleaning-jobs'
-import { CLEANING_TEMPLATE_TYPES } from '~/components/cleaning/data/cleaning-step-templates'
 import { cleanCleaningSteps, countCleaningSteps, parseCleaningStepsFile } from '~/components/cleaning/data/cleaning-steps'
 import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 
 /**
  * Creates or edits one cleaning step template (`template` null = new). The
  * steps use the same `CleaningStepsEditor` as a listing's steps. Saving a
- * template never changes listings that were set up from it: they hold copies.
- * Cleaning type: which cleanings the template is for, one or more.
+ * template reaches new cleanings on every listing that uses it (as a company
+ * default or an override); existing cleanings keep their copy. Which cleaning
+ * type uses it is set in the defaults and on listings, not here.
  */
 const props = defineProps<{ template: CleaningStepTemplate | null }>()
 const open = defineModel<boolean>('open', { default: false })
@@ -21,7 +20,6 @@ const { createTemplate, updateTemplate } = useCleaningStepTemplates()
 
 const name = ref('')
 const description = ref('')
-const cleaningTypes = ref<CleaningTemplateType[]>([])
 const draft = ref<CleaningStepSection[]>([])
 const importError = ref('')
 
@@ -30,19 +28,12 @@ watch(open, (isOpen) => {
     return
   name.value = props.template?.name ?? ''
   description.value = props.template?.description ?? ''
-  cleaningTypes.value = [...(props.template?.cleaningTypes ?? ['check_out'])]
   draft.value = JSON.parse(JSON.stringify(props.template?.sections ?? []))
   importError.value = ''
 }, { immediate: true })
 
 const stepCount = computed(() => countCleaningSteps(draft.value))
-const canSave = computed(() => name.value.trim().length > 0 && stepCount.value > 0 && cleaningTypes.value.length > 0)
-
-function toggleType(type: CleaningTemplateType) {
-  cleaningTypes.value = cleaningTypes.value.includes(type)
-    ? cleaningTypes.value.filter(t => t !== type)
-    : CLEANING_TEMPLATE_TYPES.filter(t => t === type || cleaningTypes.value.includes(t))
-}
+const canSave = computed(() => name.value.trim().length > 0 && stepCount.value > 0)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -65,11 +56,11 @@ async function readFile(event: Event) {
 function save() {
   const sections = cleanCleaningSteps(draft.value)
   if (props.template) {
-    updateTemplate(props.template.id, { name: name.value, description: description.value, cleaningTypes: cleaningTypes.value, sections })
+    updateTemplate(props.template.id, { name: name.value, description: description.value, sections })
     toast.success('Template saved')
   }
   else {
-    createTemplate({ name: name.value, description: description.value, cleaningTypes: cleaningTypes.value, sections })
+    createTemplate({ name: name.value, description: description.value, sections })
     toast.success('Template created')
   }
   open.value = false
@@ -95,36 +86,6 @@ function save() {
           <div class="grid gap-1.5">
             <Label for="cst-description">Description</Label>
             <Input id="cst-description" v-model="description" placeholder="When to use it" />
-          </div>
-          <div class="grid gap-1.5">
-            <Label>Cleaning type <span class="text-destructive">*</span></Label>
-            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label="Cleaning type">
-              <div
-                v-for="type in CLEANING_TEMPLATE_TYPES"
-                :key="type"
-                role="checkbox"
-                tabindex="0"
-                :aria-checked="cleaningTypes.includes(type)"
-                class="flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2 text-sm transition-colors"
-                :class="cleaningTypes.includes(type) ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'"
-                :data-testid="`template-type-${type}`"
-                @click="toggleType(type)"
-                @keydown.space.prevent="toggleType(type)"
-                @keydown.enter.prevent="toggleType(type)"
-              >
-                <div
-                  class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
-                  :class="cleaningTypes.includes(type) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
-                >
-                  <Icon v-if="cleaningTypes.includes(type)" name="lucide:check" class="size-3" />
-                </div>
-                <Icon :name="CLEANING_SOURCE_ICONS[type]" class="size-4 text-muted-foreground" />
-                <span>{{ CLEANING_SOURCE_LABELS[type] }}</span>
-              </div>
-            </div>
-            <p class="text-xs" :class="cleaningTypes.length ? 'text-muted-foreground' : 'text-destructive'">
-              {{ cleaningTypes.length ? 'Pick every cleaning this template is written for.' : 'Pick at least one cleaning type.' }}
-            </p>
           </div>
         </div>
 

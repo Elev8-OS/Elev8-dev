@@ -1,13 +1,16 @@
 /**
- * A listing's cleaning steps: what housekeeping works through on every clean
- * of that property, in sections ("Kitchen", "Bathroom"). The housekeeping app
- * turns them into the checklist a cleaner answers OK or Problem
+ * Cleaning steps: what housekeeping works through on a clean, in sections
+ * ("Kitchen", "Bathroom"). Templates hold them (`cleaning-step-templates.ts`),
+ * and so may a listing as its own custom steps. The housekeeping app turns
+ * them into the checklist a cleaner answers OK or Problem
  * (`CleaningChecklistGroup` in `cleaning-jobs.ts` is that filled-in report).
  *
- * ⚠️ A listing with no steps gets no cleaning: no new job, no default cleaning
- * for new bookings. The gate is `listingHasCleaningSteps` in `useCleaningJobs`,
- * which `createJob` and `applyReservationSchedule` enforce, so the automatic
- * paths (a new booking, a checkout, an owner stay) are held to it too.
+ * ⚠️ A cleaning type with no checklist on a listing gets no cleaning: no new
+ * job, no default cleaning for new bookings. The gate is
+ * `listingHasCleaningSteps` in `useCleaningJobs`, which `createJob` and
+ * `applyReservationSchedule` enforce, so the automatic paths (a new booking, a
+ * checkout, an owner stay) are held to it too. With the company defaults set
+ * (a new tenant starts with them), it rarely closes.
  *
  * Kept free of imports from the listings data so `listings.ts` can seed from
  * the template below without an import cycle.
@@ -26,7 +29,7 @@ export interface CleaningStepSection {
   steps: CleaningStep[]
 }
 
-export const CLEANING_STEPS_REQUIRED_MESSAGE = 'Add cleaning steps to this listing before scheduling cleanings.'
+export const CLEANING_STEPS_REQUIRED_MESSAGE = 'This listing has no checklist for this cleaning. Set one up before scheduling.'
 
 /** Steps across every section; empty sections do not count. */
 export function countCleaningSteps(sections: CleaningStepSection[] | null | undefined): number {

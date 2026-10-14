@@ -2,12 +2,12 @@ import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
 import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
-import { hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import { DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
-import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { listingHasCleaningSteps, useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useCleaningScheduleDefault } from '~/composables/useCleaningScheduleDefault'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { usePromoRedemption } from '~/composables/usePromoRedemption'
 import { matchesReservationPeriod } from '~/lib/reservation-period'
@@ -381,9 +381,15 @@ export function useReservationsModule() {
     let cleaningSchedule = (draft as any).cleaningSchedule
     if (!cleaningSchedule && !isCalendarBlock && draft.listingId) {
       const listing = listings.value.find(l => l.id === draft.listingId)
-      // No cleaning steps, no cleaning: the default is not applied (`cleaning-steps.ts`).
-      if (listing?.maintenance?.defaultCleaningSchedule && hasCleaningSteps(listing)) {
-        cleaningSchedule = resolveDefaultCleaningSchedule(listing.maintenance.defaultCleaningSchedule, draft.checkIn)
+      // The listing's schedule, else the company default (`useCleaningScheduleDefault`).
+      // No checklist, no cleaning: nothing is applied without one, and each job is
+      // still checked against its own type in `applyReservationSchedule`.
+      // A DAILY schedule is the daily routine instead: it cleans the listing every
+      // day, booked or not, so the booking gets no schedule of its own
+      // (`syncRoutineCleanings`, run by the cleaning-routine plugin).
+      const schedule = listing ? useCleaningScheduleDefault().scheduleFor(listing) : null
+      if (listing && schedule && schedule.type !== 'daily' && listingHasCleaningSteps(listing.id)) {
+        cleaningSchedule = resolveDefaultCleaningSchedule(schedule, draft.checkIn)
       }
     }
 

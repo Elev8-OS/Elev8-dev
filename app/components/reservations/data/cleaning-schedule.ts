@@ -38,6 +38,8 @@ export interface ListingCleaningConfig {
   assigneeIds?: string[]
   /** Configuration when type === 'custom' */
   custom?: CustomCleaningSettings
+  /** With type 'daily' (the daily routine): how often an EMPTY day is cleaned. Absent = `DEFAULT_VACANT_CLEANING`. */
+  vacant?: VacantCleaningSettings
 }
 
 export const DAY_OF_WEEK_OPTIONS: { id: DayOfWeek, label: string, short: string, dayIndex: number }[] = [
@@ -49,6 +51,58 @@ export const DAY_OF_WEEK_OPTIONS: { id: DayOfWeek, label: string, short: string,
   { id: 'saturday', label: 'Saturday', short: 'Sat', dayIndex: 6 },
   { id: 'sunday', label: 'Sunday', short: 'Sun', dayIndex: 0 },
 ]
+
+/** How often the daily routine cleans an empty listing (`vacantCleaningDue`). */
+export type VacantCleaningFrequency = 'every_day' | 'every_n_days' | 'weekdays' | 'never'
+
+export interface VacantCleaningSettings {
+  frequency: VacantCleaningFrequency
+  /** For 'every_n_days': days since the listing's last cleaning of any kind. */
+  dayInterval?: number
+  /** For 'weekdays'. */
+  weekDays?: DayOfWeek[]
+}
+
+/** Twice a week, Monday and Thursday: what an empty listing gets unless set otherwise. */
+export const DEFAULT_VACANT_CLEANING: VacantCleaningSettings = { frequency: 'weekdays', weekDays: ['monday', 'thursday'] }
+
+/**
+ * Whether an empty `day` (YYYY-MM-DD) gets vacant upkeep. `lastCleaned` is the
+ * listing's last cleaning of any kind before it (null when none), which is what
+ * "every N days" counts from, so the count restarts after a check-out.
+ */
+export function vacantCleaningDue(day: string, lastCleaned: string | null, settings: VacantCleaningSettings = DEFAULT_VACANT_CLEANING): boolean {
+  switch (settings.frequency) {
+    case 'every_day':
+      return true
+    case 'never':
+      return false
+    case 'weekdays': {
+      const weekday = new Date(`${day}T12:00:00`).getDay()
+      return (settings.weekDays ?? []).some(d => DAY_OF_WEEK_OPTIONS.find(o => o.id === d)?.dayIndex === weekday)
+    }
+    case 'every_n_days': {
+      if (!lastCleaned)
+        return true
+      const gap = Math.round((new Date(`${day}T12:00:00`).getTime() - new Date(`${lastCleaned}T12:00:00`).getTime()) / 86_400_000)
+      return gap >= Math.max(1, settings.dayInterval ?? 2)
+    }
+  }
+}
+
+/** "every day", "every 3 days", "every Mon and Thu", "never". */
+export function describeVacantCleaning(settings: VacantCleaningSettings = DEFAULT_VACANT_CLEANING): string {
+  if (settings.frequency === 'every_day')
+    return 'every day'
+  if (settings.frequency === 'never')
+    return 'never'
+  if (settings.frequency === 'every_n_days')
+    return `every ${Math.max(1, settings.dayInterval ?? 2)} days`
+  const days = (settings.weekDays ?? []).map(d => DAY_OF_WEEK_OPTIONS.find(o => o.id === d)?.short ?? d)
+  if (!days.length)
+    return 'never'
+  return `every ${days.length > 1 ? `${days.slice(0, -1).join(', ')} and ${days[days.length - 1]}` : days[0]}`
+}
 
 export const DAY_INDEX_TO_ID: Record<number, DayOfWeek> = {
   0: 'sunday',
@@ -307,6 +361,16 @@ export function describeListingCleaning(config?: ListingCleaningConfig | null): 
 
   if (config.type === 'checkout')
     return `Cleaned once on check-out day${at}.`
+
+  // A listing's (or the company's) daily schedule is the daily routine: every
+  // day, booked or not (`syncRoutineCleanings`).
+  if (config.type === 'daily') {
+    const vacant = config.vacant ?? DEFAULT_VACANT_CLEANING
+    const empty = vacant.frequency === 'never' || (vacant.frequency === 'weekdays' && !vacant.weekDays?.length)
+      ? 'no cleaning while empty'
+      : `vacant upkeep ${describeVacantCleaning(vacant)} while empty`
+    return `Cleaned${at}: daily cleaning with guests in, check-out cleaning when they leave, ${empty}.`
+  }
 
   if (config.type === 'custom' && config.custom?.frequency === 'week' && config.custom.weekDays?.length) {
     const days = config.custom.weekDays.map(d => DAY_OF_WEEK_OPTIONS.find(o => o.id === d)?.short ?? d)

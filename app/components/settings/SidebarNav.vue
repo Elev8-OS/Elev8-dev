@@ -41,7 +41,7 @@ const sections: Section[] = [
   {
     label: 'Operations',
     items: [
-      { title: 'Cleaning Templates', href: '/settings/cleaning-templates' },
+      { title: 'Cleaning', href: '/settings/cleaning-templates' },
       { title: 'Guidance', href: '/settings/guidance' },
     ],
   },

@@ -843,8 +843,8 @@ const cleaningTimeRange = computed(() => {
                 </p>
               </div>
             </div>
-            <!-- The listing's steps as copied onto this job; the report replaces it once done. -->
-            <CleaningJobChecklist :steps="cleaningJob.steps" />
+            <!-- The checklist as copied onto this job; the report replaces it once done. -->
+            <CleaningJobChecklist :steps="cleaningJob.steps" :name="cleaningJob.checklistName" />
           </template>
 
           <!-- Task details -->

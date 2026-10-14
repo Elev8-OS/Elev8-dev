@@ -4,12 +4,17 @@ import CleaningChecklistGroups from '~/components/cleaning/CleaningChecklistGrou
 import { countCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 
 /**
- * The checklist a cleaning job carries: the listing's cleaning steps as they
- * were copied when the job was created (`CleaningJob.steps`). Read-only here;
+ * The checklist a cleaning job carries: the steps its type resolved to on the
+ * listing, as copied when the job was created (`CleaningJob.steps`), named by
+ * `checklistName` so housekeeping sees "Deep clean" vs "Daily refresh". Read-only here;
  * housekeeping answers it in their app, and the answers come back as the
  * report (`feedback.checklist`, shown by `CleaningReportPanel`).
  */
-const props = defineProps<{ steps: CleaningStepSection[] | undefined }>()
+const props = defineProps<{
+  steps: CleaningStepSection[] | undefined
+  /** Which checklist the steps came from (`CleaningJob.checklistName`), e.g. "Deep clean". */
+  name?: string
+}>()
 
 const total = computed(() => countCleaningSteps(props.steps))
 
@@ -25,6 +30,9 @@ const groups = computed(() =>
       <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon name="lucide:list-checks" class="size-3.5" />
         Checklist
+        <Badge v-if="name && total" variant="secondary" class="h-5 text-[10px] font-medium" data-testid="job-checklist-name">
+          {{ name }}
+        </Badge>
       </p>
       <span v-if="total" class="text-xs text-muted-foreground">{{ total }} {{ total === 1 ? 'step' : 'steps' }}</span>
     </div>

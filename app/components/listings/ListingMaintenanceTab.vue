@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import type { CleaningJob } from '~/components/cleaning/data/cleaning-jobs'
+import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import type { Listing, Unit } from '~/components/listings/data/listings'
 import type { CalendarEvent } from '~/components/operations-calendar/data/operations-calendar'
-import type { CustomCleaningFrequency, DayOfWeek, ListingCleaningConfig, ReservationCleaningType } from '~/components/reservations/data/cleaning-schedule'
+import type { CustomCleaningFrequency, DayOfWeek, ListingCleaningConfig, ReservationCleaningType, VacantCleaningSettings } from '~/components/reservations/data/cleaning-schedule'
 import type { Task } from '~/components/tasks/data/schema'
 import { toast } from 'vue-sonner'
-import { cleanerOptions, cleaningDisplayStatus, cleaningDisplayStatusClasses, cleaningDisplayStatusMeta } from '~/components/cleaning/data/cleaning-jobs'
-import { CLEANING_STEPS_REQUIRED_MESSAGE, countCleaningSteps, hasCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+import { cleanerOptions, CLEANING_SOURCE_ICONS, CLEANING_SOURCE_LABELS, cleaningDisplayStatus, cleaningDisplayStatusClasses, cleaningDisplayStatusMeta } from '~/components/cleaning/data/cleaning-jobs'
+import { CLEANING_TEMPLATE_TYPES, LISTING_CUSTOM_STEPS, listingCanBeCleaned, resolveListingChecklist, withListingOverride } from '~/components/cleaning/data/cleaning-step-templates'
+import { CLEANING_STEPS_REQUIRED_MESSAGE, countCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+import VacantCleaningPicker from '~/components/cleaning/VacantCleaningPicker.vue'
 import ListingCleaningStepsSheet from '~/components/listings/ListingCleaningStepsSheet.vue'
+import ListingTypeChecklistSheet from '~/components/listings/ListingTypeChecklistSheet.vue'
 import CalendarEventDetailDialog from '~/components/operations-calendar/CalendarEventDetailDialog.vue'
 import { buildCleaningEvents, cleaningTypeIcons, cleaningTypeLabels, formatLocalDateKey, normalizeCleaningType } from '~/components/operations-calendar/data/operations-calendar'
 import OperationsCalendarCreateDialog from '~/components/operations-calendar/OperationsCalendarCreateDialog.vue'
@@ -18,6 +22,8 @@ import { assigneeOptions } from '~/components/tasks/data/data'
 import { isTaskCompleted, TASK_STATUS_LABELS } from '~/components/tasks/data/schema'
 import TaskDetailSheet from '~/components/tasks/TaskDetailSheet.vue'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useCleaningScheduleDefault } from '~/composables/useCleaningScheduleDefault'
+import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 import { useTaskDetail } from '~/composables/useTaskDetail'
 import { useTaskStore } from '~/composables/useTaskStore'
 
@@ -36,15 +42,73 @@ const showDefaultScheduleDialog = ref(false)
 const showNewTask = ref(false)
 const showStepsSheet = ref(false)
 
-// --- Cleaning steps ------------------------------------------------------------
-// ⚠️ No steps, no cleaning: New cleaning and the default cleaning are locked
-// until the listing has at least one step (`cleaning-steps.ts`).
-const stepsReady = computed(() => hasCleaningSteps(props.listing))
-const stepCount = computed(() => countCleaningSteps(props.listing.maintenance.cleaningSteps))
+// --- Checklists ----------------------------------------------------------------
+// Each cleaning type follows the company default (Settings), or this listing
+// overrides it with another template or its own custom steps
+// (`cleaning-step-templates.ts`). ⚠️ No checklist, no cleaning: New cleaning and
+// the default cleaning lock only when no type resolves to one.
+const { library, templates: cleaningTemplates } = useCleaningStepTemplates()
+const stepsReady = computed(() => listingCanBeCleaned(props.listing.maintenance, library.value))
+
+/**
+ * The job types a schedule creates: a booking schedule one type
+ * (`generateCleaningJobsForReservation`); the daily routine three
+ * (`syncRoutineCleanings`).
+ */
+const SCHEDULE_JOB_TYPES: Record<ReservationCleaningType, CleaningTemplateType[]> = { daily: ['daily', 'check_out', 'vacant'], checkout: ['check_out'], custom: ['custom'] }
+
+const typeChecklists = computed(() => CLEANING_TEMPLATE_TYPES.map((type) => {
+  const resolved = resolveListingChecklist(props.listing.maintenance, type, library.value)
+  return {
+    type,
+    label: CLEANING_SOURCE_LABELS[type],
+    icon: CLEANING_SOURCE_ICONS[type],
+    resolved,
+    stepCount: resolved ? countCleaningSteps(resolved.sections) : 0,
+  }
+}))
+const overrideCount = computed(() => typeChecklists.value.filter(r => r.resolved && r.resolved.origin !== 'default').length)
+
+const checklistSheetType = ref<CleaningTemplateType | null>(null)
+const showChecklistSheet = ref(false)
+function openChecklist(type: CleaningTemplateType) {
+  checklistSheetType.value = type
+  showChecklistSheet.value = true
+}
+
+function writeOverride(types: CleaningTemplateType[], value: string | null, extra: Partial<Listing['maintenance']> = {}) {
+  const overrides = withListingOverride(props.listing.maintenance, cleaningTemplates.value, types, value)
+  emit('update', { ...props.listing, maintenance: { ...props.listing.maintenance, ...extra, cleaningTemplates: overrides } })
+}
+
+function saveTypeChecklist(type: CleaningTemplateType, value: string | null) {
+  writeOverride([type], value)
+  const name = value === null
+    ? 'the company default'
+    : value === LISTING_CUSTOM_STEPS ? 'custom steps' : cleaningTemplates.value.find(t => t.id === value)?.name
+  toast.success(`${CLEANING_SOURCE_LABELS[type]} now uses ${name}`)
+}
+
+// Custom steps are edited in the steps sheet; the type that asked for them
+// switches to custom once they are saved.
+const pendingCustomType = ref<CleaningTemplateType | null>(null)
+function editCustomSteps(type: CleaningTemplateType | null) {
+  pendingCustomType.value = type
+  showStepsSheet.value = true
+}
+/** Types on custom steps: what "Copy to listings" carries over with the steps. */
+const customTypes = computed(() => typeChecklists.value.filter(r => r.resolved?.origin === 'custom').map(r => r.type))
 
 function saveCleaningSteps(steps: CleaningStepSection[]) {
+  const type = pendingCustomType.value
+  pendingCustomType.value = null
+  if (type) {
+    writeOverride([type], LISTING_CUSTOM_STEPS, { cleaningSteps: steps })
+    toast.success(`${CLEANING_SOURCE_LABELS[type]} now uses custom steps`)
+    return
+  }
   emit('update', { ...props.listing, maintenance: { ...props.listing.maintenance, cleaningSteps: steps } })
-  toast.success('Cleaning steps saved')
+  toast.success('Custom steps saved')
 }
 const { jobsForListing } = useCleaningJobs()
 const { tasks } = useTaskStore()
@@ -59,6 +123,7 @@ const defaultForm = ref<{
   time: string
   assigneeId: string
   assigneeIds: string[]
+  vacant?: VacantCleaningSettings
 }>({
   type: 'daily',
   customFrequency: 'day',
@@ -70,8 +135,25 @@ const defaultForm = ref<{
   assigneeIds: [],
 })
 
+// --- Cleaning for new bookings: the listing's own schedule, else the company default ---
+const { companyDefault, scheduleFor } = useCleaningScheduleDefault()
+const effectiveSchedule = computed(() => scheduleFor(props.listing))
+const scheduleIsOverride = computed(() => Boolean(props.listing.maintenance?.defaultCleaningSchedule))
+/** The schedule's cleaning types this listing has no checklist for: those cleanings are not created. */
+const scheduleTypeWithoutChecklist = computed(() => {
+  const missing = SCHEDULE_JOB_TYPES[effectiveSchedule.value.type]
+    .filter(type => !resolveListingChecklist(props.listing.maintenance, type, library.value))
+  return missing.length ? missing.map(type => CLEANING_SOURCE_LABELS[type]).join(', ') : null
+})
+
+function resetScheduleToCompanyDefault() {
+  const { defaultCleaningSchedule: _dropped, ...maintenance } = props.listing.maintenance
+  emit('update', { ...props.listing, maintenance })
+  toast.success('Now follows the company default')
+}
+
 const listingCleanerNames = computed(() => {
-  const sched = props.listing.maintenance?.defaultCleaningSchedule
+  const sched = effectiveSchedule.value
   if (!sched)
     return []
   const ids = sched.assigneeIds && sched.assigneeIds.length
@@ -81,7 +163,7 @@ const listingCleanerNames = computed(() => {
 })
 
 function openDefaultScheduleModal() {
-  const current = props.listing.maintenance?.defaultCleaningSchedule
+  const current = props.listing.maintenance?.defaultCleaningSchedule ?? companyDefault.value
   if (current) {
     const ids = current.assigneeIds && current.assigneeIds.length
       ? [...current.assigneeIds]
@@ -95,6 +177,7 @@ function openDefaultScheduleModal() {
       time: current.time || '11:00',
       assigneeId: ids[0] || 'unassigned',
       assigneeIds: ids,
+      vacant: current.vacant ? JSON.parse(JSON.stringify(current.vacant)) : undefined,
     }
   }
   else {
@@ -135,6 +218,7 @@ function saveDefaultSchedule() {
           weekDays: defaultForm.value.customFrequency === 'week' ? [...defaultForm.value.weekDays] : undefined,
         }
       : undefined,
+    vacant: defaultForm.value.type === 'daily' && defaultForm.value.vacant ? defaultForm.value.vacant : undefined,
   }
 
   emit('update', {
@@ -359,8 +443,8 @@ function formatDue(date: string) {
               <Icon name="lucide:list-checks" class="size-4 shrink-0" />
               {{ CLEANING_STEPS_REQUIRED_MESSAGE }}
             </span>
-            <Button size="sm" variant="outline" class="h-7 bg-background text-xs" @click="showStepsSheet = true">
-              Set up steps
+            <Button size="sm" variant="outline" class="h-7 bg-background text-xs" @click="openChecklist('check_out')">
+              Set up checklists
             </Button>
           </div>
           <div v-if="cleaningGroups.length" class="flex flex-col">
@@ -492,44 +576,53 @@ function formatDue(date: string) {
 
       <!-- Side: housekeeping defaults -->
       <div class="flex min-w-0 flex-col gap-4">
-        <Card class="gap-3 p-5" data-testid="cleaning-steps-card">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h3 class="text-sm font-semibold">
-                Cleaning steps
-              </h3>
-              <p class="mt-0.5 text-xs text-muted-foreground">
-                What housekeeping checks off on every clean.
-              </p>
-            </div>
-            <Button
-              :variant="stepsReady ? 'outline' : 'default'"
-              size="sm"
-              class="h-7 gap-1.5 text-xs"
-              data-testid="edit-cleaning-steps"
-              @click="showStepsSheet = true"
-            >
-              <Icon :name="stepsReady ? 'lucide:pencil' : 'lucide:plus'" class="size-3.5" />
-              {{ stepsReady ? 'Edit' : 'Set up' }}
-            </Button>
+        <Card class="gap-3 p-5" data-testid="checklists-card">
+          <div>
+            <h3 class="text-sm font-semibold">
+              Checklists
+            </h3>
+            <p class="mt-0.5 text-xs text-muted-foreground">
+              What housekeeping checks off, per cleaning type. New cleanings copy it when they are created.
+            </p>
           </div>
-          <div v-if="stepsReady" class="flex flex-col divide-y rounded-lg border">
-            <div
-              v-for="section in listing.maintenance.cleaningSteps"
-              :key="section.id"
-              class="flex items-center justify-between gap-2 px-3 py-2"
+          <div class="flex flex-col divide-y rounded-lg border">
+            <button
+              v-for="row in typeChecklists"
+              :key="row.type"
+              type="button"
+              class="flex items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/40"
+              :data-testid="`type-checklist-${row.type}`"
+              @click="openChecklist(row.type)"
             >
-              <span class="truncate text-xs">{{ section.title }}</span>
-              <span class="shrink-0 text-xs text-muted-foreground">{{ section.steps.length }}</span>
-            </div>
-            <div class="flex items-center justify-between gap-2 bg-muted/30 px-3 py-2 text-xs font-medium">
-              Total
-              <span>{{ stepCount }} {{ stepCount === 1 ? 'step' : 'steps' }}</span>
-            </div>
+              <Icon :name="row.icon" class="size-3.5 shrink-0 text-muted-foreground" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-xs font-medium">{{ row.label }}</span>
+                <span v-if="row.resolved" class="block truncate text-xs text-muted-foreground">
+                  {{ row.resolved.name }} · {{ row.stepCount }} {{ row.stepCount === 1 ? 'step' : 'steps' }}
+                </span>
+                <span v-else class="block text-xs text-amber-700 dark:text-amber-300">No checklist, cannot be scheduled</span>
+              </span>
+              <Badge
+                v-if="row.resolved"
+                :variant="row.resolved.origin === 'default' ? 'secondary' : 'outline'"
+                class="h-5 shrink-0 text-[10px]"
+                :data-testid="`type-checklist-origin-${row.type}`"
+              >
+                {{ row.resolved.origin === 'default' ? 'Default' : 'Override' }}
+              </Badge>
+              <Icon name="lucide:chevron-right" class="size-4 shrink-0 text-muted-foreground" />
+            </button>
           </div>
-          <p v-else class="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-            <Icon name="lucide:lock" class="size-3.5 shrink-0" />
-            Needed before any cleaning can be scheduled.
+          <p class="text-xs text-muted-foreground">
+            <template v-if="overrideCount">
+              {{ overrideCount }} {{ overrideCount === 1 ? 'type differs' : 'types differ' }} from the company default.
+            </template>
+            <template v-else>
+              Following the company defaults.
+            </template>
+            <NuxtLink to="/settings/cleaning-templates" class="font-medium underline-offset-4 hover:underline">
+              Manage templates
+            </NuxtLink>
           </p>
         </Card>
 
@@ -537,39 +630,57 @@ function formatDue(date: string) {
           <div class="flex items-start justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold">
-                Default cleaning for new bookings
+                Cleaning schedule
               </h3>
-              <p class="mt-0.5 text-xs text-muted-foreground">
-                Creates the cleaning jobs when a booking is made. Each booking can still be changed.
+              <p class="mt-0.5 text-xs text-muted-foreground" data-testid="default-cleaning-hint">
+                <template v-if="effectiveSchedule.type === 'daily'">
+                  Cleans this listing every day, planned two weeks ahead. You can still change a single day or a reservation.
+                </template>
+                <template v-else>
+                  New bookings get these cleanings automatically. You can still change them on each reservation.
+                </template>
               </p>
             </div>
             <Button variant="outline" size="sm" class="h-7 gap-1.5 text-xs" :disabled="!stepsReady" data-testid="configure-default-cleaning" @click="openDefaultScheduleModal">
               <Icon name="lucide:settings-2" class="size-3.5" />
-              {{ listing.maintenance?.defaultCleaningSchedule ? 'Configure' : 'Set default' }}
+              {{ scheduleIsOverride ? 'Configure' : 'Override' }}
             </Button>
           </div>
-          <template v-if="listing.maintenance?.defaultCleaningSchedule">
-            <div class="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3" :class="!stepsReady && 'opacity-60'" data-testid="default-cleaning">
+          <div class="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3" :class="!stepsReady && 'opacity-60'" data-testid="default-cleaning">
+            <div class="flex items-start justify-between gap-2">
               <p class="text-sm">
-                {{ describeListingCleaning(listing.maintenance.defaultCleaningSchedule) }}
+                {{ describeListingCleaning(effectiveSchedule) }}
               </p>
-              <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Icon name="lucide:user" class="size-3" />
-                <template v-if="listingCleanerNames.length">
-                  {{ listingCleanerNames.length === 1 ? 'Cleaner' : 'Cleaners' }}: {{ listingCleanerNames.join(', ') }}
-                </template>
-                <template v-else>
-                  No cleaner assigned
-                </template>
-              </p>
+              <Badge :variant="scheduleIsOverride ? 'outline' : 'secondary'" class="h-5 shrink-0 text-[10px]" data-testid="default-cleaning-origin">
+                {{ scheduleIsOverride ? 'Override' : 'Default' }}
+              </Badge>
             </div>
-          </template>
-          <p v-else-if="stepsReady" class="text-xs text-muted-foreground">
-            No default set. New bookings get a cleaning every day of the stay at 11:00.
+            <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Icon name="lucide:user" class="size-3" />
+              <template v-if="listingCleanerNames.length">
+                {{ listingCleanerNames.length === 1 ? 'Cleaner' : 'Cleaners' }}: {{ listingCleanerNames.join(', ') }}
+              </template>
+              <template v-else>
+                No cleaner assigned
+              </template>
+            </p>
+          </div>
+          <p v-if="stepsReady && scheduleTypeWithoutChecklist" class="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-200" data-testid="default-cleaning-no-checklist">
+            <Icon name="lucide:triangle-alert" class="mt-0.5 size-3 shrink-0" />
+            {{ scheduleTypeWithoutChecklist }}: no checklist here, so these cleanings are not created.
           </p>
+          <button
+            v-if="scheduleIsOverride"
+            type="button"
+            class="self-start text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            data-testid="default-cleaning-reset"
+            @click="resetScheduleToCompanyDefault"
+          >
+            Reset to company default
+          </button>
           <p v-if="!stepsReady" class="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="default-cleaning-locked">
             <Icon name="lucide:lock" class="size-3" />
-            New bookings get no cleaning until the listing has cleaning steps.
+            New bookings get no cleaning until the listing has a checklist.
           </p>
         </Card>
       </div>
@@ -588,7 +699,16 @@ function formatDue(date: string) {
       :steps="listing.maintenance.cleaningSteps"
       :listing-id="listing.id"
       :listing-name="listing.name"
+      :custom-types="customTypes"
       @save="saveCleaningSteps"
+    />
+
+    <ListingTypeChecklistSheet
+      v-model:open="showChecklistSheet"
+      :listing="listing"
+      :type="checklistSheetType"
+      @save="saveTypeChecklist"
+      @edit-custom="editCustomSteps"
     />
 
     <!-- No day for a task: its due date starts empty. -->
@@ -616,7 +736,7 @@ function formatDue(date: string) {
     <Dialog v-model:open="showDefaultScheduleDialog">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Default cleaning for new bookings</DialogTitle>
+          <DialogTitle>Cleaning schedule</DialogTitle>
           <DialogDescription>
             Set the default cleaning schedule for guest stays at {{ listing.name }}.
           </DialogDescription>
@@ -639,6 +759,14 @@ function formatDue(date: string) {
                 <span>{{ opt.label }}</span>
               </button>
             </div>
+            <p v-if="defaultForm.type === 'daily'" class="text-xs text-muted-foreground" data-testid="default-cleaning-daily-hint">
+              Daily cleaning with guests in, check-out cleaning when they leave.
+            </p>
+          </div>
+
+          <div v-if="defaultForm.type === 'daily'" class="space-y-2" data-testid="default-cleaning-when-empty">
+            <Label class="text-xs font-medium">When empty</Label>
+            <VacantCleaningPicker v-model="defaultForm.vacant" />
           </div>
 
           <!-- Custom Frequency settings -->

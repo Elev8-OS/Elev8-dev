@@ -1,21 +1,57 @@
 <script setup lang="ts">
-import type { CleaningStepTemplate } from '~/components/cleaning/data/cleaning-step-templates'
+import type { CleaningStepTemplate, CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import { toast } from 'vue-sonner'
 import { CLEANING_SOURCE_ICONS, CLEANING_SOURCE_LABELS } from '~/components/cleaning/data/cleaning-jobs'
+import { CLEANING_TEMPLATE_TYPES } from '~/components/cleaning/data/cleaning-step-templates'
 import { countCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
+import CleaningTemplateAssignDialog from '~/components/settings/CleaningTemplateAssignDialog.vue'
+import CompanyCleaningScheduleCard from '~/components/settings/CompanyCleaningScheduleCard.vue'
 import CleaningTemplateSheet from '~/components/settings/CleaningTemplateSheet.vue'
 import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 
 /**
- * Settings > Cleaning Templates: the tenant's library of cleaning step sets.
- * The default is what a listing with no steps is offered first ("Use …" in its
- * cleaning steps editor); every template is also available from Import there.
+ * Settings > Cleaning: the company cleaning schedule (`CompanyCleaningScheduleCard`),
+ * the tenant's library of cleaning checklists
+ * and the company default per cleaning type, which every listing follows
+ * unless it overrides a type on its Maintenance tab (`cleaning-step-templates.ts`).
+ * "Assign to listings" overrides one type on many listings at once. A template
+ * in use (a default, or a listing override) is deleted only onto a replacement.
  */
-const { sortedTemplates, templates, setDefaultTemplate, duplicateTemplate, deleteTemplate } = useCleaningStepTemplates()
+const {
+  sortedTemplates,
+  templates,
+  typeDefaults,
+  getTemplate,
+  setTypeDefault,
+  defaultTypesOf,
+  listingUsageOf,
+  isTemplateInUse,
+  duplicateTemplate,
+  deleteTemplate,
+} = useCleaningStepTemplates()
 
 const sheetOpen = ref(false)
 const editing = ref<CleaningStepTemplate | null>(null)
+const assigning = ref<CleaningStepTemplate | null>(null)
+const assignOpen = ref(false)
 const pendingDelete = ref<CleaningStepTemplate | null>(null)
+const replacementId = ref('')
+
+const defaultRows = computed(() => CLEANING_TEMPLATE_TYPES.map((type) => {
+  const template = getTemplate(typeDefaults.value[type] ?? '')
+  return {
+    type,
+    label: CLEANING_SOURCE_LABELS[type],
+    icon: CLEANING_SOURCE_ICONS[type],
+    value: template?.id ?? '',
+    stepCount: template ? countCleaningSteps(template.sections) : 0,
+  }
+}))
+
+function changeDefault(type: CleaningTemplateType, id: string) {
+  setTypeDefault(type, id)
+  toast.success(`${CLEANING_SOURCE_LABELS[type]} now defaults to ${getTemplate(id)?.name}`)
+}
 
 function openCreate() {
   editing.value = null
@@ -27,9 +63,9 @@ function openEdit(template: CleaningStepTemplate) {
   sheetOpen.value = true
 }
 
-function makeDefault(template: CleaningStepTemplate) {
-  setDefaultTemplate(template.id)
-  toast.success(`${template.name} is now the default`)
+function openAssign(template: CleaningStepTemplate) {
+  assigning.value = template
+  assignOpen.value = true
 }
 
 function duplicate(template: CleaningStepTemplate) {
@@ -38,11 +74,26 @@ function duplicate(template: CleaningStepTemplate) {
     toast.success(`Created ${copy.name}`)
 }
 
+const pendingDeleteInUse = computed(() => pendingDelete.value ? isTemplateInUse(pendingDelete.value.id) : false)
+const pendingDeleteDefaults = computed(() => pendingDelete.value ? defaultTypesOf(pendingDelete.value.id) : [])
+const pendingDeleteUsage = computed(() => pendingDelete.value ? listingUsageOf(pendingDelete.value.id) : 0)
+const replacementOptions = computed(() => sortedTemplates.value.filter(t => t.id !== pendingDelete.value?.id))
+
+function askDelete(template: CleaningStepTemplate) {
+  pendingDelete.value = template
+  replacementId.value = ''
+}
+
 function confirmDelete() {
   const target = pendingDelete.value
+  if (!target)
+    return
+  if (pendingDeleteInUse.value && !replacementId.value)
+    return
+  const replacement = getTemplate(replacementId.value)
   pendingDelete.value = null
-  if (target && deleteTemplate(target.id))
-    toast.success(`${target.name} deleted`)
+  if (deleteTemplate(target.id, replacementId.value || undefined))
+    toast.success(replacement ? `${target.name} deleted, replaced by ${replacement.name}` : `${target.name} deleted`)
 }
 </script>
 
@@ -51,10 +102,10 @@ function confirmDelete() {
     <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">
-          Cleaning Templates
+          Cleaning
         </h2>
         <p class="mt-1 text-sm text-muted-foreground">
-          Reusable cleaning steps. A listing set up from a template gets its own copy; the default is offered first.
+          When listings are cleaned and the checklists housekeeping works through. Every listing follows these unless it sets its own.
         </p>
       </div>
       <Button class="shrink-0" data-testid="template-create" @click="openCreate">
@@ -63,25 +114,56 @@ function confirmDelete() {
       </Button>
     </div>
 
+    <CompanyCleaningScheduleCard />
+
+    <Card class="gap-4 p-5" data-testid="type-defaults-card">
+      <div>
+        <h3 class="text-base font-semibold">
+          Default checklist per cleaning type
+        </h3>
+        <p class="mt-0.5 text-xs text-muted-foreground">
+          New cleanings copy the checklist when they are created, so a change here reaches new cleanings only.
+        </p>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div v-for="row in defaultRows" :key="row.type" class="grid gap-1.5" :data-testid="`type-default-${row.type}`">
+          <Label class="flex items-center gap-1.5 text-xs">
+            <Icon :name="row.icon" class="size-3.5 text-muted-foreground" />
+            {{ row.label }}
+          </Label>
+          <Select
+            :model-value="row.value"
+            :data-testid="`type-default-select-${row.type}`"
+            @update:model-value="value => changeDefault(row.type, String(value))"
+          >
+            <SelectTrigger class="w-full" :aria-label="`Default checklist for ${row.label.toLowerCase()}`">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="t in sortedTemplates" :key="t.id" :value="t.id">
+                {{ t.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">
+            {{ row.stepCount }} {{ row.stepCount === 1 ? 'step' : 'steps' }}
+          </p>
+        </div>
+      </div>
+    </Card>
+
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card
         v-for="tmpl in sortedTemplates"
         :key="tmpl.id"
         class="flex flex-col gap-3 p-5"
-        :class="tmpl.isDefault ? 'border-primary/40' : ''"
         data-testid="template-card"
-        :data-default="tmpl.isDefault || undefined"
       >
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <h3 class="truncate text-base font-semibold">
-                {{ tmpl.name }}
-              </h3>
-              <Badge v-if="tmpl.isDefault" class="h-5 bg-emerald-600 text-[10px] text-white hover:bg-emerald-600">
-                Default
-              </Badge>
-            </div>
+            <h3 class="truncate text-base font-semibold">
+              {{ tmpl.name }}
+            </h3>
             <p v-if="tmpl.description" class="mt-0.5 text-xs text-muted-foreground">
               {{ tmpl.description }}
             </p>
@@ -93,9 +175,9 @@ function confirmDelete() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem v-if="!tmpl.isDefault" data-testid="template-set-default" @click="makeDefault(tmpl)">
-                <Icon name="lucide:star" class="mr-2 size-4" />
-                Set as default
+              <DropdownMenuItem data-testid="template-assign" @click="openAssign(tmpl)">
+                <Icon name="lucide:home" class="mr-2 size-4" />
+                Assign to listings
               </DropdownMenuItem>
               <DropdownMenuItem data-testid="template-duplicate" @click="duplicate(tmpl)">
                 <Icon name="lucide:copy" class="mr-2 size-4" />
@@ -106,7 +188,7 @@ function confirmDelete() {
                 class="text-destructive focus:text-destructive"
                 :disabled="templates.length <= 1"
                 data-testid="template-delete"
-                @click="pendingDelete = tmpl"
+                @click="askDelete(tmpl)"
               >
                 <Icon name="lucide:trash-2" class="mr-2 size-4" />
                 Delete
@@ -115,11 +197,18 @@ function confirmDelete() {
           </DropdownMenu>
         </div>
 
-        <div class="flex flex-wrap gap-1.5" data-testid="template-types">
-          <Badge v-for="type in tmpl.cleaningTypes" :key="type" variant="outline" class="gap-1 text-[11px] font-medium">
-            <Icon :name="CLEANING_SOURCE_ICONS[type]" class="size-3" />
-            {{ CLEANING_SOURCE_LABELS[type] }}
-          </Badge>
+        <div class="flex flex-col gap-1 text-xs" data-testid="template-usage">
+          <p v-if="defaultTypesOf(tmpl.id).length" class="flex items-center gap-1.5 font-medium text-primary">
+            <Icon name="lucide:star" class="size-3 shrink-0" />
+            Default for {{ defaultTypesOf(tmpl.id).map(t => CLEANING_SOURCE_LABELS[t].toLowerCase()).join(', ') }}
+          </p>
+          <p v-if="listingUsageOf(tmpl.id)" class="flex items-center gap-1.5 text-muted-foreground">
+            <Icon name="lucide:home" class="size-3 shrink-0" />
+            Override on {{ listingUsageOf(tmpl.id) }} {{ listingUsageOf(tmpl.id) === 1 ? 'listing' : 'listings' }}
+          </p>
+          <p v-if="!defaultTypesOf(tmpl.id).length && !listingUsageOf(tmpl.id)" class="text-muted-foreground">
+            Not in use
+          </p>
         </div>
 
         <p class="text-xs text-muted-foreground">
@@ -142,21 +231,52 @@ function confirmDelete() {
     </div>
 
     <CleaningTemplateSheet v-model:open="sheetOpen" :template="editing" />
+    <CleaningTemplateAssignDialog v-model:open="assignOpen" :template="assigning" />
 
     <AlertDialog :open="!!pendingDelete" @update:open="(v: boolean) => { if (!v) pendingDelete = null }">
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {{ pendingDelete?.name }}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Listings set up from it keep their steps.
-            <template v-if="pendingDelete?.isDefault">
-              The first remaining template becomes the default.
+            <template v-if="pendingDeleteInUse">
+              It is in use
+              <template v-if="pendingDeleteDefaults.length">
+                as the default for {{ pendingDeleteDefaults.map(t => CLEANING_SOURCE_LABELS[t].toLowerCase()).join(', ') }}
+              </template>
+              <template v-if="pendingDeleteDefaults.length && pendingDeleteUsage">
+                and
+              </template>
+              <template v-if="pendingDeleteUsage">
+                on {{ pendingDeleteUsage }} {{ pendingDeleteUsage === 1 ? 'listing' : 'listings' }}
+              </template>.
+              Pick a template to use instead. Existing cleanings keep their checklist.
+            </template>
+            <template v-else>
+              Existing cleanings keep their checklist.
             </template>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <div v-if="pendingDeleteInUse" class="grid gap-1.5">
+          <Label>Replace with</Label>
+          <Select v-model="replacementId" data-testid="template-delete-replacement">
+            <SelectTrigger class="w-full" aria-label="Replacement template">
+              <SelectValue placeholder="Pick a template" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="t in replacementOptions" :key="t.id" :value="t.id">
+                {{ t.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" data-testid="template-delete-confirm" @click="confirmDelete">
+          <AlertDialogAction
+            class="bg-destructive text-white hover:bg-destructive/90"
+            :disabled="pendingDeleteInUse && !replacementId"
+            data-testid="template-delete-confirm"
+            @click="confirmDelete"
+          >
             Delete
           </AlertDialogAction>
         </AlertDialogFooter>

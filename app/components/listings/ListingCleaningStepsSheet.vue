@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import type { PropertyPickerOption } from '~/components/shared/PropertyPicker.vue'
 import { toast } from 'vue-sonner'
 import CleaningStepsEditor from '~/components/cleaning/CleaningStepsEditor.vue'
-import { CLEANING_SOURCE_LABELS } from '~/components/cleaning/data/cleaning-jobs'
 import { cleanCleaningSteps, cloneCleaningSteps, countCleaningSteps, parseCleaningStepsFile } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import PropertyPicker from '~/components/shared/PropertyPicker.vue'
@@ -21,7 +21,13 @@ import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates
  * listings straight away, from the draft as it stands, replacing their steps
  * (`useCleaningSteps().copyStepsToListings`).
  */
-const props = defineProps<{ steps: CleaningStepSection[] | undefined, listingId: string, listingName: string }>()
+const props = defineProps<{
+  steps: CleaningStepSection[] | undefined
+  listingId: string
+  listingName: string
+  /** Cleaning types on custom steps here: "Copy to listings" sets them to custom on the targets too. */
+  customTypes?: CleaningTemplateType[]
+}>()
 const emit = defineEmits<{ save: [steps: CleaningStepSection[]] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -58,9 +64,6 @@ const importOpen = ref(false)
 const importSource = ref<ImportSource>('template')
 const importMode = ref<'replace' | 'append'>('replace')
 const importTemplateId = ref('')
-const importTemplateTypes = computed(() =>
-  (getTemplate(importTemplateId.value)?.cleaningTypes ?? []).map(type => CLEANING_SOURCE_LABELS[type]).join(', '),
-)
 const importListingId = ref('')
 const importFile = ref<{ name: string, sections: CleaningStepSection[] } | null>(null)
 const importError = ref('')
@@ -126,7 +129,7 @@ function openCopy() {
 }
 
 function applyCopy() {
-  const count = copyStepsToListings(cleanCleaningSteps(draft.value), copyTargets.value)
+  const count = copyStepsToListings(cleanCleaningSteps(draft.value), copyTargets.value, props.customTypes ?? [])
   copyOpen.value = false
   toast.success(`Cleaning steps copied to ${count} ${count === 1 ? 'listing' : 'listings'}`)
 }
@@ -141,9 +144,9 @@ function save() {
   <Sheet v-model:open="open">
     <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
       <SheetHeader class="border-b p-5">
-        <SheetTitle>Cleaning steps</SheetTitle>
+        <SheetTitle>Custom steps</SheetTitle>
         <SheetDescription>
-          What housekeeping works through on every clean of {{ listingName }}. Cleanings can only be scheduled once there is at least one step.
+          Steps written just for {{ listingName }}, used by every cleaning type set to custom steps.
         </SheetDescription>
       </SheetHeader>
 
@@ -223,13 +226,10 @@ function save() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem v-for="t in sortedTemplates" :key="t.id" :value="t.id">
-                  {{ t.name }}{{ t.isDefault ? ' (default)' : '' }}
+                  {{ t.name }}
                 </SelectItem>
               </SelectContent>
             </Select>
-            <p v-if="importTemplateTypes" class="text-xs text-muted-foreground" data-testid="import-template-types">
-              For: {{ importTemplateTypes }}
-            </p>
             <p class="text-xs text-muted-foreground">
               Manage templates in
               <NuxtLink to="/settings/cleaning-templates" class="font-medium underline">

@@ -36,7 +36,7 @@ const activeUnit = computed(() => listing.value ? getUnitById(listing.value, act
 const TABS = ['overview', 'pricing', 'revenue', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'settings']
 const customTabs = computed(() => listingCustomTabs(listing.value))
 const isTab = (tab: string) => TABS.includes(tab) || customTabs.value.some(t => customTabValue(t) === tab)
-// `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up steps" link; `?tab=custom:<id>` opens a custom tab.
+// `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up checklists" link; `?tab=custom:<id>` opens a custom tab.
 const activeTab = ref(isTab(String(route.query.tab)) ? String(route.query.tab) : 'overview')
 
 // A link to `?tab=…` from inside the page switches the tab.

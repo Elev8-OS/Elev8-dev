@@ -4,6 +4,7 @@ import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-s
 import DatePicker from '~/components/base/DatePicker.vue'
 import { cleanerOptions, CLEANING_SOURCE_OPTIONS, cleaningJobSourceLabels, cleaningJobStatusLabels } from '~/components/cleaning/data/cleaning-jobs'
 import { resolveStayForCleaning } from '~/components/cleaning/data/cleaning-link'
+import { cleaningTemplateTypeFor, resolveListingChecklist } from '~/components/cleaning/data/cleaning-step-templates'
 import { CLEANING_STEPS_REQUIRED_MESSAGE, cloneCleaningSteps, countCleaningSteps } from '~/components/cleaning/data/cleaning-steps'
 import { listings } from '~/components/listings/data/listings'
 import { allStays } from '~/components/operations-calendar/data/calendar-stays'
@@ -209,34 +210,43 @@ const isValidTimeRange = computed(() => {
   return diffMinutes(cleaningTimeFrom.value, cleaningTimeTo.value) > 0
 })
 
-// A NEW job needs the listing's cleaning steps (`cleaning-steps.ts`); editing an existing one does not.
-const isNewJob = computed(() => !props.modelValue?.id)
-const stepsMissing = computed(() => isNewJob.value && Boolean(form.listingId) && !listingHasCleaningSteps(form.listingId))
-
 // --- Checklist (new jobs only) ---
-// A new job copies the listing's steps by default; picking a template written
-// for this cleaning type copies the template's steps instead (`CleaningJob.steps`).
+// A new job takes the checklist its type resolves to on the listing (listing
+// override, else the company default; `createJob` resolves it). "Change" lets
+// this one job use another template instead, sent as its own `steps`.
 const LISTING_CHECKLIST = 'listing'
-const LEGACY_SOURCE_TYPES: Partial<Record<CleaningJobSource, CleaningTemplateType>> = { manual: 'custom', checkout: 'check_out' }
-const { sortedTemplates, getTemplate } = useCleaningStepTemplates()
+const { sortedTemplates, getTemplate, library } = useCleaningStepTemplates()
 const checklistId = ref<string>(LISTING_CHECKLIST)
+const changingChecklist = ref(false)
 
-const templateType = computed<CleaningTemplateType>(() => LEGACY_SOURCE_TYPES[form.source] ?? form.source as CleaningTemplateType)
-const checklistTemplates = computed(() => sortedTemplates.value.filter(t => t.cleaningTypes.includes(templateType.value)))
+const templateType = computed<CleaningTemplateType>(() => cleaningTemplateTypeFor(form.source))
 const checklistTemplate = computed(() => checklistId.value === LISTING_CHECKLIST ? null : getTemplate(checklistId.value) ?? null)
 
-const listingStepCount = computed(() =>
-  countCleaningSteps(listings.value.find(l => l.id === form.listingId)?.maintenance?.cleaningSteps),
-)
-const checklistSummary = computed(() => checklistTemplate.value
-  ? `${checklistTemplate.value.name} (${countCleaningSteps(checklistTemplate.value.sections)} steps)`
-  : `Listing's cleaning steps (${listingStepCount.value} steps)`)
-
-// A template not written for the new type is dropped back to the listing's steps.
-watch(templateType, (type) => {
-  if (checklistTemplate.value && !checklistTemplate.value.cleaningTypes.includes(type))
-    checklistId.value = LISTING_CHECKLIST
+const formListing = computed(() => listings.value.find(l => l.id === form.listingId))
+/** What the listing uses for this type, or null when it has nothing. */
+const listingChecklist = computed(() => resolveListingChecklist(formListing.value?.maintenance, templateType.value, library.value))
+const listingChecklistLabel = computed(() => listingChecklist.value
+  ? `${listingChecklist.value.name} (listing's ${cleaningJobSourceLabels[form.source].toLowerCase()})`
+  : 'No checklist for this type')
+const checklistSummary = computed(() => {
+  if (checklistTemplate.value)
+    return `${checklistTemplate.value.name} (${countCleaningSteps(checklistTemplate.value.sections)} steps)`
+  return listingChecklist.value
+    ? `${listingChecklist.value.name} (${countCleaningSteps(listingChecklist.value.sections)} steps)`
+    : 'None'
 })
+
+function resetChecklist() {
+  checklistId.value = LISTING_CHECKLIST
+  changingChecklist.value = false
+}
+
+// A NEW job needs steps for its type (`cleaning-steps.ts`): the listing's
+// default for that type, or a template picked above. Editing a job does not.
+const isNewJob = computed(() => !props.modelValue?.id)
+const stepsMissing = computed(() =>
+  isNewJob.value && Boolean(form.listingId) && !checklistTemplate.value && !listingHasCleaningSteps(form.listingId, form.source),
+)
 
 const canSubmit = computed(() =>
   Boolean(form.listingId)
@@ -399,7 +409,7 @@ function submit() {
     ...form,
     teamName: 'Housekeeping',
     recurrence: recurrenceModel.value,
-    ...(isNewJob.value && checklistTemplate.value ? { steps: cloneCleaningSteps(checklistTemplate.value.sections) } : {}),
+    ...(isNewJob.value && checklistTemplate.value ? { steps: cloneCleaningSteps(checklistTemplate.value.sections), checklistName: checklistTemplate.value.name } : {}),
   })
 }
 </script>
@@ -433,7 +443,7 @@ function submit() {
         <span>
           {{ CLEANING_STEPS_REQUIRED_MESSAGE }}
           <NuxtLink :to="`/listings/${form.listingId}?tab=maintenance`" class="font-medium underline">
-            Set up steps
+            Set up checklists
           </NuxtLink>
         </span>
       </div>
@@ -581,28 +591,34 @@ function submit() {
 
     <div v-if="isNewJob" class="grid gap-1.5">
       <Label>Checklist</Label>
-      <Select :model-value="checklistId" data-testid="cleaning-checklist" @update:model-value="value => { checklistId = String(value) }">
-        <SelectTrigger><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem :value="LISTING_CHECKLIST">
-            Listing's cleaning steps
-          </SelectItem>
-          <SelectItem v-for="t in checklistTemplates" :key="t.id" :value="t.id">
-            {{ t.name }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-      <p class="text-xs text-muted-foreground" data-testid="cleaning-checklist-hint">
-        <template v-if="checklistTemplates.length">
-          Templates for {{ cleaningJobSourceLabels[form.source].toLowerCase() }}. The job keeps its own copy of the steps.
-        </template>
-        <template v-else>
-          No template is set up for {{ cleaningJobSourceLabels[form.source].toLowerCase() }}.
-          <NuxtLink to="/settings/cleaning-templates" class="font-medium underline">
-            Manage templates
-          </NuxtLink>
-        </template>
-      </p>
+      <div v-if="!changingChecklist" class="flex items-center justify-between gap-2 rounded-md border px-3 py-2" data-testid="cleaning-checklist-current">
+        <span class="flex min-w-0 items-center gap-1.5 text-sm">
+          <Icon name="lucide:list-checks" class="size-3.5 shrink-0 text-muted-foreground" />
+          <span class="truncate">{{ listingChecklistLabel }}</span>
+        </span>
+        <Button type="button" variant="ghost" size="sm" class="h-7 shrink-0 text-xs" data-testid="cleaning-checklist-change" @click="changingChecklist = true">
+          Change
+        </Button>
+      </div>
+      <template v-else>
+        <Select :model-value="checklistId" data-testid="cleaning-checklist" @update:model-value="value => { checklistId = String(value) }">
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="LISTING_CHECKLIST">
+              {{ listingChecklistLabel }}
+            </SelectItem>
+            <SelectItem v-for="t in sortedTemplates" :key="t.id" :value="t.id">
+              {{ t.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p class="text-xs text-muted-foreground" data-testid="cleaning-checklist-hint">
+          Only for this cleaning. The job keeps its own copy of the steps.
+          <button type="button" class="font-medium underline-offset-4 hover:underline" @click="resetChecklist">
+            Use the listing's
+          </button>
+        </p>
+      </template>
     </div>
 
     <div class="rounded-lg border bg-muted/30 p-4">

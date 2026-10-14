@@ -196,7 +196,7 @@ export const navMenu: NavMenu[] = [
             link: '/settings/guide-templates',
           },
           {
-            title: 'Cleaning Templates',
+            title: 'Cleaning',
             icon: 'i-lucide-circle',
             link: '/settings/cleaning-templates',
           },

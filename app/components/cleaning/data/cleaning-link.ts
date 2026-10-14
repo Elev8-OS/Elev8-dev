@@ -98,3 +98,26 @@ export function resolveStayForCleaning<S extends StayLike>(cleaning: CleaningLik
 export function cleaningFollowsStay(cleaning: Pick<CleaningLike, 'scheduledAt'>, stay: Pick<StayLike, 'checkIn'>): boolean {
   return cleaningDateKey(cleaning.scheduledAt) > stay.checkIn
 }
+
+/** What the daily routine cleans on a day: a guest in the house, one leaving, or nobody. */
+export type RoutineDayType = 'daily' | 'check_out' | 'vacant'
+
+/**
+ * The kind of cleaning a listing needs on `day` (YYYY-MM-DD) under the daily
+ * routine, from its stays (any room counts; blocks, inquiries and cancellations
+ * are not stays). A departure wins over an arrival the same day. The check-in
+ * day counts as in-house unless `startOffset` is `day_after_check_in`, matching
+ * a booking's own daily schedule.
+ */
+export function routineDayType(
+  listingId: string,
+  day: string,
+  stays: StayLike[],
+  startOffset: 'check_in' | 'day_after_check_in' = 'check_in',
+): RoutineDayType {
+  const own = stays.filter(s => s.listingId === listingId && !NOT_A_STAY.has(s.status))
+  if (own.some(s => s.checkOut === day))
+    return 'check_out'
+  const inHouse = own.some(s => (startOffset === 'check_in' ? s.checkIn <= day : s.checkIn < day) && day < s.checkOut)
+  return inHouse ? 'daily' : 'vacant'
+}

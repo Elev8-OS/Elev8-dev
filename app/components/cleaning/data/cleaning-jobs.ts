@@ -12,12 +12,14 @@ export type CleaningJobSource
     | 'check_out' // turn-over cleaning after a guest checks out
     | 'mid_stay' // mid-stay housekeeping (e.g. 5+ night stays)
     | 'custom' // one-off / ad-hoc cleaning
+    | 'vacant' // upkeep of an empty property on the daily routine (pool, garden, dusting)
 
 export const CLEANING_SOURCE_LABELS: Record<CleaningJobSource, string> = {
   daily: 'Daily cleaning',
   check_out: 'Check-out cleaning',
   mid_stay: 'Mid-stay cleaning',
   custom: 'Custom cleaning',
+  vacant: 'Vacant upkeep',
   manual: 'Custom cleaning', // legacy alias
   checkout: 'Check-out cleaning', // legacy alias
 }
@@ -27,6 +29,7 @@ export const CLEANING_SOURCE_ICONS: Record<CleaningJobSource, string> = {
   check_out: 'lucide:log-out',
   mid_stay: 'lucide:clock-4',
   custom: 'lucide:settings-2',
+  vacant: 'lucide:house',
   manual: 'lucide:settings-2',
   checkout: 'lucide:log-out',
 }
@@ -36,6 +39,7 @@ export const CLEANING_SOURCE_VARIANTS: Record<CleaningJobSource, 'default' | 'se
   check_out: 'default',
   mid_stay: 'secondary',
   custom: 'outline',
+  vacant: 'outline',
   manual: 'outline',
   checkout: 'default',
 }
@@ -153,6 +157,18 @@ export interface CleaningJob {
    */
   steps?: CleaningStepSection[]
   /**
+   * Which checklist `steps` was copied from ("Deep clean", "Custom steps"),
+   * frozen with the copy so renaming a template later does not relabel it.
+   * Absent on jobs created before checklists were named.
+   */
+  checklistName?: string
+  /**
+   * Created by the daily routine (`syncRoutineCleanings`), not by hand or by a
+   * booking's own schedule. Only routine jobs are retyped or removed by it, and
+   * only before they start.
+   */
+  routine?: boolean
+  /**
    * Planned-ahead jobs are created as `draft` and stay out of housekeeping's
    * workload until this moment passes, at which point `releaseDueDrafts()`
    * flips them to `scheduled`. Null/undefined means the job was dispatched
@@ -195,6 +211,7 @@ export const CLEANING_SOURCE_OPTIONS: Array<{ value: CleaningJobSource, label: s
   { value: 'check_out', label: 'Check-out cleaning' },
   { value: 'mid_stay', label: 'Mid-stay cleaning' },
   { value: 'custom', label: 'Custom cleaning' },
+  { value: 'vacant', label: 'Vacant upkeep' },
 ]
 
 export const cleaningJobStatusVariants: Record<CleaningJobStatus, 'outline' | 'default' | 'secondary' | 'destructive'> = {

@@ -1,19 +1,23 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { CLEANING_STEP_TEMPLATES_STORAGE_KEY, SEED_CLEANING_STEP_TEMPLATES } from '~/components/cleaning/data/cleaning-step-templates'
+import { CLEANING_STEP_TEMPLATES_STORAGE_KEY, CLEANING_TYPE_DEFAULTS_STORAGE_KEY, SEED_CLEANING_STEP_TEMPLATES, SEED_CLEANING_TYPE_DEFAULTS } from '~/components/cleaning/data/cleaning-step-templates'
+import { listings } from '~/components/listings/data/listings'
 import { useCleaningStepTemplates } from '~/composables/useCleaningStepTemplates'
 
 const sections = [{ id: 's', title: 'Pool', steps: [{ id: '1', label: 'Skim pool' }] }]
 
+const seededListings = listings.value
+
 beforeEach(() => {
   localStorage.clear()
+  listings.value = seededListings
 })
 
 describe('useCleaningStepTemplates', () => {
-  it('seeds several templates with exactly one default', () => {
-    const { templates, defaultTemplate } = useCleaningStepTemplates()
-    expect(templates.value.length).toBeGreaterThan(1)
-    expect(templates.value.filter(t => t.isDefault)).toHaveLength(1)
-    expect(defaultTemplate.value?.isDefault).toBe(true)
+  it('starts a new tenant with a default for every cleaning type, active at once', () => {
+    const { typeDefaults, defaultFor } = useCleaningStepTemplates()
+    expect(typeDefaults.value).toEqual(SEED_CLEANING_TYPE_DEFAULTS)
+    expect(defaultFor('check_out')!.name).toBe('Villa standard')
+    expect(defaultFor('daily')!.name).toBe('Daily refresh')
   })
 
   it('creates a template with its own copy of the steps, and saves it', () => {
@@ -25,62 +29,56 @@ describe('useCleaningStepTemplates', () => {
     expect(localStorage.getItem(CLEANING_STEP_TEMPLATES_STORAGE_KEY)).toContain('Pool villa')
   })
 
-  it('keeps exactly one default when another is set', () => {
-    const { templates, setDefaultTemplate, defaultTemplate } = useCleaningStepTemplates()
-    const other = templates.value.find(t => !t.isDefault)!
-    setDefaultTemplate(other.id)
-    expect(defaultTemplate.value?.id).toBe(other.id)
-    expect(templates.value.filter(t => t.isDefault)).toHaveLength(1)
+  it('changes one type\'s default and saves it', () => {
+    const { setTypeDefault, defaultFor, defaultTypesOf } = useCleaningStepTemplates()
+    setTypeDefault('check_out', 'cst-deep')
+    expect(defaultFor('check_out')!.id).toBe('cst-deep')
+    expect(defaultTypesOf('cst-deep')).toEqual(['check_out', 'custom'])
+    expect(JSON.parse(localStorage.getItem(CLEANING_TYPE_DEFAULTS_STORAGE_KEY)!).check_out).toBe('cst-deep')
   })
 
-  it('creating a default template clears the old default', () => {
-    const { createTemplate, templates } = useCleaningStepTemplates()
-    const created = createTemplate({ name: 'New default', sections, isDefault: true })
-    expect(templates.value.filter(t => t.isDefault).map(t => t.id)).toEqual([created.id])
+  it('refuses to delete a template in use without a replacement, and moves its defaults and overrides onto one', () => {
+    const { deleteTemplate, getTemplate, defaultFor } = useCleaningStepTemplates()
+    expect(deleteTemplate('cst-daily')).toBe(false)
+    expect(getTemplate('cst-daily')).toBeTruthy()
+    // lst-1 overrides check-out with Deep clean (seed).
+    expect(deleteTemplate('cst-deep', 'cst-studio')).toBe(true)
+    expect(defaultFor('custom')!.id).toBe('cst-studio')
+    expect(listings.value.find(l => l.id === 'lst-1')!.maintenance.cleaningTemplates?.check_out).toBe('cst-studio')
   })
 
-  it('promotes another template when the default is deleted, and never deletes the last one', () => {
-    const { templates, deleteTemplate, defaultTemplate } = useCleaningStepTemplates()
-    const oldDefault = defaultTemplate.value!
-    expect(deleteTemplate(oldDefault.id)).toBe(true)
-    expect(templates.value.filter(t => t.isDefault)).toHaveLength(1)
-    while (templates.value.length > 1)
-      deleteTemplate(templates.value[0]!.id)
+  it('deletes a template nobody uses, and never the last one', () => {
+    const { templates, deleteTemplate, createTemplate } = useCleaningStepTemplates()
+    const unused = createTemplate({ name: 'Unused', sections })
+    expect(deleteTemplate(unused.id)).toBe(true)
+    while (templates.value.length > 1) {
+      const [first, second] = templates.value
+      deleteTemplate(first!.id, second!.id)
+    }
     expect(deleteTemplate(templates.value[0]!.id)).toBe(false)
     expect(templates.value).toHaveLength(1)
   })
 
-  it('duplicates as a non-default copy', () => {
-    const { defaultTemplate, duplicateTemplate } = useCleaningStepTemplates()
-    const copy = duplicateTemplate(defaultTemplate.value!.id)!
-    expect(copy.name).toBe(`${defaultTemplate.value!.name} (copy)`)
-    expect(copy.isDefault).toBe(false)
+  it('duplicates as a copy no type defaults to', () => {
+    const { duplicateTemplate, defaultTypesOf } = useCleaningStepTemplates()
+    const copy = duplicateTemplate('cst-villa')!
+    expect(copy.name).toBe('Villa standard (copy)')
+    expect(defaultTypesOf(copy.id)).toEqual([])
   })
 
-  it('stores cleaning types in canonical order, falling back to check-out', () => {
-    const { createTemplate, updateTemplate, getTemplate } = useCleaningStepTemplates()
-    const daily = createTemplate({ name: 'Daily', sections, cleaningTypes: ['mid_stay', 'daily', 'daily'] })
-    expect(daily.cleaningTypes).toEqual(['daily', 'mid_stay'])
-    expect(createTemplate({ name: 'No type', sections }).cleaningTypes).toEqual(['check_out'])
-    updateTemplate(daily.id, { cleaningTypes: [] })
-    expect(getTemplate(daily.id)!.cleaningTypes).toEqual(['daily', 'mid_stay'])
-    updateTemplate(daily.id, { cleaningTypes: ['custom'] })
-    expect(getTemplate(daily.id)!.cleaningTypes).toEqual(['custom'])
-  })
-
-  it('gives templates saved before cleaning types existed a type on load', () => {
-    const { cleaningTypes: _drop, ...legacySeed } = SEED_CLEANING_STEP_TEMPLATES.find(t => t.id === 'cst-daily')!
+  it('drops the retired cleaning types and default flag from stored templates', () => {
+    const seed = SEED_CLEANING_STEP_TEMPLATES.find(t => t.id === 'cst-daily')!
     localStorage.setItem(CLEANING_STEP_TEMPLATES_STORAGE_KEY, JSON.stringify([
-      legacySeed,
-      { ...legacySeed, id: 'cst-own', isDefault: false },
+      { ...seed, cleaningTypes: ['daily', 'mid_stay'], isDefault: true },
     ]))
-    const { getTemplate } = useCleaningStepTemplates()
-    expect(getTemplate('cst-daily')!.cleaningTypes).toEqual(['daily', 'mid_stay'])
-    expect(getTemplate('cst-own')!.cleaningTypes).toEqual(['check_out'])
+    const stored = useCleaningStepTemplates().getTemplate('cst-daily')!
+    expect('cleaningTypes' in stored).toBe(false)
+    expect('isDefault' in stored).toBe(false)
   })
 
-  it('copies cleaning types when duplicating', () => {
-    const { duplicateTemplate } = useCleaningStepTemplates()
-    expect(duplicateTemplate('cst-daily')!.cleaningTypes).toEqual(['daily', 'mid_stay'])
+  it('fills every type\'s default from what is left when the stored defaults are gone', () => {
+    const seed = SEED_CLEANING_STEP_TEMPLATES.find(t => t.id === 'cst-studio')!
+    localStorage.setItem(CLEANING_STEP_TEMPLATES_STORAGE_KEY, JSON.stringify([seed]))
+    expect(useCleaningStepTemplates().typeDefaults.value).toEqual({ check_out: 'cst-studio', daily: 'cst-studio', mid_stay: 'cst-studio', vacant: 'cst-studio', custom: 'cst-studio' })
   })
 })

@@ -33,23 +33,16 @@ beforeEach(() => {
 })
 
 describe('cleaningTemplateSheet', () => {
-  it('ticks the template\'s cleaning types', () => {
+  it('has no cleaning type field: which type uses a template is set elsewhere', () => {
     const wrapper = mountSheet()
-    expect(wrapper.get('[data-testid="template-type-check_out"]').attributes('aria-checked')).toBe('true')
-    expect(wrapper.get('[data-testid="template-type-daily"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-testid^="template-type-"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Cleaning type')
   })
 
-  it('saves the picked cleaning types', async () => {
+  it('saves name and steps without a cleaning type', async () => {
     const wrapper = mountSheet()
-    await wrapper.get('[data-testid="template-type-daily"]').trigger('click')
+    await wrapper.get('#cst-name').setValue('Villa turnover')
     await wrapper.get('[data-testid="template-save"]').trigger('click')
-    expect(useCleaningStepTemplates().getTemplate('cst-villa')!.cleaningTypes).toEqual(['check_out', 'daily'])
-  })
-
-  it('cannot save without a cleaning type', async () => {
-    const wrapper = mountSheet()
-    await wrapper.get('[data-testid="template-type-check_out"]').trigger('click')
-    expect(wrapper.get('[data-testid="template-save"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('Pick at least one cleaning type.')
+    expect(useCleaningStepTemplates().getTemplate('cst-villa')!.name).toBe('Villa turnover')
   })
 })
