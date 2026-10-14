@@ -62,7 +62,7 @@ function save() {
             v-model="url"
             type="url"
             inputmode="url"
-            placeholder="https://docs.google.com/..."
+            placeholder="https://"
             autocomplete="off"
             :aria-invalid="urlError || undefined"
             @blur="urlTouched = true"
@@ -71,7 +71,7 @@ function save() {
             Enter a web address starting with http:// or https://
           </p>
           <p v-else class="text-xs text-muted-foreground">
-            Some sites do not allow being shown inside another page. Those still open in a new browser tab.
+            Some sites, such as Google Docs in edit mode, do not allow being shown inside another page. Those open in a new browser tab instead.
           </p>
         </div>
 

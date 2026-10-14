@@ -2,9 +2,11 @@
 /**
  * A custom tab's page, shown in a frame with a small toolbar. A cross-origin
  * frame cannot tell us when the site refuses to be embedded (the browser shows
- * its own error page and still fires `load`), so "Open in new tab" is always in
- * the toolbar and the footer, and a page with no load event after a few
- * seconds gets the same pointer.
+ * its own error page and still fires `load`), so `/api/frame-check` reads the
+ * site's headers first and a refusing site gets a card with "Open in new tab"
+ * instead of the frame. When the check cannot tell, the frame is shown, the
+ * toolbar and footer keep "Open in new tab", and a page with no load event
+ * after a few seconds gets the same pointer.
  */
 import type { ListingCustomTab } from '~/components/listings/data/listing-custom-tabs'
 import { customTabHost } from '~/components/listings/data/listing-custom-tabs'
@@ -16,6 +18,9 @@ const reloadKey = ref(0)
 const loading = ref(true)
 const slow = ref(false)
 let slowTimer: ReturnType<typeof setTimeout> | undefined
+/** From `/api/frame-check`; null while checking or when the check could not tell. */
+const embeddable = ref<boolean | null>(null)
+const blocked = computed(() => embeddable.value === false)
 
 function startLoading() {
   loading.value = true
@@ -38,7 +43,22 @@ function reload() {
   startLoading()
 }
 
-watch(() => props.tab.url, startLoading, { immediate: true })
+async function checkFrame(url: string) {
+  embeddable.value = null
+  try {
+    const res = await $fetch<{ embeddable: boolean | null }>('/api/frame-check', { query: { url } })
+    if (props.tab.url === url)
+      embeddable.value = res.embeddable
+  }
+  catch {
+    // Unknown: keep the frame.
+  }
+}
+
+watch(() => props.tab.url, (url) => {
+  startLoading()
+  checkFrame(url)
+}, { immediate: true })
 onBeforeUnmount(() => clearTimeout(slowTimer))
 </script>
 
@@ -92,7 +112,28 @@ onBeforeUnmount(() => clearTimeout(slowTimer))
 
     <div class="relative h-[calc(100vh-18rem)] min-h-[480px] bg-muted/30">
       <div
-        v-if="loading"
+        v-if="blocked"
+        class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center"
+        data-testid="custom-tab-blocked"
+      >
+        <Icon name="lucide:frame" class="size-8 text-muted-foreground" />
+        <div class="space-y-1">
+          <p class="text-sm font-medium">
+            {{ customTabHost(tab.url) }} can't be shown here
+          </p>
+          <p class="max-w-sm text-sm text-muted-foreground">
+            This site does not allow being shown inside another page. Open it in a new browser tab instead.
+          </p>
+        </div>
+        <Button size="sm" as-child>
+          <a :href="tab.url" target="_blank" rel="noopener noreferrer">
+            <Icon name="lucide:external-link" class="size-4" />
+            Open in new tab
+          </a>
+        </Button>
+      </div>
+      <div
+        v-else-if="loading"
         class="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center"
       >
         <template v-if="!slow">
@@ -120,6 +161,7 @@ onBeforeUnmount(() => clearTimeout(slowTimer))
         </template>
       </div>
       <iframe
+        v-if="!blocked"
         :key="`${tab.url}-${reloadKey}`"
         :src="tab.url"
         :title="tab.name"
@@ -131,7 +173,7 @@ onBeforeUnmount(() => clearTimeout(slowTimer))
         @load="onLoad"
       />
     </div>
-    <p class="border-t px-3 py-1.5 text-xs text-muted-foreground">
+    <p v-if="!blocked" class="border-t px-3 py-1.5 text-xs text-muted-foreground">
       Page not showing? Some sites block being shown inside another page.
       <a :href="tab.url" target="_blank" rel="noopener noreferrer" class="font-medium text-foreground underline-offset-2 hover:underline">Open in new tab</a>
     </p>
