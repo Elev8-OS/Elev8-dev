@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ruleSetSummary, websiteChannel } from '~/components/channels/data/website-channel'
+
 export interface WebsiteSettings {
   name: string
   domain: string
@@ -8,6 +10,12 @@ export interface WebsiteSettings {
   logoFile: string | null
   faviconFile: string | null
   useDefaultFavicon: boolean
+  /**
+   * The Website channel rule set picked in the form. Not saved on the Website:
+   * on save the wizard hands it to `useWebsiteChannel().assignWebsite()`, the
+   * channel's only writer. Undefined leaves the site's rule set as it is.
+   */
+  ruleSetId?: string | null
 }
 
 const props = defineProps<{
@@ -72,6 +80,15 @@ function removeFavicon() {
   updateField('faviconFile', null)
 }
 
+// Rule sets live on the Website channel (/channels); the page hydrates it on mount.
+const NO_RULE_SET = '__none__'
+const ruleSets = computed(() => websiteChannel.value.ruleSets)
+const channelEnabled = computed(() => websiteChannel.value.enabled)
+
+function onRuleSetChange(value: unknown) {
+  updateField('ruleSetId', value === NO_RULE_SET || value == null ? null : String(value))
+}
+
 const isValid = computed(() => {
   return form.value.name.trim() !== '' && form.value.domain.trim() !== ''
 })
@@ -134,6 +151,44 @@ function handleBack() {
         class="min-h-[100px]"
         @update:model-value="updateField('description', $event)"
       />
+    </div>
+
+    <!-- Booking rules (Website channel rule set) -->
+    <div class="space-y-2" data-testid="ws-booking-rules">
+      <Label for="website-rule-set">Booking rules</Label>
+      <template v-if="ruleSets.length > 0">
+        <Select :model-value="form.ruleSetId ?? NO_RULE_SET" @update:model-value="onRuleSetChange">
+          <SelectTrigger id="website-rule-set" class="w-full @xl/main:w-96" data-testid="ws-rule-set-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="NO_RULE_SET">
+              No rule set
+            </SelectItem>
+            <SelectItem v-for="set in ruleSets" :key="set.id" :value="set.id">
+              {{ set.name }}
+              <span class="text-muted-foreground">· {{ ruleSetSummary(set) }}</span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p class="text-xs text-muted-foreground">
+          <template v-if="!channelEnabled">
+            The Website channel is removed, so these rules apply once you add it again.
+          </template>
+          <template v-else>
+            Discounts, stay rules and prepayment for direct bookings on this site. With no rule set, the site takes bookings without Website discounts.
+          </template>
+          <NuxtLink to="/channels" class="font-medium text-primary underline-offset-4 hover:underline" data-testid="ws-manage-rule-sets">
+            Manage on the Channels page
+          </NuxtLink>
+        </p>
+      </template>
+      <p v-else class="text-sm text-muted-foreground" data-testid="ws-no-rule-sets">
+        No rule sets yet, so this site takes direct bookings without Website discounts.
+        <NuxtLink to="/channels" class="font-medium text-primary underline-offset-4 hover:underline" data-testid="ws-manage-rule-sets">
+          Manage on the Channels page
+        </NuxtLink>
+      </p>
     </div>
 
     <!-- Brand Color + Font Family -->
@@ -208,7 +263,7 @@ function handleBack() {
               Logo uploaded
             </p>
           </div>
-          <Button variant="ghost" size="icon-sm" @click="removeLogo">
+          <Button variant="ghost" size="icon-sm" aria-label="Remove logo" @click="removeLogo">
             <Icon name="i-lucide-x" class="size-4" />
           </Button>
         </div>
@@ -249,7 +304,7 @@ function handleBack() {
               Favicon uploaded
             </p>
           </div>
-          <Button variant="ghost" size="icon-sm" @click="removeFavicon">
+          <Button variant="ghost" size="icon-sm" aria-label="Remove favicon" @click="removeFavicon">
             <Icon name="i-lucide-x" class="size-4" />
           </Button>
         </div>
@@ -265,15 +320,15 @@ function handleBack() {
               Using dashboard default favicon
             </p>
           </div>
-          <Button variant="ghost" size="icon-sm" @click="handleDefaultFaviconToggle(false)">
+          <Button variant="ghost" size="icon-sm" aria-label="Stop using the default favicon" @click="handleDefaultFaviconToggle(false)">
             <Icon name="i-lucide-x" class="size-4" />
           </Button>
         </div>
         <div v-if="!form.faviconFile" class="flex items-center gap-2 pt-1">
           <Checkbox
             id="default-favicon"
-            :checked="form.useDefaultFavicon"
-            @update:checked="handleDefaultFaviconToggle"
+            :model-value="form.useDefaultFavicon"
+            @update:model-value="(v) => handleDefaultFaviconToggle(v === true)"
           />
           <label for="default-favicon" class="text-sm text-muted-foreground cursor-pointer">
             Default from dashboard

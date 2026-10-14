@@ -3,8 +3,10 @@ import type { PropertySelection } from '~/components/website-builder/steps/Prope
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
+import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 
 definePageMeta({
   layout: 'default',
@@ -32,6 +34,7 @@ const websiteSettings = ref<WebsiteSettings>({
   logoFile: null,
   faviconFile: null,
   useDefaultFavicon: false,
+  ruleSetId: null,
 })
 const propertySelection = ref<PropertySelection>({
   propertyIds: [],
@@ -67,6 +70,7 @@ if (import.meta.client && editingWebsite.value) {
     logoFile: null,
     faviconFile: null,
     useDefaultFavicon: false,
+    ruleSetId: null,
   }
   selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
   reviewSelection.value = {
@@ -78,6 +82,19 @@ if (import.meta.client && editingWebsite.value) {
   }
   currentStep.value = 1
 }
+
+// The site's rule set comes from the Website channel, saved in localStorage, so it is
+// read after mount to keep the server and first client render the same.
+const { hydrate } = useWebsiteChannel()
+onMounted(() => {
+  hydrate()
+  if (editingWebsite.value) {
+    websiteSettings.value = {
+      ...websiteSettings.value,
+      ruleSetId: ruleSetForWebsite(websiteChannel.value, editingWebsite.value.id)?.id ?? null,
+    }
+  }
+})
 
 function onSelectTemplate(template: Template) {
   selectedTemplate.value = template

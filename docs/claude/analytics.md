@@ -60,6 +60,25 @@ cancellation rate.
 - No payment status: the generated data has none (the real flow's pending / paid lives on
   `ReservationEntry.extensions`).
 
+#### Direct bookings by website
+- Direct bookings come from the sites built in Website Builder. Each generated **Direct** booking
+  (in-place extensions and OTA-extension linked bookings included) carries `websiteId`: one of the
+  sites whose `getListingIdsForWebsite` covers its listing, else `null` ("Other direct", e.g. phone
+  or email). OTA bookings have no `websiteId` key at all.
+- ⚠️ Picked by `websiteForBooking` from a hash of the booking id (sites sorted by id), in a pass
+  **after** the generator loop, never from `rand`: every other generated figure is unchanged (a
+  test pins it). The generator stays framework-free: `buildAnalyticsBookings(units, anchor, seed,
+  websites)` takes `WebsiteCoverage[]` (`{ id, name, listingIds }`, default `[]` = every Direct
+  booking is "Other direct"); `useAnalytics` builds it from the live `websites` ref. A site with
+  no `propertyIds` (coverage not set) covers nothing and takes no booking.
+- `channelMix(arrivals, currency, value, websites)` gives the Direct row `sites: WebsiteShare[]`
+  (`websiteId`, `name`, `stays`, `revenue`, `percent`), busiest first, "Other direct" last. Stays
+  and revenue add up exactly to the Direct row, per currency as everywhere; percents are of all
+  arriving stays and split by largest remainder so they add up to Direct's rounded percent.
+- UI: `AnalyticsChannelMix` shows the sites as indented sub-rows under Direct, collapsed by
+  default behind a chevron button beside "Direct" (`aria-label`, `aria-expanded`, `aria-controls`).
+- The Revenue tab's revenue by channel is **not** split by website (still three series).
+
 #### Revenue basis: gross / net / owner net (`revenue-basis.ts`)
 - A sidebar switch, **not a filter**: the same bookings, valued differently. Stored in
   `filters.revenueBasis` (default `gross`), so saved views keep it. Changes revenue, ADR, RevPAR,
@@ -204,9 +223,14 @@ blending, revenue basis, series adding up.
 `tests/lib/analytics-revenue-basis.spec.ts`: channel fees, basis on revenue / ADR / RevPAR with
 occupancy unchanged, flat and net-basis rules, co-owner shares, uncontracted listings, the rule
 per month a stay crosses, cancelled stays, and that the breakdown adds up.
+`tests/lib/analytics-websites.spec.ts`: website pick is deterministic, draws nothing from `rand`,
+ignores site order, only among covering sites, never on OTA bookings; site rows add up to the
+Direct row (stays, revenue, percent) per currency and basis.
+`tests/components/analytics/AnalyticsChannelMix.spec.ts`: the Direct website split is collapsed by
+default, toggles, and reports `aria-expanded`.
 
 #### Not implemented
 - Forward-looking periods (use Booking pace), export / download, filters in the URL, views shared
   between users (views live in this browser only).
 - Reading real reservations, owner stays or blocks; pickup / forecast; revenue by room type.
-- Component tests for the page (data layer only).
+- Component tests for the page (data layer only, plus the channel mix website toggle).

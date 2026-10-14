@@ -1,13 +1,20 @@
 <script setup lang="ts">
+import type { WebsiteQuote } from '~/components/channels/data/website-quote'
 import type { BookingMode, ContactType, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import type { BookingConflict } from '~/composables/useReservationsModule'
 import { DateFormatter, getLocalTimeZone, parseDate } from '@internationalized/date'
 import { toast } from 'vue-sonner'
+import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
 import { listings } from '~/components/listings/data/listings'
 import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { buildWebsiteBookingSource } from '~/components/reservations/data/website-booking'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
+import { getListingIdsForWebsite } from '~/components/website-builder/data/property-listings'
+import { websites } from '~/components/website-builder/data/websites'
 import { newReservationConflicts, useReservationsModule } from '~/composables/useReservationsModule'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
+import { useWebsiteQuote } from '~/composables/useWebsiteQuote'
 
 const props = defineProps<{
   open: boolean
@@ -25,6 +32,10 @@ const emit = defineEmits<{
 
 const { createReservation, reservations, guests } = useReservationsModule()
 const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
+const { hydrate: hydrateWebsiteChannel } = useWebsiteChannel()
+const { quoteStay } = useWebsiteQuote()
+
+onMounted(hydrateWebsiteChannel)
 
 interface GuestSearchOption {
   id: string
@@ -269,10 +280,46 @@ watch([computedNights, listingId], ([nights, id]) => {
   }
 })
 
+// Booked on website (the dialog only creates Direct bookings). 'none' because a Select item cannot be empty.
+const NO_WEBSITE = 'none'
+const bookedOnWebsiteId = ref<string>(NO_WEBSITE)
+
+/** Sites that sell the picked listing; a site with no coverage recorded counts as selling everything. */
+const websiteOptions = computed(() => websites.value.filter((w) => {
+  if (!listingId.value)
+    return true
+  const ids = getListingIdsForWebsite(w)
+  return ids.length === 0 || ids.includes(listingId.value)
+}))
+
+/** Local YYYY-MM-DD (toISOString would shift a UTC+8 midnight). */
+function todayYmd(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** The snapshot written on create. Display only: the total above is computed as before. */
+function websiteBookingSnapshot() {
+  const website = websites.value.find(w => w.id === bookedOnWebsiteId.value)
+  if (!website)
+    return undefined
+  const ruleSet = websiteChannel.value.enabled ? ruleSetForWebsite(websiteChannel.value, website.id) : undefined
+  let quote: WebsiteQuote | null = null
+  try {
+    quote = quoteStay({ listingId: listingId.value, checkIn: checkIn.value, checkOut: checkOut.value, bookedOn: todayYmd(), ruleSet: ruleSet ?? null })
+  }
+  catch {
+    // No quote, no discounts recorded.
+  }
+  return buildWebsiteBookingSource({ website, ruleSet, quote, currency: currency.value })
+}
+
 watch(listingId, () => {
   rooms.value = []
   bookingMode.value = 'rooms'
   charges.value = []
+  if (!websiteOptions.value.some(w => w.id === bookedOnWebsiteId.value))
+    bookedOnWebsiteId.value = NO_WEBSITE
 })
 
 const formattedTotal = computed(() => {
@@ -346,6 +393,7 @@ function reset() {
   guestAdults.value = 2
   guestChildren.value = 0
   guestInfants.value = 0
+  bookedOnWebsiteId.value = NO_WEBSITE
   attempted.value = false
 }
 
@@ -406,6 +454,7 @@ function handleSubmit(force = false) {
     listingId: listingId.value,
     listingName: selectedListing.value?.name ?? listingId.value,
     channel: 'Direct',
+    websiteBooking: websiteBookingSnapshot(),
     checkIn: checkIn.value,
     checkOut: checkOut.value,
     nights: computedNights.value,
@@ -637,6 +686,22 @@ watch(() => props.open, (open) => {
                 <div class="space-y-2">
                   <Label>Source</Label>
                   <Input model-value="Direct" disabled />
+                </div>
+                <div class="space-y-2">
+                  <Label for="new-reservation-website">Booked on website</Label>
+                  <Select v-model="bookedOnWebsiteId">
+                    <SelectTrigger id="new-reservation-website" data-testid="booked-on-website">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem :value="NO_WEBSITE">
+                        None
+                      </SelectItem>
+                      <SelectItem v-for="w in websiteOptions" :key="w.id" :value="w.id">
+                        {{ w.name }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <template v-if="status === 'inquiry'">
                   <div class="space-y-2">

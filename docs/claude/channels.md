@@ -34,5 +34,28 @@ Connect OTA accounts, then choose which listings each OTA sells. Mock only: conn
 - OTA logos: always use `otaIcon(name)`. Vrbo and Agoda have no logo in the bundled collections, so they use `lucide:house` / `lucide:hotel`.
 - Per-unit `Unit.otaConnected` overrides are not managed here yet; mapping is per listing. ⚠️ Real channels map **room types** (the Cockpit already shows links per room type); moving mappings to room type level here is still open.
 
+#### Website channel
+Direct bookings on the tenant's own websites (Website Builder) and booking widgets. It has no OTA account, so it is **not** in `CHANNELS`, never writes `Listing.otaConnected` and gets no OTA column (the Listings table has its own "Website" column, see `docs/claude/listings.md`).
+- **Rule sets, assigned to websites, not listings.** The channel holds rule sets the way an OTA holds accounts. Each has a name, `websiteIds` and its settings: length of stay tiers, early bird / last minute, min/max stay, booking notice, arrival/departure weekdays, prepayment %. Listings come from the website itself (`getListingIdsForWebsite`), never stored here; a site with no `propertyIds` shows "Listing coverage not set".
+- **One website, one rule set, no Default.** A rule set needs a unique name and at least one website. `upsertRuleSet` moves a site out of any other set on save. A site in no rule set (`unassignedWebsiteIds`, `ruleSetForWebsite` returns undefined) takes direct bookings without Website discounts or rules; the sheet list names those sites. Deleting a set leaves its sites in none.
+- **Promo codes are not part of a rule set.** Promo Codes owns where a code works (`channelRestriction`); the editor only lists the codes valid on its sites (`isPromoCodeValidOnWebsite` in `promo-codes.ts`) with a link to Promo Codes. Older saves with `promoCodeIds` are cleaned by `parseWebsiteState`.
+- `data/website-channel.ts`: types, `WEBSITE_CHANNEL`, module-level ref `websiteChannel` (`{ enabled, ruleSets }`, read outside setup by the widget preview builder), `ruleSetIssues()`, `ruleSetSummary()`, `parseWebsiteState()`. Imports nothing from Website Builder.
+- `useWebsiteChannel()` is the only writer: `saveRuleSet()` (returns issues, saves nothing when there are any; **saving the first rule set is what adds the channel**), `deleteRuleSet()`, `assignWebsite(websiteId, ruleSetId | null)` (Website Builder, one site at a time), `disable()` (keeps rule sets), `enable()` (re-add). Saved to localStorage (`elev8-website-channel`); every page that reads it calls `hydrate()` in `onMounted` so SSR and the first client render match.
+- UI: first row of `ChannelPickerDialog` (emits `pickWebsite`). Adding opens `WebsiteChannelSheet` with `start="new"`: name + pick websites + settings, button "Add channel"; cancelling adds nothing. The card's "Manage rule sets" opens the list. Editor `WebsiteRuleSetForm` works on a draft, saved only on Save, and ends with `WebsitePriceCheck`.
+- Rules: discounts are **percent only** (listings sell in different currencies). Last minute must end before early bird starts.
+
+#### Website price (`data/website-quote.ts`, `useWebsiteQuote`)
+- `websiteQuote(input)` is pure; `useWebsiteQuote().quoteStay({ listingId, checkIn, checkOut, bookedOn, ruleSet })` feeds it: nightly prices from the room's revenue policy (`previewPolicy` from the booking day, so policy last-minute rules see the real lead time), the unit type's `lengthOfStayDiscounts` and the policy's weekly / monthly %. A listing with units is priced on its first room.
+- **Which discount wins.** With a rule set, its highest tier reached **replaces** the listing tiers and the policy weekly / monthly %; early bird **or** last minute is added; every discount is off the stay subtotal. Without a rule set, the single biggest of the listing tiers and the policy weekly / monthly % (never stacked).
+- Rounded per currency, no conversion. `blockers` lists the stay rules a stay breaks; `prepayment` is the rule set's % of the total.
+
+#### Booking widgets
+- `BookingWidgetConfig.websiteRuleSetId` (null = the widget's own). `resolveWidgetBookingRules()` (used by `buildEmbedPreview`) returns the rule set's tiers, early bird / last minute, min/max stay, booking notice, arrival/departure days and prepayment wholesale, while the channel is added and the set exists; otherwise the widget's own. Seasonal arrival rules stay the widget's and narrow the rule set's days.
+- `WidgetRuleSetSelect` ("Booking rules") is shared by the v1 editor (top of Pricing & Fees; prepayment, booking notice and stay discounts then read from the set) and v2 (own card, "No discounts or stay rules" when none). It says so when a picked set was deleted. The preview's sidebar names the source.
+
+#### Elsewhere
+- Website Builder shows and sets a site's rule set (through `assignWebsite`), Listings show which websites sell a listing, reservations keep a frozen `websiteBooking` snapshot, Analytics splits Direct by website. See those module docs.
+- Revenue → Channel markups keeps one "Direct" row for every website. No markup per rule set yet: the rule set's discounts already cover website pricing.
+
 #### Tests
-`tests/composables/useChannels.spec.ts`. `listings` is a module-level ref, so the spec snapshots and restores it per test.
+`tests/composables/useChannels.spec.ts`, `tests/lib/website-channel.spec.ts`, `tests/lib/website-quote.spec.ts` and `tests/components/channels/WebsiteChannelSheet.spec.ts` (reset `websiteChannel` and its localStorage key by hand). `listings` is a module-level ref, so the spec snapshots and restores it per test.

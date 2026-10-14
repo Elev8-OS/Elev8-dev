@@ -1,15 +1,45 @@
 <script setup lang="ts">
 import type { ChannelAccount, ChannelDefinition } from './data/channels'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { useChannels } from '~/composables/useChannels'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 import ChannelAccountCard from './ChannelAccountCard.vue'
 import ChannelAccountsSheet from './ChannelAccountsSheet.vue'
 import ChannelConnectDialog from './ChannelConnectDialog.vue'
 import ChannelImportDialog from './ChannelImportDialog.vue'
 import ChannelPickerDialog from './ChannelPickerDialog.vue'
+import WebsiteChannelCard from './WebsiteChannelCard.vue'
+import WebsiteChannelSheet from './WebsiteChannelSheet.vue'
 
 const { connectedChannels, disconnectAccount, mappingsForAccount } = useChannels()
+const { websiteChannel, hydrate: hydrateWebsite, enable: enableWebsite, disable: disableWebsite } = useWebsiteChannel()
+onMounted(hydrateWebsite)
+
+const hasChannels = computed(() => connectedChannels.value.length > 0 || websiteChannel.value.enabled)
+
+const websiteOpen = ref(false)
+const websiteStart = ref<'list' | 'new'>('list')
+const removeWebsiteOpen = ref(false)
+
+/**
+ * Adding the channel opens a new rule set; it is added when that rule set is
+ * saved. A channel removed earlier comes back with its rule sets.
+ */
+function openWebsite() {
+  if (!websiteChannel.value.enabled && websiteChannel.value.ruleSets.length > 0) {
+    enableWebsite()
+    toast.success('Website channel added back', { description: 'Its rule sets are restored.' })
+  }
+  websiteStart.value = websiteChannel.value.enabled ? 'list' : 'new'
+  websiteOpen.value = true
+}
+
+function confirmRemoveWebsite() {
+  disableWebsite()
+  websiteOpen.value = false
+  toast.info('Website channel removed', { description: 'Its settings are kept if you add it again.' })
+}
 
 // Only connected channels get a card. Add channel lists every channel.
 const pickerOpen = ref(false)
@@ -62,13 +92,14 @@ function confirmDisconnect() {
       <h2 class="text-base font-semibold">
         Channel accounts
       </h2>
-      <Button v-if="connectedChannels.length > 0" size="sm" @click="pickerOpen = true">
+      <Button v-if="hasChannels" size="sm" @click="pickerOpen = true">
         <Icon name="lucide:plus" class="mr-1.5 size-4" aria-hidden="true" />
         Add channel
       </Button>
     </div>
 
-    <div v-if="connectedChannels.length > 0" class="grid grid-cols-1 gap-3 sm:grid-cols-2 @3xl/main:grid-cols-3 @5xl/main:grid-cols-4">
+    <div v-if="hasChannels" class="grid grid-cols-1 gap-3 sm:grid-cols-2 @3xl/main:grid-cols-3 @5xl/main:grid-cols-4">
+      <WebsiteChannelCard v-if="websiteChannel.enabled" @manage="openWebsite" />
       <ChannelAccountCard
         v-for="channel in connectedChannels"
         :key="channel.name"
@@ -87,7 +118,26 @@ function confirmDisconnect() {
       </Button>
     </div>
 
-    <ChannelPickerDialog v-model:open="pickerOpen" @pick="openConnect" />
+    <ChannelPickerDialog v-model:open="pickerOpen" @pick="openConnect" @pick-website="openWebsite" />
+    <WebsiteChannelSheet v-model:open="websiteOpen" :start="websiteStart" @remove="removeWebsiteOpen = true" />
+
+    <AlertDialog v-model:open="removeWebsiteOpen">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove the Website channel?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Your websites stop taking direct bookings under these rule sets, and booking widgets that use one go back to their own
+            discounts. Existing reservations are not affected, and the rule sets are kept if you add the channel again.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" @click="confirmRemoveWebsite">
+            Remove
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <ChannelAccountsSheet
       v-model:open="manageOpen"

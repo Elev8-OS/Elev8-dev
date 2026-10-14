@@ -654,6 +654,19 @@ const guestGuideRoute = computed(() => {
                           {{ reservation.channel }}
                         </span>
                       </div>
+                      <!-- Frozen at booking: which website the guest booked on and the rule set that priced it. -->
+                      <div v-if="reservation.channel === 'Direct' && reservation.websiteBooking" class="flex items-start gap-1.5" data-testid="reservation-website-booking">
+                        <Icon name="lucide:monitor-smartphone" class="mt-0.5 size-3.5 shrink-0" />
+                        <div class="min-w-0 space-y-0.5">
+                          <p class="truncate">
+                            Booked on <span class="font-medium text-foreground">{{ reservation.websiteBooking.websiteName }}</span> · {{ reservation.websiteBooking.websiteUrl }}
+                          </p>
+                          <p>{{ reservation.websiteBooking.ruleSetName ? `Rule set: ${reservation.websiteBooking.ruleSetName}` : 'No rule set' }}</p>
+                          <p v-for="(d, i) in reservation.websiteBooking.discounts" :key="i">
+                            {{ d.label }} · {{ fmtCurrency(d.amount, reservation.currency) }} off
+                          </p>
+                        </div>
+                      </div>
                     </div>
 
                     <!-- Dates (Check-in / Check-out) -->

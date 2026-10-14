@@ -1,13 +1,25 @@
 <script setup lang="ts">
 import type { Website } from '~/components/website-builder/data/websites'
 import { toast } from 'vue-sonner'
+import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
 import { setWebsiteStatus, websites } from '~/components/website-builder/data/websites'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 
 definePageMeta({
   layout: 'default',
 })
 
 const router = useRouter()
+
+// Rule sets are saved in localStorage; reading them after mount keeps SSR and the
+// first client render the same. The badge only shows while the channel is added.
+const { hydrate } = useWebsiteChannel()
+onMounted(hydrate)
+const channelEnabled = computed(() => websiteChannel.value.enabled)
+
+function ruleSetName(website: Website) {
+  return ruleSetForWebsite(websiteChannel.value, website.id)?.name ?? null
+}
 
 function openPreview(website: Website) {
   window.open(`https://${website.url}`, '_blank', 'noopener,noreferrer')
@@ -106,6 +118,21 @@ function formatVisits(num: number) {
           <div class="flex items-center gap-2 text-sm text-muted-foreground">
             <Icon name="i-lucide-layout-template" class="size-4" />
             <span>{{ website.template }}</span>
+          </div>
+          <div v-if="channelEnabled" class="flex flex-wrap items-center gap-2" :data-testid="`rule-set-${website.id}`">
+            <NuxtLink to="/channels" title="Manage booking rules on the Channels page">
+              <Badge v-if="ruleSetName(website)" variant="secondary" class="gap-1">
+                <Icon name="i-lucide-percent" class="size-3" />
+                {{ ruleSetName(website) }}
+              </Badge>
+              <Badge v-else variant="outline" class="gap-1">
+                <Icon name="i-lucide-percent" class="size-3" />
+                No rule set
+              </Badge>
+            </NuxtLink>
+            <span v-if="!ruleSetName(website)" class="text-xs text-muted-foreground">
+              No Website discounts on direct bookings
+            </span>
           </div>
           <div class="flex items-center justify-between pt-2 border-t border-border">
             <div class="flex items-center gap-1.5 text-sm text-muted-foreground">

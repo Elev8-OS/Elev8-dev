@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
 import { bookingWidgets, useBookingWidgets } from '~/components/booking-widget/data/widgets'
+import WidgetRuleSetSelect from '~/components/booking-widget/WidgetRuleSetSelect.vue'
 import { listings } from '~/components/listings/data/listings'
-import { usePromoCodes } from '~/composables/usePromoCodes'
 import PromoCodePicker from '~/components/promo-code/PromoCodePicker.vue'
+import { usePromoCodes } from '~/composables/usePromoCodes'
 
 definePageMeta({ layout: 'default' })
 
@@ -23,6 +24,8 @@ const presetColors = ['#F6BB11', '#C8A84B', '#1E293B', '#0EA5E9', '#10B981']
 const form = reactive({
   name: '',
   selectedListingIds: [] as string[],
+  // null = no discounts or stay rules (v2 has none of its own); or a Website channel rule set.
+  websiteRuleSetId: null as string | null,
   contactFields: {
     firstName: 'required' as 'required' | 'optional' | 'hidden',
     lastName: 'required' as 'required' | 'optional' | 'hidden',
@@ -51,7 +54,7 @@ const contactFieldDefinitions = [
 const fieldSettingOptions = [
   { value: 'required', label: 'Required field' },
   { value: 'optional', label: 'Optional' },
-  { value: 'hidden', label: "Don't show" },
+  { value: 'hidden', label: 'Don\'t show' },
 ]
 
 const eligibleListings = computed(() => listings.value.map((listing) => {
@@ -98,6 +101,7 @@ const embedPreviewWidget = computed(() => buildEmbedPreview({
   extraChildPerNight: { mode: 'currency', value: 0 },
   seasonalConditions: [],
   lengthOfStayDiscounts: [],
+  websiteRuleSetId: form.websiteRuleSetId,
   allowedDomains: [],
   promoCodeIds: [...form.promoCodeIds],
   embedVersion: 'v1',
@@ -128,6 +132,7 @@ const embedSnippet = computed(() => getSnippetForForm({
   extraChildPerNight: { mode: 'currency', value: 0 },
   seasonalConditions: [],
   lengthOfStayDiscounts: [],
+  websiteRuleSetId: form.websiteRuleSetId,
   allowedDomains: [],
   promoCodeIds: [...form.promoCodeIds],
   embedVersion: 'v1',
@@ -202,6 +207,7 @@ function saveWidget() {
     extraChildPerNight: { mode: 'currency', value: 0 },
     seasonalConditions: [],
     lengthOfStayDiscounts: [],
+    websiteRuleSetId: form.websiteRuleSetId,
     allowedDomains: [],
     promoCodeIds: [...form.promoCodeIds],
     requestNumberOfPersons: null,
@@ -252,7 +258,9 @@ function saveWidget() {
 
     <Card>
       <CardHeader>
-        <CardTitle class="text-base">Accommodation</CardTitle>
+        <CardTitle class="text-base">
+          Accommodation
+        </CardTitle>
         <CardDescription>Choose listings for this widget.</CardDescription>
       </CardHeader>
       <CardContent class="space-y-4">
@@ -372,7 +380,21 @@ function saveWidget() {
 
     <Card>
       <CardHeader>
-        <CardTitle class="text-base">Contact Fields</CardTitle>
+        <CardTitle class="text-base">
+          Discounts and stay rules
+        </CardTitle>
+        <CardDescription>Use the discounts, stay rules and prepayment of a Website channel rule set.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <WidgetRuleSetSelect v-model="form.websiteRuleSetId" own-label="No discounts or stay rules" />
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-base">
+          Contact Fields
+        </CardTitle>
         <CardDescription>Configure which contact fields guests must fill in.</CardDescription>
       </CardHeader>
       <CardContent class="space-y-6">
@@ -396,13 +418,17 @@ function saveWidget() {
 
     <Card>
       <CardHeader>
-        <CardTitle class="text-base">Embed in Website</CardTitle>
+        <CardTitle class="text-base">
+          Embed in Website
+        </CardTitle>
         <CardDescription>Configure embed snippet and preview.</CardDescription>
       </CardHeader>
       <CardContent class="space-y-6">
         <div class="space-y-3">
           <Label class="text-sm font-semibold">Accent Color</Label>
-          <p class="text-xs text-muted-foreground">Choose a primary color for the widget.</p>
+          <p class="text-xs text-muted-foreground">
+            Choose a primary color for the widget.
+          </p>
           <div class="flex flex-wrap items-center gap-2">
             <button
               v-for="c in presetColors"
@@ -449,7 +475,9 @@ function saveWidget() {
 
     <Card>
       <CardHeader>
-        <CardTitle class="text-base">Promo codes</CardTitle>
+        <CardTitle class="text-base">
+          Promo codes
+        </CardTitle>
         <CardDescription>Link codes managed in the Promo Codes page to this widget.</CardDescription>
       </CardHeader>
       <CardContent>

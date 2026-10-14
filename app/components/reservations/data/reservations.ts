@@ -3,6 +3,7 @@ import type { BookingChannel } from '~/components/listings/data/listings'
 import type { ReservationCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import type { FolioItem } from '~/components/reservations/data/folio'
 import type { TernTier } from '~/components/reservations/data/tern-products'
+import type { WebsiteBookingSource } from '~/components/reservations/data/website-booking'
 import { damageProtectionDemoReservations } from '~/components/reservations/data/damage-protection-demo'
 import { stayExtensionDemoGuests, stayExtensionDemoReservations } from '~/components/reservations/data/stay-extension-demo'
 
@@ -12,6 +13,8 @@ export type {
   ReservationCleaningSchedule,
   ReservationCleaningType,
 } from '~/components/reservations/data/cleaning-schedule'
+
+export type { WebsiteBookingDiscount, WebsiteBookingSource } from '~/components/reservations/data/website-booking'
 
 export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
@@ -479,6 +482,12 @@ export interface ReservationEntry {
    * rewritten (the channel owns its dates and price).
    */
   extensionOf?: string
+  /**
+   * Direct bookings only: the website the guest booked on and the rule set
+   * that priced it. A frozen snapshot (see data/website-booking.ts), never a
+   * live join; display only, it never touches `priceDetails` or the folio.
+   */
+  websiteBooking?: WebsiteBookingSource
 }
 
 /** How the guest pays for added nights. */
@@ -611,6 +620,8 @@ export interface ReservationDraft {
    * merge would show one guest another guest's history.
    */
   guestId?: string
+  /** Direct bookings only: the website snapshot, see `ReservationEntry.websiteBooking`. */
+  websiteBooking?: WebsiteBookingSource
 }
 
 let lastReservationStamp = 0
@@ -1801,6 +1812,44 @@ export const initialReservations: ReservationEntry[] = [
 // Kept in their own module because their dates are relative to today.
 initialReservations.push(...damageProtectionDemoReservations)
 initialReservations.push(...stayExtensionDemoReservations)
+
+/**
+ * Seeded website booking snapshots on Direct stays whose listing a website
+ * sells (`getListingIdsForWebsite`). Literal values on purpose: a snapshot is
+ * what the booking saw, not a lookup of today's site or rule set.
+ */
+const SEEDED_WEBSITE_BOOKINGS: Record<string, WebsiteBookingSource> = {
+  'res-multi-1': {
+    websiteId: '1',
+    websiteName: 'Villa Sunset Bali',
+    websiteUrl: 'villa-sunset-bali.com',
+    ruleSetId: 'wrs-seed-villas',
+    ruleSetName: 'Bali villas direct',
+    discounts: [{ label: 'Early bird 5%', amount: 50 }],
+  },
+  'res-dp-awaiting': {
+    websiteId: '1',
+    websiteName: 'Villa Sunset Bali',
+    websiteUrl: 'villa-sunset-bali.com',
+    ruleSetId: null,
+    ruleSetName: null,
+    discounts: [],
+  },
+  'res-dp-charge-failed': {
+    websiteId: '4',
+    websiteName: 'Canggu Surf Villa',
+    websiteUrl: 'canggu-surf-villa.com',
+    ruleSetId: 'wrs-seed-villas',
+    ruleSetName: 'Bali villas direct',
+    discounts: [],
+  },
+}
+
+for (const [index, r] of initialReservations.entries()) {
+  const seed = SEEDED_WEBSITE_BOOKINGS[r.id]
+  if (seed && r.channel === 'Direct')
+    initialReservations[index] = { ...r, websiteBooking: { ...seed, discounts: seed.discounts.map(d => ({ ...d })) } }
+}
 
 export const initialGuests: GuestProfile[] = [
   {

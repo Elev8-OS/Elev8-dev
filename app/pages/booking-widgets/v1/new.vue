@@ -3,10 +3,11 @@ import type { DateValue } from '@internationalized/date'
 import type { DateRange } from 'reka-ui'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { toast } from 'vue-sonner'
-import { bookingWidgets, useBookingWidgets } from '~/components/booking-widget/data/widgets'
+import { bookingWidgets, useBookingWidgets, widgetRuleSet } from '~/components/booking-widget/data/widgets'
+import WidgetRuleSetSelect from '~/components/booking-widget/WidgetRuleSetSelect.vue'
 import { listings } from '~/components/listings/data/listings'
-import { usePromoCodes } from '~/composables/usePromoCodes'
 import PromoCodePicker from '~/components/promo-code/PromoCodePicker.vue'
+import { usePromoCodes } from '~/composables/usePromoCodes'
 
 definePageMeta({ layout: 'default' })
 
@@ -35,6 +36,8 @@ const form = reactive({
   extraChildPerNight: { mode: 'currency' as 'currency' | 'percent', value: 0 },
   seasonalConditions: [] as Array<{ id: string, startDate: string, endDate: string, arrivalDays: number[], departureDays: number[] }>,
   lengthOfStayDiscounts: [] as Array<{ id: string, minNights: number, discountType: '%' | 'fixed', value: number }>,
+  // null = the widget's own discounts; or a Website channel rule set.
+  websiteRuleSetId: null as string | null,
   paymentMethods: [
     'Invoice (Bank Transfer)',
     'PayPal',
@@ -202,6 +205,10 @@ const eligibleListings = computed(() => listings.value.map((listing) => {
 const selectedListings = computed(() => eligibleListings.value.filter(listing => form.selectedListingIds.includes(listing.id)))
 const widgetCurrency = computed(() => selectedListings.value[0]?.currency ?? 'USD')
 
+// A deleted rule set falls back to the widget's own rules, as the embed does.
+const websiteRuleSet = computed(() => widgetRuleSet({ websiteRuleSetId: form.websiteRuleSetId }))
+const usingWebsiteDiscounts = computed(() => websiteRuleSet.value !== null)
+
 const embedPreviewWidget = computed(() => buildEmbedPreview({
   id: 'preview',
   name: form.name || 'New Booking Widget',
@@ -230,6 +237,7 @@ const embedPreviewWidget = computed(() => buildEmbedPreview({
   extraChildPerNight: { ...form.extraChildPerNight },
   seasonalConditions: form.seasonalConditions.map(c => ({ ...c, arrivalDays: [...c.arrivalDays], departureDays: [...c.departureDays] })),
   lengthOfStayDiscounts: form.lengthOfStayDiscounts.map(d => ({ ...d })),
+  websiteRuleSetId: form.websiteRuleSetId,
   allowedDomains: form.allowedDomains.filter(Boolean),
   promoCodeIds: [...form.promoCodeIds],
   embedVersion: 'v1',
@@ -263,6 +271,7 @@ const embedSnippet = computed(() => getSnippetForForm({
   extraChildPerNight: { ...form.extraChildPerNight },
   seasonalConditions: form.seasonalConditions.map(c => ({ ...c, arrivalDays: [...c.arrivalDays], departureDays: [...c.departureDays] })),
   lengthOfStayDiscounts: form.lengthOfStayDiscounts.map(d => ({ ...d })),
+  websiteRuleSetId: form.websiteRuleSetId,
   allowedDomains: form.allowedDomains.filter(Boolean),
   promoCodeIds: [...form.promoCodeIds],
   embedVersion: 'v1',
@@ -419,6 +428,7 @@ function saveWidget() {
     extraChildPerNight: { ...form.extraChildPerNight },
     seasonalConditions: form.seasonalConditions.map(c => ({ ...c, arrivalDays: [...c.arrivalDays], departureDays: [...c.departureDays] })),
     lengthOfStayDiscounts: form.lengthOfStayDiscounts.map(d => ({ ...d })),
+    websiteRuleSetId: form.websiteRuleSetId,
     allowedDomains: form.allowedDomains.filter(Boolean),
     promoCodeIds: [...form.promoCodeIds],
     currency: form.currency,
@@ -616,6 +626,8 @@ function saveWidget() {
               </p>
             </div>
 
+            <WidgetRuleSetSelect v-model="form.websiteRuleSetId" />
+
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <div class="space-y-2">
                 <Label>Cleaning fee</Label>
@@ -634,7 +646,10 @@ function saveWidget() {
 
               <div class="space-y-2">
                 <Label>Prepayment</Label>
-                <div class="flex items-center gap-2">
+                <p v-if="websiteRuleSet" class="flex h-9 items-center rounded-md border bg-muted/60 px-3 text-sm text-muted-foreground">
+                  {{ websiteRuleSet.prepaymentPct }}% from {{ websiteRuleSet.name }}
+                </p>
+                <div v-else class="flex items-center gap-2">
                   <Input v-model.number="form.prepayment.value" type="number" min="0" class="flex-1" />
                   <ToggleGroup type="single" :model-value="form.prepayment.mode" @update:model-value="(v) => { if (v) form.prepayment.mode = v as 'currency' | 'percent' }">
                     <ToggleGroupItem value="currency" class="min-w-[40px]">
@@ -649,7 +664,10 @@ function saveWidget() {
 
               <div class="space-y-2">
                 <Label>Min. days between Booking and Arrival</Label>
-                <div class="flex items-center gap-2">
+                <p v-if="websiteRuleSet" class="flex h-9 items-center rounded-md border bg-muted/60 px-3 text-sm text-muted-foreground">
+                  {{ websiteRuleSet.minDaysBeforeArrival }} days from {{ websiteRuleSet.name }}
+                </p>
+                <div v-else class="flex items-center gap-2">
                   <Input v-model.number="form.minDaysBeforeArrival" type="number" min="0" class="flex-1" />
                   <span class="shrink-0 text-sm text-muted-foreground">days</span>
                 </div>
@@ -710,6 +728,9 @@ function saveWidget() {
                   <Label class="text-sm font-semibold">Arrival and Departure Days</Label>
                   <p class="text-xs text-muted-foreground">
                     Set seasonal check-in/check-out day restrictions for specific date ranges.
+                  </p>
+                  <p v-if="websiteRuleSet && (websiteRuleSet.arrivalDays.length || websiteRuleSet.departureDays.length)" class="text-xs text-muted-foreground">
+                    The arrival and departure days of "{{ websiteRuleSet.name }}" apply all year; seasons here narrow them further.
                   </p>
                 </div>
                 <Button variant="outline" size="sm" @click="addSeasonalCondition">
@@ -812,13 +833,17 @@ function saveWidget() {
                     Offer discounts based on minimum nights booked.
                   </p>
                 </div>
-                <Button variant="outline" size="sm" @click="addLengthOfStayDiscount">
+                <Button v-if="!usingWebsiteDiscounts" variant="outline" size="sm" @click="addLengthOfStayDiscount">
                   <Icon name="i-lucide-plus" class="size-4 mr-1.5" />
                   Add discount
                 </Button>
               </div>
 
-              <div v-if="form.lengthOfStayDiscounts.length > 0" class="space-y-2">
+              <p v-if="websiteRuleSet" class="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
+                Set by the Website rule set "{{ websiteRuleSet.name }}" chosen under Booking rules.
+              </p>
+
+              <div v-else-if="form.lengthOfStayDiscounts.length > 0" class="space-y-2">
                 <div v-for="(tier, index) in form.lengthOfStayDiscounts" :key="tier.id" class="flex flex-wrap items-end gap-3 rounded-lg border p-3">
                   <div class="space-y-2">
                     <Label>Min. nights</Label>

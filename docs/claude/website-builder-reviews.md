@@ -143,3 +143,11 @@ instead of `5.0/5`. It now derives the halving from `getDisplayMax(source) === 5
 both Airbnb and Direct, false for Booking.com's 10-point scale). Since `FeedTable.vue` and
 `DetailGuestPanel.vue` both call the shared `getDisplayScore()` helper, this one change
 corrected their Direct-channel display too.
+
+### Website channel rule set (Booking rules)
+
+The site's Website channel rule set (see `docs/claude/channels.md`, "Website channel") is shown and set here but **never stored on `Website`**: `useWebsiteChannel()` is the only writer.
+- `SettingsStep.vue` has a "Booking rules" Select ("No rule set" plus each rule set with `ruleSetSummary`) and a "Manage on the Channels page" link; with no rule sets it shows one line with that link. The pick lives in the form only, as `WebsiteSettings.ruleSetId` (`undefined` = leave as is, `null` = no rule set).
+- `create.vue` calls `hydrate()` in `onMounted` and, when editing, preselects `ruleSetForWebsite(...)`. `PreviewStep.vue` shows the pick in the summary and, on save/publish, calls `assignWebsite(id, ruleSetId)` with the new or edited site's id.
+- `index.vue` hydrates on mount and, only while `websiteChannel.enabled`, shows a badge per card linking to `/channels`: the rule set name, or an outline "No rule set" with a hint.
+- Spec: `tests/website-builder/website-rule-set.spec.ts` (resets `websiteChannel` by hand).

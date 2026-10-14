@@ -15,16 +15,21 @@ import {
 } from '@tanstack/vue-table'
 import ChannelMappingDialog from '~/components/channels/ChannelMappingDialog.vue'
 import { channelColumnId, channelForColumnId, CHANNELS } from '~/components/channels/data/channels'
+import { WEBSITE_CHANNEL, websiteChannel } from '~/components/channels/data/website-channel'
+import { WEBSITE_COLUMN_ID, websitesForListing } from '~/components/listings/data/listing-websites'
 import { aiStatusLabels, aiStatusOptions, allTags, getUnits, listings } from '~/components/listings/data/listings'
 import ListingAiStatusCell from '~/components/listings/ListingAiStatusCell.vue'
 import ListingChannelCell from '~/components/listings/ListingChannelCell.vue'
 import ListingExpandRow from '~/components/listings/ListingExpandRow.vue'
 import ListingRowActions from '~/components/listings/ListingRowActions.vue'
 import ListingSingleToggle from '~/components/listings/ListingSingleToggle.vue'
+import ListingWebsiteCell from '~/components/listings/ListingWebsiteCell.vue'
 import SavedViewsDropdown from '~/components/listings/SavedViewsDropdown.vue'
 import { Badge } from '~/components/ui/badge'
+import { websites } from '~/components/website-builder/data/websites'
 import { useChannels } from '~/composables/useChannels'
 import { useSavedViews } from '~/composables/useSavedViews'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 import { valueUpdater } from '~/lib/utils'
 
 const router = useRouter()
@@ -92,10 +97,10 @@ const columns: ColumnDef<Listing, any>[] = [
 
       return h('div', { class: 'flex items-center gap-1.5 min-w-0' }, [
         isMulti && h('button', {
-          type: 'button',
-          class: 'flex shrink-0 items-center text-muted-foreground hover:text-foreground transition-colors',
+          'type': 'button',
+          'class': 'flex shrink-0 items-center text-muted-foreground hover:text-foreground transition-colors',
           'aria-label': isExpanded ? 'Collapse rooms' : 'Expand rooms',
-          onClick: (e: Event) => { e.stopPropagation(); toggleExpand(listing.id) },
+          'onClick': (e: Event) => { e.stopPropagation(); toggleExpand(listing.id) },
         }, h(Icon, { name: isExpanded ? 'lucide:chevron-down' : 'lucide:chevron-right', class: 'size-4' })),
         !isMulti && h('span', { class: 'w-4 shrink-0' }),
         h('div', { class: 'min-w-0' }, [
@@ -155,6 +160,17 @@ const columns: ColumnDef<Listing, any>[] = [
     // Rendered by ListingChannelCell in the template.
     cell: () => null,
   })),
+  // Website Builder sites selling the listing. Id stored in saved views: keep it stable.
+  {
+    id: WEBSITE_COLUMN_ID,
+    accessorFn: row => websitesForListing(row.id, websites.value, websiteChannel.value).length,
+    header: () => h('div', { class: 'flex items-center gap-1.5 whitespace-nowrap' }, [
+      h(Icon, { name: WEBSITE_CHANNEL.icon, class: 'size-3.5 shrink-0' }),
+      WEBSITE_CHANNEL.name,
+    ]),
+    // Rendered by ListingWebsiteCell in the template.
+    cell: () => null,
+  },
   {
     accessorKey: 'amenities',
     header: 'Amenities',
@@ -230,8 +246,9 @@ function openChannelMapping(listingId: string, channel: string) {
   mappingOpen.value = true
 }
 
-const fieldColumns = computed(() => toggleableColumns.value.filter(c => !channelForColumnId(c.id)))
+const fieldColumns = computed(() => toggleableColumns.value.filter(c => !channelForColumnId(c.id) && c.id !== WEBSITE_COLUMN_ID))
 const channelColumns = computed(() => toggleableColumns.value.filter(c => channelForColumnId(c.id)))
+const websiteColumn = computed(() => toggleableColumns.value.find(c => c.id === WEBSITE_COLUMN_ID))
 
 const columnLabels: Record<string, string> = {
   name: 'Listing Name',
@@ -267,7 +284,11 @@ const {
   resetToDefault,
 } = useSavedViews()
 
+const { hydrate: hydrateWebsiteChannel } = useWebsiteChannel()
+
 onMounted(async () => {
+  // Rule set names in the Website column; after mount so SSR and the first client render match.
+  hydrateWebsiteChannel()
   await fetchViews()
   // Restore view state after fetch
   if (activeView.value) {
@@ -580,6 +601,17 @@ function handleRenameView(viewId: string, newName: string) {
                         <Icon :name="channelForColumnId(column.id)!.icon" class="size-3.5" />
                         {{ channelForColumnId(column.id)!.name }}
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-if="websiteColumn"
+                        class="flex items-center gap-2"
+                        @select.prevent
+                        @click="websiteColumn.toggleVisibility()"
+                      >
+                        <Icon v-if="websiteColumn.getIsVisible()" name="lucide:check" class="size-4" />
+                        <span v-else class="size-4" />
+                        <Icon :name="WEBSITE_CHANNEL.icon" class="size-3.5" />
+                        {{ WEBSITE_CHANNEL.name }}
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </template>
@@ -594,6 +626,7 @@ function handleRenameView(viewId: string, newName: string) {
                   <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id" :class="columnClass(cell.column.id)">
                     <ListingAiStatusCell v-if="cell.column.id === 'aiStatus'" :key="`ai-${row.original.id}`" :listing-id="row.original.id" />
                     <ListingChannelCell v-else-if="channelForColumnId(cell.column.id)" :key="`${cell.column.id}-${row.original.id}`" :listing-id="row.original.id" :channel="channelForColumnId(cell.column.id)!.name" @open-mapping="openChannelMapping(row.original.id, channelForColumnId(cell.column.id)!.name)" />
+                    <ListingWebsiteCell v-else-if="cell.column.id === WEBSITE_COLUMN_ID" :key="`${WEBSITE_COLUMN_ID}-${row.original.id}`" :listing-id="row.original.id" />
                     <FlexRender v-else :render="cell.column.columnDef.cell" :props="cell.getContext()" />
                   </TableCell>
                 </TableRow>

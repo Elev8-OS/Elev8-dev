@@ -16,6 +16,7 @@ import { getListingsForProperties } from '~/components/website-builder/data/prop
 import { compareByReceivedDesc, meetsMinCount, resolveAutoReviews } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import { useReviewHub } from '~/composables/useReviewHub'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 
 // Re-export for convenience
 export type { PropertySelection, Template, WebsiteSettings }
@@ -195,6 +196,14 @@ function loadMoreReviews() {
 const isPublishing = ref(false)
 const route = useRoute()
 const editId = computed(() => route.query.edit as string | undefined)
+const { assignWebsite, getRuleSet } = useWebsiteChannel()
+const chosenRuleSet = computed(() => getRuleSet(props.settings.ruleSetId))
+
+/** The Website channel owns the rule set; the Website object never stores it. */
+function applyRuleSet(websiteId: string) {
+  if (props.settings.ruleSetId !== undefined)
+    assignWebsite(websiteId, props.settings.ruleSetId)
+}
 
 function persistWebsite(status: Website['status'], message: string) {
   isPublishing.value = true
@@ -218,11 +227,13 @@ function persistWebsite(status: Website['status'], message: string) {
           featuredManualReviewIds: props.reviews.featuredManualReviewIds,
           reviewConfig: props.reviews.config,
         }
+        applyRuleSet(existing.id)
       }
     }
     else {
+      const id = String(Date.now())
       websites.value.push({
-        id: String(Date.now()),
+        id,
         name: props.settings.name,
         url: props.settings.domain,
         status,
@@ -237,6 +248,7 @@ function persistWebsite(status: Website['status'], message: string) {
         featuredManualReviewIds: props.reviews.featuredManualReviewIds,
         reviewConfig: props.reviews.config,
       })
+      applyRuleSet(id)
     }
     toast.success(message)
     navigateTo('/website-builder')
@@ -336,6 +348,14 @@ function handleBack() {
             </p>
             <p class="text-sm text-muted-foreground line-clamp-2">
               {{ settings.description || '—' }}
+            </p>
+          </div>
+          <div v-if="settings.ruleSetId !== undefined" class="space-y-1 @xl/main:col-span-2" data-testid="preview-rule-set">
+            <p class="text-xs text-muted-foreground">
+              Booking rules
+            </p>
+            <p class="text-sm font-medium">
+              {{ chosenRuleSet ? chosenRuleSet.name : 'No rule set' }}
             </p>
           </div>
         </div>

@@ -2,13 +2,16 @@
 import type { ChannelDefinition } from './data/channels'
 import { computed } from 'vue'
 import { useChannels } from '~/composables/useChannels'
+import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 import { CHANNELS } from './data/channels'
+import { WEBSITE_CHANNEL } from './data/website-channel'
 
-const emit = defineEmits<{ pick: [channel: ChannelDefinition] }>()
+const emit = defineEmits<{ pick: [channel: ChannelDefinition], pickWebsite: [] }>()
 
 const open = defineModel<boolean>('open', { default: false })
 
 const { accountsForChannel } = useChannels()
+const { websiteChannel } = useWebsiteChannel()
 
 // Connected channels first: picking one adds another account to it.
 const rows = computed(() => CHANNELS
@@ -18,6 +21,11 @@ const rows = computed(() => CHANNELS
 function pick(channel: ChannelDefinition) {
   open.value = false
   emit('pick', channel)
+}
+
+function pickWebsite() {
+  open.value = false
+  emit('pickWebsite')
 }
 </script>
 
@@ -32,6 +40,34 @@ function pick(channel: ChannelDefinition) {
       </DialogHeader>
 
       <ul class="min-h-0 flex-1 divide-y overflow-y-auto">
+        <!-- No OTA account: the Website channel is direct bookings, so it opens its settings. -->
+        <li>
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none"
+            :aria-label="websiteChannel.enabled ? 'Open Website settings' : 'Add Website channel'"
+            @click="pickWebsite"
+          >
+            <span class="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
+              <Icon :name="WEBSITE_CHANNEL.icon" class="size-5" />
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-medium">{{ WEBSITE_CHANNEL.name }}</span>
+              <span class="block text-xs text-muted-foreground">
+                {{ websiteChannel.enabled ? 'Already added. Open its rule sets.' : WEBSITE_CHANNEL.description }}
+              </span>
+            </span>
+            <Badge
+              v-if="websiteChannel.enabled"
+              variant="outline"
+              class="shrink-0 gap-1 border-green-500/40 text-green-700 dark:text-green-400"
+            >
+              <span class="size-1.5 rounded-full bg-green-500" aria-hidden="true" />
+              Active
+            </Badge>
+            <Icon name="lucide:chevron-right" class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </button>
+        </li>
         <li v-for="row in rows" :key="row.channel.name">
           <button
             type="button"

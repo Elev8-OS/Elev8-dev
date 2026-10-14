@@ -34,7 +34,7 @@ function getEmbedSnippet() {
 
   return [
     '<' + 'script async src="https://booking.elev8-suite.com/v1/elev8-booking.js"></' + 'script>',
-    '<div class="e8bk-root" ' + listingAttr + ' data-widget-id="' + props.widget.id + '"></div>',
+    `<div class="e8bk-root" ${listingAttr} data-widget-id="${props.widget.id}"></div>`,
   ].join('\n')
 }
 
@@ -43,16 +43,24 @@ const embedSnippet = computed(() => getEmbedSnippet())
 function formatMoney(amount: number, currency = 'USD') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
 }
+
+const stayDiscountNights = computed(() => (props.widget.lengthOfStayDiscounts ?? []).map((t: { minNights: number }) => t.minNights).join(', '))
 </script>
 
 <template>
   <div class="overflow-hidden rounded-xl border bg-background">
     <div class="border-b bg-muted/30 px-4 py-3 flex items-center justify-between gap-3">
       <div class="min-w-0">
-        <p class="text-sm font-semibold truncate">Booking Widget Preview</p>
-        <p class="text-xs text-muted-foreground truncate">{{ widget.name }}</p>
+        <p class="text-sm font-semibold truncate">
+          Booking Widget Preview
+        </p>
+        <p class="text-xs text-muted-foreground truncate">
+          {{ widget.name }}
+        </p>
       </div>
-      <Badge variant="outline" class="shrink-0">{{ widget.mode === 'single' ? 'Single' : 'Multi' }}</Badge>
+      <Badge variant="outline" class="shrink-0">
+        {{ widget.mode === 'single' ? 'Single' : 'Multi' }}
+      </Badge>
     </div>
 
     <div class="grid gap-0 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
@@ -60,8 +68,12 @@ function formatMoney(amount: number, currency = 'USD') {
         <div class="rounded-xl border bg-card p-4 shadow-sm" :style="{ borderRadius: `${widget.cornerRadius}px` }">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <p class="text-xs font-medium uppercase tracking-normal text-muted-foreground">Step 1 of 5</p>
-              <h3 class="mt-1 text-lg font-semibold truncate">Direct booking flow</h3>
+              <p class="text-xs font-medium uppercase tracking-normal text-muted-foreground">
+                Step 1 of 5
+              </p>
+              <h3 class="mt-1 text-lg font-semibold truncate">
+                Direct booking flow
+              </h3>
             </div>
             <div class="size-3 rounded-full shrink-0" :style="{ backgroundColor: widget.accentColor }" />
           </div>
@@ -75,8 +87,12 @@ function formatMoney(amount: number, currency = 'USD') {
               :class="listing.id === activeListingId ? 'border-foreground bg-muted' : 'hover:bg-muted/60'"
               @click="activeListingId = listing.id"
             >
-              <p class="text-sm font-medium truncate">{{ listing.name }}</p>
-              <p class="text-xs text-muted-foreground truncate">{{ listing.location }} · {{ listing.capacity }} guests</p>
+              <p class="text-sm font-medium truncate">
+                {{ listing.name }}
+              </p>
+              <p class="text-xs text-muted-foreground truncate">
+                {{ listing.location }} · {{ listing.capacity }} guests
+              </p>
             </button>
           </div>
 
@@ -91,8 +107,12 @@ function formatMoney(amount: number, currency = 'USD') {
                 >
               </div>
               <div class="space-y-1">
-                <p class="text-base font-semibold truncate">{{ selectedListing?.name ?? 'Select a listing' }}</p>
-                <p class="text-sm text-muted-foreground truncate">{{ selectedListing?.location ?? 'Listing preview appears here' }}</p>
+                <p class="text-base font-semibold truncate">
+                  {{ selectedListing?.name ?? 'Select a listing' }}
+                </p>
+                <p class="text-sm text-muted-foreground truncate">
+                  {{ selectedListing?.location ?? 'Listing preview appears here' }}
+                </p>
               </div>
             </div>
 
@@ -120,12 +140,28 @@ function formatMoney(amount: number, currency = 'USD') {
 
       <aside class="min-w-0 border-t bg-muted/20 p-4 lg:border-t-0 lg:border-l lg:p-5 space-y-4">
         <div class="space-y-1">
-          <p class="text-sm font-semibold">Embed snippet</p>
-          <p class="text-xs text-muted-foreground">Paste both lines into the partner site.</p>
+          <p class="text-sm font-semibold">
+            Embed snippet
+          </p>
+          <p class="text-xs text-muted-foreground">
+            Paste both lines into the partner site.
+          </p>
         </div>
         <pre class="overflow-auto rounded-lg border bg-background p-3 text-xs leading-5 text-foreground whitespace-pre-wrap break-words">{{ embedSnippet }}</pre>
 
         <div class="grid gap-3 rounded-lg border bg-background p-4 text-sm">
+          <div class="space-y-1" data-testid="widget-preview-rules">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-muted-foreground">Booking rules</span>
+              <span class="truncate font-medium">{{ widget.websiteRuleSetName ? `Website: ${widget.websiteRuleSetName}` : 'This widget' }}</span>
+            </div>
+            <p v-if="widget.lengthOfStayDiscounts?.length" class="text-xs text-muted-foreground">
+              Stay discounts from {{ stayDiscountNights }} nights
+            </p>
+            <p v-if="widget.minNights" class="text-xs text-muted-foreground">
+              Stays of {{ widget.minNights }}{{ widget.maxNights ? ` to ${widget.maxNights}` : '+' }} nights
+            </p>
+          </div>
           <div class="flex items-center justify-between gap-3">
             <span class="text-muted-foreground">Allowed domains</span>
             <span class="font-medium">{{ widget.allowedDomains.length }}</span>

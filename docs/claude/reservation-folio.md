@@ -95,3 +95,14 @@ paid).
 **Tests:** `tests/lib/reservation-folio.spec.ts` (54),
 `tests/composables/useReservationFolio.spec.ts` (17),
 `tests/components/reservations/ReservationFolio.spec.ts` (28).
+
+### Website booking source (`app/components/reservations/data/website-booking.ts`)
+
+`ReservationEntry.websiteBooking?` (also on `ReservationDraft`) records which website a Direct booking came from and which Website channel rule set priced it: `{ websiteId, websiteName, websiteUrl, ruleSetId, ruleSetName, discounts: { label, amount }[] }`.
+- **Snapshot, not a live join.** Written once on create; renaming the site or editing or deleting the rule set never changes it. Ids are provenance only. `ruleSetName: null` shows "No rule set".
+- **Display only.** It never writes `priceDetails`, the folio or the total. Discount amounts are in the reservation currency; `buildWebsiteBookingSource()` (pure) drops a quote in another currency rather than converting.
+- `NewReservationDialog` (always Direct) has an optional "Booked on website" select (None + sites selling the picked listing; a site with no coverage recorded is listed). On create: the rule set is `ruleSetForWebsite(websiteChannel.value, id)` only while the channel is added, and the discounts come from `useWebsiteQuote().quoteStay(...)` for that rule set (booked today).
+- Shown in `ReservationDetailSheet` under the channel (site name and url, rule set or "No rule set", frozen discounts) and as subtext under "Direct" in the `ReservationTable` channel cell.
+- Seeds: `SEEDED_WEBSITE_BOOKINGS` in `data/reservations.ts` (res-multi-1, res-dp-awaiting, res-dp-charge-failed), literal values on Direct stays whose listing the site sells.
+
+**Tests:** `tests/lib/website-booking-source.spec.ts`, `tests/components/reservations/ReservationTableWebsiteBooking.spec.ts`.

@@ -36,6 +36,8 @@ import { adrByWeekday, breakdownSeries, channelRevenueSeries, rankListingsByReve
 import { toIsoDate } from '~/components/gm/data/gm-dashboard'
 import { stayLengthDistribution } from '~/components/listings/data/listing-overview-charts'
 import { listings } from '~/components/listings/data/listings'
+import { getListingIdsForWebsite } from '~/components/website-builder/data/property-listings'
+import { websites } from '~/components/website-builder/data/websites'
 import { useOwners } from '~/composables/useOwners'
 
 export interface AnalyticsFilters extends AnalyticsScope {
@@ -95,7 +97,10 @@ export function useAnalytics() {
   const allUnits = computed(() => [...toAnalyticsUnits(listings.value), ...retiredUnits(anchorDate.value)])
   // Generated for the whole portfolio once, then filtered, so a filter change
   // never reshuffles a listing's bookings.
-  const allBookings = computed(() => buildAnalyticsBookings(allUnits.value, anchorDate.value))
+  // The sites direct bookings can come from. A site with no properties set has
+  // no known coverage and takes no booking (they land in "Other direct").
+  const websiteCoverage = computed(() => websites.value.map(w => ({ id: w.id, name: w.name, listingIds: getListingIdsForWebsite(w) })))
+  const allBookings = computed(() => buildAnalyticsBookings(allUnits.value, anchorDate.value, undefined, websiteCoverage.value))
 
   /* ------------------------------------------------------------- options */
 
@@ -173,7 +178,7 @@ export function useAnalytics() {
   const trend = computed(() => trendSeries(bookings.value, units.value, span.value, previousSpan.value, currency.value, value.value))
 
   const arrivals = computed(() => arrivalsIn(bookings.value, span.value))
-  const channels = computed(() => channelMix(arrivals.value, currency.value, value.value))
+  const channels = computed(() => channelMix(arrivals.value, currency.value, value.value, websiteCoverage.value))
   const leadTimes = computed(() => leadTimeDistribution(arrivals.value))
   const stayLengths = computed(() => stayLengthDistribution(arrivals.value))
   const origins = computed(() => guestOrigins(arrivals.value))

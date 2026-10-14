@@ -452,6 +452,9 @@ const pageNumbers = computed(() => {
               </td>
               <td class="px-4 py-3">
                 {{ r.channel }}
+                <p v-if="r.channel === 'Direct' && r.websiteBooking" class="max-w-28 truncate text-xs text-muted-foreground" :title="r.websiteBooking.websiteUrl">
+                  {{ r.websiteBooking.websiteName }}
+                </p>
               </td>
               <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
                 {{ fmtCurrency(r.totalPrice, r.currency) }}

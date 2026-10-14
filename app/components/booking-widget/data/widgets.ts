@@ -1,4 +1,7 @@
-import { promoCodes as globalPromoCodes, type PromoCode } from '~/components/promo-code/data/promo-codes'
+import type { WebsiteRuleSet, WebsiteWindowDiscount } from '~/components/channels/data/website-channel'
+import type { PromoCode } from '~/components/promo-code/data/promo-codes'
+import { websiteChannel } from '~/components/channels/data/website-channel'
+import { promoCodes as globalPromoCodes } from '~/components/promo-code/data/promo-codes'
 
 export type BookingWidgetMode = 'single' | 'multi'
 
@@ -65,6 +68,13 @@ export interface BookingWidgetConfig {
   departureDays?: number[]
   seasonalConditions?: SeasonalCondition[]
   lengthOfStayDiscounts?: LengthOfStayDiscountTier[]
+  /**
+   * Website channel rule set whose booking rules replace the widget's own:
+   * length of stay discounts, early bird / last minute, min / max stay,
+   * booking notice, arrival / departure days and prepayment. null = the
+   * widget's own. See `resolveWidgetBookingRules`.
+   */
+  websiteRuleSetId?: string | null
   allowedDomains: string[]
   promoCodeIds: string[]
   status?: 'active' | 'inactive'
@@ -119,6 +129,68 @@ export const bookingWidgets = ref<BookingWidgetConfig[]>([
   },
 ])
 
+/** The rule set a widget follows: only while the channel is added and the set still exists. */
+export function widgetRuleSet(widget: Pick<BookingWidgetConfig, 'websiteRuleSetId'>): WebsiteRuleSet | null {
+  const state = websiteChannel.value
+  if (!widget.websiteRuleSetId || !state.enabled)
+    return null
+  return state.ruleSets.find(r => r.id === widget.websiteRuleSetId) ?? null
+}
+
+export interface WidgetBookingRules {
+  /** Name of the Website rule set the rules come from; null = the widget's own. */
+  ruleSetName: string | null
+  lengthOfStayDiscounts: LengthOfStayDiscountTier[]
+  earlyBird: WebsiteWindowDiscount | null
+  lastMinute: WebsiteWindowDiscount | null
+  minNights: number | null
+  maxNights: number | null
+  minDaysBeforeArrival: number
+  arrivalDays: number[] | null
+  departureDays: number[] | null
+  prepayment: ToggleableAmount | null
+}
+
+/**
+ * The booking rules a widget applies. A picked Website rule set replaces the
+ * widget's own wholesale (seasonal arrival rules stay the widget's); once the
+ * set is deleted or the channel removed, the widget's own come back.
+ */
+export function resolveWidgetBookingRules(widget: Partial<Pick<BookingWidgetConfig, 'websiteRuleSetId' | 'lengthOfStayDiscounts' | 'minDaysBeforeArrival' | 'arrivalDays' | 'departureDays' | 'prepayment'>>): WidgetBookingRules {
+  const set = widgetRuleSet(widget)
+  if (set) {
+    return {
+      ruleSetName: set.name,
+      lengthOfStayDiscounts: set.lengthOfStayDiscounts.map(t => ({ id: t.id, minNights: t.minNights, discountType: '%', value: t.pct })),
+      earlyBird: set.earlyBird.enabled ? { ...set.earlyBird } : null,
+      lastMinute: set.lastMinute.enabled ? { ...set.lastMinute } : null,
+      minNights: set.minNights,
+      maxNights: set.maxNights,
+      minDaysBeforeArrival: set.minDaysBeforeArrival,
+      arrivalDays: set.arrivalDays.length ? [...set.arrivalDays] : null,
+      departureDays: set.departureDays.length ? [...set.departureDays] : null,
+      prepayment: { mode: 'percent', value: set.prepaymentPct },
+    }
+  }
+  return {
+    ruleSetName: null,
+    lengthOfStayDiscounts: widget.lengthOfStayDiscounts ?? [],
+    earlyBird: null,
+    lastMinute: null,
+    minNights: null,
+    maxNights: null,
+    minDaysBeforeArrival: widget.minDaysBeforeArrival ?? 0,
+    arrivalDays: widget.arrivalDays ?? null,
+    departureDays: widget.departureDays ?? null,
+    prepayment: widget.prepayment ?? null,
+  }
+}
+
+/** The length of stay tiers a widget applies (see `resolveWidgetBookingRules`). */
+export function resolveWidgetStayDiscounts(widget: Pick<BookingWidgetConfig, 'lengthOfStayDiscounts' | 'websiteRuleSetId'>): LengthOfStayDiscountTier[] {
+  return resolveWidgetBookingRules(widget).lengthOfStayDiscounts
+}
+
 export function resolveWidgetPromoCodes(widget: BookingWidgetConfig): PromoCode[] {
   if (!widget.promoCodeIds?.length)
     return []
@@ -160,6 +232,12 @@ export interface BookingWidgetEmbedPreview {
   departureDays: number[] | null
   seasonalConditions: any
   lengthOfStayDiscounts: any
+  /** Website rule set the booking rules come from, null = the widget's own. */
+  websiteRuleSetName: string | null
+  minNights: number | null
+  maxNights: number | null
+  earlyBird: WebsiteWindowDiscount | null
+  lastMinute: WebsiteWindowDiscount | null
   allowedDomains: string[]
   promoCodes: PromoCode[]
   status: string | null
@@ -175,6 +253,7 @@ export function useBookingWidgets() {
   }
 
   function buildEmbedPreview(widget: BookingWidgetConfig): BookingWidgetEmbedPreview {
+    const rules = resolveWidgetBookingRules(widget)
     const listingLabel = widget.mode === 'single'
       ? `Listing ${widget.primaryListingId ?? widget.listingIds[0] ?? 'none'}`
       : `${widget.listingIds.length} listings`
@@ -200,17 +279,22 @@ export function useBookingWidgets() {
       accentColor: widget.accentColor,
       cornerRadius: widget.cornerRadius,
       depositPct: widget.depositPct,
-      minDaysBeforeArrival: widget.minDaysBeforeArrival,
+      minDaysBeforeArrival: rules.minDaysBeforeArrival,
       cleaningFee: widget.cleaningFee ?? null,
-      prepayment: widget.prepayment ?? null,
+      prepayment: rules.prepayment,
       extraGuestPerNight: widget.extraGuestPerNight ?? null,
       extraGuestStartAt: widget.extraGuestStartAt ?? null,
       maxGuests: widget.maxGuests ?? null,
       extraChildPerNight: widget.extraChildPerNight ?? null,
-      arrivalDays: widget.arrivalDays ?? null,
-      departureDays: widget.departureDays ?? null,
+      arrivalDays: rules.arrivalDays,
+      departureDays: rules.departureDays,
       seasonalConditions: widget.seasonalConditions ?? null,
-      lengthOfStayDiscounts: widget.lengthOfStayDiscounts ?? null,
+      lengthOfStayDiscounts: rules.lengthOfStayDiscounts,
+      websiteRuleSetName: rules.ruleSetName,
+      minNights: rules.minNights,
+      maxNights: rules.maxNights,
+      earlyBird: rules.earlyBird,
+      lastMinute: rules.lastMinute,
       allowedDomains: widget.allowedDomains,
       promoCodes: resolveWidgetPromoCodes(widget),
       status: widget.status ?? null,

@@ -86,7 +86,26 @@ export interface AnalyticsBooking {
    * booking is never changed): the id of the stay it extends.
    */
   extensionOf?: string
+  /**
+   * Direct bookings only: the Website Builder site the guest booked on, or
+   * null for a direct booking no site covers ("Other direct"). Absent on OTA
+   * bookings. See `websiteForBooking`.
+   */
+  websiteId?: string | null
 }
+
+/**
+ * A Website Builder site as the generator sees it: the listings it sells.
+ * Passed in by the caller so this module stays framework-free.
+ */
+export interface WebsiteCoverage {
+  id: string
+  name: string
+  listingIds: string[]
+}
+
+/** Label of the direct bookings no website covers. */
+export const OTHER_DIRECT_LABEL = 'Other direct'
 
 /* ----------------------------------------------------------------- units */
 
@@ -224,7 +243,28 @@ export function stayExtensionFor(
   return { nights, decidedOn }
 }
 
-export function buildAnalyticsBookings(units: AnalyticsUnit[], anchorIso: string, seed = 51_017): AnalyticsBooking[] {
+/**
+ * The website a direct booking came from: one of the sites selling its
+ * listing, picked from a hash of the booking id (never `rand`, so adding
+ * websites reshuffles no stay), else null. Sites are ordered by id, so the
+ * order they are passed in does not matter.
+ */
+export function websiteForBooking(b: Pick<AnalyticsBooking, 'id' | 'listingId'>, websites: WebsiteCoverage[]): string | null {
+  const covering = websites
+    .filter(w => w.listingIds.includes(b.listingId))
+    .map(w => w.id)
+    .sort()
+  if (!covering.length)
+    return null
+  return covering[idHash(`${b.id}#website`) % covering.length]!
+}
+
+export function buildAnalyticsBookings(
+  units: AnalyticsUnit[],
+  anchorIso: string,
+  seed = 51_017,
+  websites: WebsiteCoverage[] = [],
+): AnalyticsBooking[] {
   const windowStart = addIsoDays(anchorIso, -HISTORY_DAYS)
   const windowEnd = addIsoDays(anchorIso, FUTURE_DAYS)
   const bookings: AnalyticsBooking[] = []
@@ -314,7 +354,8 @@ export function buildAnalyticsBookings(units: AnalyticsUnit[], anchorIso: string
     }
   })
 
-  return bookings
+  // After the loop, so the website draws nothing from `rand`.
+  return bookings.map(b => b.channel === 'Direct' ? { ...b, websiteId: websiteForBooking(b, websites) } : b)
 }
 
 /* ----------------------------------------------------------------- periods */
@@ -690,6 +731,17 @@ export function arrivalsIn(bookings: AnalyticsBooking[], span: DateSpan): Analyt
   return bookings.filter(b => !isCancelled(b) && b.checkIn >= span.start && b.checkIn <= span.end)
 }
 
+export interface WebsiteShare {
+  /** Null for direct bookings no website covers. */
+  websiteId: string | null
+  name: string
+  stays: number
+  /** Revenue of those stays in the chosen currency. */
+  revenue: number
+  /** Whole percent of all arriving stays; the sites add up to the Direct row's percent. */
+  percent: number
+}
+
 export interface ChannelShare {
   channel: AnalyticsChannel
   stays: number
@@ -697,19 +749,81 @@ export interface ChannelShare {
   revenue: number
   /** Whole percent of all arriving stays. */
   percent: number
+  /** Direct only: the same stays split by the website they were booked on. */
+  sites?: WebsiteShare[]
 }
 
-export function channelMix(arrivals: AnalyticsBooking[], currency: string, value: BookingValuer = grossValue): ChannelShare[] {
+/** Whole revenue of a stay in the chosen currency, on the chosen basis. */
+function stayRevenue(rows: AnalyticsBooking[], currency: string, value: BookingValuer): number {
+  return rows.filter(b => b.currency === currency).reduce((s, b) => s + value(b, { start: b.checkIn, end: addIsoDays(b.checkOut, -1) }), 0)
+}
+
+/**
+ * Splits a whole percent over parts by largest remainder, so the parts add
+ * up exactly to it instead of drifting by a rounding point.
+ */
+function splitPercent(total: number, weights: number[]): number[] {
+  const sum = weights.reduce((s, w) => s + w, 0)
+  if (!sum)
+    return weights.map(() => 0)
+  const exact = weights.map(w => (w / sum) * total)
+  const floors = exact.map(Math.floor)
+  let left = total - floors.reduce((s, f) => s + f, 0)
+  const order = exact.map((e, i) => ({ i, rest: e - floors[i]! })).sort((a, b) => b.rest - a.rest || a.i - b.i)
+  for (const { i } of order) {
+    if (left <= 0)
+      break
+    floors[i]! += 1
+    left -= 1
+  }
+  return floors
+}
+
+/** Direct stays by website, busiest first, "Other direct" last. */
+function websiteShares(
+  direct: AnalyticsBooking[],
+  directPercent: number,
+  currency: string,
+  value: BookingValuer,
+  websites: Pick<WebsiteCoverage, 'id' | 'name'>[],
+): WebsiteShare[] {
+  const groups = new Map<string | null, AnalyticsBooking[]>()
+  for (const b of direct) {
+    const key = b.websiteId ?? null
+    groups.set(key, [...(groups.get(key) ?? []), b])
+  }
+  const rows = [...groups.entries()]
+    .map(([websiteId, list]) => ({
+      websiteId,
+      name: websiteId === null ? OTHER_DIRECT_LABEL : websites.find(w => w.id === websiteId)?.name ?? `Website ${websiteId}`,
+      stays: list.length,
+      revenue: stayRevenue(list, currency, value),
+    }))
+    .sort((a, b) => Number(a.websiteId === null) - Number(b.websiteId === null) || b.stays - a.stays || a.name.localeCompare(b.name))
+  const percents = splitPercent(directPercent, rows.map(r => r.stays))
+  return rows.map((r, i) => ({ ...r, percent: percents[i]! }))
+}
+
+export function channelMix(
+  arrivals: AnalyticsBooking[],
+  currency: string,
+  value: BookingValuer = grossValue,
+  websites: Pick<WebsiteCoverage, 'id' | 'name'>[] = [],
+): ChannelShare[] {
   return ANALYTICS_CHANNELS
     .map((channel) => {
       const rows = arrivals.filter(b => b.channel === channel)
-      return {
+      const percent = arrivals.length ? Math.round((rows.length / arrivals.length) * 100) : 0
+      const share: ChannelShare = {
         channel,
         stays: rows.length,
         // The whole stay, on the chosen basis.
-        revenue: rows.filter(b => b.currency === currency).reduce((s, b) => s + value(b, { start: b.checkIn, end: addIsoDays(b.checkOut, -1) }), 0),
-        percent: arrivals.length ? Math.round((rows.length / arrivals.length) * 100) : 0,
+        revenue: stayRevenue(rows, currency, value),
+        percent,
       }
+      if (channel === 'Direct' && rows.length)
+        share.sites = websiteShares(rows, percent, currency, value, websites)
+      return share
     })
     .filter(s => s.stays > 0)
     .sort((a, b) => b.stays - a.stays)

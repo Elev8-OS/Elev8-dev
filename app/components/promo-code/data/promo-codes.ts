@@ -417,6 +417,12 @@ export function getChannelRestriction(code: PromoCode): PromoCodeChannelRestrict
   return code.channelRestriction ?? { channel: DEFAULT_PROMO_CODE_CHANNEL, websiteIds: [] }
 }
 
+/** Whether a code can be redeemed on this website. Promo Codes owns this; the Website channel only reads it. */
+export function isPromoCodeValidOnWebsite(code: PromoCode, websiteId: string): boolean {
+  const restriction = getChannelRestriction(code)
+  return restriction.channel === 'website' && (restriction.websiteIds.length === 0 || restriction.websiteIds.includes(websiteId))
+}
+
 // "Widget only" / "Website only" — short label used in the table.
 // Every code is pinned to one channel, so there's no "All channels"
 // label to render.
