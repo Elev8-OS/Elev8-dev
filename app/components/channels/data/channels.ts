@@ -85,6 +85,20 @@ export function otaIcon(name: string): string {
   return getChannel(name)?.icon ?? 'lucide:globe'
 }
 
+const CHANNEL_COLUMN_PREFIX = 'ota_'
+
+/** Listings table column id for one channel, e.g. `ota_booking-com`. Stored in saved views, so keep it stable. */
+export function channelColumnId(name: string): string {
+  return CHANNEL_COLUMN_PREFIX + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+/** The channel a listings table column belongs to, or undefined for any other column. */
+export function channelForColumnId(columnId: string): ChannelDefinition | undefined {
+  if (!columnId.startsWith(CHANNEL_COLUMN_PREFIX))
+    return undefined
+  return CHANNELS.find(c => channelColumnId(c.name) === columnId)
+}
+
 export type ChannelMappingStatus = 'syncing' | 'active' | 'error'
 
 /**

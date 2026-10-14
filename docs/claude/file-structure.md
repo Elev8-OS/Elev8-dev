@@ -52,7 +52,7 @@ app/
 │   │   ├── FieldConfigDialog.vue  ← Per-field: reservation stages + copy to properties
 │   │   ├── ListingTestAIDialog.vue ← Guest chat simulation
 │   │   ├── ListingAiStatusCell.vue ← AI Status table cell; aggregates from unitTypes for multi-unit
-│   │   ├── ListingOtaCell.vue     ← OTA logos table cell
+│   │   ├── ListingChannelCell.vue ← per-channel status table cell
 │   │   ├── ListingExpandRow.vue   ← Multi-unit expand panel: per-unit-type AI toggle + per-unit Switch
 │   │   ├── ListingSingleToggle.vue ← Per-row status Switch (single + multi-unit logic)
 │   │   └── ListingRowActions.vue  ← Dropdown menu (View Detail, Deactivate, Toggle AI)

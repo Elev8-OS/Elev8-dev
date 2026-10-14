@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { UnitType } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
-import { otaIcon } from '~/components/channels/data/channels'
+import { channelForColumnId } from '~/components/channels/data/channels'
 import { roomAiStatus, setRoomAi } from '~/components/listings/data/listing-ai-status'
 import { listings } from '~/components/listings/data/listings'
 
@@ -9,8 +9,8 @@ import { listings } from '~/components/listings/data/listings'
  * A multi-unit listing's rooms as rows of the listings table, under the
  * listing and lined up with its columns: a row per room type (how many of its
  * rooms have ElevAI on), then a row per room (its on/off switch in the status
- * column, its ElevAI switch in the AI Status column, its channels in the OTA
- * column). Turning a room off also pauses its ElevAI. The listing's own switch
+ * column, its ElevAI switch in the AI Status column, a mark in each channel
+ * column it sells on). Turning a room off also pauses its ElevAI. The listing's own switch
  * already turns every room on or off.
  */
 const props = defineProps<{
@@ -63,7 +63,7 @@ function roomsAiOn(unitType: UnitType) {
     <template v-for="unitType in listing.unitTypes" :key="unitType.id">
       <!-- Room type -->
       <TableRow class="bg-muted/30 hover:bg-muted/40" data-testid="listing-rooms-type">
-        <TableCell v-for="col in columnIds" :key="col" :class="col === 'status' ? 'w-12 pr-1' : 'py-2'">
+        <TableCell v-for="col in columnIds" :key="col" :class="col === 'status' ? 'w-12 pr-1' : channelForColumnId(col) ? 'w-32 min-w-32 max-w-32 py-2' : 'py-2'">
           <div v-if="col === 'name'" class="flex items-center gap-2 pl-5">
             <Icon name="lucide:layers" class="size-3.5 shrink-0 text-muted-foreground" />
             <span class="text-xs font-medium">{{ unitType.name }}</span>
@@ -77,7 +77,7 @@ function roomsAiOn(unitType: UnitType) {
 
       <!-- Rooms of that type -->
       <TableRow v-for="unit in unitType.units" :key="unit.id" class="hover:bg-muted/20" data-testid="listing-rooms-room">
-        <TableCell v-for="col in columnIds" :key="col" :class="col === 'status' ? 'w-12 pr-1' : 'py-2'">
+        <TableCell v-for="col in columnIds" :key="col" :class="col === 'status' ? 'w-12 pr-1' : channelForColumnId(col) ? 'w-32 min-w-32 max-w-32 py-2' : 'py-2'">
           <Switch
             v-if="col === 'status'"
             class="ml-0.5"
@@ -103,16 +103,16 @@ function roomsAiOn(unitType: UnitType) {
               {{ roomAiStatus(unitType, unit) === 'active' ? 'ElevAI on' : 'ElevAI off' }}
             </span>
           </div>
-          <div v-else-if="col === 'otaConnected'" class="flex items-center gap-1.5">
+          <template v-else-if="channelForColumnId(col)">
             <Icon
-              v-for="ota in (unit.otaConnected ?? listing.otaConnected)"
-              :key="ota"
-              :name="otaIcon(ota)"
-              class="size-4"
+              v-if="(unit.otaConnected ?? listing.otaConnected).includes(channelForColumnId(col)!.name)"
+              name="lucide:check"
+              class="size-4 text-muted-foreground"
               :class="unit.status === 'inactive' ? 'opacity-30' : ''"
-              :aria-label="ota"
+              :aria-label="`On ${channelForColumnId(col)!.name}`"
             />
-          </div>
+            <span v-else class="text-xs text-muted-foreground/60" :aria-label="`Not on ${channelForColumnId(col)!.name}`">–</span>
+          </template>
         </TableCell>
       </TableRow>
     </template>

@@ -13,15 +13,17 @@ import {
   getSortedRowModel,
   useVueTable,
 } from '@tanstack/vue-table'
-import { otaIcon } from '~/components/channels/data/channels'
+import ChannelMappingDialog from '~/components/channels/ChannelMappingDialog.vue'
+import { channelColumnId, channelForColumnId, CHANNELS } from '~/components/channels/data/channels'
 import { aiStatusLabels, aiStatusOptions, allTags, getUnits, listings } from '~/components/listings/data/listings'
 import ListingAiStatusCell from '~/components/listings/ListingAiStatusCell.vue'
+import ListingChannelCell from '~/components/listings/ListingChannelCell.vue'
 import ListingExpandRow from '~/components/listings/ListingExpandRow.vue'
-import ListingOtaCell from '~/components/listings/ListingOtaCell.vue'
 import ListingRowActions from '~/components/listings/ListingRowActions.vue'
 import ListingSingleToggle from '~/components/listings/ListingSingleToggle.vue'
 import SavedViewsDropdown from '~/components/listings/SavedViewsDropdown.vue'
 import { Badge } from '~/components/ui/badge'
+import { useChannels } from '~/composables/useChannels'
 import { useSavedViews } from '~/composables/useSavedViews'
 import { valueUpdater } from '~/lib/utils'
 
@@ -88,10 +90,11 @@ const columns: ColumnDef<Listing, any>[] = [
         ? getUnits(live!).every(u => u.status === 'inactive')
         : live?.status === 'inactive'
 
-      return h('div', { class: 'flex items-start gap-1.5 min-w-0' }, [
+      return h('div', { class: 'flex items-center gap-1.5 min-w-0' }, [
         isMulti && h('button', {
           type: 'button',
-          class: 'mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-colors',
+          class: 'flex shrink-0 items-center text-muted-foreground hover:text-foreground transition-colors',
+          'aria-label': isExpanded ? 'Collapse rooms' : 'Expand rooms',
           onClick: (e: Event) => { e.stopPropagation(); toggleExpand(listing.id) },
         }, h(Icon, { name: isExpanded ? 'lucide:chevron-down' : 'lucide:chevron-right', class: 'size-4' })),
         !isMulti && h('span', { class: 'w-4 shrink-0' }),
@@ -141,16 +144,17 @@ const columns: ColumnDef<Listing, any>[] = [
     },
     cell: ({ row }) => h(ListingAiStatusCell, { key: row.original.id, listingId: row.original.id }),
   },
-  {
-    accessorKey: 'otaConnected',
-    header: 'OTA',
-    cell: ({ row }) => {
-      const live = listings.value.find(l => l.id === row.original.id)
-      const otas = live?.otaConnected ?? row.getValue('otaConnected') as string[]
-      const inactive = live?.status === 'inactive'
-      return h('div', { class: `flex items-center gap-2 ${inactive ? 'opacity-40' : ''}` }, otas.map(ota => h(Icon, { name: otaIcon(ota), class: 'size-4', key: ota })))
-    },
-  },
+  // One column per channel, so each OTA can be shown or hidden on its own.
+  ...CHANNELS.map((channel): ColumnDef<Listing, any> => ({
+    id: channelColumnId(channel.name),
+    accessorFn: row => row.otaConnected.includes(channel.name),
+    header: () => h('div', { class: 'flex items-center gap-1.5 whitespace-nowrap' }, [
+      h(Icon, { name: channel.icon, class: 'size-3.5 shrink-0' }),
+      channel.name,
+    ]),
+    // Rendered by ListingChannelCell in the template.
+    cell: () => null,
+  })),
   {
     accessorKey: 'amenities',
     header: 'Amenities',
@@ -175,9 +179,13 @@ const columns: ColumnDef<Listing, any>[] = [
 
 const sorting = ref<SortingState>([])
 const columnFilters = ref<ColumnFiltersState>([])
+const { isConnected: isChannelConnected } = useChannels()
+
+// Channels without an account start hidden; the column menu can still show them.
 const columnVisibility = ref<VisibilityState>({
   amenities: false,
   room: false,
+  ...Object.fromEntries(CHANNELS.filter(c => !isChannelConnected(c.name)).map(c => [channelColumnId(c.name), false])),
 })
 
 const table = useVueTable({
@@ -205,13 +213,31 @@ const table = useVueTable({
 const toggleableColumns = computed(() =>
   table.getAllColumns().filter(column => typeof column.accessorFn !== 'undefined' && column.getCanHide()),
 )
+// Channel columns share one width so the statuses line up across OTAs.
+function columnClass(columnId: string) {
+  if (columnId === 'status')
+    return 'w-12 pr-1'
+  return channelForColumnId(columnId) ? 'w-32 min-w-32 max-w-32' : ''
+}
+
+const mappingListingId = ref<string | null>(null)
+const mappingChannel = ref<string | null>(null)
+const mappingOpen = ref(false)
+
+function openChannelMapping(listingId: string, channel: string) {
+  mappingListingId.value = listingId
+  mappingChannel.value = channel
+  mappingOpen.value = true
+}
+
+const fieldColumns = computed(() => toggleableColumns.value.filter(c => !channelForColumnId(c.id)))
+const channelColumns = computed(() => toggleableColumns.value.filter(c => channelForColumnId(c.id)))
 
 const columnLabels: Record<string, string> = {
   name: 'Listing Name',
   location: 'Location',
   tags: 'Tags',
   aiStatus: 'AI Status',
-  otaConnected: 'OTA',
   amenities: 'Amenities',
   room: 'Room Type',
 }
@@ -398,11 +424,17 @@ function handleRenameView(viewId: string, newName: string) {
 
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex-1 min-w-[200px] max-w-xs">
-        <Input
-          v-model="searchValue"
-          placeholder="Search listings..."
-          class="h-9"
-        />
+        <InputGroup class="h-9">
+          <InputGroupAddon>
+            <Icon name="lucide:search" />
+          </InputGroupAddon>
+          <InputGroupInput v-model="searchValue" placeholder="Search listings..." aria-label="Search listings" />
+          <InputGroupAddon v-if="searchValue" align="inline-end">
+            <InputGroupButton size="icon-xs" aria-label="Clear search" @click="searchValue = ''">
+              <Icon name="lucide:x" />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
       </div>
 
       <Popover v-model:open="tagPopoverOpen">
@@ -510,7 +542,7 @@ function handleRenameView(viewId: string, newName: string) {
         <Table>
           <TableHeader>
             <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
-              <TableHead v-for="header in headerGroup.headers" :key="header.id" :class="header.column.id === 'status' ? 'w-12 pr-1' : ''">
+              <TableHead v-for="header in headerGroup.headers" :key="header.id" :class="columnClass(header.column.id)">
                 <template v-if="header.column.id === 'actions'">
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
@@ -518,18 +550,35 @@ function handleRenameView(viewId: string, newName: string) {
                         <Icon name="lucide:sliders-horizontal" class="size-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" class="w-48">
+                    <DropdownMenuContent align="end" class="w-56">
                       <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        v-for="column in toggleableColumns"
+                        v-for="column in fieldColumns"
                         :key="column.id"
                         class="flex items-center gap-2"
+                        @select.prevent
                         @click="column.toggleVisibility()"
                       >
                         <Icon v-if="column.getIsVisible()" name="lucide:check" class="size-4" />
                         <span v-else class="size-4" />
                         {{ columnLabels[column.id] || column.id }}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">
+                        Channels
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem
+                        v-for="column in channelColumns"
+                        :key="column.id"
+                        class="flex items-center gap-2"
+                        @select.prevent
+                        @click="column.toggleVisibility()"
+                      >
+                        <Icon v-if="column.getIsVisible()" name="lucide:check" class="size-4" />
+                        <span v-else class="size-4" />
+                        <Icon :name="channelForColumnId(column.id)!.icon" class="size-3.5" />
+                        {{ channelForColumnId(column.id)!.name }}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -542,9 +591,9 @@ function handleRenameView(viewId: string, newName: string) {
             <template v-if="table.getRowModel().rows?.length">
               <template v-for="row in table.getRowModel().rows" :key="row.id">
                 <TableRow>
-                  <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id" :class="cell.column.id === 'status' ? 'w-12 pr-1' : ''">
+                  <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id" :class="columnClass(cell.column.id)">
                     <ListingAiStatusCell v-if="cell.column.id === 'aiStatus'" :key="`ai-${row.original.id}`" :listing-id="row.original.id" />
-                    <ListingOtaCell v-else-if="cell.column.id === 'otaConnected'" :key="`ota-${row.original.id}`" :listing-id="row.original.id" />
+                    <ListingChannelCell v-else-if="channelForColumnId(cell.column.id)" :key="`${cell.column.id}-${row.original.id}`" :listing-id="row.original.id" :channel="channelForColumnId(cell.column.id)!.name" @open-mapping="openChannelMapping(row.original.id, channelForColumnId(cell.column.id)!.name)" />
                     <FlexRender v-else :render="cell.column.columnDef.cell" :props="cell.getContext()" />
                   </TableCell>
                 </TableRow>
@@ -564,6 +613,7 @@ function handleRenameView(viewId: string, newName: string) {
           </TableBody>
         </Table>
       </div>
+      <ChannelMappingDialog v-model:open="mappingOpen" :listing-id="mappingListingId" :channel="mappingChannel" />
       <template #fallback>
         <div class="border rounded-md h-96 flex items-center justify-center text-sm text-muted-foreground">
           Loading listings…
