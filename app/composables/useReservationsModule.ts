@@ -1,11 +1,12 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestProfile, ReservationDraft, ReservationEntry, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
+import type { ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestProfile, ReservationDraft, ReservationEntry, ReservationPaymentMethod, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
 import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
-import { DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { folioBookingTotal } from '~/components/reservations/data/folio'
+import { DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { listingHasCleaningSteps, useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCleaningScheduleDefault } from '~/composables/useCleaningScheduleDefault'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
@@ -154,6 +155,11 @@ export const CHECK_IN_TIME_LOCKED_STATUSES: ReservationStatus[] = ['checked_in',
 export const CHECK_OUT_TIME_LOCKED_STATUSES: ReservationStatus[] = ['checked_out', 'cancelled']
 
 /** IDR has no minor unit; everything else rounds to cents. */
+/** Local YYYY-MM-DD (toISOString shifts a UTC+8 midnight to the day before). */
+function localIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function roundForCurrency(amount: number, currency: string): number {
   return currency === 'IDR' ? Math.round(amount) : Math.round(amount * 100) / 100
 }
@@ -1140,6 +1146,58 @@ export function useReservationsModule() {
     return true
   }
 
+  /**
+   * Staff record money that arrived (bank transfer, cash, or a link paid by the
+   * guest). `amount` defaults to the whole balance; a smaller one is a partial
+   * payment: `guestPaid` moves but the stay stays as it is. Paying the balance
+   * in full stamps `paidAt` and moves an inquiry to unverified (paid, identity
+   * not verified yet). `paidOn` is a local YYYY-MM-DD, never in the future.
+   * False for a stay that is already paid, an amount of 0 or over the balance,
+   * or a future date.
+   */
+  function markReservationPaid(
+    id: string,
+    method: ReservationPaymentMethod,
+    opts: { amount?: number, paidOn?: string, linkCancelled?: boolean } = {},
+  ): boolean {
+    const r = reservations.value.find(x => x.id === id)
+    if (!r || !r.priceDetails || r.paidAt)
+      return false
+    const total = roundForCurrency(folioBookingTotal(r), r.currency)
+    const balance = roundForCurrency(total - r.priceDetails.guestPaid, r.currency)
+    if (balance <= 0 && total > 0)
+      return false
+    const amount = roundForCurrency(opts.amount ?? balance, r.currency)
+    if (!(amount > 0) || amount > balance)
+      return false
+    if (opts.paidOn && opts.paidOn > localIsoDate(new Date()))
+      return false
+    const settled = roundForCurrency(r.priceDetails.guestPaid + amount, r.currency) >= total
+    const paidAt = opts.paidOn ? `${opts.paidOn}T12:00:00` : new Date().toISOString()
+    const label = reservationPaymentMethodLabels[method]
+    const event = settled
+      ? activityEvent('reservation-paid', 'Marked as paid', `${moneyLabel(amount, r.currency)} via ${label}${opts.paidOn ? ` on ${opts.paidOn}` : ''}${opts.linkCancelled ? ' · open payment link cancelled' : ''}`)
+      : activityEvent('reservation-part-paid', 'Partial payment', `${moneyLabel(amount, r.currency)} of ${moneyLabel(total, r.currency)} via ${label}${opts.paidOn ? ` on ${opts.paidOn}` : ''}`)
+    reservations.value = reservations.value.map(x => x.id === id
+      ? {
+          ...x,
+          paymentMethod: method,
+          ...(settled ? { paidAt } : {}),
+          priceDetails: {
+            ...x.priceDetails!,
+            guestPaid: roundForCurrency(x.priceDetails!.guestPaid + amount, x.currency),
+            commission: x.priceDetails!.commission ?? 0,
+            payout: x.priceDetails!.payout ?? roundForCurrency(total - (x.priceDetails!.commission ?? 0), x.currency),
+          },
+          activity: [...x.activity, event],
+        }
+      : x)
+    // Money in hand confirms the booking: an inquiry becomes unverified (paid, identity not checked yet).
+    if (settled && r.status === 'inquiry')
+      updateReservationStatus(id, 'unverified')
+    return true
+  }
+
   function reset() {
     reservations.value = initialReservations.map(r => ({ ...r }))
     guests.value = initialGuests.map(g => ({ ...g }))
@@ -1179,6 +1237,7 @@ export function useReservationsModule() {
     extendReservation,
     extendViaLinkedBooking,
     markExtensionPaid,
+    markReservationPaid,
     canCancelExtension,
     cancelExtension,
     markExtensionRefunded,

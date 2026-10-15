@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateBookingConfirmationText, useBookingConfirmationFlow } from '~/composables/useBookingConfirmationFlow'
 import { useInbox } from '~/composables/useInbox'
+import { useJourneys } from '~/composables/useJourneys'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
-import { useJourneys } from '~/composables/useJourneys'
-import { useCityTax } from '~/composables/useCityTax'
 
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
@@ -344,5 +343,71 @@ describe('useBookingConfirmationFlow', () => {
       expect(lastMsg.content).toContain('Please complete your payment using the secure link below to guarantee and confirm your booking')
     })
   })
-})
 
+  describe('confirmationOnly (a paid booking)', () => {
+    it('says the stay is paid and creates no payment request or link', () => {
+      const text = generateBookingConfirmationText({
+        guestName: 'Ana Lee',
+        listingName: 'Villa Ubud',
+        reservationId: 'res-paid-1',
+        checkIn: '2027-01-10',
+        checkOut: '2027-01-12',
+        nights: 2,
+        guestCount: 2,
+        totalPrice: 2500000,
+        currency: 'IDR',
+        paymentLink: '',
+        isConfirmed: true,
+        paid: true,
+      })
+      expect(text).toContain('Booking Confirmed!')
+      expect(text).toContain('fully confirmed and paid')
+      expect(text).toContain('Total: IDR 2,500,000')
+      expect(text).not.toContain('Payment Link')
+
+      const { createReservation } = useReservationsModule()
+      const { requests } = usePaymentRequests()
+      const { messages } = useInbox()
+      const resId = createReservation({
+        guestName: 'Ana Lee',
+        guestEmail: 'ana@example.com',
+        listingId: 'lst-1',
+        listingName: 'Villa Ubud',
+        channel: 'Direct',
+        checkIn: '2027-01-10',
+        checkOut: '2027-01-12',
+        nights: 2,
+        guestCount: 2,
+        totalPrice: 2500000,
+        currency: 'IDR',
+        status: 'unverified',
+      }).id!
+      const before = requests.value.length
+
+      const result = useBookingConfirmationFlow().sendBookingConfirmationWithPaymentLink({
+        reservationId: resId,
+        guestName: 'Ana Lee',
+        guestEmail: 'ana@example.com',
+        listingId: 'lst-1',
+        listingName: 'Villa Ubud',
+        checkIn: '2027-01-10',
+        checkOut: '2027-01-12',
+        nights: 2,
+        guestCount: 2,
+        totalPrice: 2500000,
+        currency: 'IDR',
+        channel: 'Direct',
+        status: 'unverified',
+        purpose: 'booking',
+        confirmationOnly: true,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.paymentRequestId).toBeUndefined()
+      expect(requests.value).toHaveLength(before)
+      const sent = messages.value[result.conversationId]!.at(-1)!
+      expect(sent.paymentRequest).toBeUndefined()
+      expect(sent.content).toContain('fully confirmed and paid')
+    })
+  })
+})

@@ -106,3 +106,25 @@ paid).
 - Seeds: `SEEDED_WEBSITE_BOOKINGS` in `data/reservations.ts` (res-multi-1, res-dp-awaiting, res-dp-charge-failed), literal values on Direct stays whose listing the site sells.
 
 **Tests:** `tests/lib/website-booking-source.spec.ts`, `tests/components/reservations/ReservationTableWebsiteBooking.spec.ts`.
+
+## Payment method, Mark as paid, New Reservation form
+
+**Payment method** (`ReservationPaymentMethod`: `payment_link`, `bank_transfer`, `cash`; stored on `ReservationEntry.paymentMethod`):
+- `NewReservationDialog` Status and Source: an **inquiry** picks link (default), bank or cash. A **Confirmed** booking (stored `unverified`, paid in full at creation, `paidAt` set) records bank or cash only. The select follows the status (`paymentMethodOptions`), and switching status resets the default.
+- Only a payment link sends a link. Bank/cash send nothing. A Confirmed booking sends a **booking confirmation** (WhatsApp/Email, no Guest Inbox box) with `confirmationOnly`: no payment request, no card, text "fully confirmed and paid". Labels follow (`sendActionLabel`).
+- ⚠️ The dialog always passes `purpose: 'booking'` (Edit does for an inquiry). Left unset, `useBookingConfirmationFlow` guesses city tax from the assessment and sends a city tax link (10% of the total) with a "Booking Confirmed!" text.
+- Expiry (hours) shows only for inquiry + link and must be at least 1 hour. A link inquiry also needs a price above 0 (`price` error, opens Rooms & Price).
+- Validation and the focus order live in `data/new-reservation-validation.ts` (`validateNewReservation`, `NEW_RESERVATION_FIELD_ORDER`, spec `tests/lib/new-reservation-validation.spec.ts`). `focusFirstError` opens the section and focuses the `data-field` wrapper.
+- Closing the dialog (Cancel, X, after a save) calls `reset()`; the prefill from the Cockpit is applied on the next open.
+
+**`markReservationPaid(id, method, { amount?, paidOn?, linkCancelled? })`** (`useReservationsModule`, the only writer of `paidAt`):
+- Default amount is the balance (`folioBookingTotal` minus `guestPaid`). A smaller one is a **part payment**: `guestPaid` moves, activity "Partial payment", status and `paidAt` untouched. Paying the balance sets `paidAt` (the `paidOn` day, else now), moves an `inquiry` to `unverified` (paid, identity not verified; never `verified`) via `updateReservationStatus`, and fills `commission`/`payout` if missing.
+- False for an already paid stay, an amount of 0 or over the balance, or a future `paidOn`.
+
+**Detail sheet** (price accordion): Balance due, Amount (currency prefix), Received on (`base/DatePicker`, max today), method, button "Mark as paid" or "Record part payment". Methods are `manualPaymentMethods` only (bank, cash): staff cannot claim a payment link, whose invoice only a guest payment produces. State resets per stay. Not shown for blocked, owner request, cancelled, paid stays.
+- A `pending` link on the stay (`paymentRequestId`) is cancelled when the **balance is paid in full** (`cancelRequest`, in the sheet to avoid a composable cycle); a part payment leaves it open. Warning and activity note say so.
+- A link the guest **already paid** settles the stay on open (`markReservationPaid(id, 'payment_link')`, not for blocked/owner request/cancelled).
+
+**Guest pays the link** (mock): `usePaymentRequests().markRequestPaid(id)` marks the request paid and settles the stay it belongs to; the request dialog's "Simulate guest payment" (payment requests page and guest page) calls it.
+
+Tests: `tests/composables/useReservationsModule-mark-paid.spec.ts`, `tests/composables/usePaymentRequests-mark-paid.spec.ts`, `tests/composables/useBookingConfirmationFlow.spec.ts`, `tests/lib/new-reservation-validation.spec.ts`, `tests/components/reservations/NewReservationPaymentFlow.spec.ts` (source-reading, the dialog and sheet are too heavy to mount).

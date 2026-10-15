@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<{
   step?: number // minutes between options (default 30)
   startHour?: number // start hour (default 6 for 06:00)
   endHour?: number // end hour (default 22 for 22:00)
+  clearable?: boolean // show a button that empties an optional time (emits '')
 }>(), {
   modelValue: '11:00',
   placeholder: 'Select time',
@@ -19,6 +20,7 @@ const props = withDefaults(defineProps<{
   step: 30,
   startHour: 6,
   endHour: 22,
+  clearable: false,
 })
 
 const emit = defineEmits<{
@@ -54,7 +56,7 @@ function handleValueChange(val: any) {
 </script>
 
 <template>
-  <div :class="cn('w-full', props.class)">
+  <div :class="cn('relative w-full', props.class)">
     <Select
       :model-value="modelValue ?? undefined"
       :disabled="disabled"
@@ -72,5 +74,16 @@ function handleValueChange(val: any) {
         </SelectItem>
       </SelectContent>
     </Select>
+    <button
+      v-if="clearable && modelValue"
+      type="button"
+      class="absolute right-8 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
+      aria-label="Clear time"
+      data-testid="time-picker-clear"
+      :disabled="disabled"
+      @click="emit('update:modelValue', '')"
+    >
+      <Icon name="lucide:x" class="size-3.5" />
+    </button>
   </div>
 </template>

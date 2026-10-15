@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import type { GuestDocument, GuestOccupant, ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { GuestDocument, GuestOccupant, ReservationEntry, ReservationPaymentMethod, ReservationStatus } from '~/components/reservations/data/reservations'
 import type { UpsellOrder } from '~/components/upsells/data/upsell-orders'
 import { toast } from 'vue-sonner'
+import DatePicker from '~/components/base/DatePicker.vue'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { everyGuestUploadsDocuments, listingGuestVerification } from '~/components/listings/data/guest-verification'
 import { listings } from '~/components/listings/data/listings'
+import { folioBookingTotal } from '~/components/reservations/data/folio'
 import { guestRatingForReservation } from '~/components/reservations/data/guest-rating'
-import { DOCUMENT_KIND_LABELS, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { DOCUMENT_KIND_LABELS, manualPaymentMethods, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import EditReservationDialog from '~/components/reservations/EditReservationDialog.vue'
 import GuestActivityTimeline from '~/components/reservations/GuestActivityTimeline.vue'
 import ReservationCancelExtensionDialog from '~/components/reservations/ReservationCancelExtensionDialog.vue'
@@ -45,7 +47,8 @@ const emit = defineEmits<{
   'openGuest': [id: string]
 }>()
 
-const { reservations, updateReservationStatus, getCheckInTime, getCheckOutTime, saveGuestDocument, removeGuestDocument } = useReservationsModule()
+const { requests: paymentRequests, cancelRequest: cancelPaymentRequest } = usePaymentRequests()
+const { reservations, markReservationPaid, updateReservationStatus, getCheckInTime, getCheckOutTime, saveGuestDocument, removeGuestDocument } = useReservationsModule()
 const inbox = useInbox()
 
 /**
@@ -77,6 +80,83 @@ const reservation = computed<ReservationEntry | null>(() => {
     return null
   return reservations.value.find(r => r.id === props.reservation!.id) ?? props.reservation
 })
+
+function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const markPaidMethod = ref<ReservationPaymentMethod>('bank_transfer')
+const markPaidAmount = ref(0)
+const markPaidOn = ref<string | null>(localToday())
+const bookingTotal = computed(() => reservation.value ? folioBookingTotal(reservation.value) : 0)
+const balance = computed(() => Math.max(Math.round((bookingTotal.value - (reservation.value?.priceDetails?.guestPaid ?? 0)) * 100) / 100, 0))
+const canMarkPaid = computed(() => {
+  const r = reservation.value
+  if (!r?.priceDetails || ['blocked', 'owner_request', 'cancelled'].includes(r.status) || r.paidAt)
+    return false
+  return bookingTotal.value > 0 && balance.value > 0
+})
+const markPaidIsFull = computed(() => markPaidAmount.value >= balance.value)
+const markPaidError = computed(() => {
+  if (!(markPaidAmount.value > 0))
+    return 'Enter an amount above 0.'
+  if (markPaidAmount.value > balance.value)
+    return 'That is more than the balance due.'
+  if (!markPaidOn.value)
+    return 'Pick the date the money arrived.'
+  if (markPaidOn.value > localToday())
+    return 'The payment date cannot be in the future.'
+  return ''
+})
+
+// Each stay starts from its own defaults, not from the last one looked at.
+watch(() => reservation.value?.id, () => {
+  markPaidMethod.value = 'bank_transfer'
+  markPaidOn.value = localToday()
+  markPaidAmount.value = balance.value
+}, { immediate: true })
+// After a partial payment the box offers what is left.
+watch(balance, (left) => { markPaidAmount.value = left })
+
+// A link still open for this stay would let the guest pay a second time.
+const openPaymentRequest = computed(() => {
+  const id = reservation.value?.paymentRequestId
+  return id ? paymentRequests.value.find(p => p.id === id && p.status === 'pending') : undefined
+})
+
+// The guest already paid the link: settle the stay with it instead of asking staff to repeat it.
+const paidPaymentRequest = computed(() => {
+  const id = reservation.value?.paymentRequestId
+  return id ? paymentRequests.value.find(p => p.id === id && p.status === 'paid') : undefined
+})
+watch([paidPaymentRequest, () => reservation.value?.id], ([paid]) => {
+  const r = reservation.value
+  if (paid && r && !r.paidAt && !['blocked', 'owner_request', 'cancelled'].includes(r.status))
+    markReservationPaid(r.id, 'payment_link')
+}, { immediate: true })
+
+function markPaid() {
+  const r = reservation.value
+  if (!r)
+    return
+  if (markPaidError.value) {
+    toast.error(markPaidError.value)
+    return
+  }
+  const full = markPaidIsFull.value
+  const request = openPaymentRequest.value
+  // Only paying everything retires the link: a part payment leaves it for the rest.
+  const cancelsLink = Boolean(request) && full
+  const method = markPaidMethod.value
+  if (!markReservationPaid(r.id, method, { amount: markPaidAmount.value, paidOn: markPaidOn.value ?? undefined, linkCancelled: cancelsLink })) {
+    toast.error('Could not record the payment.')
+    return
+  }
+  if (request && cancelsLink)
+    cancelPaymentRequest(request.id, `Marked as paid via ${reservationPaymentMethodLabels[method]}`)
+  toast.success(full ? `Marked as paid via ${reservationPaymentMethodLabels[method]}` : `Partial payment recorded via ${reservationPaymentMethodLabels[method]}`)
+}
 
 // Upsell orders for this reservation: linked by the order's own reservationId,
 // plus any listed on the reservation's legacy `upsellIds`. Newest service date first.
@@ -418,8 +498,13 @@ function fmtDate(iso: string): string {
   return df.format(new Date(`${iso}T00:00:00Z`))
 }
 
-function fmtCurrency(amount: number, currency: string): string {
-  return `${currency} ${amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+function fmtPaidDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function fmtCurrency(amount: number | undefined, currency: string): string {
+  return `${currency} ${(amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 }
 
 function channelIcon(channel: string): string {
@@ -823,6 +908,63 @@ const guestGuideRoute = computed(() => {
                         <p v-else class="text-sm text-muted-foreground">
                           {{ fmtCurrency(reservation.totalPrice, reservation.currency) }}
                         </p>
+
+                        <!-- Mark as paid -->
+                        <div v-if="canMarkPaid" class="mt-3 space-y-3 rounded-md border bg-muted/40 p-3" data-testid="mark-paid">
+                          <div class="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>Balance due</span>
+                            <span class="font-medium text-foreground" data-testid="mark-paid-balance">{{ fmtCurrency(balance, reservation.currency) }}</span>
+                          </div>
+                          <div class="grid gap-3 sm:grid-cols-2">
+                            <div class="space-y-1.5">
+                              <Label class="text-xs">Amount</Label>
+                              <div class="relative">
+                                <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{{ reservation.currency }}</span>
+                                <Input
+                                  v-model.number="markPaidAmount"
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  class="h-9 pl-14"
+                                  aria-label="Amount received"
+                                  data-testid="mark-paid-amount"
+                                  :class="markPaidError && markPaidAmount !== balance ? 'border-destructive' : ''"
+                                />
+                              </div>
+                            </div>
+                            <div class="space-y-1.5">
+                              <Label class="text-xs">Received on</Label>
+                              <DatePicker v-model="markPaidOn" :max="localToday()" data-testid="mark-paid-date" />
+                            </div>
+                          </div>
+                          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <Select v-model="markPaidMethod">
+                              <SelectTrigger class="h-9 sm:flex-1" aria-label="Payment method">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem v-for="value in manualPaymentMethods" :key="value" :value="value">
+                                  {{ reservationPaymentMethodLabels[value] }}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button size="sm" class="h-9" data-testid="mark-paid-button" :disabled="Boolean(markPaidError)" @click="markPaid">
+                              <Icon name="lucide:badge-check" class="size-4" />
+                              {{ markPaidIsFull ? 'Mark as paid' : 'Record part payment' }}
+                            </Button>
+                          </div>
+                          <p v-if="markPaidError" class="text-xs text-destructive" data-testid="mark-paid-error">
+                            {{ markPaidError }}
+                          </p>
+                          <p v-if="openPaymentRequest" class="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-2 text-xs font-medium" data-testid="mark-paid-link-warning">
+                            <Icon name="lucide:link" class="mt-0.5 size-3.5 shrink-0" />
+                            {{ markPaidIsFull ? 'The payment link sent to the guest is still open. Marking as paid cancels it.' : 'The payment link sent to the guest stays open for the rest.' }}
+                          </p>
+                        </div>
+                        <div v-else-if="reservation.paidAt && reservation.paymentMethod" class="mt-3 flex items-center gap-2 rounded-md bg-green-500/10 px-3 py-2 text-xs font-medium text-green-700 dark:text-green-400" data-testid="paid-via">
+                          <Icon name="lucide:badge-check" class="size-4" />
+                          Paid via {{ reservationPaymentMethodLabels[reservation.paymentMethod] }} on {{ fmtPaidDate(reservation.paidAt) }}
+                        </div>
                       </AccordionContent>
                     </AccordionItem>
                   </Accordion>

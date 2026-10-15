@@ -22,7 +22,9 @@ const {
   pendingCount,
   paidCount,
   filters,
+  requests,
   cancelRequest,
+  markRequestPaid,
   duplicateRequest,
 } = usePaymentRequests()
 
@@ -32,7 +34,10 @@ const shareRequest = ref<PaymentRequest | null>(null)
 const cancelRequestId = ref<string | null>(null)
 const cancelDialogOpen = computed({
   get: () => cancelRequestId.value !== null,
-  set: (val: boolean) => { if (!val) cancelRequestId.value = null },
+  set: (val: boolean) => {
+    if (!val)
+      cancelRequestId.value = null
+  },
 })
 
 function openDetail(request: PaymentRequest) {
@@ -52,6 +57,13 @@ function handleCancelConfirm(payload: { id: string, reason: string }) {
   cancelRequest(payload.id, payload.reason)
   toast.success('Payment link cancelled')
   detailRequest.value = null
+}
+
+function handleMarkPaid(id: string) {
+  if (!markRequestPaid(id))
+    return
+  toast.success('Payment received, the reservation is marked as paid')
+  detailRequest.value = requests.value.find(r => r.id === id) ?? null
 }
 
 function handleDuplicate(id: string) {
@@ -331,7 +343,9 @@ const dateFilterLabel = computed(() => {
             <CommandList>
               <CommandEmpty>
                 <div v-if="listingSearch.trim() || selectedListingTags.length" class="py-3 text-center">
-                  <p class="text-sm text-muted-foreground">No listing found.</p>
+                  <p class="text-sm text-muted-foreground">
+                    No listing found.
+                  </p>
                 </div>
                 <div v-else class="py-3 text-center text-sm text-muted-foreground">
                   Type to search...
@@ -348,8 +362,12 @@ const dateFilterLabel = computed(() => {
                   <div class="flex items-start gap-2 w-full">
                     <Checkbox :model-value="filters.listings.includes(listing.id)" class="mt-0.5 size-4" />
                     <div class="min-w-0 flex-1">
-                      <p class="text-sm font-medium">{{ listing.name }}</p>
-                      <p class="text-xs text-muted-foreground">{{ listing.location }}</p>
+                      <p class="text-sm font-medium">
+                        {{ listing.name }}
+                      </p>
+                      <p class="text-xs text-muted-foreground">
+                        {{ listing.location }}
+                      </p>
                       <div class="mt-1 flex flex-wrap gap-1">
                         <Badge v-for="tag in listing.tags" :key="tag" variant="outline" class="text-[10px]">
                           {{ tag }}
@@ -440,6 +458,7 @@ const dateFilterLabel = computed(() => {
       @update:open="detailRequest = null"
       @copy="copyLink"
       @cancel="handleCancel"
+      @mark-paid="handleMarkPaid"
     />
 
     <PaymentRequestShareDialog

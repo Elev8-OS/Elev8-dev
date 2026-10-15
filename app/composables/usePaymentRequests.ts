@@ -2,6 +2,8 @@ import type { PaymentRequest, PaymentRequestDraft, PaymentStatus } from '~/compo
 import { calculateFee, calculateTotal, generateId, generatePaymentLink, getExpiryDate, paymentRequests } from '~/components/payment-request/data/payment-requests'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 
+import { useReservationsModule } from './useReservationsModule'
+
 export interface PaymentRequestFilters {
   status: PaymentStatus | 'all'
   listings: string[]
@@ -84,6 +86,24 @@ export function usePaymentRequests() {
     )
   }
 
+  /**
+   * The guest paid the link (mock: staff simulate it from the request dialog).
+   * Marks the request paid and settles the stay it belongs to as a payment-link
+   * payment, so the two never disagree. Only a pending request can be paid.
+   */
+  function markRequestPaid(id: string): boolean {
+    const request = requests.value.find(r => r.id === id)
+    if (!request || request.status !== 'pending')
+      return false
+    const paidAt = new Date().toISOString()
+    requests.value = requests.value.map(r => r.id === id ? { ...r, status: 'paid' as PaymentStatus, paidAt } : r)
+    const { reservations, markReservationPaid } = useReservationsModule()
+    const stay = reservations.value.find(r => r.paymentRequestId === id)
+    if (stay)
+      markReservationPaid(stay.id, 'payment_link')
+    return true
+  }
+
   function duplicateRequest(id: string): PaymentRequest | null {
     const original = requests.value.find(r => r.id === id)
     if (!original)
@@ -141,6 +161,7 @@ export function usePaymentRequests() {
     totalRevenue,
     createRequest,
     cancelRequest,
+    markRequestPaid,
     duplicateRequest,
     checkDuplicate,
     expireOldRequests,

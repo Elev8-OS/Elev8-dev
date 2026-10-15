@@ -37,7 +37,7 @@ const {
   updateGuestNotes,
   getCheckInTime,
 } = useReservationsModule()
-const { requests, cancelRequest, duplicateRequest } = usePaymentRequests()
+const { requests, cancelRequest, markRequestPaid, duplicateRequest } = usePaymentRequests()
 const { orders: upsellOrders } = useUpsellOrders()
 const { conversations } = useInbox()
 const { links } = useGuestGuideLinks()
@@ -164,6 +164,13 @@ function openPaymentRequest(request: PaymentRequest) {
 function copyPaymentLink(link: string) {
   navigator.clipboard.writeText(link)
   toast.success('Link copied to clipboard')
+}
+
+function handlePaymentRequestPaid(id: string) {
+  if (!markRequestPaid(id))
+    return
+  toast.success('Payment received, the reservation is marked as paid')
+  detailRequest.value = requests.value.find(r => r.id === id) ?? null
 }
 
 function askCancelPaymentRequest(id: string) {
@@ -712,6 +719,7 @@ const bookingSteps = computed<BookingStep[]>(() => {
       @update:open="detailRequest = null"
       @copy="copyPaymentLink"
       @cancel="askCancelPaymentRequest"
+      @mark-paid="handlePaymentRequestPaid"
     />
 
     <PaymentRequestShareDialog
