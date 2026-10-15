@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { WebsiteQuote } from '~/components/channels/data/website-quote'
-import type { BookingMode, ContactType, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
+import type { BookingMode, ContactType, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationPaymentMethod, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import type { BookingConflict } from '~/composables/useReservationsModule'
 import { DateFormatter, getLocalTimeZone, parseDate } from '@internationalized/date'
 import { toast } from 'vue-sonner'
+import TimePicker from '~/components/base/TimePicker.vue'
 import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
+import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
-import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { firstInvalidField, validateNewReservation } from '~/components/reservations/data/new-reservation-validation'
+import { COUNTRIES, manualPaymentMethods, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { buildWebsiteBookingSource } from '~/components/reservations/data/website-booking'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
@@ -156,9 +159,13 @@ watch(() => dateRange.value, (val) => {
 }, { deep: true })
 
 // Status & Source
-const status = ref<ReservationStatus>('verified')
+const status = ref<ReservationStatus>('unverified')
 const blocksAvailability = ref(false)
 const inquiryExpiryHours = ref(24)
+// Confirmed is the default status, and a confirmed booking is paid by bank or cash, never by link.
+const paymentMethod = ref<ReservationPaymentMethod>('bank_transfer')
+// Only a payment link is sent to the guest: bank transfer and cash are settled by staff.
+const sendsPaymentLink = computed(() => status.value !== 'inquiry' || paymentMethod.value === 'payment_link')
 
 // Contact Details
 const contactType = ref<ContactType>('personal')
@@ -169,7 +176,23 @@ const guestFirstName = ref('')
 const guestLastName = ref('')
 const phoneDialCode = ref('+62')
 const phoneNumber = ref('')
+// Each status starts from its own default: an inquiry is paid by link, a confirmed booking
+// (paid already) records bank or cash.
+watch(status, (next) => {
+  if (next === 'inquiry')
+    paymentMethod.value = 'payment_link'
+  else if (paymentMethod.value === 'payment_link')
+    paymentMethod.value = 'bank_transfer'
+})
 const sendPaymentInbox = ref(true)
+// An inquiry may be paid by link, bank or cash; a confirmed booking is paid already (bank or cash).
+const paymentMethodOptions = computed<ReservationPaymentMethod[]>(() => status.value === 'inquiry' ? ['payment_link', 'bank_transfer', 'cash'] : manualPaymentMethods)
+// A confirmed booking is already paid: it gets a booking confirmation, never a payment link.
+const isConfirmed = computed(() => status.value !== 'inquiry')
+// The Guest Inbox box (confirmation + payment link) belongs to an inquiry paid by link only.
+const showInboxOption = computed(() => !isConfirmed.value && paymentMethod.value === 'payment_link')
+const sendInbox = computed(() => showInboxOption.value && sendPaymentInbox.value)
+const sendActionLabel = computed(() => isConfirmed.value ? 'booking confirmation' : 'payment link')
 const sendPaymentWhatsApp = ref(false)
 const guestEmail = ref('')
 const sendPaymentEmail = ref(false)
@@ -329,13 +352,8 @@ const formattedTotal = computed(() => {
 })
 
 const basicComplete = computed(() => Boolean(checkIn.value && checkOut.value && listingId.value))
-const statusComplete = computed(() => {
-  if (!status.value)
-    return false
-  if (status.value === 'inquiry')
-    return inquiryExpiryHours.value > 0
-  return true
-})
+// "Confirmed" is a paid booking: stored as 'unverified' until the guest's identity is verified.
+const statusLabel = computed(() => status.value === 'inquiry' ? 'Inquiry' : 'Confirmed')
 const contactComplete = computed(() => Boolean(
   guestFirstName.value.trim()
   && guestLastName.value.trim()
@@ -343,17 +361,54 @@ const contactComplete = computed(() => Boolean(
   && (!isBusiness.value || companyName.value.trim()),
 ))
 
+/**
+ * Calendar days inside a stay already on the picked property (rooms included).
+ * A stay's arrival and departure days stay pickable, they are the free side of
+ * a turnover, so only a day whose night and the night before are both taken is
+ * blocked.
+ */
+function isDateUnavailable(date: { toString: () => string }): boolean {
+  if (!listingId.value)
+    return false
+  const night = date.toString()
+  const taken = (n: string) => newReservationConflicts({ listingId: listingId.value, checkIn: n, checkOut: addIsoDays(n, 1) }, reservations.value).length > 0
+  return taken(night) && taken(addIsoDays(night, -1))
+}
+
 const attempted = ref(false)
-const errors = computed(() => ({
-  checkIn: !checkIn.value,
-  checkOut: !checkOut.value || (checkIn.value !== '' && checkOut.value <= checkIn.value),
-  listing: !listingId.value,
-  firstName: !guestFirstName.value.trim(),
-  lastName: !guestLastName.value.trim(),
-  email: !guestEmail.value.trim(),
-  companyName: isBusiness.value && !companyName.value.trim(),
+const openSection = ref<string | undefined>('basic')
+const errors = computed(() => validateNewReservation({
+  checkIn: checkIn.value,
+  checkOut: checkOut.value,
+  listingId: listingId.value,
+  firstName: guestFirstName.value,
+  lastName: guestLastName.value,
+  email: guestEmail.value,
+  isBusiness: isBusiness.value,
+  companyName: companyName.value,
+  sendsLinkForInquiry: status.value === 'inquiry' && sendsPaymentLink.value,
+  expiryHours: inquiryExpiryHours.value,
+  totalPrice: totalPrice.value,
 }))
 const hasErrors = computed(() => Object.values(errors.value).some(Boolean))
+
+/** Opens the section holding the first invalid field, scrolls to it and focuses it. */
+async function focusFirstError() {
+  const first = firstInvalidField(errors.value)
+  if (!first)
+    return
+  openSection.value = first.section
+  await nextTick()
+  // The accordion animates open; wait a frame so the field is laid out.
+  await new Promise(resolve => setTimeout(resolve, 250))
+  const wrapper = document.querySelector<HTMLElement>(`[data-field="${first.target}"]`)
+  if (!wrapper)
+    return
+  wrapper.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  // The price block is a container (its own tabindex), the others hold the control to focus.
+  const control = wrapper.hasAttribute('tabindex') ? wrapper : wrapper.querySelector<HTMLElement>('input, button, [tabindex]')
+  control?.focus({ preventScroll: true })
+}
 
 function reset() {
   guestPopoverOpen.value = false
@@ -364,9 +419,10 @@ function reset() {
   dateRange.value = { start: undefined, end: undefined }
   listingId.value = ''
   estimatedArrivalTime.value = ''
-  status.value = 'verified'
+  status.value = 'unverified'
   blocksAvailability.value = false
   inquiryExpiryHours.value = 24
+  paymentMethod.value = 'bank_transfer'
   contactType.value = 'personal'
   companyName.value = ''
   companyVatId.value = ''
@@ -395,6 +451,7 @@ function reset() {
   guestInfants.value = 0
   bookedOnWebsiteId.value = NO_WEBSITE
   attempted.value = false
+  openSection.value = 'basic'
 }
 
 // Double booking check: stays the new one would share nights with, confirmed before saving.
@@ -430,6 +487,7 @@ function handleSubmit(force = false) {
   attempted.value = true
   if (hasErrors.value) {
     toast.error('Please fill in all required fields.')
+    focusFirstError()
     return
   }
   if (!force) {
@@ -466,8 +524,10 @@ function handleSubmit(force = false) {
     currency: currency.value,
     status: status.value,
     estimatedArrivalTime: estimatedArrivalTime.value || undefined,
-    inquiryExpiryHours: status.value === 'inquiry' ? inquiryExpiryHours.value : undefined,
+    inquiryExpiryHours: status.value === 'inquiry' && sendsPaymentLink.value ? inquiryExpiryHours.value : undefined,
     blocksAvailability: status.value === 'inquiry' ? blocksAvailability.value : undefined,
+    paymentMethod: paymentMethod.value,
+    paidAt: status.value === 'inquiry' ? undefined : new Date().toISOString(),
     guestFirstName: guestFirstName.value.trim(),
     guestLastName: guestLastName.value.trim(),
     guestAddress: guestAddress.value.trim() || undefined,
@@ -488,7 +548,9 @@ function handleSubmit(force = false) {
       serviceFee: 0,
       tax: 0,
       extras: 0,
-      guestPaid: status.value === 'verified' ? totalPrice.value : 0,
+      guestPaid: status.value === 'inquiry' ? 0 : totalPrice.value,
+      commission: 0,
+      payout: totalPrice.value,
     },
   })
   if (!result.success || !result.id) {
@@ -500,7 +562,7 @@ function handleSubmit(force = false) {
     emit('created', created)
 
   const channels: string[] = []
-  if (sendPaymentInbox.value || sendPaymentWhatsApp.value || sendPaymentEmail.value) {
+  if (sendsPaymentLink.value && (sendInbox.value || sendPaymentWhatsApp.value || sendPaymentEmail.value)) {
     sendBookingConfirmationWithPaymentLink({
       reservationId: result.id,
       guestName,
@@ -516,12 +578,16 @@ function handleSubmit(force = false) {
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
       channel: 'Direct',
       status: status.value,
+      confirmationOnly: isConfirmed.value,
+      // This dialog always bills the booking. Left unset, the flow guesses city tax from the assessment
+      // and would send a city tax link (10% of the total) instead of the booking amount.
+      purpose: 'booking',
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
       expiresInHours: status.value === 'inquiry' ? inquiryExpiryHours.value : 24,
     })
 
-    if (sendPaymentInbox.value)
+    if (sendInbox.value)
       channels.push('Guest Inbox')
     if (sendPaymentWhatsApp.value)
       channels.push('WhatsApp')
@@ -531,14 +597,15 @@ function handleSubmit(force = false) {
 
   toast.success('Reservation created')
   if (channels.length)
-    toast.info(`Booking confirmation & payment link sent to ${channels.join(' and ')}`)
+    toast.info(`${isConfirmed.value ? 'Booking confirmation' : 'Booking confirmation & payment link'} sent to ${channels.join(' and ')}`)
   reset()
   emit('update:open', false)
 }
 
 watch(() => props.open, (open) => {
   if (!open) {
-    attempted.value = false
+    // Cancelling must not leave a half-filled form behind for the next booking.
+    reset()
     return
   }
   if (props.prefill) {
@@ -561,7 +628,7 @@ watch(() => props.open, (open) => {
       </SheetHeader>
 
       <ScrollArea class="h-full min-h-0 flex-1">
-        <Accordion type="single" collapsible default-value="basic" class="w-full space-y-2 px-6 py-4">
+        <Accordion v-model="openSection" type="single" collapsible class="w-full space-y-2 px-6 py-4">
           <!-- Basic -->
           <AccordionItem value="basic" class="rounded-md border">
             <AccordionTrigger class="px-4 py-3 hover:no-underline">
@@ -576,7 +643,20 @@ watch(() => props.open, (open) => {
             </AccordionTrigger>
             <AccordionContent class="px-4 pb-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="space-y-2 sm:col-span-2">
+                <div data-field="listing" class="space-y-2 sm:col-span-2">
+                  <Label>Select Property <span class="text-destructive">*</span></Label>
+                  <SharedPropertyPicker
+                    :model-value="listingId ? [selectedListing?.name ?? ''] : []"
+                    :options="propertyPickerOptions"
+                    :multi-select="false"
+                    fill
+                    @update:model-value="(names: string[]) => { listingId = names[0] ? listingOptions.find(l => l.name === names[0])?.id ?? '' : '' }"
+                  />
+                  <p v-if="attempted && errors.listing" class="text-xs text-destructive">
+                    Property is required.
+                  </p>
+                </div>
+                <div data-field="checkIn" class="space-y-2 sm:col-span-2">
                   <Label>From - To <span class="text-destructive">*</span></Label>
                   <Popover>
                     <PopoverTrigger as-child>
@@ -584,6 +664,8 @@ watch(() => props.open, (open) => {
                         variant="outline"
                         class="w-full justify-start text-left font-normal"
                         :class="attempted && errors.checkIn ? 'border-destructive' : ''"
+                        :disabled="!listingId"
+                        data-testid="date-range-trigger"
                       >
                         <Icon name="lucide:calendar" class="size-4 mr-2" />
                         <template v-if="dateRange.start">
@@ -595,7 +677,7 @@ watch(() => props.open, (open) => {
                           </template>
                         </template>
                         <template v-else>
-                          Pick a date range
+                          {{ listingId ? 'Pick a date range' : 'Select a property first' }}
                         </template>
                       </Button>
                     </PopoverTrigger>
@@ -605,6 +687,7 @@ watch(() => props.open, (open) => {
                           v-model="dateRange"
                           weekday-format="short"
                           :number-of-months="2"
+                          :is-date-unavailable="isDateUnavailable"
                           initial-focus
                           :placeholder="dateRange.start"
                           @update:start-value="(startDate: any) => dateRange.start = startDate"
@@ -626,6 +709,9 @@ watch(() => props.open, (open) => {
                       </div>
                     </PopoverContent>
                   </Popover>
+                  <p v-if="!listingId" class="text-xs text-muted-foreground">
+                    Availability depends on the property, so pick it first.
+                  </p>
                   <p v-if="attempted && errors.checkIn" class="text-xs text-destructive">
                     Check-in date is required.
                   </p>
@@ -634,20 +720,8 @@ watch(() => props.open, (open) => {
                   </p>
                 </div>
                 <div class="space-y-2">
-                  <Label>Select Property <span class="text-destructive">*</span></Label>
-                  <SharedPropertyPicker
-                    :model-value="listingId ? [selectedListing?.name ?? ''] : []"
-                    :options="propertyPickerOptions"
-                    :multi-select="false"
-                    @update:model-value="(names: string[]) => { listingId = names[0] ? listingOptions.find(l => l.name === names[0])?.id ?? '' : '' }"
-                  />
-                  <p v-if="attempted && errors.listing" class="text-xs text-destructive">
-                    Property is required.
-                  </p>
-                </div>
-                <div class="space-y-2">
                   <Label>Estimated Arrival Time</Label>
-                  <Input v-model="estimatedArrivalTime" type="time" />
+                  <TimePicker v-model="estimatedArrivalTime" placeholder="Select time" :start-hour="0" :end-hour="23" clearable />
                 </div>
               </div>
             </AccordionContent>
@@ -660,8 +734,8 @@ watch(() => props.open, (open) => {
                 <h3 class="text-sm font-semibold">
                   Status and Source
                 </h3>
-                <Badge :variant="statusComplete ? 'secondary' : 'outline'" :class="statusComplete ? 'text-green-700 border-green-500/30 bg-green-500/10' : 'text-muted-foreground'">
-                  {{ statusComplete ? 'Complete' : 'Incomplete' }}
+                <Badge variant="outline" class="text-muted-foreground" data-testid="status-badge">
+                  {{ statusLabel }}
                 </Badge>
               </span>
             </AccordionTrigger>
@@ -670,15 +744,15 @@ watch(() => props.open, (open) => {
                 <div class="space-y-2">
                   <Label>Status</Label>
                   <Select v-model="status">
-                    <SelectTrigger>
+                    <SelectTrigger class="w-full">
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="inquiry">
                         Inquiry
                       </SelectItem>
-                      <SelectItem value="verified">
-                        Verified
+                      <SelectItem value="unverified">
+                        Confirmed
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -687,10 +761,10 @@ watch(() => props.open, (open) => {
                   <Label>Source</Label>
                   <Input model-value="Direct" disabled />
                 </div>
-                <div class="space-y-2">
+                <div class="space-y-2 sm:col-span-2">
                   <Label for="new-reservation-website">Booked on website</Label>
                   <Select v-model="bookedOnWebsiteId">
-                    <SelectTrigger id="new-reservation-website" data-testid="booked-on-website">
+                    <SelectTrigger id="new-reservation-website" class="w-full" data-testid="booked-on-website">
                       <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
@@ -704,25 +778,51 @@ watch(() => props.open, (open) => {
                   </Select>
                 </div>
                 <template v-if="status === 'inquiry'">
-                  <div class="space-y-2">
-                    <Label>Availability</Label>
-                    <Select :model-value="blocksAvailability ? 'block' : 'no_block'" @update:model-value="blocksAvailability = $event === 'block'">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="no_block">
-                          Do not block availability
-                        </SelectItem>
-                        <SelectItem value="block">
-                          Block availability
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 sm:col-span-2">
+                    <div class="flex items-center gap-1.5">
+                      <Label for="new-reservation-block" class="cursor-pointer">Block availability</Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <button type="button" class="text-muted-foreground hover:text-foreground" aria-label="About blocking availability">
+                              <Icon name="lucide:info" class="size-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent class="max-w-64">
+                            On: the dates are held for this inquiry, so nobody else can book them until it expires or is confirmed. Off: the dates stay open to other bookings.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <Switch id="new-reservation-block" :model-value="blocksAvailability" @update:model-value="blocksAvailability = !!$event" />
                   </div>
-                  <div class="space-y-2">
+                </template>
+                <div class="space-y-2 sm:col-span-2">
+                  <Label>Payment method</Label>
+                  <Select v-model="paymentMethod">
+                    <SelectTrigger class="w-full" data-testid="inquiry-payment-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="value in paymentMethodOptions" :key="value" :value="value">
+                        {{ reservationPaymentMethodLabels[value] }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p v-if="!sendsPaymentLink" class="text-xs text-muted-foreground">
+                    No payment link is sent. Mark the reservation as paid once the {{ paymentMethod === 'cash' ? 'cash' : 'transfer' }} is received.
+                  </p>
+                  <p v-else-if="status !== 'inquiry'" class="text-xs text-muted-foreground">
+                    Recorded as paid in full with this method.
+                  </p>
+                </div>
+                <template v-if="status === 'inquiry'">
+                  <div v-if="sendsPaymentLink" data-field="expiry" class="space-y-2 sm:col-span-2">
                     <Label>Expiry (hours)</Label>
-                    <Input v-model.number="inquiryExpiryHours" type="number" min="1" />
+                    <Input v-model.number="inquiryExpiryHours" type="number" min="1" :class="attempted && errors.expiry ? 'border-destructive' : ''" />
+                    <p v-if="attempted && errors.expiry" class="text-xs text-destructive">
+                      Enter at least 1 hour.
+                    </p>
                   </div>
                 </template>
               </div>
@@ -768,7 +868,7 @@ watch(() => props.open, (open) => {
                   <p class="text-xs text-muted-foreground sm:col-span-2">
                     A company books and pays. The invoice is issued to the company; the person below is the booking contact.
                   </p>
-                  <div class="space-y-2">
+                  <div data-field="companyName" class="space-y-2">
                     <Label>Company Name <span class="text-destructive">*</span></Label>
                     <Input v-model="companyName" placeholder="Enter company name" :class="attempted && errors.companyName ? 'border-destructive' : ''" />
                     <p v-if="attempted && errors.companyName" class="text-xs text-destructive">
@@ -838,14 +938,14 @@ watch(() => props.open, (open) => {
                     Select a previous guest to auto-fill their contact details.
                   </p>
                 </div>
-                <div class="space-y-2">
+                <div data-field="firstName" class="space-y-2">
                   <Label>{{ isBusiness ? 'Contact First Name' : 'First Name' }} <span class="text-destructive">*</span></Label>
                   <Input v-model="guestFirstName" placeholder="Enter first name" :class="attempted && errors.firstName ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.firstName" class="text-xs text-destructive">
                     First name is required.
                   </p>
                 </div>
-                <div class="space-y-2">
+                <div data-field="lastName" class="space-y-2">
                   <Label>{{ isBusiness ? 'Contact Last Name' : 'Last Name' }} <span class="text-destructive">*</span></Label>
                   <Input v-model="guestLastName" placeholder="Enter last name" :class="attempted && errors.lastName ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.lastName" class="text-xs text-destructive">
@@ -870,15 +970,15 @@ watch(() => props.open, (open) => {
                   <div class="flex items-center gap-2 pt-1">
                     <Checkbox
                       :model-value="sendPaymentWhatsApp"
-                      :disabled="!phoneNumber.trim()"
+                      :disabled="!phoneNumber.trim() || !sendsPaymentLink"
                       @update:model-value="sendPaymentWhatsApp = !!$event"
                     />
                     <span class="text-sm" :class="!phoneNumber.trim() ? 'text-muted-foreground' : ''">
-                      Send payment link via WhatsApp
+                      Send {{ sendActionLabel }} via WhatsApp
                     </span>
                   </div>
                 </div>
-                <div class="space-y-2 sm:col-span-2">
+                <div data-field="email" class="space-y-2 sm:col-span-2">
                   <Label>Email <span class="text-destructive">*</span></Label>
                   <Input v-model="guestEmail" type="email" placeholder="Enter email address" :class="attempted && errors.email ? 'border-destructive' : ''" />
                   <p v-if="attempted && errors.email" class="text-xs text-destructive">
@@ -887,16 +987,16 @@ watch(() => props.open, (open) => {
                   <div class="flex items-center gap-2 pt-1">
                     <Checkbox
                       :model-value="sendPaymentEmail"
-                      :disabled="!guestEmail.trim()"
+                      :disabled="!guestEmail.trim() || !sendsPaymentLink"
                       @update:model-value="sendPaymentEmail = !!$event"
                     />
                     <span class="text-sm" :class="!guestEmail.trim() ? 'text-muted-foreground' : ''">
-                      Send payment link via Email
+                      Send {{ sendActionLabel }} via Email
                     </span>
                   </div>
                 </div>
 
-                <div class="space-y-2 sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <div v-if="showInboxOption" class="space-y-2 sm:col-span-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
                   <div class="flex items-start gap-2.5">
                     <Checkbox
                       :model-value="sendPaymentInbox"
@@ -974,14 +1074,19 @@ watch(() => props.open, (open) => {
               </span>
             </AccordionTrigger>
             <AccordionContent class="px-4 pb-4">
-              <ReservationRoomsSection
-                v-model="roomsSectionModel"
-                :listing-id="listingId"
-                :check-in="checkIn"
-                :check-out="checkOut"
-                :nights="computedNights"
-                :currency="currency"
-              />
+              <div data-field="price" tabindex="-1" class="outline-none">
+                <p v-if="attempted && errors.price" class="mb-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  A payment link needs a price above 0. Add a room or a charge below.
+                </p>
+                <ReservationRoomsSection
+                  v-model="roomsSectionModel"
+                  :listing-id="listingId"
+                  :check-in="checkIn"
+                  :check-out="checkOut"
+                  :nights="computedNights"
+                  :currency="currency"
+                />
+              </div>
               <div class="mt-3 rounded-md border bg-muted/40 p-3 text-sm">
                 <div class="flex items-center justify-between">
                   <span class="text-muted-foreground">Nights</span>

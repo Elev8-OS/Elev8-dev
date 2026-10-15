@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cn } from '@/lib/utils'
 import { allListings } from '~/composables/useListingMappings'
 
 export interface PropertyPickerOption {
@@ -15,9 +16,12 @@ const props = withDefaults(defineProps<{
   options?: PropertyPickerOption[]
   /** When false, toggling a property selects only that one (single-select). */
   multiSelect?: boolean
+  /** Stretch the trigger to its container, matching a form input (default is a fixed-width filter button). */
+  fill?: boolean
 }>(), {
   options: () => allListings,
   multiSelect: true,
+  fill: false,
 })
 
 const emit = defineEmits<{
@@ -146,7 +150,7 @@ const selectedCount = computed(() => isAllProperties.value ? 0 : props.modelValu
 <template>
   <Popover v-model:open="open">
     <PopoverTrigger as-child>
-      <Button variant="outline" class="h-8 w-44 justify-start gap-1.5 text-sm font-normal">
+      <Button variant="outline" :class="cn('justify-start gap-1.5 text-sm font-normal', fill ? 'h-9 w-full' : 'h-8 w-44')">
         <Icon name="i-lucide-building-2" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span class="flex-1 truncate text-left">{{ displayLabel }}</span>
         <Icon name="i-lucide-chevrons-up-down" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

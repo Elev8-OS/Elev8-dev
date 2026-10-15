@@ -103,6 +103,22 @@ export type ContactType = 'personal' | 'business'
 
 export type PaymentFeeMode = 'card' | 'manual' | 'no_fee'
 
+/** How a direct booking is settled. Only a payment link is sent to the guest. */
+export type ReservationPaymentMethod = 'payment_link' | 'bank_transfer' | 'cash'
+
+export const reservationPaymentMethodLabels: Record<ReservationPaymentMethod, string> = {
+  payment_link: 'Payment link',
+  bank_transfer: 'Bank transfer',
+  cash: 'Cash',
+}
+
+/**
+ * Methods staff can record with Mark as paid. A payment link is not one of them:
+ * only a guest paying through the link produces its invoice, so staff cannot
+ * claim it by hand.
+ */
+export const manualPaymentMethods: ReservationPaymentMethod[] = ['bank_transfer', 'cash']
+
 export type ReservationChargeKind = 'cleaning' | 'city_tax' | 'service' | 'other'
 
 export interface ReservationCharge {
@@ -462,6 +478,10 @@ export interface ReservationEntry {
   bookingMode?: BookingMode
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number
+  /** How the guest settles the booking. Unset means a payment link. */
+  paymentMethod?: ReservationPaymentMethod
+  /** ISO time staff marked the booking as paid. */
+  paidAt?: string
   charges?: ReservationCharge[]
   /**
    * Items posted on the stay by staff (minibar, laundry, a spa slot booked at
@@ -611,6 +631,10 @@ export interface ReservationDraft {
   bookingMode?: BookingMode
   paymentFeeMode?: PaymentFeeMode
   paymentCustomFeePct?: number
+  /** How the guest settles the booking. Unset means a payment link. */
+  paymentMethod?: ReservationPaymentMethod
+  /** ISO time staff marked the booking as paid. */
+  paidAt?: string
   charges?: ReservationCharge[]
   /**
    * The guest this booking belongs to, when staff picked an existing one.

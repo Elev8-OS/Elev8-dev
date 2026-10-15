@@ -2,6 +2,7 @@
 import type { BookingMode, ContactType, GuestOccupant, PaymentFeeMode, ReservationCharge, ReservationEntry, ReservationRoomLine, ReservationStatus } from '~/components/reservations/data/reservations'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { toast } from 'vue-sonner'
+import TimePicker from '~/components/base/TimePicker.vue'
 import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
@@ -208,6 +209,8 @@ const errors = computed(() => ({
   lastName: !guestLastName.value.trim(),
   email: !guestEmail.value.trim(),
   companyName: isBusiness.value && !companyName.value.trim(),
+  // An inquiry's payment link needs a positive expiry, or it is dead on arrival.
+  expiry: status.value === 'inquiry' && !(Number(inquiryExpiryHours.value) >= 1),
 }))
 const hasErrors = computed(() => Object.values(errors.value).some(Boolean))
 
@@ -340,6 +343,8 @@ function save() {
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
       channel: props.reservation.channel || 'Direct',
       status: status.value,
+      // An inquiry's link bills the booking; left unset the flow may guess a city tax link instead.
+      purpose: status.value === 'inquiry' ? 'booking' : undefined,
       paymentRequestId: props.reservation.paymentRequestId,
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
@@ -456,7 +461,7 @@ function categoryLabel(category: string): string {
                 </div>
                 <div class="space-y-2">
                   <Label>Estimated Arrival Time</Label>
-                  <Input v-model="estimatedArrivalTime" type="time" />
+                  <TimePicker v-model="estimatedArrivalTime" placeholder="Select time" :start-hour="0" :end-hour="23" clearable />
                 </div>
               </div>
             </AccordionContent>
@@ -519,7 +524,10 @@ function categoryLabel(category: string): string {
                   </div>
                   <div class="space-y-2">
                     <Label>Expiry (hours)</Label>
-                    <Input v-model.number="inquiryExpiryHours" type="number" min="1" />
+                    <Input v-model.number="inquiryExpiryHours" type="number" min="1" :class="attempted && errors.expiry ? 'border-destructive' : ''" />
+                    <p v-if="attempted && errors.expiry" class="text-xs text-destructive">
+                      Enter at least 1 hour.
+                    </p>
                   </div>
                 </template>
               </div>

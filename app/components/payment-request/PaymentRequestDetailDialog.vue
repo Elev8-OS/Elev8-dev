@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { PaymentRequest } from './data/payment-requests'
-import { getStaffName } from './data/payment-requests'
 import { listings } from '~/components/listings/data/listings'
 import { payoutAccounts } from '~/components/settings/data/payouts'
+import { getStaffName } from './data/payment-requests'
 
 const { request } = defineProps<{
   request: PaymentRequest | null
@@ -11,6 +11,7 @@ const { request } = defineProps<{
 const emit = defineEmits<{
   copy: [link: string]
   cancel: [id: string]
+  markPaid: [id: string]
 }>()
 
 function getListingName(id: string) {
@@ -69,7 +70,6 @@ function formatAmount(req: PaymentRequest) {
           <p v-else-if="request.status === 'expired'" class="mt-1 text-xs">
             Expired on {{ formatDate(request.expiresAt) }}.
           </p>
-
         </div>
 
         <div class="space-y-3">
@@ -164,6 +164,11 @@ function formatAmount(req: PaymentRequest) {
       </div>
 
       <DialogFooter class="gap-2">
+        <!-- Mock: stands in for the gateway telling us the guest paid. -->
+        <Button v-if="request?.status === 'pending'" variant="outline" data-testid="simulate-guest-payment" @click="emit('markPaid', request.id)">
+          <Icon name="lucide:badge-check" class="mr-2 size-4" />
+          Simulate guest payment
+        </Button>
         <Button v-if="request?.status === 'pending'" variant="destructive" @click="emit('cancel', request.id)">
           Cancel Request
         </Button>

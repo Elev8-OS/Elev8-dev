@@ -1,11 +1,11 @@
-import type { FeeMode } from '~/components/payment-request/data/payment-requests'
 import type { Conversation, Message, MessagePaymentRequest } from '~/components/inbox/data/conversations'
+import type { FeeMode } from '~/components/payment-request/data/payment-requests'
 import { generatePaymentLink } from '~/components/payment-request/data/payment-requests'
-import { usePaymentRequests } from './usePaymentRequests'
-import { useInbox } from './useInbox'
-import { useReservationsModule } from './useReservationsModule'
-import { useJourneys } from './useJourneys'
 import { useCityTax } from './useCityTax'
+import { useInbox } from './useInbox'
+import { useJourneys } from './useJourneys'
+import { usePaymentRequests } from './usePaymentRequests'
+import { useReservationsModule } from './useReservationsModule'
 
 export interface BookingConfirmationOptions {
   reservationId: string
@@ -28,6 +28,8 @@ export interface BookingConfirmationOptions {
   senderName?: string
   senderRole?: string
   purpose?: 'city_tax' | 'booking' | 'auto'
+  /** Confirmation only: the booking is already paid, so no payment request or link is created or sent. */
+  confirmationOnly?: boolean
   status?: string
   cityTaxAmount?: number
   cityTaxCurrency?: string
@@ -47,6 +49,8 @@ export function generateBookingConfirmationText(opts: {
   paymentLink: string
   purpose?: 'city_tax' | 'booking'
   isConfirmed?: boolean
+  /** With `isConfirmed`: the stay is paid in full, so the message carries no payment link. */
+  paid?: boolean
   cityTaxAmount?: number
   cityTaxCurrency?: string
   cityTaxAuthority?: string
@@ -88,7 +92,7 @@ export function generateBookingConfirmationText(opts: {
 
   // Scenario 2: Confirmed booking with remaining balance or deposit payment
   if (opts.isConfirmed) {
-    const paymentLine = opts.totalPrice > 0
+    const paymentLine = opts.totalPrice > 0 && !opts.paid
       ? [
           `💳 Secure Payment Link (Remaining Balance):`,
           `Please settle your balance using the secure link below:`,
@@ -153,7 +157,7 @@ export function useBookingConfirmationFlow() {
   function sendBookingConfirmationWithPaymentLink(opts: BookingConfirmationOptions): {
     success: boolean
     conversationId: string
-    paymentRequestId: string
+    paymentRequestId?: string
     messageId: string
     isCityTax: boolean
   } {
@@ -168,7 +172,7 @@ export function useBookingConfirmationFlow() {
       ? opts.status !== 'inquiry'
       : (reservation ? reservation.status !== 'inquiry' : true)
 
-    if (!isCityTax && opts.purpose !== 'booking' && reservation) {
+    if (!opts.confirmationOnly && !isCityTax && opts.purpose !== 'booking' && reservation) {
       try {
         const assessment = typeof cityTax.assess === 'function'
           ? cityTax.assess(reservation)
@@ -196,7 +200,7 @@ export function useBookingConfirmationFlow() {
 
     // 2. Resolve or create the Payment Request
     let req = opts.paymentRequestId ? requests.value.find(r => r.id === opts.paymentRequestId) : undefined
-    if (!req) {
+    if (!req && !opts.confirmationOnly) {
       req = createRequest({
         guestName: opts.guestName,
         guestEmail: opts.guestEmail,
@@ -213,7 +217,7 @@ export function useBookingConfirmationFlow() {
       updateReservation(opts.reservationId, { paymentRequestId: req.id })
     }
 
-    const paymentLink = req.paymentLink || generatePaymentLink(req.id)
+    const paymentLink = req ? (req.paymentLink || generatePaymentLink(req.id)) : ''
 
     // 3. Resolve or create Conversation in Inbox
     let conv = conversations.value.find(c => c.reservationId === opts.reservationId)
@@ -222,7 +226,9 @@ export function useBookingConfirmationFlow() {
     }
 
     let conversationId: string
-    const statusNote = isCityTax ? '🎉 Booking Confirmed! City tax link sent.' : '📋 Reservation Reserved! Payment link sent.'
+    const statusNote = opts.confirmationOnly
+      ? '🎉 Booking Confirmed!'
+      : isCityTax ? '🎉 Booking Confirmed! City tax link sent.' : '📋 Reservation Reserved! Payment link sent.'
 
     if (!conv) {
       conversationId = `conv-res-${opts.reservationId}`
@@ -249,10 +255,10 @@ export function useBookingConfirmationFlow() {
         unreadCount: 0,
         isAssignedToMe: false,
         assignedTo: 'staff-2',
-        tags: [opts.channel || 'Direct Booking', isCityTax ? 'City Tax Due' : 'Awaiting Payment'],
+        tags: [opts.channel || 'Direct Booking', ...(opts.confirmationOnly ? [] : [isCityTax ? 'City Tax Due' : 'Awaiting Payment'])],
         labels: ['booking_confirmed'],
         sentiment: 'positive',
-        sentimentNote: isCityTax ? 'Booking confirmed, city tax payment link sent' : 'Reservation received, payment link sent',
+        sentimentNote: opts.confirmationOnly ? 'Booking confirmed and paid' : isCityTax ? 'Booking confirmed, city tax payment link sent' : 'Reservation received, payment link sent',
         stayStatus: 'future',
         checkIn: opts.checkIn,
         checkOut: opts.checkOut,
@@ -292,12 +298,13 @@ export function useBookingConfirmationFlow() {
       paymentLink,
       purpose: isCityTax ? 'city_tax' : 'booking',
       isConfirmed,
+      paid: opts.confirmationOnly,
       cityTaxAmount,
       cityTaxCurrency,
       cityTaxAuthority,
     })
 
-    const messagePaymentRequest: MessagePaymentRequest = {
+    const messagePaymentRequest: MessagePaymentRequest | undefined = req && {
       id: req.id,
       title: isCityTax ? `City Tax · #${opts.reservationId}` : req.title,
       amount: req.amount,
@@ -321,7 +328,7 @@ export function useBookingConfirmationFlow() {
       content,
       timestamp: new Date().toISOString(),
       sendStatus: 'sent',
-      paymentRequest: messagePaymentRequest,
+      ...(messagePaymentRequest ? { paymentRequest: messagePaymentRequest } : {}),
     }
 
     // 5. Append message to conversation thread
@@ -344,7 +351,7 @@ export function useBookingConfirmationFlow() {
     return {
       success: true,
       conversationId,
-      paymentRequestId: req.id,
+      paymentRequestId: req?.id,
       messageId,
       isCityTax,
     }
