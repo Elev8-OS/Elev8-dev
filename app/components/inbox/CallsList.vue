@@ -3,6 +3,7 @@ import type { PhoneCallStatus } from '~/components/inbox/data/conversations'
 import { endOfDay, format, isToday, isYesterday, startOfDay, subDays } from 'date-fns'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const inbox = useInbox()
 const threeCX = useThreeCX()
@@ -115,10 +116,7 @@ function getStatusLabel(status: PhoneCallStatus): string {
   <div class="flex flex-col h-full min-h-0">
     <!-- Header -->
     <div class="flex h-[56px] items-center gap-2 px-4 shrink-0 border-b">
-      <div v-if="!isGro" class="relative flex-1">
-        <Icon name="lucide:search" class="absolute left-2 top-2.5 size-4 text-muted-foreground" />
-        <Input v-model="searchQuery" placeholder="Search calls by guest, listing, or number..." class="pl-8 h-8" />
-      </div>
+      <BaseSearchInput v-if="!isGro" v-model="searchQuery" placeholder="Search calls by guest, listing, or number..." class="h-8 min-w-0 flex-1 sm:max-w-none" />
       <Popover v-model:open="filterOpen">
         <PopoverTrigger as-child>
           <Button variant="outline" size="sm" class="h-8 gap-1.5 text-xs" :class="filterCount > 0 ? 'border-primary text-primary' : ''">

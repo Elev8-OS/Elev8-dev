@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AiSchedule, DateOverride, Listing, OverrideAudience, TimeSlot } from '~/components/listings/data/listings'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { toast } from 'vue-sonner'
 import { allTags, listings } from '~/components/listings/data/listings'
 
@@ -377,10 +378,7 @@ function toggleAudience(o: DateOverride, value: OverrideAudience) {
 
       <!-- Search + Tag filter -->
       <div class="flex items-center gap-2">
-        <div class="relative flex-1">
-          <Icon name="lucide:search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input v-model="copySearch" placeholder="Search listings..." class="h-9 pl-8" />
-        </div>
+        <BaseSearchInput v-model="copySearch" placeholder="Search listings..." class="min-w-0 flex-1 sm:max-w-none" />
         <Popover v-model:open="copyTagPopoverOpen">
           <PopoverTrigger as-child>
             <Button variant="outline" size="sm" class="h-9 gap-1.5 text-xs" :class="copyTagFilters.length > 0 ? 'border-primary text-primary' : ''">

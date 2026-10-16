@@ -6,9 +6,9 @@
 -->
 <script setup lang="ts">
 import type { OwnerStatus } from '~/components/owners/data/owners'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import { Button } from '~/components/ui/button'
-import { Input } from '~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useOwners } from '~/composables/useOwners'
 
@@ -41,15 +41,7 @@ function clearFilters() {
 
 <template>
   <div class="flex flex-wrap items-center gap-2" data-testid="owner-filters">
-    <div class="relative min-w-48 max-w-sm flex-1">
-      <Icon name="lucide:search" class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        v-model="search"
-        placeholder="Search by name or email..."
-        class="pl-8"
-        aria-label="Search owners"
-      />
-    </div>
+    <BaseSearchInput v-model="search" placeholder="Search by name or email..." aria-label="Search owners" class="min-w-48 flex-1 sm:max-w-sm" />
 
     <Select v-model="statusFilter">
       <SelectTrigger class="w-40" aria-label="Filter by status">

@@ -170,10 +170,10 @@ describe('settings, Damage protection', () => {
     expect(wrapper.find('[data-testid="protection-listing-page"]').text()).toBe('Page 2 of 3')
 
     // A search starts again on page 1, and matches the payout too.
-    await wrapper.find('[data-testid="protection-listing-search"]').setValue('idr')
+    await wrapper.find('[data-testid="protection-listing-search"] input').setValue('idr')
     expect(wrapper.find('[data-testid="protection-listing-page"]').text()).toBe('Page 1 of 1')
     expect(wrapper.findAll('[data-testid="protection-listing-row"]').every(r => r.text().includes('IDR'))).toBe(true)
-    await wrapper.find('[data-testid="protection-listing-search"]').setValue('nothing like this')
+    await wrapper.find('[data-testid="protection-listing-search"] input').setValue('nothing like this')
     expect(wrapper.find('[data-testid="protection-listing-empty"]').exists()).toBe(true)
   })
 

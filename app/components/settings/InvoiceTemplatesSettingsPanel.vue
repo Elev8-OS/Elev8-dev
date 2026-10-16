@@ -2,6 +2,7 @@
 import type { InvoiceTemplate } from '~/components/settings/data/invoice-templates'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import InvoiceTemplateAssignDialog from '~/components/settings/InvoiceTemplateAssignDialog.vue'
 import InvoiceTemplateDialog from '~/components/settings/InvoiceTemplateDialog.vue'
@@ -25,7 +26,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import { Input } from '~/components/ui/input'
 import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
 
 const {
@@ -140,14 +140,7 @@ function executeDelete() {
 
     <!-- Filter Bar -->
     <div class="flex items-center gap-3">
-      <div class="relative flex-1 max-w-md">
-        <Icon name="lucide:search" class="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-        <Input
-          v-model="searchQuery"
-          placeholder="Search templates by company, bank, VAT, or name..."
-          class="pl-9 h-9"
-        />
-      </div>
+      <BaseSearchInput v-model="searchQuery" placeholder="Search templates by company, bank, VAT, or name..." class="flex-1 sm:max-w-md" />
       <Badge variant="outline" class="h-9 px-3 text-xs">
         {{ filteredTemplates.length }} template{{ filteredTemplates.length === 1 ? '' : 's' }}
       </Badge>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CalendarEventType, OperationsFilters } from '~/components/operations-calendar/data/operations-calendar'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { eventTypeLabels, getCalendarListings } from '~/components/operations-calendar/data/operations-calendar'
 
 const props = defineProps<{
@@ -56,15 +57,7 @@ function clear() {
 
 <template>
   <div class="flex flex-wrap items-end gap-3">
-    <div class="relative">
-      <Icon name="lucide:search" class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        :model-value="filters.listingSearch"
-        placeholder="Search listings..."
-        class="h-9 w-64 pl-9 text-sm"
-        @update:model-value="updateSearch"
-      />
-    </div>
+    <BaseSearchInput :model-value="filters.listingSearch" placeholder="Search listings..." class="sm:w-64 sm:max-w-none" @update:model-value="updateSearch" />
 
     <Popover v-model:open="tagPopoverOpen">
       <PopoverTrigger as-child>

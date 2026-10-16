@@ -3,6 +3,7 @@ import type { BookingChannel } from '~/components/listings/data/listings'
 import type { ProtectionPayer } from '~/components/reservations/data/reservations'
 import type { TernTier } from '~/components/reservations/data/tern-products'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import CoverageBreakdown from '~/components/damage-protection/CoverageBreakdown.vue'
 import {
   blockText,
@@ -609,16 +610,7 @@ const depositCurrency = computed(() => pkg.value?.currency ?? dp.payoutAccountFo
         </CardDescription>
       </CardHeader>
       <CardContent class="flex flex-col gap-4">
-        <div class="relative w-full sm:max-w-xs">
-          <Icon name="lucide:search" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            v-model="listingSearch"
-            placeholder="Search listings"
-            class="pl-9"
-            aria-label="Search listings"
-            data-testid="protection-listing-search"
-          />
-        </div>
+        <BaseSearchInput v-model="listingSearch" placeholder="Search listings" aria-label="Search listings" data-testid="protection-listing-search" />
         <div class="overflow-x-auto rounded-md border">
           <table class="w-full text-sm">
             <thead class="bg-muted/50 text-xs text-muted-foreground">

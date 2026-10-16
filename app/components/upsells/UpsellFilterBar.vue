@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { BALI_LISTINGS, CATALOG_CATEGORIES } from '@/components/upsells/data/upsell-services'
 import { useUpsellServices } from '@/composables/useUpsellServices'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const { filterCategory, filterStatus, filterListing, filterLockAccess, searchQuery, clearFilters } = useUpsellServices()
 </script>
@@ -8,16 +9,8 @@ const { filterCategory, filterStatus, filterListing, filterLockAccess, searchQue
 <template>
   <div class="flex flex-wrap items-end gap-3">
     <div class="flex w-full flex-col gap-1 sm:w-64">
-      <label for="upsell-search" class="text-xs text-muted-foreground">Search</label>
-      <div class="relative">
-        <Icon name="lucide:search" class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          id="upsell-search"
-          v-model="searchQuery"
-          placeholder="Search services or items"
-          class="h-8 pl-8 text-sm"
-        />
-      </div>
+      <span class="text-xs text-muted-foreground">Search</span>
+      <BaseSearchInput v-model="searchQuery" placeholder="Search services or items" aria-label="Search services or items" class="sm:max-w-none" />
     </div>
 
     <div class="flex flex-col gap-1">

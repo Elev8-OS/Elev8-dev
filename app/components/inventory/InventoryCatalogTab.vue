@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { INVENTORY_CATEGORIES } from '@/components/inventory/data/catalog'
 import { useInventoryCatalog } from '@/composables/useInventoryCatalog'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const {
   items,
@@ -123,10 +124,7 @@ function downloadCSV() {
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative w-48">
-        <Icon name="lucide:search" class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input v-model="searchValue" placeholder="Search items..." class="pl-8" />
-      </div>
+      <BaseSearchInput v-model="searchValue" placeholder="Search items..." class="sm:w-48" />
 
       <div class="flex flex-wrap gap-1.5">
         <Button

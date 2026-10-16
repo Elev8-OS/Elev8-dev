@@ -6,6 +6,7 @@ import { staffMembers } from '@/components/inbox/data/conversations'
 import { usePurchaseRequests } from '@/composables/usePurchaseRequests'
 import { usePurchaseOrders } from '@/composables/usePurchaseOrders'
 import { useInventoryCatalog } from '@/composables/useInventoryCatalog'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const {
   filteredRequests,
@@ -126,10 +127,7 @@ const STATUS_OPTIONS: { value: PurchaseRequestStatus | 'all', label: string }[] 
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative w-48">
-        <Icon name="lucide:search" class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input v-model="searchValue" placeholder="Search PRs..." class="pl-8" />
-      </div>
+      <BaseSearchInput v-model="searchValue" placeholder="Search PRs..." class="sm:w-48" />
 
       <Select v-model="activeStatusFilter">
         <SelectTrigger class="w-44 h-8">

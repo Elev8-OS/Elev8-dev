@@ -2,6 +2,7 @@
 import type { CleaningGuidance } from '~/components/cleaning/data/cleaning-guidance'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import CleaningGuidanceDialog from '~/components/cleaning/CleaningGuidanceDialog.vue'
 import { guidanceCoverUrl } from '~/components/cleaning/data/cleaning-guidance'
 import { listings } from '~/components/listings/data/listings'
@@ -80,10 +81,7 @@ function confirmDelete() {
       </Button>
     </div>
 
-    <div class="relative max-w-md">
-      <Icon name="lucide:search" class="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-      <Input v-model="search" placeholder="Search guidance..." class="h-9 pl-9" />
-    </div>
+    <BaseSearchInput v-model="search" placeholder="Search guidance..." class="h-9 sm:max-w-md" />
 
     <div v-if="filtered.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Card v-for="g in filtered" :key="g.id" class="flex flex-col gap-3 overflow-hidden p-0 pb-5" data-testid="guidance-card">

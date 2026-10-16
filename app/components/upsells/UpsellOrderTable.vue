@@ -10,6 +10,7 @@ import {
 } from '@/components/upsells/data/upsell-orders'
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
 import { listings } from '@/components/listings/data/listings'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 
@@ -571,11 +572,7 @@ function exportCSV() {
           </PopoverContent>
         </Popover>
 
-        <Input
-          v-model="searchValue"
-          placeholder="Search guest, service, reservation..."
-          class="h-8 w-64 text-sm"
-        />
+        <BaseSearchInput v-model="searchValue" placeholder="Search guest, service, reservation..." class="h-8 sm:w-64" />
         <Button variant="outline" size="sm" class="h-8" @click="exportCSV">
           <Icon name="lucide:download" class="mr-2 h-4 w-4" />
           Export CSV

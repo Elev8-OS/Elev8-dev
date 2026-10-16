@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { HubFilterChannel, HubFilterStatus } from '~/composables/useReviewHub'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { channelLabels, replyStatusLabels } from '~/components/review-hub/data/types'
 
 defineProps<{
@@ -24,10 +25,7 @@ const hasActiveFilters = computed(() => {
 <template>
   <div class="flex flex-wrap items-center gap-2">
     <!-- Search -->
-    <div class="relative w-[280px]">
-      <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input v-model="searchQuery" placeholder="Search guest or property..." class="h-10 pl-9" />
-    </div>
+    <BaseSearchInput v-model="searchQuery" placeholder="Search guest or property..." class="h-10 sm:w-[280px] sm:max-w-none" />
 
     <!-- Status -->
     <Select v-model="filterStatus">

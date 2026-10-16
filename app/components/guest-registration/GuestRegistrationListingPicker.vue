@@ -2,6 +2,7 @@
 import type { RegistrationProvider } from './data/guest-registration'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const props = defineProps<{
   provider: RegistrationProvider
@@ -142,10 +143,7 @@ function clearFilters() {
   <div class="space-y-3">
     <!-- Filter bar -->
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative min-w-[220px] flex-1">
-        <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="search" placeholder="Search listing or location..." class="h-9 pl-9 text-xs" />
-      </div>
+      <BaseSearchInput v-model="search" placeholder="Search listing or location..." class="min-w-[220px] flex-1 h-9 text-xs sm:max-w-none" />
 
       <!-- Tag filter -->
       <Popover v-model:open="tagPopoverOpen">

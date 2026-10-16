@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { AsYouType } from 'libphonenumber-js'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import type { WhatsAppAccount } from '~/composables/useWhatsApp'
 import { createEmptyTemplate, type WhatsAppTemplate } from '~/components/journeys/data/whatsapp-templates'
@@ -491,10 +492,7 @@ async function handleSubmitTemplate(template: WhatsAppTemplate) {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <div class="relative min-w-[260px] flex-1">
-            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input v-model="unassignedSearch" placeholder="Search listing or location" class="h-10 pl-9" />
-          </div>
+          <BaseSearchInput v-model="unassignedSearch" placeholder="Search listing or location" class="min-w-[260px] flex-1 h-10 sm:max-w-none" />
           <Popover v-model:open="unassignedTagPopoverOpen">
             <PopoverTrigger as-child>
               <Button variant="outline" class="gap-2">
@@ -738,10 +736,7 @@ async function handleSubmitTemplate(template: WhatsAppTemplate) {
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
-              <div class="relative min-w-[200px] flex-1">
-                <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input v-model="manageListingSearch" placeholder="Search listing or location" class="h-9 pl-9 text-xs" />
-              </div>
+              <BaseSearchInput v-model="manageListingSearch" placeholder="Search listing or location" class="min-w-[200px] flex-1 h-9 text-xs sm:max-w-none" />
               <Popover v-model:open="manageListingTagPopoverOpen">
                 <PopoverTrigger as-child>
                   <Button variant="outline" size="sm" class="gap-1.5">
@@ -893,10 +888,7 @@ async function handleSubmitTemplate(template: WhatsAppTemplate) {
                 <Badge variant="secondary" class="text-[10px]">{{ manageSelectedListings.length }} selected</Badge>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <div class="relative min-w-[200px] flex-1">
-                  <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input v-model="manageListingSearch" placeholder="Search listing or location" class="h-9 pl-9 text-xs" />
-                </div>
+                <BaseSearchInput v-model="manageListingSearch" placeholder="Search listing or location" class="min-w-[200px] flex-1 h-9 text-xs sm:max-w-none" />
                 <Popover v-model:open="manageListingTagPopoverOpen">
                   <PopoverTrigger as-child>
                     <Button variant="outline" size="sm" class="gap-1.5">

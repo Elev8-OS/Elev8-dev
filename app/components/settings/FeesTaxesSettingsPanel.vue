@@ -2,6 +2,7 @@
 import type { BookingChannel, CityTaxCollector, CityTaxConfig, ListingFeeTaxItem, TaxDateRange, TaxSet } from '~/components/listings/data/listings'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { BOOKING_CHANNELS, listings } from '~/components/listings/data/listings'
 import {
   ageBandsError,
@@ -1217,10 +1218,7 @@ function removeDateRange(index: number) {
 
         <div class="space-y-3">
           <div class="flex flex-wrap items-center gap-2">
-            <div class="relative min-w-[260px] flex-1">
-              <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input v-model="assignSearch" placeholder="Search listing or location" class="h-10 pl-9" />
-            </div>
+            <BaseSearchInput v-model="assignSearch" placeholder="Search listing or location" class="min-w-[260px] flex-1 h-10 sm:max-w-none" />
             <Popover v-model:open="assignTagPopoverOpen">
               <PopoverTrigger as-child>
                 <Button variant="outline" class="gap-2">

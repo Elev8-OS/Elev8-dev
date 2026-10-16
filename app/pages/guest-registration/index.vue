@@ -2,6 +2,7 @@
 import type { GuestRegistration } from '~/components/guest-registration/data/guest-registration'
 import { computed, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { providerLabels, statusLabels } from '~/components/guest-registration/data/guest-registration'
 import GuestRegistrationDetailDialog from '~/components/guest-registration/GuestRegistrationDetailDialog.vue'
 import GuestRegistrationSubmitDialog from '~/components/guest-registration/GuestRegistrationSubmitDialog.vue'
@@ -153,10 +154,7 @@ function handleDetails(reg: GuestRegistration) {
 
     <div class="flex flex-wrap items-center gap-3">
       <!-- Search -->
-      <div class="relative min-w-[200px] max-w-xs flex-1">
-        <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="filters.search" placeholder="Search guest, listing, passport..." class="pl-9" />
-      </div>
+      <BaseSearchInput v-model="filters.search" placeholder="Search guest, listing, passport..." />
 
       <!-- Provider -->
       <Select v-model="filters.provider">

@@ -15,12 +15,12 @@ import ActivityTenantBadge from '~/components/activities/ActivityTenantBadge.vue
 import ActivityTypeBreakdown from '~/components/activities/ActivityTypeBreakdown.vue'
 import { activityLogTypeMeta, CLEANING_LOG_TYPES, formatDuration, logPlace, parseLocalDateKey, toLocalDateKey } from '~/components/activities/data/activities'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { cleaningTypeLabels } from '~/components/operations-calendar/data/operations-calendar'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
-import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Switch } from '~/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
@@ -330,10 +330,7 @@ const formatDay = (key: string) => dayFmt.format(parseLocalDateKey(key))
         </Card>
 
         <div class="flex flex-wrap items-center gap-2">
-          <div class="relative w-full sm:w-64">
-            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input v-model="search" class="pl-9" placeholder="Search work or listing" aria-label="Search work or listing" />
-          </div>
+          <BaseSearchInput v-model="search" placeholder="Search work or listing" aria-label="Search work or listing" class="sm:w-64 sm:max-w-none" />
           <ToggleGroup v-model="typeFilter" type="multiple" variant="outline" aria-label="Type of work">
             <ToggleGroupItem v-for="t in shownTypes" :key="t" :value="t" class="flex-none gap-1.5 whitespace-nowrap px-3">
               <Icon :name="activityLogTypeMeta[t].icon" class="size-4" />

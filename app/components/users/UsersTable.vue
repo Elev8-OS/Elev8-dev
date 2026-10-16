@@ -2,12 +2,12 @@
 <script setup lang="ts">
 import type { User } from '~/components/users/data/users'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import { Avatar, AvatarFallback } from '~/components/ui/avatar'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
-import { Input } from '~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Switch } from '~/components/ui/switch'
 import { useRoles } from '~/composables/useRoles'
@@ -116,10 +116,7 @@ function pageNumbers(): (number | 'ellipsis')[] {
   <div class="space-y-3">
     <!-- Filter bar -->
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative flex-1 min-w-48 max-w-sm">
-        <Icon name="lucide:search" class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <Input v-model="search" placeholder="Search by name or email..." class="pl-8" />
-      </div>
+      <BaseSearchInput v-model="search" placeholder="Search by name or email..." class="min-w-48 flex-1 sm:max-w-sm" />
 
       <Select v-model="roleFilter">
         <SelectTrigger class="w-44">

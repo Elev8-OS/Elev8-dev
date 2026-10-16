@@ -8,7 +8,23 @@ import { Button } from '~/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { ACTIVITY_PRESETS, rangeForPreset, useActivityReport } from '~/composables/useActivityReport'
 
-const { selection, earliestDate } = useActivityReport()
+interface Selection { preset: ActivityPresetId, range: { from: string, to: string } }
+
+/** Reused by Attendance: pass its own selection and first day. Without them the bar drives the Activities range. */
+const props = defineProps<{ selection?: Selection, earliest?: string }>()
+const emit = defineEmits<{ 'update:selection': [value: Selection] }>()
+
+const activity = props.selection ? undefined : useActivityReport()
+const selection = computed<Selection>({
+  get: () => props.selection ?? activity!.selection.value,
+  set: (v) => {
+    if (activity)
+      activity.selection.value = v
+    else
+      emit('update:selection', v)
+  },
+})
+const earliestDate = computed(() => props.selection ? props.earliest : activity!.earliestDate.value)
 
 const todayKey = computed(() => toLocalDateKey(new Date()))
 

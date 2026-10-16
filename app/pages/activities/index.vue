@@ -10,12 +10,12 @@ import ActivityTimeBar from '~/components/activities/ActivityTimeBar.vue'
 import ActivityTypeBreakdown from '~/components/activities/ActivityTypeBreakdown.vue'
 import { formatDuration, parseLocalDateKey } from '~/components/activities/data/activities'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import ListingPicker from '~/components/operations-calendar/ListingPicker.vue'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '~/components/ui/empty'
-import { Input } from '~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Skeleton } from '~/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/components/ui/table'
@@ -209,10 +209,7 @@ const listed = computed(() => rows.value.length)
 
       <div class="space-y-4">
         <div class="flex flex-wrap items-center gap-2">
-          <div class="relative w-full sm:w-64">
-            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input v-model="query" class="pl-9" placeholder="Search staff" aria-label="Search staff" />
-          </div>
+          <BaseSearchInput v-model="query" placeholder="Search staff" aria-label="Search staff" class="sm:w-64 sm:max-w-none" />
           <Select v-model="roleId">
             <SelectTrigger class="w-full sm:w-48" aria-label="Role">
               <SelectValue />

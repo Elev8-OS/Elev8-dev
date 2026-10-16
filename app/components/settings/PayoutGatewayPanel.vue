@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import { createEmptyPayoutDraft, getListingName, getPayoutProvider, payoutAccounts, payoutProviderLabels, payoutProviders, type PayoutAccount, type PayoutAccountDraft, type PayoutProvider } from './data/payouts'
 import DokuLogo from './icons/DokuLogo.vue'
@@ -373,10 +374,7 @@ function bulkAssignSelected() {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <div class="relative min-w-[260px] flex-1">
-            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input v-model="unassignedSearch" placeholder="Search listing or location" class="h-10 pl-9" />
-          </div>
+          <BaseSearchInput v-model="unassignedSearch" placeholder="Search listing or location" class="min-w-[260px] flex-1 h-10 sm:max-w-none" />
           <Popover v-model:open="unassignedTagPopoverOpen">
             <PopoverTrigger as-child>
               <Button variant="outline" class="gap-2">
@@ -544,10 +542,7 @@ function bulkAssignSelected() {
 
           <div v-else-if="step === 3" class="space-y-4">
             <div class="flex flex-wrap items-center gap-2">
-              <div class="relative min-w-[260px] flex-1">
-                <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input v-model="assignSearch" placeholder="Search listing or location" class="h-10 pl-9" />
-              </div>
+              <BaseSearchInput v-model="assignSearch" placeholder="Search listing or location" class="min-w-[260px] flex-1 h-10 sm:max-w-none" />
               <Popover v-model:open="assignTagPopoverOpen">
                 <PopoverTrigger as-child>
                   <Button variant="outline" class="gap-2">

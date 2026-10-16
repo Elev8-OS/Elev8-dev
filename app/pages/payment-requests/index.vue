@@ -4,6 +4,7 @@ import type { PaymentRequest } from '~/components/payment-request/data/payment-r
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import { getStaffName } from '~/components/payment-request/data/payment-requests'
 import PaymentRequestCancelDialog from '~/components/payment-request/PaymentRequestCancelDialog.vue'
@@ -260,10 +261,7 @@ const dateFilterLabel = computed(() => {
 
     <div class="flex flex-wrap items-center gap-3">
       <!-- Search -->
-      <div class="relative min-w-[200px] flex-1 max-w-xs">
-        <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="filters.search" placeholder="Search guest or title..." class="pl-9" />
-      </div>
+      <BaseSearchInput v-model="filters.search" placeholder="Search guest or title..." />
 
       <!-- Status -->
       <Select v-model="filters.status">

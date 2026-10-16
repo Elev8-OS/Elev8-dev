@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { listings as allListings } from '@/components/listings/data/listings'
 import { BALI_LISTINGS } from '@/components/upsells/data/upsell-services'
 import { cn } from '@/lib/utils'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 /**
  * Assigned Listings picker shared by the upsell drawer's Listings step and the
@@ -93,10 +94,7 @@ function clearAll() {
     </div>
 
     <div class="flex items-center gap-2">
-      <div class="relative flex-1">
-        <Icon name="lucide:search" class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="listingSearch" placeholder="Search listings..." class="h-9 pl-8" />
-      </div>
+      <BaseSearchInput v-model="listingSearch" placeholder="Search listings..." class="flex-1 h-9 sm:max-w-none" />
       <Popover v-model:open="listingTagPopoverOpen">
         <PopoverTrigger as-child>
           <Button

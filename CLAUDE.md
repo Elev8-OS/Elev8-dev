@@ -38,6 +38,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Website builder reviews | `docs/claude/website-builder-reviews.md` | Auto/manual review rules, picker UI, publish state |
 | Payment requests | `docs/claude/payment-requests.md` | Payment links, fee modes, payout integration |
 | Activities | `docs/claude/activities.md` | `/activities` time and activity report per staff: range presets, per-person day groups, edit/delete logs, listings sheet, xlsx export |
+| Attendance | `docs/claude/attendance.md` | `/attendance` clock-in/out records per day: range, filters, late/early/absent rules, detail sheet, xlsx export, generated data, profile tab still separate |
 | Operations calendar | `docs/claude/operations-calendar.md` | Week/day board, merged stay sources, half-day bars, lanes |
 | Cockpit | `docs/claude/cockpit.md` | `/cockpit` tape chart: Reservations-only stays, slanted bars, today strip, filters, click/drag to book or block, drag to room, find availability, remembered settings |
 | Promo codes | `docs/claude/promo-codes.md` | Code library, create wizard, scope chain, booking widget links |
@@ -85,7 +86,7 @@ Specs and plans: `docs/superpowers/{specs,plans,changelogs}/`, PRDs in `docs/prd
 ## 🧩 Component Selection
 
 1. **shadcn-vue** in `app/components/ui/` first. Never duplicate; customize via props, slots and `cn()`.
-2. **Custom base**: `base/BreadcrumbCustom.vue`, `base/DateRangePicker.vue`, `Search.vue`, `PasswordInput.vue`, `AppSettings.vue`, `DarkToggle.vue`, `ThemeCustomize.vue`.
+2. **Custom base**: `base/BreadcrumbCustom.vue`, `base/DateRangePicker.vue`, `base/SearchInput.vue`, `Search.vue`, `PasswordInput.vue`, `AppSettings.vue`, `DarkToggle.vue`, `ThemeCustomize.vue`.
 3. **Module components** alongside their module (`components/<module>/`).
 4. Build new only as a last resort, next to the module that uses it.
 
@@ -104,6 +105,7 @@ Specs and plans: `docs/superpowers/{specs,plans,changelogs}/`, PRDs in `docs/prd
     <span>{{ item }}</span>
   </div>
   ```
+- **Search fields** always use `base/SearchInput.vue` (`<BaseSearchInput v-model placeholder class>`), the Listings page `InputGroup` look: search icon left, clear X right once there is text. Never a bare `Input` with a positioned icon. Compact searches inside a popover, dropdown, picker list or sidebar panel stay a plain `Input`, as the Listings tag popover does. `id`, `ref` and key listeners land on the group root, not the input, so a field that needs them (autocomplete, `/gro` header) stays as is.
 - **Tag/multi-select filters** (match Listings index): Popover + search `Input` + `ScrollArea` of custom-checkbox rows + "Clear all"; AND logic (`every`).
 - **Scrollable flex children need `min-h-0`**: `<ScrollArea class="flex-1 min-h-0">` inside `flex flex-col h-full`, otherwise the parent grows instead of scrolling.
 - **SSR hydration**: TanStack tables with icon columns and Reka `ScrollArea`-heavy layouts are wrapped in `<ClientOnly>` (see `listings/index.vue`, `inbox.vue`). `nuxt.config.ts` uses `icon.mode: 'svg'`.

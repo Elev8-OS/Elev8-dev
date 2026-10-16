@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import type { OwnerDocument } from '~/components/owners/data/owner-documents'
 // Owner portal — Document Center view (Flow 10A). Lists only the documents
 // the logged-in owner is allowed to see and lets them download each one.
 
-import type { OwnerDocument } from '~/components/owners/data/owner-documents'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { documentCategoryIcons, documentCategoryLabels } from '~/components/owners/data/owner-documents'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
-import { Input } from '~/components/ui/input'
 import { useOwnerDocuments } from '~/composables/useOwnerDocuments'
 import { useOwnerPortal } from '~/composables/useOwnerPortal'
 
@@ -52,10 +52,7 @@ function handleDownload(doc: OwnerDocument) {
     </header>
 
     <div class="flex items-center gap-3">
-      <div class="relative max-w-sm flex-1">
-        <Icon name="lucide:search" class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input v-model="search" class="pl-9" placeholder="Search documents…" />
-      </div>
+      <BaseSearchInput v-model="search" placeholder="Search documents..." class="sm:max-w-sm" />
     </div>
 
     <div class="min-h-0 flex-1 overflow-auto">

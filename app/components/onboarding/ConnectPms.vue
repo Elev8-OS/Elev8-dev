@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CalryProvider } from '~/components/onboarding/data/onboarding'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import {
   CALRY_PROVIDERS,
   getPmsLogo,
@@ -130,10 +131,7 @@ function sendRequest(): void {
       </p>
     </div>
 
-    <div class="relative">
-      <Icon name="lucide:search" class="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input v-model="query" class="pl-8" placeholder="Search systems" aria-label="Search systems" />
-    </div>
+    <BaseSearchInput v-model="query" placeholder="Search systems" aria-label="Search systems" class="sm:max-w-none" />
 
     <div v-if="authError" class="flex gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
       <Icon name="lucide:circle-alert" class="mt-0.5 size-4 shrink-0 text-destructive" />

@@ -4,6 +4,7 @@ import { toast } from 'vue-sonner'
 import { ISSUE_STATUS_LABELS } from '@/components/procurement/data/issuings'
 import { staffMembers } from '@/components/inbox/data/conversations'
 import { useIssuings } from '@/composables/useIssuings'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const {
   filteredIssuings,
@@ -53,10 +54,7 @@ const STATUS_OPTIONS: { value: IssueStatus | 'all', label: string }[] = [
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative w-48">
-        <Icon name="lucide:search" class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input v-model="searchValue" placeholder="Search..." class="pl-8" />
-      </div>
+      <BaseSearchInput v-model="searchValue" placeholder="Search..." class="sm:w-48" />
 
       <Select v-model="activeStatusFilter">
         <SelectTrigger class="w-40 h-8">

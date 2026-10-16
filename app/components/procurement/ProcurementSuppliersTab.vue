@@ -3,6 +3,7 @@ import type { Supplier, SupplierCategory } from '@/components/procurement/data/s
 import { toast } from 'vue-sonner'
 import { SUPPLIER_CATEGORIES } from '@/components/procurement/data/suppliers'
 import { useSuppliers } from '@/composables/useSuppliers'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const {
   filteredSuppliers,
@@ -38,10 +39,7 @@ const CATEGORY_OPTIONS: { value: SupplierCategory | 'all', label: string }[] = [
 <template>
   <div class="flex flex-col gap-4">
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative w-48">
-        <Icon name="lucide:search" class="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input v-model="searchValue" placeholder="Search suppliers..." class="pl-8" />
-      </div>
+      <BaseSearchInput v-model="searchValue" placeholder="Search suppliers..." class="sm:w-48" />
 
       <div class="flex flex-wrap gap-1.5">
         <Button

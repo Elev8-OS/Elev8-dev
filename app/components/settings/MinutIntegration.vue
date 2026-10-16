@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import type { MinutDevice } from '~/composables/useMinut'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 
 const minut = useMinut()
 
@@ -230,10 +231,7 @@ function clearDeviceMapping(deviceId: string) {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <div class="relative min-w-[220px] flex-1">
-            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input v-model="mappingSearch" placeholder="Search device or listing..." class="h-9 pl-9 text-xs" />
-          </div>
+          <BaseSearchInput v-model="mappingSearch" placeholder="Search device or listing..." class="min-w-[220px] flex-1 h-9 text-xs sm:max-w-none" />
           <Popover v-model:open="listingFilterOpen">
             <PopoverTrigger as-child>
               <Button variant="outline" class="h-9 w-[200px] justify-between gap-2 text-xs font-normal">

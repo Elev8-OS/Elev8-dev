@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Listing, ListingFeeTaxItem, RateMealType, RatePlan, RatePlanOption, RateRateMode, RateSellMode, TaxDateRange, TaxSet, Unit, UnitType, UnitTypePricing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
+import BaseSearchInput from '~/components/base/SearchInput.vue'
 import CancellationPolicyEditor from '~/components/listings/CancellationPolicyEditor.vue'
 import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
 import RatePlanRateRules from '~/components/listings/RatePlanRateRules.vue'
@@ -2162,10 +2163,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
         </DialogHeader>
 
         <div class="space-y-3">
-          <div class="relative">
-            <Icon name="lucide:search" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input v-model="librarySearch" placeholder="Search library..." class="h-9 pl-9" />
-          </div>
+          <BaseSearchInput v-model="librarySearch" placeholder="Search library..." class="h-9" />
 
           <div class="max-h-[320px] space-y-2 overflow-auto pr-1">
             <p v-if="libraryItems.length === 0" class="text-sm text-muted-foreground py-4 text-center">
