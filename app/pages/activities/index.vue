@@ -294,12 +294,12 @@ const listed = computed(() => rows.value.length)
                           {{ row.roleName }}
                         </p>
                         <p
-                          v-if="row.missingDays || row.longCount"
+                          v-if="row.missingDays || row.longCount || row.unloggedWork"
                           class="inline-flex items-center gap-1 text-xs text-warning-foreground xl:hidden"
-                          :title="`${row.missingDays} days not logged, ${row.longCount} longer than usual`"
+                          :title="`${row.missingDays} days not logged, ${row.longCount} longer than usual, ${row.unloggedWork} finished jobs or tasks not logged`"
                         >
                           <Icon name="lucide:triangle-alert" class="size-3" />
-                          {{ row.missingDays + row.longCount }} to check
+                          {{ row.missingDays + row.longCount + row.unloggedWork }} to check
                         </p>
                       </div>
                     </div>
@@ -325,6 +325,10 @@ const listed = computed(() => rows.value.length)
                       <Badge v-if="row.longCount" variant="outline" class="gap-1 border-warning/50 font-normal text-warning-foreground">
                         <Icon name="lucide:triangle-alert" class="size-3" />
                         {{ row.longCount }} longer than usual
+                      </Badge>
+                      <Badge v-if="row.unloggedWork" variant="outline" class="gap-1 border-warning/50 font-normal text-warning-foreground">
+                        <Icon name="lucide:clipboard-check" class="size-3" />
+                        {{ row.unloggedWork }} finished, not logged
                       </Badge>
                     </div>
                   </TableCell>

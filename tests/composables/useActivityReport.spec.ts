@@ -2,7 +2,10 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
 import { CLEANING_LOG_TYPES, cleaningLogTitle, formatDuration, listingRooms, logPlace, toLocalDateKey } from '~/components/activities/data/activities'
+import { listings } from '~/components/listings/data/listings'
 import { rangeForPreset, useActivityReport } from '~/composables/useActivityReport'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useTaskStore } from '~/composables/useTaskStore'
 import { useUsers } from '~/composables/useUsers'
 import { ACTIVITY_STORAGE_KEY, loadActivityReport, saveActivityReport } from '~/lib/activity-store'
 
@@ -245,6 +248,84 @@ describe('useActivityReport', () => {
     expect(logs.value.slice(1).every(l => l.date > '2020-01-01' && l.id.endsWith(`-${todayKey()}`))).toBe(true)
     expect(loadActivityReport()!.throughDay).toBe(todayKey())
     expect(localStorage.getItem(ACTIVITY_STORAGE_KEY)).toContain('"id":"old"')
+  })
+
+  it('offers a person the cleaning jobs they finished that no log covers yet', () => {
+    const { finishedWorkFor, staffRows } = useActivityReport()
+    const { jobs } = useCleaningJobs()
+    const done = jobs.value.filter(j => j.status === 'done')
+    expect(done.length).toBeGreaterThan(0)
+
+    // The demo cleanings are done by housekeeping users, matched by user id (no name guessing).
+    const ketut = finishedWorkFor('user-7')
+    expect(ketut.length).toBeGreaterThan(0)
+    for (const w of ketut) {
+      const job = jobs.value.find(j => j.id === w.id)!
+      expect(job.status).toBe('done')
+      expect(job.cleanerIds).toContain('user-7')
+      expect(w).toMatchObject({ kind: 'cleaning_job', type: 'cleaning', listingId: job.listingId, date: job.scheduledAt.slice(0, 10) })
+      expect(w.minutes).toBe(job.feedback?.cleaningDurationMinutes ?? job.durationMinutes)
+      expect(CLEANING_LOG_TYPES).toContain(w.cleaningType)
+      expect(w.title).toBe(cleaningLogTitle(w.cleaningType!))
+    }
+    expect(ketut.map(w => w.date)).toEqual([...ketut.map(w => w.date)].sort().reverse())
+
+    // Someone who cannot log cleaning, or has no finished job, is offered nothing.
+    expect(finishedWorkFor('user-2')).toEqual([])
+    expect(finishedWorkFor('user-nobody')).toEqual([])
+
+    // A range narrows it, and the count reaches the staff row.
+    const wide = { from: '2000-01-01', to: '2999-12-31' }
+    expect(finishedWorkFor('user-7', { from: '2000-01-01', to: '2000-01-02' })).toEqual([])
+    expect(staffRows(wide, { includeOtherTenants: true }).find(r => r.userId === 'user-7')!.unloggedWork).toBe(ketut.length)
+  })
+
+  it('links a log to finished work once, and gives the work back when the log is deleted', () => {
+    const { finishedWorkFor, addLog, removeLog, logs } = useActivityReport()
+    const { jobs } = useCleaningJobs()
+    const [first] = finishedWorkFor('user-7')
+    expect(first).toBeDefined()
+    const before = finishedWorkFor('user-7').length
+
+    const log = addLog({ userId: 'user-7', listingId: first!.listingId, unitId: first!.unitId, type: 'cleaning', cleaningType: first!.cleaningType, cleaningJobId: first!.id, title: '', date: first!.date, durationMinutes: first!.minutes! })!
+    expect(log).toMatchObject({ cleaningJobId: first!.id, type: 'cleaning', title: first!.title })
+    expect(finishedWorkFor('user-7')).toHaveLength(before - 1)
+    expect(finishedWorkFor('user-7').some(w => w.id === first!.id)).toBe(false)
+
+    // The same job cannot be logged twice by the same person.
+    expect(addLog({ userId: 'user-7', listingId: first!.listingId, type: 'cleaning', cleaningType: first!.cleaningType, cleaningJobId: first!.id, title: '', date: first!.date, durationMinutes: 30 })).toBeUndefined()
+    // Nor a task link on a cleaning log, or a link to nothing.
+    expect(addLog({ userId: 'user-7', listingId: first!.listingId, type: 'task', taskId: first!.id, title: 'x', date: first!.date, durationMinutes: 30 })).toBeUndefined()
+    expect(addLog({ userId: 'user-7', listingId: 'lst-1', type: 'cleaning', cleaningType: 'daily', cleaningJobId: 'no-such-job', title: '', date: first!.date, durationMinutes: 30 })).toBeUndefined()
+    // Someone else's job: a job only Ketut did cannot be logged by Ni Putu.
+    const ketutOnly = finishedWorkFor('user-7').find(w => !jobs.value.find(j => j.id === w.id)!.cleanerIds.includes('user-6'))
+    expect(ketutOnly).toBeDefined()
+    expect(addLog({ userId: 'user-6', listingId: ketutOnly!.listingId, type: 'cleaning', cleaningType: ketutOnly!.cleaningType, cleaningJobId: ketutOnly!.id, title: '', date: ketutOnly!.date, durationMinutes: 30 })).toBeUndefined()
+
+    removeLog(log.id)
+    expect(logs.value.some(l => l.id === log.id)).toBe(false)
+    expect(finishedWorkFor('user-7').some(w => w.id === first!.id)).toBe(true)
+  })
+
+  it('offers a person the tasks they completed, with no time, and needs the task\'s listing', () => {
+    const { finishedWorkFor, addLog } = useActivityReport()
+    const { addTask } = useTaskStore()
+    const listingName = listings.value.find(l => l.id === 'lst-2')!.name
+    const base = { title: 'Fix gate latch', status: 'completed' as const, priority: 'medium', assignee: 'Made Surya', assigneeType: 'person' as const, listing: listingName }
+    const done = addTask({ ...base, statusUpdates: [{ date: '2026-10-14T09:30:00Z', kind: 'completed' }] })
+    addTask({ ...base, title: 'Still open', status: 'in progress' })
+    addTask({ ...base, title: 'For a role', assigneeType: 'role', assignee: 'maintenance' })
+    addTask({ ...base, title: 'Unknown listing', listing: 'Nowhere Villa' })
+    addTask({ ...base, title: 'Someone else', assignee: 'Wayan Adi' })
+
+    const work = finishedWorkFor('user-2')
+    expect(work.map(w => w.title)).toEqual(['Fix gate latch'])
+    expect(work[0]).toMatchObject({ kind: 'task', id: done.id, type: 'task', listingId: 'lst-2', date: toLocalDateKey(new Date('2026-10-14T09:30:00Z')) })
+    expect(work[0]!.minutes).toBeUndefined()
+
+    const log = addLog({ userId: 'user-2', listingId: 'lst-2', type: 'task', taskId: done.id, title: 'Fix gate latch', date: work[0]!.date, durationMinutes: 40 })!
+    expect(log.taskId).toBe(done.id)
+    expect(finishedWorkFor('user-2')).toEqual([])
   })
 
   it('keeps cleaning to housekeeping roles', () => {

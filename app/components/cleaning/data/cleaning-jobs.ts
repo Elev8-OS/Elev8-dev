@@ -320,6 +320,8 @@ export const cleanerOptions = staffMembers
     role: member.name === 'Made Surya' || member.name === 'Wayan Adi' ? 'Housekeeping' : member.role,
   }))
   .concat([
+    { id: 'user-7', name: 'Ketut Antara', role: 'Housekeeping' },
+    { id: 'user-6', name: 'Ni Putu Sari', role: 'Housekeeping Manager' },
     {
       id: 'extrasauber',
       name: 'Extrasauber',
@@ -2036,6 +2038,25 @@ export const cleaningJobs = ref<CleaningJob[]>([
 // Cleaning reports behind the damage-protection demo stays. Kept in that module
 // because their dates, like the stays', are relative to today.
 cleaningJobs.value.push(...damageProtectionDemoCleaningJobs)
+
+/**
+ * The demo cleanings are done by housekeeping. They were first written for Made Surya (`staff-3`) and
+ * Wayan Adi (`staff-4`), who are Listing Managers in Users, so the Activities report could not file a
+ * cleaning under them (only housekeeping roles clean). The housekeeping users are cleaners by their
+ * user id (`user-7` Ketut Antara, `user-6` Ni Putu Sari), the same id Users and Activities use, so a
+ * finished job is matched to its person without guessing from a name.
+ */
+const DEMO_CLEANERS: Record<string, { id: string, name: string }> = {
+  'staff-3': { id: 'user-7', name: 'Ketut Antara' },
+  'staff-4': { id: 'user-6', name: 'Ni Putu Sari' },
+}
+const DEMO_CLEANER_NAMES: Record<string, string> = { 'Made Surya': 'Ketut Antara', 'Wayan Adi': 'Ni Putu Sari' }
+
+cleaningJobs.value = cleaningJobs.value.map(job => ({
+  ...job,
+  cleanerIds: [...new Set(job.cleanerIds.map(id => DEMO_CLEANERS[id]?.id ?? id))],
+  cleanerNames: [...new Set(job.cleanerNames.map(name => DEMO_CLEANER_NAMES[name] ?? name))],
+}))
 
 export const cleaningJobStatuses: CleaningJobStatus[] = ['draft', 'scheduled', 'confirmed', 'in_progress', 'done', 'cancelled']
 

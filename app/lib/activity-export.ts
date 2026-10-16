@@ -13,6 +13,7 @@ const COLUMNS = [
   { header: 'Of target (%)', width: 13 },
   { header: 'Days not logged', width: 16 },
   { header: 'Longer than usual', width: 18 },
+  { header: 'Finished, not logged', width: 20 },
 ]
 
 export function buildActivitySheet(rows: ActivityStaffRow[]): SheetData {
@@ -27,6 +28,7 @@ export function buildActivitySheet(rows: ActivityStaffRow[]): SheetData {
     { value: r.targetMinutes ? Math.round((r.minutes / r.targetMinutes) * 100) : undefined, type: Number },
     { value: r.missingDays, type: Number },
     { value: r.longCount, type: Number },
+    { value: r.unloggedWork, type: Number },
   ])
   return [header, ...body] as SheetData
 }

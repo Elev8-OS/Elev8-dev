@@ -41,6 +41,12 @@ export interface ActivityLog {
   /** The room of a multi-unit listing. Unset means the whole property (or a single-unit listing). */
   unitId?: string
   unitName?: string
+  /**
+   * The finished work this log is the time for: a cleaning job (type `cleaning`) or a task (type `task`).
+   * One person can log a job or task once, so the Operations Calendar and the report agree on one piece of work.
+   */
+  cleaningJobId?: string
+  taskId?: string
   /** Only set for people assigned to several tenants. Everyone else works in their one tenant. */
   tenantId?: string
   type: ActivityLogType
@@ -56,6 +62,27 @@ export interface ActivityLog {
   /** Set when a manager changed the time or note after it was logged. */
   editedAt?: string
   editedBy?: string
+}
+
+/**
+ * A cleaning job or a task that is finished and assigned to a person, so the time for it can be logged.
+ * It is read from the Cleaning and Tasks modules, never copied: it disappears once a log is linked to it.
+ */
+export interface FinishedWork {
+  kind: 'cleaning_job' | 'task'
+  id: string
+  type: 'cleaning' | 'task'
+  /** "Check-out cleaning" for a cleaning, the task's title for a task. */
+  title: string
+  cleaningType?: CleaningType
+  listingId: string
+  listingName: string
+  unitId?: string
+  unitName?: string
+  /** Local `YYYY-MM-DD` the work was done. */
+  date: string
+  /** Known for a cleaning (its checklist report or its plan). A task has no time, the person enters it. */
+  minutes?: number
 }
 
 export type ActivityAuditAction = 'added' | 'edited' | 'deleted'

@@ -1,12 +1,15 @@
-import type { ActivityAuditEntry, ActivityLog, ActivityLogType } from '~/components/activities/data/activities'
+import type { ActivityAuditEntry, ActivityLog, ActivityLogType, FinishedWork } from '~/components/activities/data/activities'
 import type { CleaningType } from '~/components/operations-calendar/data/operations-calendar'
 import type { DayRange } from '~/lib/activity-stats'
 // app/composables/useActivityReport.ts
 import { getCurrentInstance, onMounted } from 'vue'
 import { ACTIVITY_LOG_TYPES, buildSeedActivityLogs, cleaningLogTitle, formatDuration, listingRooms, loggableTypes, logPlace, toLocalDateKey } from '~/components/activities/data/activities'
 import { listings } from '~/components/listings/data/listings'
+import { normalizeCleaningType } from '~/components/operations-calendar/data/operations-calendar'
+import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useRoles } from '~/composables/useRoles'
+import { useTaskStore } from '~/composables/useTaskStore'
 import { useTenants } from '~/composables/useTenants'
 import { useUsers } from '~/composables/useUsers'
 import { eachDay, isWorkDay, median, previousRange, workDaysIn } from '~/lib/activity-stats'
@@ -59,6 +62,8 @@ export interface ActivityStaffRow {
   daily: number[]
   /** Working days up to yesterday with nothing logged. */
   missingDays: number
+  /** Cleaning jobs and tasks of this person that are finished in the range with no log linked to them. */
+  unloggedWork: number
   /** Logs that took clearly longer than usual for the same work. */
   longCount: number
 }
@@ -129,6 +134,8 @@ export function useActivityReport() {
   const { getRole } = useRoles()
   const { currentUser } = useCurrentDashboardUser()
   const { tenants, byId: tenantById } = useTenants()
+  const { jobs: cleaningJobs } = useCleaningJobs()
+  const { tasks } = useTaskStore()
 
   /** The tenant picked in the sidebar. Same state and default as the tenant switcher. */
   const activeTenantId = useState<string>('active-tenant-id', () => tenants.value[0]?.id ?? '')
@@ -300,6 +307,7 @@ export function useActivityReport() {
           ? days.filter(d => d < today && isWorkDay(d) && !loggedDays.has(d)).length
           : 0,
         longCount: own.filter(isLong).length,
+        unloggedWork: finishedWorkFor(user.id, range).length,
       })
     }
     return rows.sort((a, b) => b.minutes - a.minutes)
@@ -425,6 +433,70 @@ export function useActivityReport() {
     return listings.value.filter(l => ids.includes(l.id)).map(l => ({ id: l.id, name: l.name }))
   }
 
+  /**
+   * Cleaning jobs (status done) and tasks (completed) that belong to this person and have no log linked to
+   * them yet, newest first. The Cleaning and Tasks modules own that work; this only reads it. A cleaner is
+   * matched by user id (the housekeeping cleaners are users), else by name; a task by its person assignee's
+   * name (tasks keep names, not ids). A cleaning only counts for a role that can log cleaning, and a task
+   * needs a listing, because a log is filed under one.
+   */
+  function finishedWorkFor(userId: string, range?: ActivityRange): FinishedWork[] {
+    const user = users.value.find(u => u.id === userId)
+    if (!user)
+      return []
+    const linkedJobs = new Set(logs.value.filter(l => l.userId === userId && l.cleaningJobId).map(l => l.cleaningJobId))
+    const linkedTasks = new Set(logs.value.filter(l => l.userId === userId && l.taskId).map(l => l.taskId))
+    const out: FinishedWork[] = []
+
+    if (loggableTypes(user.roleId).includes('cleaning')) {
+      for (const job of cleaningJobs.value) {
+        if (job.status !== 'done' || linkedJobs.has(job.id))
+          continue
+        const mine = job.cleanerIds.some((id, i) => id === user.id || (!users.value.some(u => u.id === id) && job.cleanerNames[i] === user.name))
+        if (!mine)
+          continue
+        const cleaningType = normalizeCleaningType(job.source)
+        out.push({
+          kind: 'cleaning_job',
+          id: job.id,
+          type: 'cleaning',
+          title: cleaningLogTitle(cleaningType),
+          cleaningType,
+          listingId: job.listingId,
+          listingName: job.listingName,
+          unitId: job.unitId ?? undefined,
+          unitName: job.unitName ?? undefined,
+          date: job.scheduledAt.slice(0, 10),
+          minutes: job.feedback?.cleaningDurationMinutes ?? job.durationMinutes,
+        })
+      }
+    }
+
+    for (const task of tasks.value) {
+      if (task.status !== 'completed' || task.assigneeType !== 'person' || task.assignee !== user.name || linkedTasks.has(task.id))
+        continue
+      const listing = listings.value.find(l => l.name === task.listing)
+      if (!listing)
+        continue
+      const finishedAt = task.statusUpdates?.find(u => u.kind === 'completed')?.date ?? task.dueDate ?? task.createdAt
+      out.push({
+        kind: 'task',
+        id: task.id,
+        type: 'task',
+        title: task.title,
+        listingId: listing.id,
+        listingName: listing.name,
+        unitId: task.unitId,
+        unitName: task.unitName,
+        date: finishedAt ? toLocalDateKey(new Date(finishedAt)) : toLocalDateKey(new Date()),
+      })
+    }
+
+    return out
+      .filter(w => !range || (w.date >= range.from && w.date <= range.to))
+      .sort((a, b) => b.date.localeCompare(a.date))
+  }
+
   const actorName = () => currentUser.value?.name ?? 'A manager'
 
   function record(entry: Omit<ActivityAuditEntry, 'id' | 'at' | 'by'>) {
@@ -436,7 +508,7 @@ export function useActivityReport() {
   }
 
   /** A manager adds time the person forgot to log. */
-  function addLog(input: { userId: string, listingId: string, unitId?: string | null, type: ActivityLogType, cleaningType?: CleaningType, title: string, date: string, durationMinutes: number, notes?: string }): ActivityLog | undefined {
+  function addLog(input: { userId: string, listingId: string, unitId?: string | null, type: ActivityLogType, cleaningType?: CleaningType, cleaningJobId?: string, taskId?: string, title: string, date: string, durationMinutes: number, notes?: string }): ActivityLog | undefined {
     const listing = listings.value.find(l => l.id === input.listingId)
     if (!listing || !loggableTypesFor(input.userId).includes(input.type))
       return undefined
@@ -445,6 +517,13 @@ export function useActivityReport() {
       return undefined
     const title = input.type === 'cleaning' ? cleaningLogTitle(input.cleaningType!) : input.title.trim()
     if (!title)
+      return undefined
+    // A link has to point at finished work of this person that no log covers yet, and match the log's type.
+    // Logs are one-to-one with the work, so the Operations Calendar and the report cannot double-count it.
+    if ((input.cleaningJobId && input.type !== 'cleaning') || (input.taskId && input.type !== 'task'))
+      return undefined
+    const linked = input.cleaningJobId ?? input.taskId
+    if (linked && !finishedWorkFor(input.userId).some(w => w.id === linked && w.kind === (input.cleaningJobId ? 'cleaning_job' : 'task')))
       return undefined
     // A room has to belong to the listing. No room means the whole property.
     const room = input.unitId ? listingRooms(listing.id).find(r => r.id === input.unitId) : undefined
@@ -461,6 +540,8 @@ export function useActivityReport() {
       tenantId: tenantsFor(input.userId).length ? activeTenantId.value : undefined,
       type: input.type,
       cleaningType: input.type === 'cleaning' ? input.cleaningType : undefined,
+      cleaningJobId: input.cleaningJobId,
+      taskId: input.taskId,
       title,
       date: input.date,
       durationMinutes: Math.max(0, Math.round(input.durationMinutes)),
@@ -520,6 +601,7 @@ export function useActivityReport() {
     listingsFor,
     byTypeFor,
     cleaningKindCounts,
+    finishedWorkFor,
     loggableTypesFor,
     shownTypesFor,
     otherTenantCount,

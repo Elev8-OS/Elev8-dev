@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ActivityLog, ActivityLogType } from '~/components/activities/data/activities'
+import type { ActivityLog, ActivityLogType, FinishedWork } from '~/components/activities/data/activities'
 import type { CleaningType } from '~/components/operations-calendar/data/operations-calendar'
 import type { ActivityRowGroup } from '~/composables/useActivityReport'
 import ActivitiesRangeBar from '~/components/activities/ActivitiesRangeBar.vue'
@@ -34,7 +34,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const { getUser } = useUsers()
 const { getRole } = useRoles()
-const { selection, shownTypesFor, cleaningKindCounts, dayGroups, dailySeries, listingSummary, byTypeFor, otherTenantCount, tenantsFor, tenantName, activeTenantId, targetMinutes, isLong, auditFor } = useActivityReport()
+const { selection, finishedWorkFor, shownTypesFor, cleaningKindCounts, dayGroups, dailySeries, listingSummary, byTypeFor, otherTenantCount, tenantsFor, tenantName, activeTenantId, targetMinutes, isLong, auditFor } = useActivityReport()
 
 const user = computed(() => getUser(String(route.params.id)))
 const roleName = computed(() => user.value ? getRole(user.value.roleId)?.name ?? '' : '')
@@ -83,6 +83,12 @@ const targetPct = computed(() => target.value && (!hasOtherTenants.value || incl
 // Cleaning is only for housekeeping roles, so everyone else sees task and activity tracker only.
 const shownTypes = computed(() => user.value ? shownTypesFor(user.value.id) : [])
 
+// Finished cleaning jobs and tasks of this person that no log covers yet. They are read from the Cleaning and
+// Tasks modules; `unloggedInRange` is what the selected period shows, `unloggedAll` is what the dialog can link.
+const unloggedAll = computed(() => user.value ? finishedWorkFor(user.value.id) : [])
+const unloggedInRange = computed(() => user.value ? finishedWorkFor(user.value.id, range.value) : [])
+const showAllUnlogged = ref(false)
+const shownUnlogged = computed(() => showAllUnlogged.value ? unloggedInRange.value : unloggedInRange.value.slice(0, 5))
 // Kinds this person has logs for in the range (with counts), plus any picked one so a chip never vanishes under the cursor.
 const kindCounts = computed(() => user.value ? cleaningKindCounts(user.value.id, range.value, includeOtherTenants.value) : {})
 const kindOptions = computed(() => CLEANING_LOG_TYPES.filter(k => kindCounts.value[k] || cleaningKinds.value.includes(k)))
@@ -129,6 +135,18 @@ const removeOpen = ref(false)
 const listingsOpen = ref(false)
 const historyOpen = ref(false)
 const addOpen = ref(false)
+// "Log time" on a finished job or task opens the form already linked to it.
+const initialWork = ref<FinishedWork | null>(null)
+
+function logWork(work: FinishedWork) {
+  initialWork.value = work
+  addOpen.value = true
+}
+
+function openAdd() {
+  initialWork.value = null
+  addOpen.value = true
+}
 
 function openEdit(log: ActivityLog) {
   editing.value = log
@@ -204,7 +222,7 @@ const formatDay = (key: string) => dayFmt.format(parseLocalDateKey(key))
                 {{ history.length }}
               </Badge>
             </Button>
-            <Button @click="addOpen = true">
+            <Button @click="openAdd">
               <Icon name="lucide:plus" class="mr-2 size-4" />
               Add activity
             </Button>
@@ -245,7 +263,11 @@ const formatDay = (key: string) => dayFmt.format(parseLocalDateKey(key))
                   <Icon name="lucide:triangle-alert" class="size-3" />
                   {{ longCount }} longer than usual
                 </Badge>
-                <span v-if="!missingDays && !longCount" class="text-sm text-muted-foreground">Nothing unusual</span>
+                <Badge v-if="unloggedInRange.length" variant="outline" class="gap-1 border-warning/50 font-normal text-warning-foreground">
+                  <Icon name="lucide:clipboard-check" class="size-3" />
+                  {{ unloggedInRange.length }} finished, not logged
+                </Badge>
+                <span v-if="!missingDays && !longCount && !unloggedInRange.length" class="text-sm text-muted-foreground">Nothing unusual</span>
               </div>
             </div>
             <div class="space-y-2 p-5">
@@ -253,6 +275,42 @@ const formatDay = (key: string) => dayFmt.format(parseLocalDateKey(key))
                 Time by type
               </p>
               <ActivityTypeBreakdown :by-type="byType" :types="shownTypes" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card v-if="unloggedInRange.length" class="gap-0 py-0">
+          <CardContent class="p-0">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
+              <h2 class="text-sm font-semibold">
+                Finished but not logged
+                <span class="ml-1 font-normal text-muted-foreground">{{ unloggedInRange.length }}</span>
+              </h2>
+              <p class="text-xs text-muted-foreground">
+                Cleaning jobs and tasks {{ user.name }} finished that have no time logged yet.
+              </p>
+            </div>
+            <ul class="divide-y">
+              <li v-for="w in shownUnlogged" :key="`${w.kind}:${w.id}`" class="flex items-center gap-3 px-5 py-3">
+                <Icon :name="activityLogTypeMeta[w.type].icon" class="size-4 shrink-0 text-muted-foreground" :aria-label="activityLogTypeMeta[w.type].label" />
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium">
+                    {{ w.title }}
+                  </p>
+                  <p class="truncate text-xs text-muted-foreground">
+                    {{ logPlace(w) }} · {{ formatDay(w.date) }}
+                  </p>
+                </div>
+                <span class="w-16 shrink-0 text-right text-sm tabular-nums text-muted-foreground">{{ w.minutes ? formatDuration(w.minutes) : 'no time' }}</span>
+                <Button size="sm" variant="outline" @click="logWork(w)">
+                  Log time
+                </Button>
+              </li>
+            </ul>
+            <div v-if="unloggedInRange.length > 5" class="border-t px-5 py-2">
+              <Button variant="ghost" size="sm" @click="showAllUnlogged = !showAllUnlogged">
+                {{ showAllUnlogged ? 'Show fewer' : `Show all ${unloggedInRange.length}` }}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -403,7 +461,7 @@ const formatDay = (key: string) => dayFmt.format(parseLocalDateKey(key))
       <ActivityListingsSheet v-model:open="listingsOpen" :items="listingsWorked" />
       <template v-if="user">
         <ActivityHistorySheet v-model:open="historyOpen" :entries="history" :name="user.name" />
-        <ActivityAddDialog v-model:open="addOpen" :user-id="user.id" :name="user.name" :default-date="range.to" />
+        <ActivityAddDialog v-model:open="addOpen" :user-id="user.id" :name="user.name" :default-date="range.to" :work="unloggedAll" :initial-work="initialWork" />
       </template>
     </div>
   </ClientOnly>

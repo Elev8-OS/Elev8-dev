@@ -24,6 +24,10 @@ const stamp = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short',
           <Icon name="lucide:building" class="size-3" />
           {{ tenant }}
         </Badge>
+        <Badge v-if="log.cleaningJobId || log.taskId" variant="outline" class="gap-1 font-normal" :title="log.cleaningJobId ? `Cleaning job ${log.cleaningJobId}` : `Task ${log.taskId}`">
+          <Icon name="lucide:link" class="size-3" />
+          {{ log.cleaningJobId ? 'Linked job' : 'Linked task' }}
+        </Badge>
         <Badge v-if="log.manual" variant="outline" class="gap-1 font-normal">
           <Icon name="lucide:pen-line" class="size-3" />
           Added by manager
