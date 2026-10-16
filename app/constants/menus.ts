@@ -70,14 +70,20 @@ export const navMenu: NavMenu[] = [
     heading: 'Operations',
     items: [
       { title: 'Tasks', icon: 'i-lucide-calendar-check-2', link: '/tasks' },
-      { title: 'Activities', icon: 'i-lucide-timer', link: '/activities', new: true },
-      { title: 'Attendance', icon: 'i-lucide-clock', link: '/attendance', new: true },
+      {
+        title: 'Members',
+        icon: 'i-lucide-users',
+        new: true,
+        children: [
+          { title: 'Users', link: '/users' },
+          { title: 'Activities', link: '/activities' },
+          { title: 'Attendance', link: '/attendance' },
+        ],
+      },
       { title: 'Operations Calendar', icon: 'i-lucide-calendar-days', link: '/operations-calendar', new: true },
       { title: 'Key Management', icon: 'i-lucide-key-round', link: '/key-management', new: true },
       { title: 'Inventory', icon: 'i-lucide-package', link: '/inventory', new: true },
-      { title: 'Procurement', icon: 'i-lucide-shopping-cart', link: '/procurement', new: true },
-      { title: 'Users', icon: 'i-lucide-users-round', link: '/users', new: true },
-    ],
+      { title: 'Procurement', icon: 'i-lucide-shopping-cart', link: '/procurement', new: true },    ],
   },
   {
     heading: 'Apps',
