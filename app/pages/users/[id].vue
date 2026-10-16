@@ -1,23 +1,24 @@
 <!-- app/pages/users/[id].vue -->
 <script setup lang="ts">
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import type { UserActivityType } from '~/components/users/data/user-activities'
+import { format, formatDistanceToNow } from 'date-fns'
+import ActivityPager from '~/components/activities/ActivityPager.vue'
+import { listings } from '~/components/listings/data/listings'
+import { Avatar, AvatarFallback } from '~/components/ui/avatar'
+import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent } from '~/components/ui/card'
-import { Badge } from '~/components/ui/badge'
-import { Avatar, AvatarFallback } from '~/components/ui/avatar'
-import { Skeleton } from '~/components/ui/skeleton'
 import { Separator } from '~/components/ui/separator'
-import { format, formatDistanceToNow } from 'date-fns'
-import { useUsers } from '~/composables/useUsers'
+import { Skeleton } from '~/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import { activityTypeMeta } from '~/components/users/data/user-activities'
+import { attendanceStatusMeta } from '~/components/users/data/user-attendance'
+import { PREFERRED_LANGUAGES } from '~/components/users/data/users'
+import UserDetailSheet from '~/components/users/UserDetailSheet.vue'
 import { useRoles } from '~/composables/useRoles'
 import { useUserActivities } from '~/composables/useUserActivities'
 import { useUserAttendance } from '~/composables/useUserAttendance'
-import { activityTypeMeta } from '~/components/users/data/user-activities'
-import type { UserActivityType } from '~/components/users/data/user-activities'
-import { attendanceStatusMeta } from '~/components/users/data/user-attendance'
-import { listings } from '~/components/listings/data/listings'
-import { PREFERRED_LANGUAGES } from '~/components/users/data/users'
-import UserDetailSheet from '~/components/users/UserDetailSheet.vue'
+import { useUsers } from '~/composables/useUsers'
 
 definePageMeta({ layout: 'default' })
 
@@ -34,7 +35,8 @@ const user = computed(() => getUser(userId.value))
 
 const role = computed(() => user.value ? getRole(user.value.roleId) : undefined)
 const assignedListings = computed(() => {
-  if (!user.value) return []
+  if (!user.value)
+    return []
   return listings.value.filter(l => user.value!.listingIds.includes(l.id))
 })
 
@@ -61,7 +63,8 @@ const activityByListing = computed(() => {
   const counts: { name: string, count: number }[] = []
   const seen = new Map<string, number>()
   for (const a of activities.value) {
-    if (!a.listingName) continue
+    if (!a.listingName)
+      continue
     seen.set(a.listingName, (seen.get(a.listingName) ?? 0) + 1)
   }
   for (const [name, count] of seen) counts.push({ name, count })
@@ -69,13 +72,23 @@ const activityByListing = computed(() => {
 })
 
 const filteredActivities = computed(() => {
-  if (selectedActivityTypes.value.size === 0) return activities.value
+  if (selectedActivityTypes.value.size === 0)
+    return activities.value
   return activities.value.filter(a => selectedActivityTypes.value.has(a.type))
+})
+
+// The feed now includes every time-tracked log from the Activities report, so it is paged.
+const activityPage = ref(1)
+const activityPageSize = ref(25)
+const pagedActivities = computed(() => filteredActivities.value.slice((activityPage.value - 1) * activityPageSize.value, activityPage.value * activityPageSize.value))
+watch([selectedActivityTypes, userId], () => {
+  activityPage.value = 1
 })
 
 function toggleActivityType(type: UserActivityType) {
   const next = new Set(selectedActivityTypes.value)
-  if (next.has(type)) next.delete(type)
+  if (next.has(type))
+    next.delete(type)
   else next.add(type)
   selectedActivityTypes.value = next
 }
@@ -85,7 +98,8 @@ function clearActivityTypeFilter() {
 }
 
 const preferredLanguageLabel = computed(() => {
-  if (!user.value) return ''
+  if (!user.value)
+    return ''
   return PREFERRED_LANGUAGES.find(l => l.value === user.value!.preferredLanguage)?.label ?? user.value.preferredLanguage
 })
 
@@ -97,11 +111,13 @@ function openEdit() {
 
 // Format helpers
 function fmtCurrency(amount: number): string {
-  if (!amount) return '—'
+  if (!amount)
+    return '—'
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount)
 }
 function fmtHours(h?: number): string {
-  if (h === undefined || h === null) return '—'
+  if (h === undefined || h === null)
+    return '—'
   return `${h.toFixed(2)} h`
 }
 function fmtActivityTimestamp(iso: string): { date: string, time: string } {
@@ -112,12 +128,14 @@ function fmtActivityTimestamp(iso: string): { date: string, time: string } {
   }
 }
 function lastActiveLabel(): string {
-  if (!lastActivity.value) return 'No activity'
+  if (!lastActivity.value)
+    return 'No activity'
   return formatDistanceToNow(new Date(lastActivity.value.timestamp), { addSuffix: true })
 }
 
 const attendanceSummaryCells = computed(() => {
-  if (!summary.value) return []
+  if (!summary.value)
+    return []
   return [
     { label: 'Present', value: summary.value.present, badgeClass: attendanceStatusMeta.present.badgeClass },
     { label: 'Late', value: summary.value.late, badgeClass: attendanceStatusMeta.late.badgeClass },
@@ -129,7 +147,8 @@ const attendanceSummaryCells = computed(() => {
 // On-time rate and average clock-in (HH:mm) — derived from attendance records
 const attendanceInsights = computed(() => {
   const records = attendanceRecords.value.filter(r => r.clockIn && r.status !== 'absent')
-  if (records.length === 0) return { onTimePct: 0, avgClockIn: '—', avgHours: 0 }
+  if (records.length === 0)
+    return { onTimePct: 0, avgClockIn: '—', avgHours: 0 }
 
   // Count "on-time" = present + half_day (anything not flagged 'late')
   const onTime = records.filter(r => r.status !== 'late').length
@@ -393,6 +412,15 @@ const attendanceInsights = computed(() => {
 
         <!-- ACTIVITIES -->
         <TabsContent value="activities" class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>Cleaning, tasks and activity tracker time come from the Activities report.</span>
+            <Button variant="outline" size="sm" as-child>
+              <NuxtLink :to="`/activities/${user.id}`">
+                <Icon name="lucide:timer" class="mr-2 size-4" />
+                Open in Activities
+              </NuxtLink>
+            </Button>
+          </div>
           <!-- Per-listing breakdown (only when activities span multiple listings) -->
           <Card v-if="activityByListing.length > 1">
             <CardContent class="p-4">
@@ -437,8 +465,7 @@ const attendanceInsights = computed(() => {
                   v-for="(meta, type) in activityTypeMeta"
                   :key="type"
                   type="button"
-                  :class="[
-                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                  class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors" :class="[
                     selectedActivityTypes.size === 0 || selectedActivityTypes.has(type)
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-input bg-background hover:bg-muted',
@@ -475,11 +502,11 @@ const attendanceInsights = computed(() => {
               </div>
               <ol v-else class="divide-y">
                 <li
-                  v-for="a in filteredActivities"
+                  v-for="a in pagedActivities"
                   :key="a.id"
                   class="flex items-start gap-3 px-4 py-3"
                 >
-                  <div :class="['flex size-9 items-center justify-center rounded-full shrink-0', activityTypeMeta[a.type].tone]">
+                  <div class="flex size-9 items-center justify-center rounded-full shrink-0" :class="[activityTypeMeta[a.type].tone]">
                     <Icon :name="activityTypeMeta[a.type].icon" class="size-4" />
                   </div>
                   <div class="flex-1 min-w-0">
@@ -488,7 +515,9 @@ const attendanceInsights = computed(() => {
                         {{ a.title }}
                       </div>
                       <div class="text-xs text-muted-foreground whitespace-nowrap">
-                        {{ fmtActivityTimestamp(a.timestamp).date }} · {{ fmtActivityTimestamp(a.timestamp).time }}
+                        {{ fmtActivityTimestamp(a.timestamp).date }}<template v-if="!a.dateOnly">
+                          · {{ fmtActivityTimestamp(a.timestamp).time }}
+                        </template>
                       </div>
                     </div>
                     <div v-if="a.description" class="text-xs text-muted-foreground mt-0.5 truncate">
@@ -510,6 +539,7 @@ const attendanceInsights = computed(() => {
                   </div>
                 </li>
               </ol>
+              <ActivityPager v-model:page="activityPage" v-model:page-size="activityPageSize" :total="filteredActivities.length" unit="activities" />
             </CardContent>
           </Card>
         </TabsContent>
@@ -523,10 +553,10 @@ const attendanceInsights = computed(() => {
                 <div class="text-xs text-muted-foreground uppercase tracking-wide">
                   {{ cell.label }}
                 </div>
-                <div :class="['text-2xl font-bold mt-1']">
+                <div class="text-2xl font-bold mt-1">
                   {{ cell.value }}
                 </div>
-                <Badge :class="['mt-2 text-xs', cell.badgeClass]" variant="outline">
+                <Badge class="mt-2 text-xs" :class="[cell.badgeClass]" variant="outline">
                   days
                 </Badge>
               </CardContent>
@@ -619,7 +649,7 @@ const attendanceInsights = computed(() => {
                         {{ fmtHours(r.totalHours) }}
                       </td>
                       <td class="px-4 py-3">
-                        <Badge variant="outline" :class="['text-xs', attendanceStatusMeta[r.status].badgeClass]">
+                        <Badge variant="outline" class="text-xs" :class="[attendanceStatusMeta[r.status].badgeClass]">
                           {{ attendanceStatusMeta[r.status].label }}
                         </Badge>
                       </td>

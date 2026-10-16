@@ -37,6 +37,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Review Hub | `docs/claude/review-hub.md` | Channex-aligned review aggregator, double-blind, host review, tags |
 | Website builder reviews | `docs/claude/website-builder-reviews.md` | Auto/manual review rules, picker UI, publish state |
 | Payment requests | `docs/claude/payment-requests.md` | Payment links, fee modes, payout integration |
+| Activities | `docs/claude/activities.md` | `/activities` time and activity report per staff: range presets, per-person day groups, edit/delete logs, listings sheet, xlsx export |
 | Operations calendar | `docs/claude/operations-calendar.md` | Week/day board, merged stay sources, half-day bars, lanes |
 | Cockpit | `docs/claude/cockpit.md` | `/cockpit` tape chart: Reservations-only stays, slanted bars, today strip, filters, click/drag to book or block, drag to room, find availability, remembered settings |
 | Promo codes | `docs/claude/promo-codes.md` | Code library, create wizard, scope chain, booking widget links |

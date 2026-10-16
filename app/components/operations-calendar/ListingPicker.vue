@@ -12,6 +12,8 @@ const props = defineProps<{
   unitId?: string | null
   /** Offer each multi-unit listing's rooms under it (the cleaning form). */
   pickRooms?: boolean
+  /** Only offer these listings (for example a person's assigned ones). Unset offers every listing. */
+  restrictToIds?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -35,7 +37,10 @@ const filteredTags = computed(() => {
   return allTags.value.filter(t => t.toLowerCase().includes(q))
 })
 
-const calendarListings = computed(() => getCalendarListings())
+const calendarListings = computed(() => {
+  const all = getCalendarListings()
+  return props.restrictToIds ? all.filter(l => props.restrictToIds!.includes(l.id)) : all
+})
 
 const isSearching = computed(() => search.value.trim().length > 0)
 
@@ -147,7 +152,7 @@ function clearSelection() {
         ]"
       >
         <Icon name="lucide:building-2" class="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span class="flex-1 truncate text-left">{{ displayLabel }}</span>
+        <span class="flex-1 truncate text-left" :title="displayLabel">{{ displayLabel }}</span>
         <Icon name="lucide:chevrons-up-down" class="h-4 w-4 shrink-0 text-muted-foreground" />
       </Button>
     </PopoverTrigger>

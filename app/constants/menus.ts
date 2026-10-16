@@ -70,6 +70,7 @@ export const navMenu: NavMenu[] = [
     heading: 'Operations',
     items: [
       { title: 'Tasks', icon: 'i-lucide-calendar-check-2', link: '/tasks' },
+      { title: 'Activities', icon: 'i-lucide-timer', link: '/activities', new: true },
       { title: 'Operations Calendar', icon: 'i-lucide-calendar-days', link: '/operations-calendar', new: true },
       { title: 'Key Management', icon: 'i-lucide-key-round', link: '/key-management', new: true },
       { title: 'Inventory', icon: 'i-lucide-package', link: '/inventory', new: true },
