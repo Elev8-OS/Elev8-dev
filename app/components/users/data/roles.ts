@@ -29,6 +29,12 @@ export const WEEKDAY_DAYS: WeekDay[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
 export interface WorkingHours {
   scheduleType: 'flexible' | 'fixed'
+  /**
+   * The shifts a fixed role works (ids from the Schedule's shift list), in time order. When set, the role's
+   * hours are those shifts. `startTime` and `endTime` are then kept as the first start and last end, for
+   * anything that still reads plain times. Missing or pointing at a deleted shift: the plain times are used.
+   */
+  shiftIds?: string[]
   startTime?: string
   endTime?: string
   days: WeekDay[]
@@ -332,7 +338,7 @@ export const defaultRoles: Role[] = [
     id: 'role-quality-manager',
     name: 'Quality Manager',
     description: 'Responsible for upholding property standards. Conducts regular inspections, manages guest feedback, and coordinates with other teams to ensure consistent quality control.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-quality-manager'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
@@ -364,7 +370,7 @@ export const defaultRoles: Role[] = [
     id: 'role-back-office',
     name: 'Back Office',
     description: 'Handles administrative tasks, data entry, and general support for management. Can access reports and company documents but has limited editing permissions.',
-    workingHours: { scheduleType: 'fixed', startTime: '08:00', endTime: '17:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-day'], startTime: '08:00', endTime: '17:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-back-office'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
@@ -396,7 +402,7 @@ export const defaultRoles: Role[] = [
     id: 'role-finance-hr',
     name: 'Finance/HR',
     description: 'Manages payroll, invoicing, company expenses, and human resources tasks like onboarding and employee records. Has access to sensitive financial and employee data.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-finance-hr'),
     defaultPermissions: withMobile({
       dashboard: a('r'),
@@ -428,7 +434,7 @@ export const defaultRoles: Role[] = [
     id: 'role-housekeeping-manager',
     name: 'Housekeeping Manager',
     description: 'Responsible for overseeing all housekeeping operations. Ensures properties are cleaned, prepared, and inspected to the highest standard before guest arrivals. Can manage cleaning schedules, assign tasks, and review reports.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-housekeeping-manager'),
     defaultPermissions: withMobile({
       dashboard: a('no'),
@@ -460,7 +466,7 @@ export const defaultRoles: Role[] = [
     id: 'role-housekeeping',
     name: 'Housekeeping',
     description: 'Responsible for the cleaning and preparation of properties for guest arrivals. Can view cleaning schedules, report maintenance issues, and update property status.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: ALL_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: ALL_DAYS },
     notifications: getDefaultRoleNotifications('role-housekeeping'),
     defaultPermissions: withMobile({}, MOBILE_HOUSEKEEPING),
   },
@@ -468,7 +474,7 @@ export const defaultRoles: Role[] = [
     id: 'role-gardener',
     name: 'Gardener',
     description: 'Maintains the gardens, landscaping, and all outdoor areas of the properties. Can view work schedules and report on landscaping needs.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-gardener'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
@@ -476,7 +482,7 @@ export const defaultRoles: Role[] = [
     id: 'role-pool',
     name: 'Pool',
     description: 'Responsible for the cleaning, maintenance, and chemical balancing of all swimming pools. Can view maintenance schedules and log service reports.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-pool'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
@@ -484,7 +490,7 @@ export const defaultRoles: Role[] = [
     id: 'role-engineering',
     name: 'Engineering',
     description: 'Oversees general property maintenance and repairs. Manages the maintenance team, assigns tasks, and tracks the completion of work orders.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-engineering'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
@@ -492,7 +498,7 @@ export const defaultRoles: Role[] = [
     id: 'role-electrician',
     name: 'Electrician',
     description: 'Specialized role for handling all electrical installations, repairs, and safety checks. Can access and respond to electrical-specific maintenance requests.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-electrician'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },
@@ -508,7 +514,7 @@ export const defaultRoles: Role[] = [
     id: 'role-laundry',
     name: 'Laundry',
     description: 'Manages the collection, washing, drying, and distribution of linens and towels for all listings. Can view schedules and report on linen inventory levels.',
-    workingHours: { scheduleType: 'fixed', startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
+    workingHours: { scheduleType: 'fixed', shiftIds: ['shift-office'], startTime: '10:00', endTime: '18:00', days: WEEKDAY_DAYS },
     notifications: getDefaultRoleNotifications('role-laundry'),
     defaultPermissions: withMobile({}, MOBILE_OPERATIONAL_STAFF),
   },

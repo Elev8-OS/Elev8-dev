@@ -9,10 +9,11 @@ import { normalizeCleaningType } from '~/components/operations-calendar/data/ope
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
 import { useRoles } from '~/composables/useRoles'
+import { useSchedule } from '~/composables/useSchedule'
 import { useTaskStore } from '~/composables/useTaskStore'
 import { useTenants } from '~/composables/useTenants'
 import { useUsers } from '~/composables/useUsers'
-import { eachDay, isWorkDay, median, previousRange, workDaysIn } from '~/lib/activity-stats'
+import { eachDay, median, previousRange } from '~/lib/activity-stats'
 import { growActivityReport, loadActivityReport, saveActivityReport } from '~/lib/activity-store'
 
 export type ActivityPresetId = 'today' | 'last7' | 'last14' | 'thisMonth' | 'lastMonth' | 'custom'
@@ -132,6 +133,7 @@ const LONG_MIN_SAMPLES = 5
 export function useActivityReport() {
   const { users } = useUsers()
   const { getRole } = useRoles()
+  const { isWorkDay, plannedMinutes } = useSchedule()
   const { currentUser } = useCurrentDashboardUser()
   const { tenants, byId: tenantById } = useTenants()
   const { jobs: cleaningJobs } = useCleaningJobs()
@@ -264,7 +266,13 @@ export function useActivityReport() {
 
   function targetMinutes(userId: string, range: ActivityRange): number {
     const user = users.value.find(u => u.id === userId)
-    return user ? Math.round(user.hoursPerDay * 60) * workDaysIn(range) : 0
+    if (!user)
+      return 0
+    // A day with a named shift is that shift's paid length; any other working day is the person's hoursPerDay.
+    const today = toLocalDateKey(new Date())
+    return eachDay(range)
+      .filter(d => d <= today && isWorkDay(userId, d))
+      .reduce((sum, d) => sum + (plannedMinutes(userId, d) ?? Math.round(user.hoursPerDay * 60)), 0)
   }
 
   /** One row per person, busiest first. Active people who logged nothing are kept so gaps show. */
@@ -304,7 +312,7 @@ export function useActivityReport() {
         daily: days.map(d => perDay.get(d) ?? 0),
         // Today is left out: the day is not over, so nothing logged yet is not a gap.
         missingDays: hasHistory && user.status === 'active'
-          ? days.filter(d => d < today && isWorkDay(d) && !loggedDays.has(d)).length
+          ? days.filter(d => d < today && isWorkDay(user.id, d) && !loggedDays.has(d)).length
           : 0,
         longCount: own.filter(isLong).length,
         unloggedWork: finishedWorkFor(user.id, range).length,
@@ -383,7 +391,7 @@ export function useActivityReport() {
       if (l.userId === userId && inRange(l, range))
         perDay.set(l.date, (perDay.get(l.date) ?? 0) + l.durationMinutes)
     }
-    return eachDay(range).map(date => ({ date, minutes: perDay.get(date) ?? 0, workDay: isWorkDay(date) }))
+    return eachDay(range).map(date => ({ date, minutes: perDay.get(date) ?? 0, workDay: isWorkDay(userId, date) }))
   }
 
   function listingSummary(userId: string, range: ActivityRange, includeOtherTenants = false): ActivityListingSummary[] {

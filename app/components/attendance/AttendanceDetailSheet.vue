@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AttendanceRow } from '~/composables/useAttendanceReport'
 import { parseLocalDateKey } from '~/components/activities/data/activities'
-import { attendancePhotoUrl, formatWorked, shiftFor, workedMinutes } from '~/components/attendance/data/attendance'
+import { attendancePhotoUrl, formatWorked, workedMinutes } from '~/components/attendance/data/attendance'
 import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import ImageViewer from '~/components/inbox/ImageViewer.vue'
 import { Badge } from '~/components/ui/badge'
@@ -9,15 +9,30 @@ import { Button } from '~/components/ui/button'
 import { Separator } from '~/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '~/components/ui/sheet'
 import { useImageViewer } from '~/composables/useImageViewer'
+import { useSchedule } from '~/composables/useSchedule'
 import { useUsers } from '~/composables/useUsers'
+import { scheduleLabelLong, shiftLabel } from '~/lib/schedule'
 
 const props = defineProps<{ row: AttendanceRow | null }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const { getUser } = useUsers()
+const { scheduleFor } = useSchedule()
 
 const user = computed(() => props.row ? getUser(props.row.userId) : undefined)
-const shift = computed(() => props.row ? shiftFor(props.row.userId) : undefined)
+const planned = computed(() => props.row ? scheduleFor(props.row.userId, props.row.date) : undefined)
+/** This record's own shift: the second record of a split-shift day reads its second shift. */
+const scheduled = computed(() => {
+  const day = planned.value
+  if (!day)
+    return ''
+  if (!day.working)
+    return scheduleLabelLong(day)
+  const part = day.segments[(props.row?.segment ?? 1) - 1] ?? day.shift
+  const label = shiftLabel(part)
+  const named = part.name ? `${part.name}, ${label}` : label
+  return day.segments.length > 1 ? `Shift ${props.row?.segment ?? 1} of ${day.segments.length}: ${named}` : named
+})
 const worked = computed(() => props.row ? workedMinutes(props.row) : undefined)
 const dayLabel = computed(() => props.row
   ? new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(parseLocalDateKey(props.row.date))
@@ -76,10 +91,10 @@ function viewPhoto(kind: 'in' | 'out') {
           <dl class="grid grid-cols-2 gap-x-4 gap-y-5 text-sm">
             <div>
               <dt class="text-muted-foreground">
-                Working hours
+                Scheduled
               </dt>
               <dd class="mt-1 font-medium">
-                {{ shift?.flexible ? 'Flexible' : `${shift?.start} to ${shift?.end}` }}
+                {{ scheduled }}
               </dd>
             </div>
             <div>
@@ -108,6 +123,7 @@ function viewPhoto(kind: 'in' | 'out') {
               </dt>
               <dd class="mt-1 flex flex-wrap items-center gap-2">
                 <span class="text-xl font-semibold tabular-nums" :class="row.clockOutEarly && 'text-destructive'">{{ row.clockOut ?? '-' }}</span>
+                <span v-if="row.clockOutNextDay" class="text-xs text-muted-foreground">next day</span>
                 <Badge v-if="row.clockOutEarly" variant="outline" class="border-destructive/40 font-normal text-destructive">
                   Early
                 </Badge>

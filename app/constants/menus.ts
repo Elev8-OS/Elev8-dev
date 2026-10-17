@@ -78,6 +78,7 @@ export const navMenu: NavMenu[] = [
           { title: 'Users', link: '/users' },
           { title: 'Activities', link: '/activities' },
           { title: 'Attendance', link: '/attendance' },
+          { title: 'Schedule', link: '/schedule' },
         ],
       },
       { title: 'Operations Calendar', icon: 'i-lucide-calendar-days', link: '/operations-calendar', new: true },

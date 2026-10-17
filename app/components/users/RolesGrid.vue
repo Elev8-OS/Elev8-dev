@@ -5,7 +5,9 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { useRoles } from '~/composables/useRoles'
+import { useSchedule } from '~/composables/useSchedule'
 import { useUsers } from '~/composables/useUsers'
+import { spansMidnight } from '~/lib/schedule'
 
 defineEmits<{
   edit: [role: Role]
@@ -13,13 +15,17 @@ defineEmits<{
 
 const { roles } = useRoles()
 const { userCountByRole } = useUsers()
+const { shifts } = useSchedule()
 
 function hoursChip(wh: Role['workingHours']): string {
   if (wh.scheduleType === 'flexible')
     return 'Flexible'
+  const named = (wh.shiftIds ?? []).map(id => shifts.value.find(t => t.id === id)?.name).filter(Boolean)
+  if (named.length)
+    return named.join(' + ')
   if (!wh.startTime || !wh.endTime)
     return 'Fixed'
-  return `${wh.startTime} – ${wh.endTime}`
+  return `${wh.startTime} – ${wh.endTime}${spansMidnight(wh.startTime, wh.endTime) ? ' (+1)' : ''}`
 }
 
 function daysChip(days: WeekDay[]): string {

@@ -1,4 +1,5 @@
 // app/components/attendance/data/attendance.ts
+import type { ScheduledDay } from '~/lib/schedule'
 import { toLocalDateKey } from '~/components/activities/data/activities'
 
 /** One person's clock-in and clock-out for one day. A working day with no record is an absence. */
@@ -7,11 +8,15 @@ export interface AttendanceRecord {
   userId: string
   /** Local `YYYY-MM-DD`. */
   date: string
+  /** Which shift of a split-shift day this is: 1 (also unset), 2, 3... A day has one record per shift. */
+  segment?: number
   listingId: string
   /** `HH:mm`. */
   clockIn: string
   /** `HH:mm`, unset while the person is still clocked in or forgot to clock out. */
   clockOut?: string
+  /** The check-out is on the day after `date` (a shift that ran past midnight). */
+  clockOutNextDay?: boolean
   clockInLate: boolean
   clockOutEarly: boolean
   clockInNote?: string
@@ -53,8 +58,19 @@ const SHIFTS: Record<string, AttendanceShift> = {
 
 export const DEFAULT_SHIFT: AttendanceShift = { start: '08:00', end: '17:00', flexible: false }
 
-export function shiftFor(userId: string): AttendanceShift {
-  return SHIFTS[userId] ?? DEFAULT_SHIFT
+/**
+ * The shift for a person, or for one day when the schedule says what that day is. With no schedule
+ * it is the seed shift above. A flexible day keeps typical hours (so the demo has times to draw) but
+ * is never late or early.
+ */
+export function shiftFor(userId: string, day?: ScheduledDay, segment = 0): AttendanceShift {
+  const typical = SHIFTS[userId] ?? DEFAULT_SHIFT
+  if (!day?.working)
+    return typical
+  const part = day.segments[segment] ?? day.shift
+  if (part.flexible || !part.start || !part.end)
+    return { ...typical, flexible: true }
+  return { start: part.start, end: part.end, flexible: false }
 }
 
 export function toMinutes(hhmm: string): number {
@@ -63,15 +79,16 @@ export function toMinutes(hhmm: string): number {
 }
 
 export function toClock(minutes: number): string {
-  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.round(minutes)))
+  // Past midnight wraps to the next day's clock; the record says so with `clockOutNextDay`.
+  const clamped = ((Math.round(minutes) % 1440) + 1440) % 1440
   return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`
 }
 
 /** Minutes between clock-in and clock-out, or undefined while the day is still open. */
-export function workedMinutes(record: Pick<AttendanceRecord, 'clockIn' | 'clockOut'>): number | undefined {
+export function workedMinutes(record: Pick<AttendanceRecord, 'clockIn' | 'clockOut' | 'clockOutNextDay'>): number | undefined {
   if (!record.clockOut)
     return undefined
-  return Math.max(0, toMinutes(record.clockOut) - toMinutes(record.clockIn))
+  return Math.max(0, toMinutes(record.clockOut) + (record.clockOutNextDay ? 1440 : 0) - toMinutes(record.clockIn))
 }
 
 /** `7h 30m`, `45m`. */
@@ -99,12 +116,14 @@ const EARLY_NOTES = ['Doctor appointment', 'Family matter', 'Finished the plan e
 
 /**
  * Seed records for the last `ATTENDANCE_HISTORY_DAYS` days, relative to `now`.
- * Sundays are the day off. About one working day in fourteen is an absence (no record). Today a person
- * is only clocked out once their shift is over. Inactive people have no records.
+ * Without a `schedule`, Sundays are the day off. With one, a person only has records on days it says they
+ * work, and the shift is that day's. About one working day in fourteen is an absence (no record). Today a
+ * person is only clocked out once their shift is over. Inactive people have no records.
  */
 export function buildSeedAttendance(
   now: Date,
   people: { id: string, listingIds: string[], active: boolean }[],
+  schedule?: (userId: string, date: string) => ScheduledDay,
 ): AttendanceRecord[] {
   const records: AttendanceRecord[] = []
   const todayKey = toLocalDateKey(now)
@@ -116,9 +135,8 @@ export function buildSeedAttendance(
     const rand = mulberry32(5170 + personIndex * 97)
     // Its own generator, so photos leave every other generated value as it was.
     const photoRand = mulberry32(3301 + personIndex * 53)
-    const shift = shiftFor(person.id)
-    const start = toMinutes(shift.start)
-    const end = toMinutes(shift.end)
+    // A second shift in a day draws from here, so people without split shifts keep every value.
+    const segRand = mulberry32(8123 + personIndex * 71)
 
     for (let daysAgo = ATTENDANCE_HISTORY_DAYS; daysAgo >= 0; daysAgo--) {
       const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo)
@@ -132,42 +150,63 @@ export function buildSeedAttendance(
       const earlyBy = 15 + Math.floor(rand() * 60)
       const forgotRoll = rand()
       const listingRoll = rand()
-      if (day.getDay() === 0 || absentRoll < 0.07)
+      const planned = schedule?.(person.id, date)
+      if ((planned ? !planned.working : day.getDay() === 0) || absentRoll < 0.07)
         continue
       const inPhotoRoll = photoRand()
       const outPhotoRoll = photoRand()
-      // Nobody has clocked in yet before their shift starts today.
-      if (date === todayKey && nowMinutes < start - 15)
-        continue
-
-      const late = !shift.flexible && lateRoll < 0.12
-      const clockInAt = late ? start + lateBy : start + jitter
-      const early = !shift.flexible && earlyRoll < 0.08
-      const clockOutAt = early ? end - earlyBy : end + Math.floor(jitter * 2)
       const isToday = date === todayKey
-      const stillOpen = isToday && nowMinutes < clockOutAt
-      const forgot = !isToday && forgotRoll < 0.03
+      const shiftCount = planned?.working ? planned.segments.length : 1
 
-      const clockOut = stillOpen || forgot ? undefined : toClock(clockOutAt)
-      records.push({
-        id: `att-${person.id}-${date}`,
-        userId: person.id,
-        date,
-        listingId: person.listingIds[Math.floor(listingRoll * person.listingIds.length)]!,
-        clockIn: toClock(clockInAt),
-        clockOut,
-        clockInPhoto: inPhotoRoll > 0.06,
-        clockOutPhoto: !!clockOut && outPhotoRoll > 0.06,
-        clockInLate: late && lateBy > ATTENDANCE_GRACE_MINUTES,
-        clockOutEarly: early && earlyBy > ATTENDANCE_GRACE_MINUTES && !stillOpen && !forgot,
-        clockInNote: late ? LATE_NOTES[Math.floor(listingRoll * LATE_NOTES.length)] : undefined,
-        clockOutNote: early && !stillOpen && !forgot ? EARLY_NOTES[Math.floor(listingRoll * EARLY_NOTES.length)] : undefined,
-      })
+      for (let seg = 0; seg < shiftCount; seg++) {
+        // The first shift keeps the draws above, so every value stays as it was. A second shift draws from its own generator.
+        const first = seg === 0
+        const missed = !first && segRand() < 0.07
+        const r = first
+          ? { lateRoll, lateBy, jitter, earlyRoll, earlyBy, forgotRoll, listingRoll, inPhotoRoll, outPhotoRoll }
+          : { lateRoll: segRand(), lateBy: 12 + Math.floor(segRand() * 40), jitter: Math.floor(segRand() * 9) - 4, earlyRoll: segRand(), earlyBy: 15 + Math.floor(segRand() * 60), forgotRoll: segRand(), listingRoll: segRand(), inPhotoRoll: segRand(), outPhotoRoll: segRand() }
+        if (missed)
+          continue
+        const shift = shiftFor(person.id, planned, seg)
+        const start = toMinutes(shift.start)
+        // An end at or before the start is the next day: 22:00 to 06:00 ends at 30:00 on the same clock.
+        const end = toMinutes(shift.end) <= start ? toMinutes(shift.end) + 1440 : toMinutes(shift.end)
+        // Nobody has clocked in yet before their shift starts today.
+        if (isToday && nowMinutes < start - 15)
+          continue
+
+        const late = !shift.flexible && r.lateRoll < 0.12
+        const clockInAt = late ? start + r.lateBy : start + r.jitter
+        const early = !shift.flexible && r.earlyRoll < 0.08
+        const clockOutAt = early ? end - r.earlyBy : end + Math.floor(r.jitter * 2)
+        // A shift that ran past midnight is still open all of the day it started; the morning after it is closed.
+        const stillOpen = isToday && nowMinutes < clockOutAt
+        const forgot = !isToday && r.forgotRoll < 0.03
+
+        const clockOut = stillOpen || forgot ? undefined : toClock(clockOutAt)
+        const nextDay = !!clockOut && clockOutAt >= 1440
+        records.push({
+          id: first ? `att-${person.id}-${date}` : `att-${person.id}-${date}-${seg + 1}`,
+          userId: person.id,
+          date,
+          ...(first ? {} : { segment: seg + 1 }),
+          listingId: person.listingIds[Math.floor(r.listingRoll * person.listingIds.length)]!,
+          clockIn: toClock(clockInAt),
+          clockOut,
+          ...(nextDay ? { clockOutNextDay: true } : {}),
+          clockInPhoto: r.inPhotoRoll > 0.06,
+          clockOutPhoto: !!clockOut && r.outPhotoRoll > 0.06,
+          clockInLate: late && r.lateBy > ATTENDANCE_GRACE_MINUTES,
+          clockOutEarly: early && r.earlyBy > ATTENDANCE_GRACE_MINUTES && !stillOpen && !forgot,
+          clockInNote: late ? LATE_NOTES[Math.floor(r.listingRoll * LATE_NOTES.length)] : undefined,
+          clockOutNote: early && !stillOpen && !forgot ? EARLY_NOTES[Math.floor(r.listingRoll * EARLY_NOTES.length)] : undefined,
+        })
+      }
     }
   })
 
   // One record with real files, so the viewer can be tried on an actual image: the latest finished day of the demo user.
-  const demo = records.filter(r => r.userId === DEMO_PHOTO_USER_ID && r.clockOut).sort((a, b) => b.date.localeCompare(a.date))[0]
+  const demo = records.filter(r => r.userId === DEMO_PHOTO_USER_ID && r.clockOut && !r.segment).sort((a, b) => b.date.localeCompare(a.date))[0]
   if (demo) {
     demo.clockInPhoto = true
     demo.clockOutPhoto = true

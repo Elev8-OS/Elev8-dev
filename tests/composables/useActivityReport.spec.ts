@@ -5,6 +5,7 @@ import { CLEANING_LOG_TYPES, cleaningLogTitle, formatDuration, listingRooms, log
 import { listings } from '~/components/listings/data/listings'
 import { rangeForPreset, useActivityReport } from '~/composables/useActivityReport'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
+import { useSchedule } from '~/composables/useSchedule'
 import { useTaskStore } from '~/composables/useTaskStore'
 import { useUsers } from '~/composables/useUsers'
 import { ACTIVITY_STORAGE_KEY, loadActivityReport, saveActivityReport } from '~/lib/activity-store'
@@ -381,7 +382,10 @@ describe('useActivityReport', () => {
     const rows = staffRows(range)
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.every(r => r.count === 0 && r.minutes === 0)).toBe(true)
-    expect(rows.every(r => r.missingDays === 6)).toBe(true)
+    // Each person's own working days: a Monday to Friday role misses 5, a Monday to Saturday person 6.
+    const { workDaysFor } = useSchedule()
+    expect(rows.every(r => r.missingDays === workDaysFor(r.userId, range))).toBe(true)
+    expect(new Set(rows.map(r => r.missingDays)).size).toBeGreaterThan(1)
   })
 
   it('leaves out a person who is inactive and logged nothing in the range', () => {
