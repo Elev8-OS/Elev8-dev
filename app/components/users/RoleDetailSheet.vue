@@ -5,16 +5,14 @@ import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Textarea } from '~/components/ui/textarea'
-import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
-import { Input as TimeInput } from '~/components/ui/input'
-import { cn } from '@/lib/utils'
 import { toast } from 'vue-sonner'
 import NotificationSettings from './NotificationSettings.vue'
 import PermissionMatrix from './PermissionMatrix.vue'
 import { useRoles } from '~/composables/useRoles'
+import { useSchedule } from '~/composables/useSchedule'
+import { useUsers } from '~/composables/useUsers'
 import type { AlertType } from '~/components/notifications/data/alerts'
-import type { Role, RoleId, WeekDay } from '~/components/users/data/roles'
-import { WEEK_DAYS } from '~/components/users/data/roles'
+import type { Role, RoleId } from '~/components/users/data/roles'
 import type { ModulePermissions, PermissionModule } from '~/components/users/data/permissions'
 
 interface Props {
@@ -29,6 +27,8 @@ const emit = defineEmits<{
 }>()
 
 const { getRole, updateRole, resetRoleToDefaults } = useRoles()
+const { users } = useUsers()
+const { shifts, personDays, personShifts, rotations } = useSchedule()
 
 const editingRole = computed(() => props.roleId ? getRole(props.roleId) : undefined)
 
@@ -41,13 +41,24 @@ watch(() => [props.open, props.roleId], () => {
   }
 }, { immediate: true })
 
-function toggleDay(day: WeekDay) {
-  if (!draft.value) return
-  const set = new Set(draft.value.workingHours.days)
-  if (set.has(day)) set.delete(day)
-  else set.add(day)
-  draft.value.workingHours.days = Array.from(set) as WeekDay[]
-}
+/** People in this role, and how many of them have a schedule of their own (their own days, shifts or a rotation). */
+const roleUsage = computed(() => {
+  const members = users.value.filter(u => u.roleId === draft.value?.id && u.status === 'active')
+  const own = members.filter(u => personDays.value[u.id] || personShifts.value[u.id]?.length || rotations.value[u.id])
+  return { total: members.length, own: own.length }
+})
+
+/** The role's working hours as saved (not the draft): they are edited in Schedule, so this is only a summary. */
+const hoursSummary = computed(() => {
+  const wh = editingRole.value?.workingHours
+  if (!wh)
+    return ''
+  const days = wh.days.length === 7 ? 'Every day' : wh.days.join(', ')
+  const named = (wh.shiftIds ?? []).map(id => shifts.value.find(t => t.id === id)).filter(t => !!t)
+  if (wh.scheduleType === 'flexible')
+    return `${days}, flexible hours`
+  return `${days}, ${named.length ? named.map(t => `${t.name} ${t.start} to ${t.end}`).join(' + ') : `${wh.startTime} to ${wh.endTime}`}`
+})
 
 function setPermissions(next: Record<PermissionModule, ModulePermissions>) {
   if (!draft.value) return
@@ -64,7 +75,6 @@ function handleSave() {
   updateRole(draft.value.id, {
     name: draft.value.name,
     description: draft.value.description,
-    workingHours: draft.value.workingHours,
     defaultPermissions: draft.value.defaultPermissions,
     notifications: draft.value.notifications,
   })
@@ -89,7 +99,7 @@ function handleReset() {
       <SheetHeader class="px-6 pt-6 pb-4">
         <SheetTitle>{{ draft.name }}</SheetTitle>
         <SheetDescription>
-          Edit role metadata, working hours, default permissions, and notification settings. Changes apply to new users assigned this role.
+          Edit role metadata, default permissions, and notification settings. Permissions and notifications are the defaults for new users. Working hours are set in Schedule and apply to everyone in the role straight away.
         </SheetDescription>
       </SheetHeader>
 
@@ -114,47 +124,28 @@ function handleReset() {
 
             <div class="space-y-2">
               <Label>Working hours</Label>
-              <ToggleGroup
-                :model-value="draft.workingHours.scheduleType"
-                type="single"
-                class="justify-start"
-                @update:model-value="(v) => draft!.workingHours.scheduleType = (v as 'flexible' | 'fixed')"
-              >
-                <ToggleGroupItem value="flexible">
-                  Flexible
-                </ToggleGroupItem>
-                <ToggleGroupItem value="fixed">
-                  Fixed
-                </ToggleGroupItem>
-              </ToggleGroup>
-
-              <div v-if="draft.workingHours.scheduleType === 'fixed'" class="grid grid-cols-2 gap-2">
-                <div class="space-y-1">
-                  <Label for="role-start" class="text-xs">Start</Label>
-                  <TimeInput id="role-start" type="time" v-model="draft.workingHours.startTime" />
-                </div>
-                <div class="space-y-1">
-                  <Label for="role-end" class="text-xs">End</Label>
-                  <TimeInput id="role-end" type="time" v-model="draft.workingHours.endTime" />
-                </div>
+              <div class="rounded-md border bg-muted/40 p-3 text-sm">
+                <p class="font-medium">
+                  {{ hoursSummary }}
+                </p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  <template v-if="roleUsage.total">
+                    {{ roleUsage.total }} active {{ roleUsage.total === 1 ? 'person has' : 'people have' }} this role<template v-if="roleUsage.own">, {{ roleUsage.own }} with a schedule of their own</template>.
+                  </template>
+                  <template v-else>
+                    Nobody has this role yet.
+                  </template>
+                </p>
               </div>
-
-              <div class="flex flex-wrap gap-1">
-                <button
-                  v-for="d in WEEK_DAYS"
-                  :key="d"
-                  type="button"
-                  :class="cn(
-                    'px-2.5 py-1 rounded-full border text-xs font-medium transition-colors',
-                    draft.workingHours.days.includes(d)
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-input bg-background hover:bg-muted',
-                  )"
-                  @click="toggleDay(d)"
-                >
-                  {{ d.slice(0, 3) }}
-                </button>
-              </div>
+              <Button as-child variant="outline" size="sm">
+                <NuxtLink to="/schedule?tab=defaults">
+                  <Icon name="lucide:calendar-cog" class="mr-2 size-4" />
+                  Edit in Schedule
+                </NuxtLink>
+              </Button>
+              <p class="text-xs text-muted-foreground">
+                Working days and shifts are set in Schedule, together with days off and rotations.
+              </p>
             </div>
 
             <Button variant="outline" class="w-full" @click="handleReset">

@@ -201,13 +201,13 @@ function toggleFlag(value: AttendanceFlag) {
           </button>
           <div class="space-y-1 p-5">
             <p class="text-sm text-muted-foreground">
-              Days absent
+              Absences
             </p>
             <p class="text-2xl font-semibold tabular-nums">
               {{ summary.absentDays }}
             </p>
             <p class="text-xs text-muted-foreground">
-              Mon to Sat, no check-in
+              Scheduled shift, no check-in
             </p>
           </div>
         </CardContent>
@@ -294,6 +294,9 @@ function toggleFlag(value: AttendanceFlag) {
                 >
                   <TableCell class="whitespace-nowrap">
                     {{ rowDayFmt.format(parseLocalDateKey(row.date)) }}
+                    <Badge v-if="row.segment && row.segment > 1" variant="outline" class="ml-1.5">
+                      Shift {{ row.segment }}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div class="flex items-center gap-3">
@@ -324,7 +327,7 @@ function toggleFlag(value: AttendanceFlag) {
                     </Badge>
                   </TableCell>
                   <TableCell class="tabular-nums" :class="row.clockOutEarly && 'font-medium text-destructive'">
-                    {{ row.clockOut ?? '-' }}
+                    {{ row.clockOut ?? '-' }}<span v-if="row.clockOutNextDay" class="ml-1 text-xs text-muted-foreground">+1</span>
                     <Badge v-if="row.clockOutEarly" variant="outline" class="ml-1.5 border-destructive/40 font-normal text-destructive">
                       Early
                     </Badge>

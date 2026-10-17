@@ -16,7 +16,7 @@
 
 ## Rules and gotchas
 - ⚠️ Dates are local `YYYY-MM-DD` keys (`toLocalDateKey`), never `toISOString()` (shifts a UTC+8 midnight). The picker converts to and from `CalendarDate`.
-- **Target** = the user's `hoursPerDay` times working days in the range, Monday to Saturday (Sunday is the day off), never counting days after today. With a **listing filter** on there is no target (0), because the time is only part of the day: the bar and % hide.
+- **Target** = the user's `hoursPerDay` times working days in the range, the person's own scheduled working days (`useSchedule`, see `schedule.md`; Sunday for the demo people), never counting days after today. With a **listing filter** on there is no target (0), because the time is only part of the day: the bar and % hide.
 - **Who is listed**: anyone with logs in the range, plus active people who have ever logged, so a quiet week shows them (0 activity, "days not logged"). Inactive people with nothing in the range are left out. With a listing filter only people with logs at that listing remain.
 - **Days not logged** = working days up to yesterday with no log (today is left out, the day is not over). **Longer than usual** = a log over 1.5x the median of the same type and title, at least 15 min over, needing 5 samples of that work. Both are hints, not rules.
 - **Folded rows**: logs of the same type, title and listing on the same day show as one row with `×N` and the summed time; expanding shows each log with its own actions.

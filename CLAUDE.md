@@ -39,6 +39,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Payment requests | `docs/claude/payment-requests.md` | Payment links, fee modes, payout integration |
 | Activities | `docs/claude/activities.md` | `/activities` time and activity report per staff: range presets, per-person day groups, edit/delete logs, listings sheet, xlsx export |
 | Attendance | `docs/claude/attendance.md` | `/attendance` clock-in/out records per day: range, filters, late/early/absent rules, detail sheet, xlsx export, generated data, profile tab still separate |
+| Schedule | `docs/claude/schedule.md` | `/schedule` week grid: role working hours as the default, per-person weekly days, dated day-off or extra-shift overrides, `useSchedule` resolver read by Attendance and Activities |
 | Operations calendar | `docs/claude/operations-calendar.md` | Week/day board, merged stay sources, half-day bars, lanes |
 | Cockpit | `docs/claude/cockpit.md` | `/cockpit` tape chart: Reservations-only stays, slanted bars, today strip, filters, click/drag to book or block, drag to room, find availability, remembered settings |
 | Promo codes | `docs/claude/promo-codes.md` | Code library, create wizard, scope chain, booking widget links |

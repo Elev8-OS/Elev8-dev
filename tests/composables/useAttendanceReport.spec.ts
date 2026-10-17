@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { toLocalDateKey } from '~/components/activities/data/activities'
 import { attendancePhotoUrl, buildSeedAttendance, DEMO_PHOTO_URL, formatWorked, shiftFor, workedMinutes } from '~/components/attendance/data/attendance'
 import { useAttendanceReport } from '~/composables/useAttendanceReport'
+import { useSchedule } from '~/composables/useSchedule'
 import { buildAttendanceSheet } from '~/lib/attendance-export'
 
 const wide = { from: '2000-01-01', to: '2999-12-31' }
@@ -135,5 +136,126 @@ describe('buildAttendanceSheet', () => {
     expect(header.at(-1)?.value.endsWith(' out')).toBe(true)
     expect(sheet).toHaveLength(summaries.length + 1)
     expect((sheet[1] as unknown[]).length).toBe(header.length)
+  })
+})
+
+describe('split shifts', () => {
+  const todayKey = toLocalDateKey(noon)
+  const yesterday = toLocalDateKey(new Date(noon.getFullYear(), noon.getMonth(), noon.getDate() - 1))
+  const split = {
+    working: true as const,
+    source: 'override' as const,
+    shift: { start: '07:00', end: '11:00', flexible: false },
+    segments: [{ start: '07:00', end: '11:00', flexible: false }, { start: '16:00', end: '20:00', flexible: false }],
+  }
+  const person = [{ id: 'user-2', listingIds: ['lst-1'], active: true }]
+
+  it('makes one record per shift of a split-shift day, each against its own hours', () => {
+    const records = buildSeedAttendance(noon, person, (_id, date) => date === yesterday ? split : { working: true, source: 'role', shift: { start: '08:00', end: '17:00', flexible: false }, segments: [{ start: '08:00', end: '17:00', flexible: false }] })
+    const day = records.filter(r => r.date === yesterday)
+    // A day can lose a shift to the absence rolls, but never gets more than two, and the second is marked.
+    expect(day.length).toBeLessThanOrEqual(2)
+    expect(day.every(r => r.segment === undefined || r.segment === 2)).toBe(true)
+    const second = day.find(r => r.segment === 2)
+    if (second)
+      expect(second.clockIn >= '15:00' && (second.clockOut ?? '20:00') <= '21:30').toBe(true)
+    expect(records.filter(r => r.date !== yesterday && r.date !== todayKey).every(r => !r.segment)).toBe(true)
+  })
+
+  it('counts a missed second shift as an absence', () => {
+    const { records, totals } = useAttendanceReport()
+    const { overrides } = useSchedule()
+    overrides.value = []
+    const { setWorking } = useSchedule()
+    // Yesterday: a finished day, so a shift nobody clocked is an absence whatever today's date is.
+    const now = new Date()
+    const day = toLocalDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
+    setWorking('user-2', [day], { startTime: '07:00', endTime: '11:00', extra: [{ startTime: '16:00', endTime: '20:00' }] })
+    records.value = [{ id: 'a', userId: 'user-2', date: day, listingId: 'lst-1', clockIn: '07:00', clockOut: '11:00', clockInLate: false, clockOutEarly: false, clockInPhoto: false, clockOutPhoto: false }]
+    const range = { from: day, to: day }
+    expect(totals(range).absentDays).toBe(1)
+    records.value = [...records.value, { id: 'b', userId: 'user-2', date: day, segment: 2, listingId: 'lst-1', clockIn: '16:00', clockOut: '20:00', clockInLate: false, clockOutEarly: false, clockInPhoto: false, clockOutPhoto: false }]
+    expect(totals(range).absentDays).toBe(0)
+  })
+})
+
+describe('split shift export', () => {
+  const rec = (segment: 1 | 2, clockIn: string, clockOut: string) => ({ id: `r${segment}`, userId: 'user-2', date: '2026-10-14', ...(segment === 2 ? { segment } : {}), listingId: 'lst-1', clockIn, clockOut, clockInLate: false, clockOutEarly: false, clockInPhoto: false, clockOutPhoto: false })
+  const summary = (byDate: Record<string, ReturnType<typeof rec>>) => ({ userId: 'user-2', name: 'Made', employeeNumber: 'E1', roleName: 'Listing Manager', joined: '2026-01-01', present: 1, absent: 0, late: 0, early: 0, noCheckOut: 0, byDate })
+
+  it('adds a second in and out pair only on a day with a split shift', () => {
+    const plain = buildAttendanceSheet([summary({ '2026-10-14': rec(1, '08:00', '17:00') })], '2026-10-14', '2026-10-14')
+    expect(plain[0]).toHaveLength(12)
+    const split = buildAttendanceSheet([summary({ '2026-10-14': rec(1, '07:00', '11:00'), '2026-10-14|2': rec(2, '16:00', '20:00') })], '2026-10-14', '2026-10-14')
+    expect(split[0]).toHaveLength(14)
+    const row = split[1] as { value: string }[]
+    expect(row.slice(-4).map(c => c.value)).toEqual(['07:00', '11:00', '16:00', '20:00'])
+  })
+})
+
+describe('overnight shifts', () => {
+  const night = { working: true as const, source: 'role' as const, shift: { start: '22:00', end: '06:00', flexible: false }, segments: [{ start: '22:00', end: '06:00', flexible: false }] }
+
+  it('works out the time across midnight and marks a check-out on the next day', () => {
+    expect(workedMinutes({ clockIn: '22:00', clockOut: '06:00', clockOutNextDay: true })).toBe(480)
+    expect(workedMinutes({ clockIn: '22:00', clockOut: '06:00' })).toBe(0)
+    const records = buildSeedAttendance(noon, [{ id: 'user-2', listingIds: ['lst-1'], active: true }], () => night)
+    const finished = records.filter(r => r.clockOut)
+    expect(finished.length).toBeGreaterThan(10)
+    // 22:00 to 06:00 ends on the next day, give or take the jitter: never an in-day check-out before the check-in.
+    expect(finished.every(r => r.clockOutNextDay === true || r.clockOut! > r.clockIn)).toBe(true)
+    expect(finished.filter(r => r.clockOutNextDay).every(r => r.clockOut! < '12:00')).toBe(true)
+    expect(records.find(r => r.date === toLocalDateKey(noon))?.clockOut).toBeUndefined()
+  })
+
+  it('adds a (+1) to the export check-out', () => {
+    const rec = { id: 'r', userId: 'user-2', date: '2026-10-14', listingId: 'lst-1', clockIn: '22:00', clockOut: '06:00', clockOutNextDay: true, clockInLate: false, clockOutEarly: false, clockInPhoto: false, clockOutPhoto: false }
+    const sheet = buildAttendanceSheet([{ userId: 'user-2', name: 'Made', employeeNumber: 'E1', roleName: 'Role', joined: '2026-01-01', present: 1, absent: 0, late: 0, early: 0, noCheckOut: 0, byDate: { '2026-10-14': rec } }], '2026-10-14', '2026-10-14')
+    expect((sheet[1] as { value: string }[]).at(-1)!.value).toBe('06:00 (+1)')
+  })
+
+  it('names the third shift columns of a day with three shifts', () => {
+    const r = (segment: number) => ({ id: `r${segment}`, userId: 'user-2', date: '2026-10-14', segment, listingId: 'lst-1', clockIn: '08:00', clockOut: '09:00', clockInLate: false, clockOutEarly: false, clockInPhoto: false, clockOutPhoto: false })
+    const sheet = buildAttendanceSheet([{ userId: 'user-2', name: 'Made', employeeNumber: 'E1', roleName: 'Role', joined: '2026-01-01', present: 1, absent: 0, late: 0, early: 0, noCheckOut: 0, byDate: { '2026-10-14': r(1), '2026-10-14|2': r(2), '2026-10-14|3': r(3) } }], '2026-10-14', '2026-10-14')
+    const header = (sheet[0] as { value: string }[]).map(c => c.value)
+    expect(header.slice(-6)).toEqual(['14 Oct in', '14 Oct out', '14 Oct, shift 2 in', '14 Oct, shift 2 out', '14 Oct, shift 3 in', '14 Oct, shift 3 out'])
+  })
+})
+
+describe('attendanceStatus', () => {
+  const rec = (userId: string, date: string, segment?: number) => ({ id: `${userId}-${date}-${segment ?? 1}`, userId, date, ...(segment ? { segment } : {}), listingId: 'lst-1', clockIn: '08:00', clockOut: '17:00', clockInLate: false, clockOutEarly: false, clockInPhoto: false, clockOutPhoto: false })
+  const dayKey = (offset: number) => { const d = new Date(); return toLocalDateKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() + offset)) }
+
+  it('shows the record of a past shift, and an absence for one with no record', () => {
+    const { records, attendanceStatus } = useAttendanceReport()
+    const { overrides, setWorking } = useSchedule()
+    overrides.value = []
+    // user-2 is on Monday to Saturday: force the two days to be working days whatever today's weekday is.
+    setWorking('user-2', [dayKey(-3), dayKey(-2), dayKey(-5)], { startTime: '08:00', endTime: '17:00' })
+    records.value = [rec('user-2', dayKey(-5)), rec('user-2', dayKey(-3))]
+    expect(attendanceStatus('user-2', dayKey(-3))).toEqual([{ segment: 1, record: expect.objectContaining({ clockIn: '08:00' }), absent: false }])
+    expect(attendanceStatus('user-2', dayKey(-2))).toEqual([{ segment: 1, record: undefined, absent: true }])
+  })
+
+  it('does not call a day before the first record, today, or the future absent', () => {
+    const { records, attendanceStatus } = useAttendanceReport()
+    const { overrides, setWorking } = useSchedule()
+    overrides.value = []
+    setWorking('user-2', [dayKey(-8), dayKey(0), dayKey(2)], { startTime: '08:00', endTime: '17:00' })
+    records.value = [rec('user-2', dayKey(-3))]
+    expect(attendanceStatus('user-2', dayKey(-8))).toEqual([])
+    expect(attendanceStatus('user-2', dayKey(0))).toEqual([])
+    expect(attendanceStatus('user-2', dayKey(2))).toEqual([])
+  })
+
+  it('reports each shift of a split-shift day on its own, and keeps work on a day off', () => {
+    const { records, attendanceStatus } = useAttendanceReport()
+    const { overrides, setWorking, setDayOff } = useSchedule()
+    overrides.value = []
+    setWorking('user-2', [dayKey(-3)], { startTime: '07:00', endTime: '11:00', extra: [{ startTime: '16:00', endTime: '20:00' }] })
+    records.value = [rec('user-2', dayKey(-3)), rec('user-2', dayKey(-6))]
+    expect(attendanceStatus('user-2', dayKey(-3)).map(a => [a.segment, a.absent])).toEqual([[1, false], [2, true]])
+    setDayOff('user-2', [dayKey(-6)], { type: 'leave' })
+    expect(attendanceStatus('user-2', dayKey(-6))).toEqual([{ segment: 1, record: expect.objectContaining({ clockIn: '08:00' }), absent: false }])
   })
 })

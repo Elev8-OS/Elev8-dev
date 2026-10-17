@@ -26,8 +26,9 @@ import { Switch } from '~/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useActivityReport } from '~/composables/useActivityReport'
 import { useRoles } from '~/composables/useRoles'
+import { useSchedule } from '~/composables/useSchedule'
 import { useUsers } from '~/composables/useUsers'
-import { eachDay, isWorkDay } from '~/lib/activity-stats'
+import { eachDay } from '~/lib/activity-stats'
 
 definePageMeta({ layout: 'default' })
 
@@ -35,6 +36,7 @@ const route = useRoute()
 const { getUser } = useUsers()
 const { getRole } = useRoles()
 const { selection, finishedWorkFor, shownTypesFor, cleaningKindCounts, dayGroups, dailySeries, listingSummary, byTypeFor, otherTenantCount, tenantsFor, tenantName, activeTenantId, targetMinutes, isLong, auditFor } = useActivityReport()
+const { isWorkDay } = useSchedule()
 
 const user = computed(() => getUser(String(route.params.id)))
 const roleName = computed(() => user.value ? getRole(user.value.roleId)?.name ?? '' : '')
@@ -98,8 +100,11 @@ const byType = computed(() => user.value ? byTypeFor(user.value.id, range.value,
 const loggedDays = computed(() => new Set(allGroups.value.map(g => g.date)))
 // Today is left out: the day is not over, so nothing logged yet is not a gap.
 const missingDays = computed(() => {
+  const userId = user.value?.id
+  if (!userId)
+    return 0
   const todayKey = toLocalDateKey(new Date())
-  return eachDay(range.value).filter(d => d < todayKey && isWorkDay(d) && !loggedDays.value.has(d)).length
+  return eachDay(range.value).filter(d => d < todayKey && isWorkDay(userId, d) && !loggedDays.value.has(d)).length
 })
 const longCount = computed(() => allGroups.value.reduce((sum, g) => sum + g.rows.reduce((s, r) => s + r.logs.filter(isLong).length, 0), 0))
 
