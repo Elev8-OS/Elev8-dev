@@ -9,10 +9,17 @@ export interface SavedView extends SavedViewOwnership {
   activeTagFilter: string[]
   activeAiFilter: string | null
   columnVisibility: Record<string, boolean>
+  /** Column sorting, in order; empty is the table's default order. */
+  sorting: ViewSorting[]
   pageSize: number
   createdAt: string
   updatedAt: string
   isDefault?: boolean // Marks Default view as immutable
+}
+
+export interface ViewSorting {
+  id: string
+  desc: boolean
 }
 
 export interface ViewState {
@@ -20,6 +27,7 @@ export interface ViewState {
   activeTagFilter: string[]
   activeAiFilter: string | null
   columnVisibility: Record<string, boolean>
+  sorting: ViewSorting[]
   pageSize: number
 }
 
@@ -33,6 +41,7 @@ export const DEFAULT_VIEW: SavedView = {
     amenities: false,
     room: false,
   },
+  sorting: [],
   pageSize: 15,
   visibility: 'public',
   createdBy: 'system',
@@ -54,6 +63,7 @@ export const SEED_PUBLIC_VIEWS: SavedView[] = [
     activeTagFilter: ['Canggu', 'Pool'],
     activeAiFilter: null,
     columnVisibility: { amenities: false, room: false },
+    sorting: [],
     pageSize: 15,
     visibility: 'public',
     createdBy: 'user-2',
@@ -68,6 +78,7 @@ export const SEED_PUBLIC_VIEWS: SavedView[] = [
     activeTagFilter: [],
     activeAiFilter: 'paused',
     columnVisibility: { amenities: false, room: false },
+    sorting: [],
     pageSize: 15,
     visibility: 'public',
     createdBy: 'user-5',

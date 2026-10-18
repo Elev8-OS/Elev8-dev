@@ -46,6 +46,7 @@ function stateOf(view: SavedView): ViewState {
     activeTagFilter: view.activeTagFilter,
     activeAiFilter: view.activeAiFilter,
     columnVisibility: view.columnVisibility,
+    sorting: view.sorting,
     pageSize: view.pageSize,
   }
 }
@@ -115,6 +116,7 @@ export function useSavedViews() {
       || JSON.stringify([...av.activeTagFilter].sort()) !== JSON.stringify([...cs.activeTagFilter].sort())
       || av.activeAiFilter !== cs.activeAiFilter
       || JSON.stringify(av.columnVisibility) !== JSON.stringify(cs.columnVisibility)
+      || JSON.stringify(av.sorting) !== JSON.stringify(cs.sorting)
       || av.pageSize !== cs.pageSize
     )
   })
