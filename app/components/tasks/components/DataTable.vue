@@ -44,13 +44,18 @@ function openRow(event: MouseEvent, task: Task) {
   selectedTaskRef.value = task
 }
 
-/** Menu labels where the column id reads badly. */
+/** Every column's name in the column menu, in sentence case. */
 const COLUMN_LABELS: Record<string, string> = {
+  status: 'Status',
+  title: 'Title',
+  assignee: 'Assignee',
+  listing: 'Listing',
+  inventoryLink: 'Inventory item',
+  dueDate: 'Due date',
   createdAt: 'Created at',
   completedAt: 'Completed at',
-  dueDate: 'Due date',
-  inventoryLink: 'Inventory',
-  ownerVisible: 'Owner',
+  priority: 'Priority',
+  ownerVisible: 'Owner maintenance',
 }
 
 const sorting = ref<SortingState>([])
@@ -170,12 +175,12 @@ defineExpose({ exportTasks, exporting })
               <!-- Column toggles sit in the table header, like the Listings page. -->
               <DropdownMenu v-if="header.column.id === 'actions'">
                 <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="sm" class="size-8 p-0" aria-label="Toggle columns">
+                  <Button variant="ghost" size="sm" class="size-8 p-0" aria-label="Show or hide columns">
                     <Icon name="lucide:sliders-horizontal" class="size-4 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" class="w-56">
-                  <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                  <DropdownMenuLabel>Show columns</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     v-for="column in toggleableColumns"
