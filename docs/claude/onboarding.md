@@ -81,6 +81,7 @@ the saved status.
   "Continue in background") use `finishAndLeave()` and jump straight to `/`
 - `StepBranding` writes through `useTenantBranding`, so the logo it uploads is the same asset
   Settings shows. Skipping records `brandingSkipped`, it does not silently pass
+  The **Button color** field is separate from the Guest Guide primary: it is stored as `state.actionColor` (default `DEFAULT_ACTION_COLOR`), shows a live preview button with an auto black or white label, and an invalid hex falls back to the default on Continue
 - `StepSelectPlan` states the package floor, both rates, and the **one year contract** on the
   step itself. `StepPayment` states the next period amount whenever the discount is first
   invoice only

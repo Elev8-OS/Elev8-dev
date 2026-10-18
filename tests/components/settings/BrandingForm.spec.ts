@@ -29,7 +29,6 @@ const globalOptions = {
       emits: ['validationChange'],
       template: '<button type="button" data-testid="asset-validation" :data-kind="kind" @click="$emit(\'validationChange\', true)" />',
     },
-    BrandingPreview: { template: '<div />' },
   },
 }
 

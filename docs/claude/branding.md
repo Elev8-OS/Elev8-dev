@@ -50,8 +50,7 @@ Tenant-level mock branding at `/settings/branding`:
 
 #### Settings components
 - **`BrandingAssetField.vue`** — Per-kind upload field with native file picker, MIME + size validation via `BRANDING_ASSET_RULES`, image decode check, inline error line, replace/remove buttons, size readout, and validation-change emit for the form's disabled state
-- **`BrandingForm.vue`** — Settings page form: draft state (clone of `branding`), three color pickers with WCAG ratio warning when text vs. background falls below 4.5:1, three asset fields, live preview, Reset button (rebuilds draft from defaults), Save (calls `saveBranding` → toast `success` / `error` for sync failure). Reactive preview binds to `draft.value`, not saved `branding.value`
-- **`BrandingPreview.vue`** — 3-tab preview (Dashboard / Guest Guide / Invoice). Renders a faux sidebar header with the primary logo + favicon tab mock, a Guest Guide card with scoped CSS variables, and an invoice preview that prefers `resolvedInvoiceLogo` (invoice → primary → none)
+- **`BrandingForm.vue`** — Settings page form: draft state (clone of `branding`), three Guest Guide color pickers plus a separate **Button color** (`TenantBranding.buttonColor`, optional, default `#F6BB12`, preview button with auto black/white label; also set in onboarding StepBranding) with WCAG ratio warning when text vs. background falls below 4.5:1, three asset fields, Reset button (rebuilds draft from defaults), Save (calls `saveBranding` → toast `success` / `error` for sync failure).
 
 #### Page (`app/pages/settings/branding.vue`)
 - Thin wrapper that mounts `<SettingsLayout wide>` and embeds `<SettingsBrandingForm />`. Reachable from Settings sidebar and top-level user menu (`constants/menus.ts`)

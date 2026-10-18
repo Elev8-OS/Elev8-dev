@@ -150,7 +150,6 @@ app/
 │   │   ├── SidebarNav.vue
 │   │   ├── BrandingAssetField.vue     ← Branding settings: per-kind upload field (logo/favicon/invoice)
 │   │   ├── BrandingForm.vue           ← Branding settings: form + draft preview + Reset/Save
-│   │   ├── BrandingPreview.vue        ← Branding settings: 3-tab live preview (Dashboard/Guide/Invoice)
 │   │   ├── data/branding.ts           ← TenantBranding, BrandingAsset, GuestGuideBrandColors, validators, defaults
 │   │   ├── WhatsAppIntegration.vue  ← Connection card (disconnected/connected states)
 │   │   ├── WhatsAppRoutingRules.vue ← Routing rules (not currently used in UI)
