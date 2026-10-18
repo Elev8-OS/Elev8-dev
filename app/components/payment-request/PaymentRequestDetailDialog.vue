@@ -2,7 +2,7 @@
 import type { PaymentRequest } from './data/payment-requests'
 import { listings } from '~/components/listings/data/listings'
 import { payoutAccounts } from '~/components/settings/data/payouts'
-import { getStaffName } from './data/payment-requests'
+import { getCategoryLabel, getStaffName } from './data/payment-requests'
 
 const { request } = defineProps<{
   request: PaymentRequest | null
@@ -116,11 +116,19 @@ function formatAmount(req: PaymentRequest) {
             </div>
           </div>
 
-          <div>
-            <Label class="text-xs text-muted-foreground">Title</Label>
-            <p class="text-sm">
-              {{ request.title }}
-            </p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <Label class="text-xs text-muted-foreground">Title</Label>
+              <p class="text-sm">
+                {{ request.title }}
+              </p>
+            </div>
+            <div>
+              <Label class="text-xs text-muted-foreground">Revenue category</Label>
+              <p class="text-sm">
+                {{ getCategoryLabel(request.category) }}
+              </p>
+            </div>
           </div>
 
           <div class="rounded-lg border bg-muted/20 p-3 space-y-1">

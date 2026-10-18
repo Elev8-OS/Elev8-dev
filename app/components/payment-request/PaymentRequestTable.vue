@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PaymentRequest } from './data/payment-requests'
-import { getStaffName } from './data/payment-requests'
+import { getCategoryLabel, getStaffName } from './data/payment-requests'
 import { listings } from '~/components/listings/data/listings'
 
 const { requests } = defineProps<{
@@ -78,6 +78,7 @@ function timeAgo(date: string) {
           <TableHead>Guest</TableHead>
           <TableHead>Title</TableHead>
           <TableHead>Listing</TableHead>
+          <TableHead>Category</TableHead>
           <TableHead>Amount</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Created by</TableHead>
@@ -99,6 +100,11 @@ function timeAgo(date: string) {
           </TableCell>
           <TableCell>{{ req.title }}</TableCell>
           <TableCell>{{ getListingName(req.listingId) }}</TableCell>
+          <TableCell>
+            <Badge variant="outline">
+              {{ getCategoryLabel(req.category) }}
+            </Badge>
+          </TableCell>
           <TableCell>
             <div class="text-sm">
               {{ formatAmount(req) }}
@@ -158,7 +164,7 @@ function timeAgo(date: string) {
           </TableCell>
         </TableRow>
         <TableRow v-if="!requests.length">
-          <TableCell colspan="8" class="h-32 text-center text-muted-foreground">
+          <TableCell colspan="9" class="h-32 text-center text-muted-foreground">
             No payment requests found.
           </TableCell>
         </TableRow>

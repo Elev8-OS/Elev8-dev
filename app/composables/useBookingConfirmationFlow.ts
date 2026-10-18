@@ -207,6 +207,7 @@ export function useBookingConfirmationFlow() {
         guestPhone: opts.guestPhone,
         listingId: opts.listingId,
         title: requestTitle,
+        category: isCityTax ? 'city_tax' : 'accommodation',
         amount: payableAmount,
         currency: payableCurrency,
         feeMode: opts.feeMode ?? 'card',

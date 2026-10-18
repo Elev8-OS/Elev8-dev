@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { FeeMode, GuestOption } from './data/payment-requests'
+import type { FeeMode, GuestOption, PaymentCategory } from './data/payment-requests'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 import { useInbox } from '~/composables/useInbox'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
+import { PAYMENT_CATEGORIES } from './data/payment-requests'
 import FeeCalculator from './FeeCalculator.vue'
 
 const props = defineProps<{
@@ -34,6 +35,7 @@ const selectedGuest = ref<GuestOption | null>(null)
 const selectedListingId = ref('')
 const title = ref('')
 const description = ref('')
+const category = ref<PaymentCategory | ''>('')
 const amount = ref<number | null>(null)
 const feeMode = ref<FeeMode>('card')
 const customFeePercentage = ref<number>(0)
@@ -185,6 +187,7 @@ const canContinue = computed(() => {
     && guestEmail.value.includes('@')
     && selectedListingId.value
     && title.value.trim().length >= 3
+    && category.value
     && amount.value && amount.value > 0
     && amount.value >= minAmount.value
     && assigned.value
@@ -198,6 +201,7 @@ function reset() {
   selectedListingId.value = ''
   title.value = ''
   description.value = ''
+  category.value = ''
   amount.value = null
   feeMode.value = 'card'
   customFeePercentage.value = 0
@@ -209,7 +213,7 @@ function reset() {
 }
 
 function handleCreate() {
-  if (!amount.value)
+  if (!amount.value || !category.value)
     return
 
   const request = createRequest({
@@ -219,6 +223,7 @@ function handleCreate() {
     listingId: selectedListingId.value,
     title: title.value,
     description: description.value || undefined,
+    category: category.value,
     amount: amount.value,
     currency: currency.value,
     feeMode: feeMode.value,
@@ -480,6 +485,23 @@ watch(open, (val) => {
         <div class="space-y-2">
           <Label>Payment title *</Label>
           <Input v-model="title" placeholder="e.g. Downpayment Villa Sunset" />
+        </div>
+
+        <div class="space-y-2">
+          <Label>Revenue category *</Label>
+          <Select v-model="category">
+            <SelectTrigger class="w-full">
+              <SelectValue placeholder="What is this payment for?" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="opt in PAYMENT_CATEGORIES" :key="opt.value" :value="opt.value">
+                <span class="flex items-center gap-2">
+                  <Icon :name="opt.icon" class="size-4 text-muted-foreground" />
+                  {{ opt.label }}
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div class="space-y-2">

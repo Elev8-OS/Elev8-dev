@@ -1,4 +1,4 @@
-import type { PaymentRequest, PaymentRequestDraft, PaymentStatus } from '~/components/payment-request/data/payment-requests'
+import type { PaymentCategory, PaymentRequest, PaymentRequestDraft, PaymentStatus } from '~/components/payment-request/data/payment-requests'
 import { calculateFee, calculateTotal, generateId, generatePaymentLink, getExpiryDate, paymentRequests } from '~/components/payment-request/data/payment-requests'
 import { payoutAccounts } from '~/components/settings/data/payouts'
 
@@ -7,6 +7,7 @@ import { useReservationsModule } from './useReservationsModule'
 export interface PaymentRequestFilters {
   status: PaymentStatus | 'all'
   listings: string[]
+  categories: PaymentCategory[]
   dateFrom: string
   dateTo: string
   search: string
@@ -17,6 +18,7 @@ export function usePaymentRequests() {
   const filters = ref<PaymentRequestFilters>({
     status: 'all',
     listings: [],
+    categories: [],
     dateFrom: '',
     dateTo: '',
     search: '',
@@ -27,6 +29,8 @@ export function usePaymentRequests() {
       if (filters.value.status !== 'all' && request.status !== filters.value.status)
         return false
       if (filters.value.listings.length > 0 && !filters.value.listings.includes(request.listingId))
+        return false
+      if (filters.value.categories.length > 0 && !filters.value.categories.includes(request.category))
         return false
       if (filters.value.dateFrom && request.createdAt < filters.value.dateFrom)
         return false
@@ -115,6 +119,7 @@ export function usePaymentRequests() {
       listingId: original.listingId,
       title: `${original.title} (Copy)`,
       description: original.description,
+      category: original.category,
       amount: original.amount,
       currency: original.currency,
       feeMode: original.feeMode,

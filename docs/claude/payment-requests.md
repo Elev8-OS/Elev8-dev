@@ -28,6 +28,7 @@ interface PaymentRequest {
   listingId: string
   title: string
   description?: string
+  category: PaymentCategory         // revenue category, required
   amount: number
   currency: 'USD' | 'IDR'
   feeMode: 'card' | 'manual'        // card = +3%, manual = no fee
@@ -45,6 +46,8 @@ interface PaymentRequest {
   notes?: string
 }
 ```
+
+**Revenue category:** `PAYMENT_CATEGORIES` in `data/payment-requests.ts` (accommodation, extension, city_tax, damage_deposit, cleaning, upsell, other). Required in the create dialog; the booking confirmation flow sets `city_tax` or `accommodation`, the stay extension sets `extension`, duplicate copies it. Shown as a table column and in the detail dialog, filterable (multi-select, `filters.categories`), and exported to CSV.
 
 **Create Flow (2-step Dialog):**
 1. **Payment Details**: Guest name (searchable autocomplete from existing guests/inbox), Select Listing (with unassigned warning), Payment title, Description, Email, Amount, Currency, Fee mode (Card +3% / Manual no fee)

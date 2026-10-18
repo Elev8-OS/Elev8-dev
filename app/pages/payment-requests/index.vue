@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { DateRange } from 'reka-ui'
-import type { PaymentRequest } from '~/components/payment-request/data/payment-requests'
+import type { PaymentCategory, PaymentRequest } from '~/components/payment-request/data/payment-requests'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
-import { getStaffName } from '~/components/payment-request/data/payment-requests'
+import { getCategoryLabel, getStaffName, PAYMENT_CATEGORIES } from '~/components/payment-request/data/payment-requests'
 import PaymentRequestCancelDialog from '~/components/payment-request/PaymentRequestCancelDialog.vue'
 import PaymentRequestCreateDialog from '~/components/payment-request/PaymentRequestCreateDialog.vue'
 import PaymentRequestDetailDialog from '~/components/payment-request/PaymentRequestDetailDialog.vue'
@@ -77,7 +77,7 @@ function handleCreated(request: PaymentRequest) {
 }
 
 function exportToExcel() {
-  const headers = ['ID', 'Guest Name', 'Guest Email', 'Listing', 'Title', 'Amount', 'Fee', 'Total', 'Currency', 'Status', 'Fee Mode', 'Created By', 'Created At', 'Expires At', 'Paid At', 'Cancelled At', 'Cancelled By']
+  const headers = ['ID', 'Guest Name', 'Guest Email', 'Listing', 'Title', 'Category', 'Amount', 'Fee', 'Total', 'Currency', 'Status', 'Fee Mode', 'Created By', 'Created At', 'Expires At', 'Paid At', 'Cancelled At', 'Cancelled By']
   const rows = filteredRequests.value.map((r) => {
     const listing = listings.value.find(l => l.id === r.listingId)
     return [
@@ -86,6 +86,7 @@ function exportToExcel() {
       r.guestEmail,
       listing?.name ?? r.listingId,
       r.title,
+      getCategoryLabel(r.category),
       r.amount,
       r.feeAmount,
       r.totalAmount,
@@ -118,6 +119,13 @@ const statusOptions = [
   { label: 'Expired', value: 'expired' },
   { label: 'Cancelled', value: 'cancelled' },
 ]
+
+function toggleCategory(category: PaymentCategory) {
+  if (filters.value.categories.includes(category))
+    filters.value.categories = filters.value.categories.filter(c => c !== category)
+  else
+    filters.value.categories = [...filters.value.categories, category]
+}
 
 // Listing filter state
 const listingPopoverOpen = ref(false)
@@ -212,6 +220,7 @@ function clearAllFilters() {
   filters.value.search = ''
   filters.value.status = 'all'
   filters.value.listings = []
+  filters.value.categories = []
   filters.value.dateFrom = ''
   filters.value.dateTo = ''
   selectedListingTags.value = []
@@ -223,6 +232,7 @@ const hasActiveFilters = computed(() =>
   filters.value.search
   || filters.value.status !== 'all'
   || filters.value.listings.length > 0
+  || filters.value.categories.length > 0
   || filters.value.dateFrom
   || filters.value.dateTo,
 )
@@ -274,6 +284,42 @@ const dateFilterLabel = computed(() => {
           </SelectItem>
         </SelectContent>
       </Select>
+
+      <!-- Category Filter -->
+      <Popover>
+        <PopoverTrigger as-child>
+          <Button
+            variant="outline"
+            class="h-9 gap-1.5 px-3"
+            :class="filters.categories.length ? 'border-primary text-foreground hover:bg-primary/10' : ''"
+          >
+            <Icon name="lucide:tag" class="size-4" />
+            Category
+            <Badge v-if="filters.categories.length" variant="default" class="ml-0.5 h-4 px-1 text-[10px]">
+              {{ filters.categories.length }}
+            </Badge>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent class="w-56 p-2" align="start">
+          <div
+            v-for="opt in PAYMENT_CATEGORIES"
+            :key="opt.value"
+            class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+            @click="toggleCategory(opt.value)"
+          >
+            <div
+              class="flex size-4 items-center justify-center rounded-[4px] border"
+              :class="filters.categories.includes(opt.value) ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+            >
+              <Icon v-if="filters.categories.includes(opt.value)" name="lucide:check" class="size-3" />
+            </div>
+            <span>{{ opt.label }}</span>
+          </div>
+          <Button v-if="filters.categories.length" variant="ghost" size="sm" class="mt-1 h-7 w-full text-xs text-muted-foreground" @click="filters.categories = []">
+            Clear all
+          </Button>
+        </PopoverContent>
+      </Popover>
 
       <!-- Listing Filter -->
       <Popover v-model:open="listingPopoverOpen">

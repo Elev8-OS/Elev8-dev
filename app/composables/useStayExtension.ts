@@ -339,6 +339,7 @@ export function useStayExtension() {
         listingId: r.listingId,
         title: `${before ? 'Early arrival' : 'Stay extension'} · ${r.id}`,
         description: `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'}, ${from} to ${to}`,
+        category: 'extension',
         amount: quote.amount,
         currency: r.currency as 'USD' | 'IDR' | 'EUR' | 'CHF',
         feeMode: plan.payment.feeMode ?? 'card',

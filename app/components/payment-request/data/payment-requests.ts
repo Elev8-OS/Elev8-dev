@@ -9,6 +9,23 @@ export function getStaffName(staffId: string): string {
 }
 export type PaymentStatus = 'pending' | 'paid' | 'expired' | 'cancelled'
 
+/** What the money is for, so paid links can be grouped into revenue lines. */
+export type PaymentCategory = 'accommodation' | 'extension' | 'city_tax' | 'damage_deposit' | 'cleaning' | 'upsell' | 'other'
+
+export const PAYMENT_CATEGORIES: { value: PaymentCategory, label: string, icon: string }[] = [
+  { value: 'accommodation', label: 'Accommodation', icon: 'lucide:bed-double' },
+  { value: 'extension', label: 'Stay extension', icon: 'lucide:calendar-plus' },
+  { value: 'city_tax', label: 'City tax', icon: 'lucide:landmark' },
+  { value: 'damage_deposit', label: 'Damage deposit', icon: 'lucide:shield-check' },
+  { value: 'cleaning', label: 'Cleaning fee', icon: 'lucide:brush-cleaning' },
+  { value: 'upsell', label: 'Upsell or service', icon: 'lucide:concierge-bell' },
+  { value: 'other', label: 'Other', icon: 'lucide:tag' },
+]
+
+export function getCategoryLabel(category: PaymentCategory | undefined): string {
+  return PAYMENT_CATEGORIES.find(c => c.value === category)?.label ?? 'Other'
+}
+
 export interface PaymentRequest {
   id: string
   guestName: string
@@ -17,6 +34,7 @@ export interface PaymentRequest {
   listingId: string
   title: string
   description?: string
+  category: PaymentCategory
   amount: number
   currency: 'USD' | 'IDR' | 'EUR' | 'CHF'
   feeMode: FeeMode
@@ -44,6 +62,7 @@ export interface PaymentRequestDraft {
   listingId: string
   title: string
   description?: string
+  category: PaymentCategory
   amount: number
   currency: 'USD' | 'IDR' | 'EUR' | 'CHF'
   feeMode: FeeMode
@@ -101,6 +120,7 @@ export const paymentRequests = ref<PaymentRequest[]>([
     guestEmail: 'john@example.com',
     listingId: 'lst-1',
     title: 'Downpayment Villa Sunset',
+    category: 'accommodation',
     amount: 500,
     currency: 'USD',
     feeMode: 'card',
@@ -119,6 +139,7 @@ export const paymentRequests = ref<PaymentRequest[]>([
     guestEmail: 'lisa@example.com',
     listingId: 'lst-3',
     title: 'Spa package payment',
+    category: 'upsell',
     amount: 1500000,
     currency: 'IDR',
     feeMode: 'no_fee',
@@ -138,6 +159,7 @@ export const paymentRequests = ref<PaymentRequest[]>([
     guestEmail: 'marcel@example.com',
     listingId: 'lst-2',
     title: 'Extra cleaning fee',
+    category: 'cleaning',
     amount: 75,
     currency: 'USD',
     feeMode: 'card',
@@ -156,6 +178,7 @@ export const paymentRequests = ref<PaymentRequest[]>([
     guestEmail: 'emma@example.com',
     listingId: 'lst-4',
     title: 'Airport transfer',
+    category: 'upsell',
     amount: 500000,
     currency: 'IDR',
     feeMode: 'card',
@@ -176,6 +199,7 @@ export const paymentRequests = ref<PaymentRequest[]>([
     guestEmail: 'emily.chen@email.com',
     listingId: 'lst-2',
     title: 'Downpayment - The R Pererenan Mezzanine Studio',
+    category: 'accommodation',
     amount: 200,
     currency: 'USD',
     feeMode: 'card',
