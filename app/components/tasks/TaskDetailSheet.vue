@@ -405,7 +405,8 @@ function formatDate(iso: string): string {
                 <p class="text-xs text-muted-foreground">
                   Status
                 </p>
-                <p class="font-medium">
+                <p class="flex items-center gap-1.5 font-medium">
+                  <Icon :name="statuses.find(s => s.value === task.status)?.iconName ?? 'lucide:circle-dashed'" class="size-3.5" :class="statuses.find(s => s.value === task.status)?.iconClass" />
                   {{ statuses.find(s => s.value === task.status)?.label || task.status }}
                 </p>
               </div>
@@ -413,7 +414,8 @@ function formatDate(iso: string): string {
                 <p class="text-xs text-muted-foreground">
                   Priority
                 </p>
-                <p class="font-medium">
+                <p class="flex items-center gap-1.5 font-medium">
+                  <Icon name="lucide:flag" class="size-3.5" :class="priorities.find(p => p.value === task.priority)?.iconClass" />
                   {{ priorities.find(p => p.value === task.priority)?.label || task.priority }}
                 </p>
               </div>

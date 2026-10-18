@@ -21,9 +21,9 @@ defineProps<DataTablePaginationProps>()
         </p>
         <Select
           :model-value="`${table.getState().pagination.pageSize}`"
-          @update:model-value="table.setPageSize"
+          @update:model-value="(v) => table.setPageSize(Number(v))"
         >
-          <SelectTrigger class="h-8 w-[70px]">
+          <SelectTrigger class="h-9 w-[70px]">
             <SelectValue :placeholder="`${table.getState().pagination.pageSize}`" />
           </SelectTrigger>
           <SelectContent side="top">
@@ -40,39 +40,39 @@ defineProps<DataTablePaginationProps>()
       <div class="flex items-center space-x-2">
         <Button
           variant="outline"
-          class="hidden h-8 w-8 p-0 lg:flex"
+          class="hidden size-9 p-0 lg:flex"
           :disabled="!table.getCanPreviousPage()"
           @click="table.setPageIndex(0)"
         >
           <span class="sr-only">Go to first page</span>
-          <Icon name="i-radix-icons-double-arrow-left" class="h-4 w-4" />
+          <Icon name="lucide:chevrons-left" class="size-4" />
         </Button>
         <Button
           variant="outline"
-          class="h-8 w-8 p-0"
+          class="size-9 p-0"
           :disabled="!table.getCanPreviousPage()"
           @click="table.previousPage()"
         >
           <span class="sr-only">Go to previous page</span>
-          <Icon name="i-radix-icons-chevron-left" class="h-4 w-4" />
+          <Icon name="lucide:chevron-left" class="size-4" />
         </Button>
         <Button
           variant="outline"
-          class="h-8 w-8 p-0"
+          class="size-9 p-0"
           :disabled="!table.getCanNextPage()"
           @click="table.nextPage()"
         >
           <span class="sr-only">Go to next page</span>
-          <Icon name="i-radix-icons-chevron-right" class="h-4 w-4" />
+          <Icon name="lucide:chevron-right" class="size-4" />
         </Button>
         <Button
           variant="outline"
-          class="hidden h-8 w-8 p-0 lg:flex"
+          class="hidden size-9 p-0 lg:flex"
           :disabled="!table.getCanNextPage()"
           @click="table.setPageIndex(table.getPageCount() - 1)"
         >
           <span class="sr-only">Go to last page</span>
-          <Icon name="i-radix-icons-double-arrow-right" class="h-4 w-4" />
+          <Icon name="lucide:chevrons-right" class="size-4" />
         </Button>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import type { StatusUpdate } from './schema'
+import type { StatusUpdate, Task } from './schema'
 
 /**
  * The sentence a task timeline entry reads as, after the actor's name:
@@ -48,4 +48,19 @@ function listWords(words: string[]): string {
   if (words.length <= 1)
     return words[0] ?? ''
   return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+}
+
+/**
+ * When a completed task was completed: its last "completed" timeline entry,
+ * else the last entry that reached 100%, else its last entry. Undefined while
+ * the task is not completed.
+ */
+export function taskCompletedAt(task: Pick<Task, 'status' | 'statusUpdates'>): string | undefined {
+  if (task.status !== 'completed')
+    return undefined
+  const updates = task.statusUpdates ?? []
+  const done = [...updates].reverse().find(u => u.kind === 'completed')
+    ?? [...updates].reverse().find(u => (u.progress ?? 0) >= 100)
+    ?? updates[updates.length - 1]
+  return done?.date
 }

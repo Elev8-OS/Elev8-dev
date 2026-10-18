@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ColumnDef, ColumnFiltersState, SortingState, VisibilityState } from '@tanstack/vue-table'
+import type { Column, ColumnDef, ColumnFiltersState, SortingState, VisibilityState } from '@tanstack/vue-table'
 import type { Listing } from '~/components/listings/data/listings'
 import type { SavedViewVisibility, ViewState } from '~/types/saved-views'
 import { Icon } from '#components'
@@ -77,6 +77,7 @@ const columns: ColumnDef<Listing, any>[] = [
     id: 'status',
     header: '',
     enableHiding: false,
+    enableSorting: false,
     size: 48,
     cell: ({ row }) => h('div', { class: 'flex justify-center' }, [
       h(ListingSingleToggle, { listingId: row.original.id, onClick: (e: Event) => e.stopPropagation() }),
@@ -127,6 +128,7 @@ const columns: ColumnDef<Listing, any>[] = [
   {
     accessorKey: 'tags',
     header: 'Tags',
+    enableSorting: false,
     filterFn: (row, _id, filterValue) => {
       const tags = row.getValue('tags') as string[]
       if (!filterValue)
@@ -174,6 +176,7 @@ const columns: ColumnDef<Listing, any>[] = [
   {
     accessorKey: 'amenities',
     header: 'Amenities',
+    enableSorting: false,
     cell: ({ row }) => {
       const amenities = row.getValue('amenities') as string[]
       return h('span', { class: 'text-muted-foreground text-sm truncate max-w-[200px] block' }, amenities.join(', '))
@@ -187,6 +190,7 @@ const columns: ColumnDef<Listing, any>[] = [
   {
     id: 'actions',
     enableHiding: false,
+    enableSorting: false,
     header: () => null,
     size: 40,
     cell: ({ row }) => h(ListingRowActions, { listing: row.original }),
@@ -234,6 +238,17 @@ function columnClass(columnId: string) {
   if (columnId === 'status')
     return 'w-12 pr-1'
   return channelForColumnId(columnId) ? 'w-32 min-w-32 max-w-32' : ''
+}
+
+/** Same cycle as the Reservations table: ascending, descending, then back to the default order. */
+function toggleSort(column: Column<Listing, unknown>) {
+  const sorted = column.getIsSorted()
+  if (!sorted)
+    column.toggleSorting(false)
+  else if (sorted === 'asc')
+    column.toggleSorting(true)
+  else
+    column.clearSorting()
 }
 
 const mappingListingId = ref<string | null>(null)
@@ -297,6 +312,7 @@ onMounted(async () => {
       activeTagFilter: activeView.value.activeTagFilter,
       activeAiFilter: activeView.value.activeAiFilter,
       columnVisibility: activeView.value.columnVisibility,
+      sorting: activeView.value.sorting,
       pageSize: activeView.value.pageSize,
     })
     updateCurrentState()
@@ -338,7 +354,7 @@ watch(activeAiFilter, (val) => {
   table.getColumn('aiStatus')?.setFilterValue(val)
 })
 
-watch([searchValue, activeTagFilter, activeAiFilter, columnVisibility], () => {
+watch([searchValue, activeTagFilter, activeAiFilter, columnVisibility, sorting], () => {
   updateCurrentState()
 }, { deep: true })
 
@@ -352,6 +368,7 @@ function getCurrentViewState(): ViewState {
     activeTagFilter: activeTagFilter.value,
     activeAiFilter: activeAiFilter.value,
     columnVisibility: columnVisibility.value,
+    sorting: sorting.value.map(({ id, desc }) => ({ id, desc })),
     pageSize: table.getState().pagination.pageSize,
   }
 }
@@ -361,6 +378,7 @@ function applyViewState(state: ViewState) {
   activeTagFilter.value = state.activeTagFilter
   activeAiFilter.value = state.activeAiFilter
   Object.assign(columnVisibility.value, state.columnVisibility)
+  sorting.value = (state.sorting ?? []).map(({ id, desc }) => ({ id, desc }))
   table.setPageSize(state.pageSize)
 }
 
@@ -377,6 +395,7 @@ async function handleLoadView(viewId: string) {
       activeTagFilter: view.activeTagFilter,
       activeAiFilter: view.activeAiFilter,
       columnVisibility: view.columnVisibility,
+      sorting: view.sorting,
       pageSize: view.pageSize,
     })
     updateCurrentState()
@@ -395,6 +414,7 @@ function handleConfirmLoadView() {
         activeTagFilter: view.activeTagFilter,
         activeAiFilter: view.activeAiFilter,
         columnVisibility: view.columnVisibility,
+        sorting: view.sorting,
         pageSize: view.pageSize,
       })
       updateCurrentState()
@@ -615,6 +635,20 @@ function handleRenameView(viewId: string, newName: string) {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </template>
+                <button
+                  v-else-if="!header.isPlaceholder && header.column.getCanSort()"
+                  type="button"
+                  class="inline-flex items-center gap-1 hover:text-foreground"
+                  :class="header.column.getIsSorted() ? 'text-foreground' : ''"
+                  @click="toggleSort(header.column)"
+                >
+                  <FlexRender :render="header.column.columnDef.header" :props="header.getContext()" />
+                  <Icon
+                    v-if="header.column.getIsSorted()"
+                    :name="header.column.getIsSorted() === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+                    class="size-3.5 shrink-0"
+                  />
+                </button>
                 <FlexRender v-else-if="!header.isPlaceholder" :render="header.column.columnDef.header" :props="header.getContext()" />
               </TableHead>
             </TableRow>

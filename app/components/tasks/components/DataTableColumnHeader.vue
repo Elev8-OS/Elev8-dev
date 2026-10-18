@@ -8,7 +8,18 @@ interface DataTableColumnHeaderProps {
   title: string
 }
 
-defineProps<DataTableColumnHeaderProps>()
+const props = defineProps<DataTableColumnHeaderProps>()
+
+/** Same cycle as the Reservations table: ascending, descending, then back to the default order. */
+function toggleSort() {
+  const sorted = props.column.getIsSorted()
+  if (!sorted)
+    props.column.toggleSorting(false)
+  else if (sorted === 'asc')
+    props.column.toggleSorting(true)
+  else
+    props.column.clearSorting()
+}
 </script>
 
 <script lang="ts">
@@ -18,37 +29,19 @@ export default {
 </script>
 
 <template>
-  <div v-if="column.getCanSort()" :class="cn('flex items-center space-x-2', $attrs.class ?? '')">
-    <DropdownMenu>
-      <DropdownMenuTrigger as-child>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="h-8 -ml-3 data-[state=open]:bg-accent"
-        >
-          <span>{{ title }}</span>
-          <Icon v-if="column.getIsSorted() === 'desc'" name="i-radix-icons-arrow-down" class="ml-2 h-4 w-4" />
-          <Icon v-else-if=" column.getIsSorted() === 'asc'" name="i-radix-icons-arrow-up" class="ml-2 h-4 w-4" />
-          <Icon v-else name="i-radix-icons-caret-sort" class="ml-2 h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuItem @click="column.toggleSorting(false)">
-          <Icon name="i-radix-icons-arrow-up" class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Asc
-        </DropdownMenuItem>
-        <DropdownMenuItem @click="column.toggleSorting(true)">
-          <Icon name="i-radix-icons-arrow-down" class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Desc
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem @click="column.toggleVisibility(false)">
-          <Icon name="i-radix-icons-eye-none" class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Hide
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  </div>
+  <button
+    v-if="column.getCanSort()"
+    type="button"
+    :class="cn('inline-flex items-center gap-1 font-medium uppercase hover:text-foreground', column.getIsSorted() ? 'text-foreground' : '', $attrs.class ?? '')"
+    @click="toggleSort"
+  >
+    {{ title }}
+    <Icon
+      v-if="column.getIsSorted()"
+      :name="column.getIsSorted() === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+      class="size-3.5"
+    />
+  </button>
 
   <div v-else :class="$attrs.class">
     {{ title }}

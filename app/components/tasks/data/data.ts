@@ -26,17 +26,23 @@ export const statuses = [
   {
     value: 'not started',
     label: 'Not started',
-    icon: h(Icon, { name: 'i-radix-icons-circle' }),
+    iconName: 'lucide:circle-dashed',
+    iconClass: 'text-muted-foreground',
+    icon: h(Icon, { name: 'lucide:circle-dashed', class: 'text-muted-foreground' }),
   },
   {
     value: 'in progress',
     label: 'In progress',
-    icon: h(Icon, { name: 'i-radix-icons-stopwatch' }),
+    iconName: 'lucide:timer',
+    iconClass: 'text-amber-500',
+    icon: h(Icon, { name: 'lucide:timer', class: 'text-amber-500' }),
   },
   {
     value: 'completed',
     label: 'Completed',
-    icon: h(Icon, { name: 'i-radix-icons-check-circled' }),
+    iconName: 'lucide:circle-check',
+    iconClass: 'text-green-500',
+    icon: h(Icon, { name: 'lucide:circle-check', class: 'text-green-500' }),
   },
 ]
 
@@ -44,16 +50,19 @@ export const priorities = [
   {
     value: 'low',
     label: 'Low',
-    icon: h(Icon, { name: 'i-radix-icons-arrow-down' }),
+    iconClass: 'text-green-500',
+    icon: h(Icon, { name: 'lucide:flag', class: 'text-green-500' }),
   },
   {
     value: 'medium',
     label: 'Medium',
-    icon: h(Icon, { name: 'i-radix-icons-arrow-right' }),
+    iconClass: 'text-blue-500',
+    icon: h(Icon, { name: 'lucide:flag', class: 'text-blue-500' }),
   },
   {
     value: 'high',
     label: 'High',
-    icon: h(Icon, { name: 'i-radix-icons-arrow-up' }),
+    iconClass: 'text-red-500',
+    icon: h(Icon, { name: 'lucide:flag', class: 'text-red-500' }),
   },
 ]
