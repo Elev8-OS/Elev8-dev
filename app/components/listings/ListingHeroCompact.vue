@@ -8,10 +8,12 @@ import ListingAiScheduleSheet from '~/components/listings/ListingAiScheduleSheet
 import ListingAssignedUsers from '~/components/listings/ListingAssignedUsers.vue'
 import ListingCopyInfoDialog from '~/components/listings/ListingCopyInfoDialog.vue'
 import ListingPhotosEditor from '~/components/listings/ListingPhotosEditor.vue'
+import ListingTagManagerDialog from '~/components/listings/ListingTagManagerDialog.vue'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
 const copyInfoOpen = ref(false)
+const tagManagerOpen = ref(false)
 const router = useRouter()
 
 const setupProgress = computed(() => listingSetupProgress(props.listing))
@@ -355,6 +357,12 @@ const filteredListingsForSwitch = computed(() => {
                     </p>
                   </div>
                 </ScrollArea>
+                <div class="border-t p-1">
+                  <Button variant="ghost" size="sm" class="h-8 w-full justify-start gap-2 text-xs" data-testid="manage-tags" @click="tagPopoverOpen = false; tagManagerOpen = true">
+                    <Icon name="lucide:settings-2" class="size-3.5" />
+                    Manage tags
+                  </Button>
+                </div>
               </PopoverContent>
             </Popover>
           </div>
@@ -492,5 +500,6 @@ const filteredListingsForSwitch = computed(() => {
 
     <ListingAiScheduleSheet v-model:open="showScheduleSheet" :listing="listing" @update="emit('update', $event)" />
     <ListingCopyInfoDialog v-model:open="copyInfoOpen" :listing="listing" />
+    <ListingTagManagerDialog v-model:open="tagManagerOpen" :listing="listing" @update="emit('update', $event)" />
   </div>
 </template>
