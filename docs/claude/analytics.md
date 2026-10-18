@@ -50,15 +50,44 @@ cancellation rate.
   dates and the added nights become a linked Direct booking (`extensionOf`, id `<parent>-ext`,
   `bookedOn` = the day it was agreed). ⚠️ That linked booking is a reservation like any other in
   every existing figure (stays, arrivals, channel mix, lead time), as it is on the owner statement.
-- Reservations tab, after Guests and party size: four `GmKpiCard`s (Extension rate with a points
-  badge, Avg. extra nights with no badge, Extension revenue on the basis, Fees saved) and a stacked
-  "Extension revenue" bar card (Direct stays extended / OTA stays rebooked direct).
+- Split by what they measure: the Reservations tab, after Guests and party size, has Extension rate
+  (points badge) and Avg. extra nights (no badge); the **Revenue** tab has Extension revenue (on the
+  basis) and Fees saved plus the stacked "Extension revenue" bar card (Direct stays extended / OTA
+  stays rebooked direct). The added nights are already inside the Revenue totals, the cards show
+  their share.
 - Attribution: rate and extra nights by the stay's **arrival** (linked bookings are not stays of
   their own here); revenue by the **added nights inside the period**, on the revenue basis, chosen
   currency only. Fees saved = gross of the linked nights x (OTA fees of the parent's channel minus
   Direct card fees), always gross.
 - No payment status: the generated data has none (the real flow's pending / paid lives on
   `ReservationEntry.extensions`).
+
+#### Upsells & payments tab (generated, `upsell-insights.ts`)
+- Fourth tab (`?tab=upsells`). The generated portfolio has no upsell orders, so `buildUpsellOrders`
+  derives them per confirmed stay from a hash of the booking id (never `rand`, nothing reshuffles):
+  about 38% of stays attach 1 to 3 orders, services priced per currency (`UPSELL_SERVICES`, never
+  converted). A cancelled stay or a linked extension booking carries none; an order placed after the
+  anchor does not exist yet. Orders follow the scope filters because they hang off the scoped stays.
+- Each order is `paid` (with a method: payment link, cash, card, other, as `UpsellPaymentMethod` in
+  the upsells module), `awaiting` (stay still to come) or `unpaid` (stay over, never collected).
+- Attribution: money and payments by the day the order was **placed**, attach rate by the stay's
+  **arrival** (as stays do). ⚠️ Upsell money is the service price and ignores the revenue basis
+  (that values room nights), chosen currency only.
+- Tiles: Upsell revenue, Attach rate (points badge), Avg. order value, Collected (paid / ordered);
+  a stacked paid vs outstanding bar per bucket; "Paid by" method bars; revenue by service bars.
+- No payment requests here: those have no per-method data (their revenue category lives on the
+  Payment Requests page).
+- The Overview tab shows only the Upsell revenue tile (`upsellKpis[0]`) under its stats row, full width, so both tabs agree.
+- Tests: `tests/lib/analytics-upsells.spec.ts`.
+
+#### Payment links on the Revenue tab (real data, `payment-link-insights.ts`)
+- "Payment links by category" card on the Revenue tab. Unlike the rest of the page this reads the
+  **real** payment requests (`usePaymentRequests`), grouped by the `category` staff set on create
+  (`docs/claude/payment-requests.md`). Paid links count on `paidAt` (fallback `createdAt`), pending
+  ones on `createdAt` and are only named in the header. ⚠️ Only the listing scope applies (a link has
+  no channel or market), chosen currency only, amount before the card fee, ignores the revenue basis.
+  The seeded links are from June and August 2026, so short periods read empty: that is the data.
+- Tests: `tests/lib/analytics-payment-links.spec.ts`.
 
 #### Direct bookings by website
 - Direct bookings come from the sites built in Website Builder. Each generated **Direct** booking

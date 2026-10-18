@@ -30,6 +30,8 @@ import {
 } from '~/components/analytics/data/analytics'
 import { extensionRevenueSeries, extensionSummary } from '~/components/analytics/data/extension-insights'
 import { movementSeries, partySummary, pickupSeries, stayAverages, stayAverageSeries } from '~/components/analytics/data/reservation-insights'
+import { paymentLinkSummary } from '~/components/analytics/data/payment-link-insights'
+import { buildUpsellOrders, upsellRevenueSeries, upsellSummary } from '~/components/analytics/data/upsell-insights'
 import { retiredUnits } from '~/components/analytics/data/retired-listings'
 import { buildCommissionRates, makeValuer, REVENUE_BASES, revenueBreakdown } from '~/components/analytics/data/revenue-basis'
 import { adrByWeekday, breakdownSeries, channelRevenueSeries, rankListingsByRevenue } from '~/components/analytics/data/revenue-insights'
@@ -39,6 +41,7 @@ import { listings } from '~/components/listings/data/listings'
 import { getListingIdsForWebsite } from '~/components/website-builder/data/property-listings'
 import { websites } from '~/components/website-builder/data/websites'
 import { useOwners } from '~/composables/useOwners'
+import { usePaymentRequests } from '~/composables/usePaymentRequests'
 
 export interface AnalyticsFilters extends AnalyticsScope {
   period: AnalyticsPeriodPreset
@@ -205,6 +208,18 @@ export function useAnalytics() {
   const extensionsBefore = computed(() => previousSpan.value ? extensionSummary(bookings.value, previousSpan.value, currency.value, value.value) : null)
   const extensionRevenue = computed(() => extensionRevenueSeries(bookings.value, span.value, currency.value, value.value))
 
+  // Upsell orders hang off the scoped stays, so every scope filter narrows them too.
+  const upsellOrders = computed(() => buildUpsellOrders(bookings.value, anchorDate.value))
+  const upsellsNow = computed(() => upsellSummary(bookings.value, upsellOrders.value, span.value, currency.value))
+  const upsellsBefore = computed(() => previousSpan.value ? upsellSummary(bookings.value, upsellOrders.value, previousSpan.value, currency.value) : null)
+  const upsellRevenue = computed(() => upsellRevenueSeries(upsellOrders.value, span.value, currency.value))
+
+  // The real payment links, narrowed to the listings in scope.
+  const { requests: paymentRequests } = usePaymentRequests()
+  const scopedListingIds = computed(() => new Set(units.value.map(u => u.listingId)))
+  const paymentLinksNow = computed(() => paymentLinkSummary(paymentRequests.value, scopedListingIds.value, span.value, currency.value))
+  const paymentLinksBefore = computed(() => previousSpan.value ? paymentLinkSummary(paymentRequests.value, scopedListingIds.value, previousSpan.value, currency.value) : null)
+
   /* -------------------------------------------------------------- chips */
 
   const activeChips = computed<ActiveFilterChip[]>(() =>
@@ -321,6 +336,11 @@ export function useAnalytics() {
     extensionsNow,
     extensionsBefore,
     extensionRevenue,
+    upsellsNow,
+    upsellsBefore,
+    upsellRevenue,
+    paymentLinksNow,
+    paymentLinksBefore,
     basisMeta,
     breakdown,
     contractedListings,

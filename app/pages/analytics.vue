@@ -43,6 +43,11 @@ const {
   extensionsNow,
   extensionsBefore,
   extensionRevenue,
+  upsellsNow,
+  upsellsBefore,
+  upsellRevenue,
+  paymentLinksNow,
+  paymentLinksBefore,
 } = useAnalytics()
 
 /* Tabs: kept in the URL, so a refresh or a shared link opens the same one. */
@@ -50,6 +55,7 @@ const TABS = [
   { value: 'overview', label: 'Overview', icon: 'lucide:layout-dashboard' },
   { value: 'revenue', label: 'Revenue', icon: 'lucide:banknote' },
   { value: 'reservations', label: 'Reservations', icon: 'lucide:calendar-check' },
+  { value: 'upsells', label: 'Upsells & payments', icon: 'lucide:concierge-bell' },
 ] as const
 type TabValue = typeof TABS[number]['value']
 const route = useRoute()
@@ -265,22 +271,55 @@ function sumOf<T>(rows: T[], key: keyof T): string {
 }
 
 // Stay extensions: rate and nights by arrival, money by the added nights inside the period.
-const extensionKpis = computed<Kpi[]>(() => {
+function extensionTiles(): { stay: Kpi[], money: Kpi[] } {
   const c = extensionsNow.value
   const p = extensionsBefore.value
   const vs = compareLabel.value
-  return [
-    { label: 'Extension rate', icon: 'lucide:calendar-plus', value: pct(c.rate), hint: `${c.extended.toLocaleString('en-US')} of ${c.stays.toLocaleString('en-US')} arriving stays`, ...badge(p && c.rate !== null && p.rate !== null ? c.rate - p.rate : null, formatSignedPoints) },
-    // Longer or shorter extensions are neither good nor bad news: no badge.
-    { label: 'Avg. extra nights', icon: 'lucide:moon', value: nights(c.avgExtraNights), hint: p ? `${nights(p.avgExtraNights)} ${vs}` : 'Per extended stay' },
-    { label: `Extension revenue${basisSuffix.value}`, icon: 'lucide:banknote', value: fullMoney(c.revenue), hint: p ? `${fullMoney(p.revenue)} ${vs}` : 'Added nights in the period', ...badge(p && relativeDelta(c.revenue, p.revenue), formatSignedPercent) },
-    { label: 'Fees saved', icon: 'lucide:piggy-bank', value: fullMoney(c.feesSaved), hint: `${c.viaDirect.toLocaleString('en-US')} OTA ${c.viaDirect === 1 ? 'stay' : 'stays'} extended direct` },
-  ]
-})
+  return {
+    stay: [
+      { label: 'Extension rate', icon: 'lucide:calendar-plus', value: pct(c.rate), hint: `${c.extended.toLocaleString('en-US')} of ${c.stays.toLocaleString('en-US')} arriving stays`, ...badge(p && c.rate !== null && p.rate !== null ? c.rate - p.rate : null, formatSignedPoints) },
+      // Longer or shorter extensions are neither good nor bad news: no badge.
+      { label: 'Avg. extra nights', icon: 'lucide:moon', value: nights(c.avgExtraNights), hint: p ? `${nights(p.avgExtraNights)} ${vs}` : 'Per extended stay' },
+    ],
+    money: [
+      { label: `Extension revenue${basisSuffix.value}`, icon: 'lucide:banknote', value: fullMoney(c.revenue), hint: p ? `${fullMoney(p.revenue)} ${vs}` : 'Added nights in the period', ...badge(p && relativeDelta(c.revenue, p.revenue), formatSignedPercent) },
+      { label: 'Fees saved', icon: 'lucide:piggy-bank', value: fullMoney(c.feesSaved), hint: `${c.viaDirect.toLocaleString('en-US')} OTA ${c.viaDirect === 1 ? 'stay' : 'stays'} extended direct` },
+    ],
+  }
+}
+// Rate and nights describe stays (Reservations tab); revenue and fees saved are money (Revenue tab).
+const extensionStayKpis = computed(() => extensionTiles().stay)
+const extensionMoneyKpis = computed(() => extensionTiles().money)
 
 const EXTENSION_SERIES = [
   { key: 'inPlace', label: 'Direct stays extended', color: 'var(--viz-3)' },
   { key: 'viaDirect', label: 'OTA stays rebooked direct', color: 'var(--viz-1)' },
+]
+
+// Upsells: orders by the day they were placed, stays by arrival. Money is the service price, not the revenue basis.
+const upsellKpis = computed<Kpi[]>(() => {
+  const c = upsellsNow.value
+  const p = upsellsBefore.value
+  const vs = compareLabel.value
+  return [
+    { label: 'Upsell revenue', icon: 'lucide:concierge-bell', value: fullMoney(c.revenue), hint: p ? `${fullMoney(p.revenue)} ${vs}` : `${c.orders.toLocaleString('en-US')} orders placed`, ...badge(p && relativeDelta(c.revenue, p.revenue), formatSignedPercent) },
+    { label: 'Attach rate', icon: 'lucide:percent', value: pct(c.attachRate), hint: `${c.attachedStays.toLocaleString('en-US')} of ${c.stays.toLocaleString('en-US')} arriving stays`, ...badge(p && c.attachRate !== null && p.attachRate !== null ? c.attachRate - p.attachRate : null, formatSignedPoints) },
+    { label: 'Avg. order value', icon: 'lucide:receipt', value: c.avgOrderValue === null ? 'n/a' : fullMoney(c.avgOrderValue), hint: p?.avgOrderValue != null ? `${fullMoney(p.avgOrderValue)} ${vs}` : 'Per order', ...badge(p && c.avgOrderValue !== null && p.avgOrderValue !== null ? relativeDelta(c.avgOrderValue, p.avgOrderValue) : null, formatSignedPercent) },
+    { label: 'Collected', icon: 'lucide:wallet', value: pct(c.collectionRate, 0), hint: `${fullMoney(c.paid)} paid, ${fullMoney(c.outstanding)} outstanding`, ...badge(p && c.collectionRate !== null && p.collectionRate !== null ? c.collectionRate - p.collectionRate : null, formatSignedPoints) },
+  ]
+})
+
+const paymentLinkTotal = computed(() => paymentLinksNow.value.paid)
+const paymentLinkHint = computed(() => {
+  const c = paymentLinksNow.value
+  const p = paymentLinksBefore.value
+  const pending = c.pendingLinks ? `${fullMoney(c.pending)} still pending (${c.pendingLinks.toLocaleString('en-US')})` : 'None pending'
+  return p ? `${pending}, ${fullMoney(p.paid)} ${compareLabel.value}` : pending
+})
+
+const UPSELL_SERIES = [
+  { key: 'paid', label: 'Paid', color: 'var(--viz-1)' },
+  { key: 'outstanding', label: 'Outstanding', color: 'var(--viz-2)' },
 ]
 
 const partyNote = computed(() => {
@@ -381,18 +420,33 @@ const subtitle = computed(() => {
             <!-- KPI row and body share one 4-column grid so the right column lines up under the last tile.
                  Container queries, not viewport ones: the filter sidebar takes width when open. -->
             <div class="grid grid-cols-1 gap-4 @2xl/analytics:grid-cols-2 @5xl/analytics:grid-cols-4">
-              <GmKpiCard
-                v-for="k in kpis"
-                :key="k.label"
-                :label="k.label"
-                :icon="k.icon"
-                :value="k.value"
-                :delta="k.deltaText"
-                :trend="k.trend"
-                :hint="k.hint"
-                compact
-                data-testid="analytics-kpi"
-              />
+              <!-- One row of five: the four stay tiles and the upsell figure (the same one as the Upsells & payments tab). -->
+              <div class="grid grid-cols-1 gap-4 @2xl/analytics:col-span-2 @2xl/analytics:grid-cols-2 @5xl/analytics:col-span-4 @5xl/analytics:grid-cols-5">
+                <GmKpiCard
+                  v-for="k in kpis"
+                  :key="k.label"
+                  :label="k.label"
+                  :icon="k.icon"
+                  :value="k.value"
+                  :delta="k.deltaText"
+                  :trend="k.trend"
+                  :hint="k.hint"
+                  compact
+                  data-testid="analytics-kpi"
+                />
+                <GmKpiCard
+                  v-for="k in upsellKpis.slice(0, 1)"
+                  :key="k.label"
+                  :label="k.label"
+                  :icon="k.icon"
+                  :value="k.value"
+                  :delta="k.deltaText"
+                  :trend="k.trend"
+                  :hint="k.hint"
+                  compact
+                  data-testid="analytics-overview-upsell-kpi"
+                />
+              </div>
 
               <AnalyticsMetricCard
                 v-for="m in metricCards"
@@ -466,6 +520,64 @@ const subtitle = computed(() => {
                 test-id="analytics-weekday-adr"
               />
               <AnalyticsBreakdownTable class="@2xl/analytics:col-span-2" :totals="breakdown" :currency="currency" />
+              <!-- Stay extensions: the added nights are already inside the revenue above; this shows how much they are -->
+              <GmKpiCard
+                v-for="k in extensionMoneyKpis"
+                :key="k.label"
+                class="@5xl/analytics:col-span-2"
+                :label="k.label"
+                :icon="k.icon"
+                :value="k.value"
+                :delta="k.deltaText"
+                :trend="k.trend"
+                :hint="k.hint"
+                compact
+                data-testid="analytics-extension-money-kpi"
+              />
+              <AnalyticsSeriesBarChart
+                class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4"
+                :title="`Extension revenue${basisSuffix}`"
+                description="Added nights inside the period, by how the stay was extended"
+                type="stacked"
+                :rows="extensionRevenue"
+                :series="EXTENSION_SERIES"
+                :format-value="fullMoney"
+                :format-axis="compactMoney"
+                :totals="[{ label: 'in the period', value: fullMoney(extensionsNow.revenue) }]"
+                test-id="analytics-extension-revenue"
+              />
+              <Card class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4 flex flex-col" data-testid="analytics-payment-links">
+                <CardHeader>
+                  <CardTitle class="text-base">
+                    Payment links by category
+                  </CardTitle>
+                  <CardDescription>Paid links in the period, by the revenue category set when each was created, {{ currency }}</CardDescription>
+                  <CardAction class="flex flex-col items-end gap-0.5 text-right">
+                    <span class="text-xs text-muted-foreground">
+                      <span class="font-medium tabular-nums text-foreground">{{ fullMoney(paymentLinkTotal) }}</span> paid
+                    </span>
+                    <span class="text-xs text-muted-foreground">{{ paymentLinkHint }}</span>
+                  </CardAction>
+                </CardHeader>
+                <CardContent class="flex flex-col gap-3">
+                  <p v-if="!paymentLinksNow.byCategory.length" class="py-6 text-center text-sm text-muted-foreground">
+                    No paid payment links in this period.
+                  </p>
+                  <template v-else>
+                    <div v-for="r in paymentLinksNow.byCategory" :key="r.category" class="flex flex-col gap-1">
+                      <div class="flex items-baseline justify-between gap-3 text-sm">
+                        <span>{{ r.label }}</span>
+                        <span class="tabular-nums text-muted-foreground">
+                          <span class="font-medium text-foreground">{{ fullMoney(r.amount) }}</span> · {{ r.links.toLocaleString('en-US') }} {{ r.links === 1 ? 'link' : 'links' }}
+                        </span>
+                      </div>
+                      <div class="h-2 rounded-full bg-muted">
+                        <div class="h-2 rounded-full bg-primary" :style="{ width: `${paymentLinkTotal ? (r.amount / paymentLinkTotal) * 100 : 0}%` }" />
+                      </div>
+                    </div>
+                  </template>
+                </CardContent>
+              </Card>
               <AnalyticsListingRevenueBars
                 class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4"
                 :ranked="listingRanking.ranked"
@@ -524,10 +636,11 @@ const subtitle = computed(() => {
                 :summary="party.avgGuests === null ? undefined : `${party.avgGuests.toFixed(1)} guests avg.`"
               />
 
-              <!-- Stay extensions -->
+              <!-- Stay extensions: rate and nights here, the money on the Revenue tab -->
               <GmKpiCard
-                v-for="k in extensionKpis"
+                v-for="k in extensionStayKpis"
                 :key="k.label"
+                class="@5xl/analytics:col-span-2"
                 :label="k.label"
                 :icon="k.icon"
                 :value="k.value"
@@ -537,18 +650,93 @@ const subtitle = computed(() => {
                 compact
                 data-testid="analytics-extension-kpi"
               />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="upsells">
+            <div class="grid grid-cols-1 gap-4 @2xl/analytics:grid-cols-2 @5xl/analytics:grid-cols-4">
+              <GmKpiCard
+                v-for="k in upsellKpis"
+                :key="k.label"
+                :label="k.label"
+                :icon="k.icon"
+                :value="k.value"
+                :delta="k.deltaText"
+                :trend="k.trend"
+                :hint="k.hint"
+                compact
+                data-testid="analytics-upsell-kpi"
+              />
               <AnalyticsSeriesBarChart
                 class="@2xl/analytics:col-span-2 @5xl/analytics:col-span-4"
-                :title="`Extension revenue${basisSuffix}`"
-                description="Added nights inside the period, by how the stay was extended"
+                title="Upsell revenue"
+                description="Orders by the day they were placed, paid and still outstanding"
                 type="stacked"
-                :rows="extensionRevenue"
-                :series="EXTENSION_SERIES"
+                :rows="upsellRevenue"
+                :series="UPSELL_SERIES"
                 :format-value="fullMoney"
                 :format-axis="compactMoney"
-                :totals="[{ label: 'in the period', value: fullMoney(extensionsNow.revenue) }]"
-                test-id="analytics-extension-revenue"
+                :totals="[{ label: 'ordered in the period', value: fullMoney(upsellsNow.revenue) }]"
+                test-id="analytics-upsell-revenue"
               />
+              <Card class="@2xl/analytics:col-span-2 flex flex-col" data-testid="analytics-upsell-methods">
+                <CardHeader>
+                  <CardTitle class="text-base">
+                    Paid by
+                  </CardTitle>
+                  <CardDescription>How paid orders were settled</CardDescription>
+                  <CardAction class="text-xs text-muted-foreground">
+                    <span class="font-medium tabular-nums text-foreground">{{ fullMoney(upsellsNow.paid) }}</span> paid
+                  </CardAction>
+                </CardHeader>
+                <CardContent class="flex flex-col gap-3">
+                  <p v-if="!upsellsNow.paid" class="py-6 text-center text-sm text-muted-foreground">
+                    No paid upsell orders in this period.
+                  </p>
+                  <template v-else>
+                  <div v-for="m in upsellsNow.byMethod" :key="m.method" class="flex flex-col gap-1">
+                    <div class="flex items-baseline justify-between gap-3 text-sm">
+                      <span>{{ m.label }}</span>
+                      <span class="tabular-nums text-muted-foreground">
+                        <span class="font-medium text-foreground">{{ fullMoney(m.amount) }}</span> · {{ m.orders.toLocaleString('en-US') }} {{ m.orders === 1 ? 'order' : 'orders' }}
+                      </span>
+                    </div>
+                    <div class="h-2 rounded-full bg-muted">
+                      <div class="h-2 rounded-full bg-primary" :style="{ width: `${upsellsNow.paid ? (m.amount / upsellsNow.paid) * 100 : 0}%` }" />
+                    </div>
+                  </div>
+                  </template>
+                </CardContent>
+              </Card>
+              <Card class="@2xl/analytics:col-span-2 flex flex-col" data-testid="analytics-upsell-services">
+                <CardHeader>
+                  <CardTitle class="text-base">
+                    Revenue by service
+                  </CardTitle>
+                  <CardDescription>Everything ordered in the period</CardDescription>
+                  <CardAction class="text-xs text-muted-foreground">
+                    <span class="font-medium tabular-nums text-foreground">{{ upsellsNow.orders.toLocaleString('en-US') }}</span> orders
+                  </CardAction>
+                </CardHeader>
+                <CardContent class="flex flex-col gap-3">
+                  <p v-if="!upsellsNow.byService.length" class="py-6 text-center text-sm text-muted-foreground">
+                    No upsell orders in this period.
+                  </p>
+                  <template v-else>
+                  <div v-for="r in upsellsNow.byService" :key="r.service" class="flex flex-col gap-1">
+                    <div class="flex items-baseline justify-between gap-3 text-sm">
+                      <span>{{ r.label }}</span>
+                      <span class="tabular-nums text-muted-foreground">
+                        <span class="font-medium text-foreground">{{ fullMoney(r.revenue) }}</span> · {{ r.orders.toLocaleString('en-US') }} {{ r.orders === 1 ? 'order' : 'orders' }}
+                      </span>
+                    </div>
+                    <div class="h-2 rounded-full bg-muted">
+                      <div class="h-2 rounded-full bg-primary" :style="{ width: `${upsellsNow.revenue ? (r.revenue / upsellsNow.revenue) * 100 : 0}%` }" />
+                    </div>
+                  </div>
+                  </template>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
         </template>

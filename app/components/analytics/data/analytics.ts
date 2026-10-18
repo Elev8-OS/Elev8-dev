@@ -209,7 +209,7 @@ export const HISTORY_DAYS = 2 * 365 + 7
 export const FUTURE_DAYS = 190
 
 /** FNV-1a of a booking id: drives choices that must not draw from `rand`. */
-function idHash(id: string): number {
+export function idHash(id: string): number {
   let h = 2166136261
   for (let i = 0; i < id.length; i++)
     h = Math.imul(h ^ id.charCodeAt(i), 16777619)
