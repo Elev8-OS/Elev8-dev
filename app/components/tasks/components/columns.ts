@@ -2,10 +2,13 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import type { Task } from '../data/schema'
 import { Icon } from '#components'
 import { h } from 'vue'
+import { toLocalDateKey } from '@/components/activities/data/activities'
+import { listings } from '@/components/listings/data/listings'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { selectedTaskRef } from '~/composables/useTaskDetail'
 import { assigneeOptions, priorities, statuses } from '../data/data'
+import { taskCompletedAt } from '../data/timeline'
 import DataTableColumnHeader from './DataTableColumnHeader.vue'
 import DataTableRowActions from './DataTableRowActions.vue'
 
@@ -17,6 +20,15 @@ export function shortListingName(name: string): string {
   if (name.startsWith('TAMBORA'))
     return 'TAMBORA'
   return name.replace('The R Villa ', 'Villa ')
+}
+
+const createdAtFormat = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+const dueDateFormat = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' })
+
+/** Parses the local `YYYY-MM-DD` by hand: `new Date('YYYY-MM-DD')` is UTC and can show the day before. */
+function formatDueDate(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return y && m && d ? dueDateFormat.format(new Date(y, m - 1, d)) : date
 }
 
 function getAssigneeLabel(value: string | undefined): { label: string, type?: 'role' | 'person' } | null {
@@ -32,14 +44,14 @@ export const columns: ColumnDef<Task>[] = [
   {
     id: 'select',
     header: ({ table }) => h(Checkbox, {
-      'checked': table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate'),
-      'onUpdate:checked': value => table.toggleAllPageRowsSelected(!!value),
+      'modelValue': table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate'),
+      'onUpdate:modelValue': value => table.toggleAllPageRowsSelected(!!value),
       'ariaLabel': 'Select all',
       'class': 'translate-y-0.5',
     }),
     cell: ({ row }) => h(Checkbox, {
-      'checked': row.getIsSelected(),
-      'onUpdate:checked': value => row.toggleSelected(!!value),
+      'modelValue': row.getIsSelected(),
+      'onUpdate:modelValue': value => row.toggleSelected(!!value),
       'ariaLabel': 'Select row',
       'class': 'translate-y-0.5',
     }),
@@ -54,7 +66,7 @@ export const columns: ColumnDef<Task>[] = [
       if (!status)
         return null
       return h('div', { class: 'flex items-center' }, [
-        status.icon && h(status.icon, { class: 'mr-1.5 h-4 w-4 text-muted-foreground' }),
+        status.icon && h(status.icon, { class: 'mr-1.5 h-4 w-4' }),
         h('span', { class: 'text-sm' }, status.label),
       ])
     },
@@ -65,17 +77,10 @@ export const columns: ColumnDef<Task>[] = [
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Title' }),
     cell: ({ row }) => {
       const task = row.original
-      const assignee = getAssigneeLabel(task.assignee)
       return h('button', {
         class: 'flex items-center gap-2 text-left hover:underline underline-offset-2',
         onClick: () => { selectedTaskRef.value = task },
       }, [
-        assignee
-          ? h(Badge, {
-              variant: task.assigneeType === 'role' ? 'secondary' : 'outline',
-              class: 'shrink-0 text-xs font-normal',
-            }, () => assignee.label)
-          : null,
         h('span', { class: 'max-w-[300px] truncate font-medium' }, row.getValue('title')),
         task.scheduleId
           ? h('span', { class: 'shrink-0 text-muted-foreground', title: 'Made by a schedule' }, [
@@ -85,6 +90,20 @@ export const columns: ColumnDef<Task>[] = [
           : null,
       ])
     },
+  },
+  {
+    accessorKey: 'assignee',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Assignee' }),
+    cell: ({ row }) => {
+      const assignee = getAssigneeLabel(row.original.assignee)
+      if (!assignee)
+        return h('span', { class: 'text-muted-foreground text-sm' }, 'Unassigned')
+      return h(Badge, {
+        variant: row.original.assigneeType === 'role' ? 'secondary' : 'outline',
+        class: 'text-xs font-normal',
+      }, () => assignee.label)
+    },
+    filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
     accessorKey: 'listing',
@@ -120,11 +139,34 @@ export const columns: ColumnDef<Task>[] = [
       const date = row.getValue('dueDate') as string | undefined
       if (!date)
         return h('span', { class: 'text-muted-foreground text-sm' }, '—')
-      const today = new Date().toISOString().slice(0, 10)
+      const today = toLocalDateKey(new Date())
       const isOverdue = date < today && row.original.status !== 'completed'
       return h('span', {
         class: isOverdue ? 'text-destructive text-sm font-medium' : 'text-sm',
-      }, date)
+      }, formatDueDate(date))
+    },
+  },
+  // Hidden until switched on from the View menu (see `DataTable`).
+  {
+    accessorKey: 'createdAt',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Created at' }),
+    cell: ({ row }) => {
+      const created = row.original.createdAt
+      if (!created)
+        return h('span', { class: 'text-muted-foreground text-sm' }, '—')
+      return h('span', { class: 'text-sm' }, createdAtFormat.format(new Date(created)))
+    },
+  },
+  // Hidden until switched on from the column menu (see `DataTable`).
+  {
+    id: 'completedAt',
+    accessorFn: row => taskCompletedAt(row) ?? '',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Completed at' }),
+    cell: ({ row }) => {
+      const completed = taskCompletedAt(row.original)
+      if (!completed)
+        return h('span', { class: 'text-muted-foreground text-sm' }, '—')
+      return h('span', { class: 'text-sm' }, createdAtFormat.format(new Date(completed)))
     },
   },
   {
@@ -135,7 +177,7 @@ export const columns: ColumnDef<Task>[] = [
       if (!priority)
         return null
       return h('div', { class: 'flex items-center' }, [
-        priority.icon && h(priority.icon, { class: 'mr-2 h-4 w-4 text-muted-foreground' }),
+        priority.icon && h(priority.icon, { class: 'mr-2 h-4 w-4' }),
         h('span', {}, priority.label),
       ])
     },
@@ -161,6 +203,20 @@ export const columns: ColumnDef<Task>[] = [
     enableSorting: false,
     enableHiding: false,
     filterFn: (row, _id, value: string[]) => value.includes('true') === !!row.original.scheduleId,
+  },
+  // Filter-only (hidden in `DataTable`): a task carries its listing's tags,
+  // and the filter needs every selected tag, like the Listings page.
+  {
+    id: 'listingTags',
+    accessorFn: row => listings.value.find(l => l.name === row.listing)?.tags ?? [],
+    header: () => h('span', { class: 'sr-only' }, 'Listing tags'),
+    cell: () => null,
+    enableSorting: false,
+    enableHiding: false,
+    filterFn: (row, id, value: string[]) => {
+      const tags = row.getValue<string[]>(id)
+      return value.every(t => tags.includes(t))
+    },
   },
   {
     id: 'actions',

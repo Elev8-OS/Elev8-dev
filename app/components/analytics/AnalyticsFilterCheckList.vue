@@ -45,7 +45,7 @@ const filtered = computed(() => {
         >
           <Icon v-if="selected.includes(option.value)" name="lucide:check" class="size-3" />
         </div>
-        <Icon v-if="option.icon" :name="option.icon" class="size-3.5 shrink-0 text-muted-foreground" />
+        <Icon v-if="option.icon" :name="option.icon" class="size-3.5 shrink-0" :class="option.iconClass ?? 'text-muted-foreground'" />
         <div class="flex min-w-0 flex-1 flex-col">
           <span class="truncate">{{ option.label }}</span>
           <span v-if="option.hint" class="truncate text-[11px] text-muted-foreground">{{ option.hint }}</span>

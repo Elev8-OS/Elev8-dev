@@ -2,72 +2,41 @@
 import type { Table } from '@tanstack/vue-table'
 import type { Task } from '../data/schema'
 import { computed } from 'vue'
-import { BALI_LISTINGS } from '@/components/upsells/data/upsell-services'
-import { priorities, statuses } from '../data/data'
-import { shortListingName } from './columns'
-import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
-import DataTableViewOptions from './DataTableViewOptions.vue'
+import BaseSearchInput from '@/components/base/SearchInput.vue'
 
 interface DataTableToolbarProps {
   table: Table<Task>
+  /** Filters set in the side panel, for the badge on the Filters button. */
+  filterCount: number
 }
 
 const props = defineProps<DataTableToolbarProps>()
+const emit = defineEmits<{ toggleFilters: [] }>()
 
-const isFiltered = computed(() => props.table.getState().columnFilters.length > 0)
-
-const listingOptions = BALI_LISTINGS.map(l => ({ value: l, label: shortListingName(l) }))
+const search = computed({
+  get: () => (props.table.getColumn('title')?.getFilterValue() as string) ?? '',
+  set: v => props.table.getColumn('title')?.setFilterValue(v || undefined),
+})
 </script>
 
 <template>
-  <div class="flex items-center justify-between">
-    <div class="flex flex-1 flex-wrap items-center gap-2">
-      <Input
-        placeholder="Filter tasks..."
-        :model-value="(table.getColumn('title')?.getFilterValue() as string) ?? ''"
-        class="h-8 w-[150px] lg:w-[250px]"
-        @input="table.getColumn('title')?.setFilterValue(($event.target as HTMLInputElement).value)"
-      />
-      <DataTableFacetedFilter
-        v-if="table.getColumn('listing')"
-        :column="table.getColumn('listing')"
-        title="Listing"
-        :options="listingOptions"
-      />
-      <DataTableFacetedFilter
-        v-if="table.getColumn('status')"
-        :column="table.getColumn('status')"
-        title="Status"
-        :options="statuses"
-      />
-      <DataTableFacetedFilter
-        v-if="table.getColumn('priority')"
-        :column="table.getColumn('priority')"
-        title="Priority"
-        :options="priorities"
-      />
-      <DataTableFacetedFilter
-        v-if="table.getColumn('ownerVisible')"
-        :column="table.getColumn('ownerVisible')"
-        title="Owner"
-        :options="[{ value: 'true', label: 'Owner maintenance' }]"
-      />
-      <DataTableFacetedFilter
-        v-if="table.getColumn('scheduled')"
-        :column="table.getColumn('scheduled')"
-        title="Scheduled"
-        :options="[{ value: 'true', label: 'From a schedule' }]"
-      />
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <BaseSearchInput v-model="search" placeholder="Search tasks..." />
+    <div class="flex items-center gap-2">
       <Button
-        v-if="isFiltered"
-        variant="ghost"
-        class="h-8 px-2 lg:px-3"
-        @click="table.resetColumnFilters()"
+        variant="outline"
+        size="sm"
+        class="h-9 shrink-0 gap-1.5"
+        :class="filterCount ? 'border-primary' : ''"
+        data-testid="tasks-filters-toggle"
+        @click="emit('toggleFilters')"
       >
-        Reset
-        <Icon name="i-radix-icons-cross-2" class="ml-2 h-4 w-4" />
+        <Icon name="lucide:sliders-horizontal" class="size-4" />
+        Filters
+        <Badge v-if="filterCount" variant="default" class="h-4 min-w-4 rounded-full px-1 text-[9px]">
+          {{ filterCount }}
+        </Badge>
       </Button>
     </div>
-    <DataTableViewOptions :table="table" />
   </div>
 </template>

@@ -57,6 +57,8 @@ export interface FilterOption {
   value: string
   label: string
   icon?: string
+  /** Overrides the muted icon colour, e.g. a priority flag. */
+  iconClass?: string
   /** Secondary text on the option row, e.g. a listing's location. */
   hint?: string
 }

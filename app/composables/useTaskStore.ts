@@ -118,13 +118,25 @@ export function useTaskStore() {
     return true
   }
 
+  /**
+   * A progress entry also moves the status: any progress starts a "not started"
+   * task, and 100% completes it (through `updateStatus`, so the inventory sync
+   * still runs). 0% never changes the status.
+   */
   function addStatusUpdate(id: string, entry: StatusUpdate) {
+    const before = tasks.value.find(t => t.id === id)
     tasks.value = tasks.value.map((t) => {
       if (t.id !== id)
         return t
       const updates = [...(t.statusUpdates || []), entry]
       return { ...t, statusUpdates: updates, progress: entry.progress ?? t.progress }
     })
+    if (!before || entry.progress === undefined)
+      return
+    if (entry.progress >= 100 && before.status !== 'completed')
+      updateStatus(id, 'completed')
+    else if (entry.progress > 0 && entry.progress < 100 && before.status === 'not started')
+      updateStatus(id, 'in progress')
   }
 
   function updateStatus(id: string, status: TaskStatus) {

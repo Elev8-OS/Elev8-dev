@@ -1,24 +1,19 @@
 <script setup lang="ts">
 import type { Row } from '@tanstack/vue-table'
-import type { Task, TaskStatus } from '../data/schema'
-import { computed } from 'vue'
+import type { Task } from '../data/schema'
+import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import { useTaskStore } from '@/composables/useTaskStore'
-import { statuses } from '../data/data'
 
 interface DataTableRowActionsProps {
   row: Row<Task>
 }
 const props = defineProps<DataTableRowActionsProps>()
 
-const { updateStatus, deleteTask } = useTaskStore()
+const { deleteTask } = useTaskStore()
 const task = computed(() => props.row.original)
 
-function handleStatusChange(status: TaskStatus) {
-  updateStatus(task.value.id, status)
-  if (task.value.linkedInventoryItemName && status === 'completed')
-    toast.success(`HostBuddy updated: ${task.value.linkedInventoryItemName} condition → Good`)
-}
+const confirmDeleteOpen = ref(false)
 
 function handleDelete() {
   deleteTask(task.value.id)
@@ -31,33 +26,33 @@ function handleDelete() {
     <DropdownMenuTrigger as-child>
       <Button
         variant="ghost"
-        class="h-8 w-8 flex p-0 data-[state=open]:bg-muted"
+        class="size-9 flex p-0 data-[state=open]:bg-muted"
       >
-        <Icon name="i-radix-icons-dots-horizontal" class="h-4 w-4" />
+        <Icon name="lucide:ellipsis" class="size-4" />
         <span class="sr-only">Open menu</span>
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="w-[180px]">
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Change Status</DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuRadioGroup :value="task.status">
-            <DropdownMenuRadioItem
-              v-for="status in statuses"
-              :key="status.value"
-              :value="status.value"
-              @click="handleStatusChange(status.value as TaskStatus)"
-            >
-              {{ status.label }}
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem class="text-destructive" @click="handleDelete">
+      <DropdownMenuItem class="text-destructive" @click="confirmDeleteOpen = true">
         Delete
-        <DropdownMenuShortcut>⌘⌫</DropdownMenuShortcut>
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
+
+  <AlertDialog v-model:open="confirmDeleteOpen">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Delete this task?</AlertDialogTitle>
+        <AlertDialogDescription>
+          "{{ task.title }}" will be removed. This cannot be undone.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" @click="handleDelete">
+          Delete
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>
