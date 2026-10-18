@@ -1,6 +1,7 @@
 import type {
   OrderStatus,
   UpsellOrder,
+  UpsellPaymentMethod,
 } from '@/components/upsells/data/upsell-orders'
 import { computed } from 'vue'
 import { calculateRefund, getPolicyForService } from '@/components/upsells/data/cancellation-policies'
@@ -173,7 +174,7 @@ export function useUpsellOrders() {
     })
   }
 
-  function markPaid(id: string, paymentMethod: 'link' | 'manual' | 'cash' | 'card' = 'manual') {
+  function markPaid(id: string, paymentMethod: UpsellPaymentMethod = 'manual') {
     patchOrder(id, (order) => {
       const now = new Date().toISOString()
       return {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import type { UpsellOrder } from '@/components/upsells/data/upsell-orders'
+import type { UpsellOrder, UpsellPaymentMethod } from '@/components/upsells/data/upsell-orders'
 import { toast } from 'vue-sonner'
 import {
   getOrderStatusMeta,
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  RECORD_PAYMENT_METHODS,
 } from '@/components/upsells/data/upsell-orders'
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
 
@@ -40,11 +42,11 @@ function handleApprove() {
   toast.success('Order approved and payment link sent.')
 }
 
-function handlePaid() {
+function handlePaid(method: UpsellPaymentMethod) {
   if (!order.value)
     return
-  markPaid(order.value.id, 'manual')
-  toast.success('Order marked as paid.')
+  markPaid(order.value.id, method)
+  toast.success(`Order marked as paid (${PAYMENT_METHOD_LABELS[method].toLowerCase()}).`)
 }
 
 function handleStart() {
@@ -110,6 +112,24 @@ function formatCurrency(amount: number, currency: string) {
           </div>
 
           <Separator />
+
+          <div class="flex flex-col gap-2">
+            <Label class="text-xs text-muted-foreground">Payment</Label>
+            <div class="rounded-md border p-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <span class="font-medium">{{ order.paymentStatus === 'paid' ? 'Paid' : order.paymentStatus === 'awaiting_payment' ? 'Awaiting payment' : 'Unpaid' }}</span>
+                <span class="tabular-nums">{{ formatCurrency(order.grandTotal, order.currency) }}</span>
+              </div>
+              <template v-if="order.paymentStatus === 'paid'">
+                <p v-if="order.paymentMethod" class="mt-2 text-xs text-muted-foreground">
+                  Paid by {{ PAYMENT_METHOD_LABELS[order.paymentMethod].toLowerCase() }}
+                </p>
+                <p v-if="order.paidAt" class="mt-1 text-xs text-muted-foreground">
+                  {{ new Date(order.paidAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) }}
+                </p>
+              </template>
+            </div>
+          </div>
 
           <div class="flex flex-col gap-2">
             <Label class="text-xs text-muted-foreground">Fulfillment</Label>
@@ -266,10 +286,26 @@ function formatCurrency(amount: number, currency: string) {
               <Icon name="lucide:x-circle" class="mr-2 h-4 w-4" />
               Decline
             </Button>
-            <Button v-if="order.paymentStatus === 'awaiting_payment'" class="flex-1" @click="handlePaid">
-              <Icon name="lucide:wallet" class="mr-2 h-4 w-4" />
-              Record Payment
+            <!-- Mock: stands in for the gateway telling us the guest paid the link. -->
+            <Button v-if="order.paymentStatus === 'awaiting_payment'" variant="outline" class="flex-1" data-testid="simulate-guest-payment" @click="handlePaid('link')">
+              <Icon name="lucide:badge-check" class="mr-2 h-4 w-4" />
+              Simulate guest payment
             </Button>
+            <DropdownMenu v-if="order.paymentStatus === 'awaiting_payment' || (order.paymentStatus === 'unpaid' && order.approvalStatus === 'requested')">
+              <DropdownMenuTrigger as-child>
+                <Button class="flex-1" :variant="order.approvalStatus === 'requested' ? 'outline' : 'default'">
+                  <Icon name="lucide:wallet" class="mr-2 h-4 w-4" />
+                  Record Payment
+                  <Icon name="lucide:chevron-down" class="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem v-for="m in RECORD_PAYMENT_METHODS" :key="m.value" @click="handlePaid(m.value)">
+                  <Icon :name="m.icon" class="mr-2 h-4 w-4" />
+                  {{ m.label }}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button v-if="order.paymentStatus === 'paid' && order.fulfillmentStatus === 'not_started'" class="flex-1" @click="handleStart">
               <Icon name="lucide:loader-2" class="mr-2 h-4 w-4" />
               Start Fulfillment

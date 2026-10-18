@@ -1,4 +1,20 @@
 export type OrderApprovalStatus = 'requested' | 'approved' | 'declined'
+export type UpsellPaymentMethod = 'link' | 'manual' | 'cash' | 'card'
+
+/** Ways staff can record a payment taken outside the payment link. */
+export const RECORD_PAYMENT_METHODS: { value: UpsellPaymentMethod, label: string, icon: string }[] = [
+  { value: 'cash', label: 'Cash', icon: 'lucide:banknote' },
+  { value: 'card', label: 'Card', icon: 'lucide:credit-card' },
+  { value: 'manual', label: 'Other (bank transfer, etc.)', icon: 'lucide:wallet' },
+]
+
+export const PAYMENT_METHOD_LABELS: Record<UpsellPaymentMethod, string> = {
+  link: 'Payment link',
+  manual: 'Other',
+  cash: 'Cash',
+  card: 'Card',
+}
+
 export type OrderPaymentStatus = 'unpaid' | 'awaiting_payment' | 'paid'
 export type OrderFulfillmentStatus = 'not_started' | 'in_progress' | 'completed'
 export type OrderStatus
@@ -44,7 +60,7 @@ export interface UpsellOrder {
   decisionReason?: string
   cancellationReason?: string
   cancellationBy?: 'guest' | 'staff'
-  paymentMethod?: 'link' | 'manual' | 'cash' | 'card'
+  paymentMethod?: UpsellPaymentMethod
   source: 'inbox' | 'manual' | 'web'
   conversationId?: string
   /**

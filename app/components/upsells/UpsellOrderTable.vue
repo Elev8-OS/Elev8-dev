@@ -7,6 +7,8 @@ import {
   getOrderStatus,
   ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  RECORD_PAYMENT_METHODS,
 } from '@/components/upsells/data/upsell-orders'
 import { useUpsellOrders } from '@/composables/useUpsellOrders'
 import { listings } from '@/components/listings/data/listings'
@@ -638,6 +640,9 @@ function exportCSV() {
               >
                 {{ ORDER_STATUS_LABELS[getOrderStatus(order)] }}
               </Badge>
+              <p v-if="order.paymentStatus === 'paid' && order.paymentMethod" class="mt-1 text-xs text-muted-foreground">
+                Paid by {{ PAYMENT_METHOD_LABELS[order.paymentMethod].toLowerCase() }}
+              </p>
             </TableCell>
             <TableCell class="text-center">
               <div class="flex flex-col gap-0.5">
@@ -673,10 +678,16 @@ function exportCSV() {
                     <Icon name="lucide:x-circle" class="mr-2 h-4 w-4" />
                     Decline Request
                   </DropdownMenuItem>
-                  <DropdownMenuItem v-if="order.paymentStatus === 'awaiting_payment'" @click="markPaid(order.id, 'manual'); toast.success('Payment recorded.')">
-                    <Icon name="lucide:wallet" class="mr-2 h-4 w-4 text-emerald-500" />
-                    Record Payment
+                  <DropdownMenuItem v-if="order.paymentStatus === 'awaiting_payment'" @click="markPaid(order.id, 'link'); toast.success('Guest paid the payment link.')">
+                    <Icon name="lucide:badge-check" class="mr-2 h-4 w-4 text-emerald-500" />
+                    Simulate guest payment
                   </DropdownMenuItem>
+                  <template v-if="order.paymentStatus === 'awaiting_payment' || (order.paymentStatus === 'unpaid' && order.approvalStatus === 'requested')">
+                    <DropdownMenuItem v-for="m in RECORD_PAYMENT_METHODS" :key="m.value" @click="markPaid(order.id, m.value); toast.success('Payment recorded.')">
+                      <Icon :name="m.icon" class="mr-2 h-4 w-4 text-emerald-500" />
+                      Paid by {{ m.value === 'manual' ? 'other' : m.label.toLowerCase() }}
+                    </DropdownMenuItem>
+                  </template>
                   <DropdownMenuItem v-if="order.paymentStatus === 'paid' && order.fulfillmentStatus === 'not_started'" @click="handleStatusChange(order.id, 'paid_in_progress')">
                     <Icon name="lucide:loader-2" class="mr-2 h-4 w-4 text-cyan-500" />
                     Start Fulfillment

@@ -65,3 +65,6 @@
 - Cancellation: staff cancel = 100% refund; guest cancel depends on policy timing
 - Upsell offers embedded in chat via `UpsellOfferCard` component (not separate notification)
 - Order drawer reactivity: use computed lookup from `useUpsellOrders` state, not prop snapshot
+
+- **Recording a payment without the link**: `RECORD_PAYMENT_METHODS` / `PAYMENT_METHOD_LABELS` in `upsell-orders.ts` (cash, card, other = `'manual'`). The drawer's Record Payment button is a dropdown and the table menu has one "Paid by ..." item per method; both call `markPaid(id, method)`. Available on `awaiting_payment` orders and on still-`requested` unpaid orders (cash up front approves and settles in one step). The drawer shows "Paid by ..." once paid.
+- **Simulate guest payment** (mock): on `awaiting_payment` orders, the drawer button and the table menu item call `markPaid(id, 'link')`, standing in for the gateway webhook. It shows as "Paid by payment link".
