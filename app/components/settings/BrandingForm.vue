@@ -11,11 +11,11 @@ import {
   createDefaultTenantBranding,
   isHexColor,
   normalizeHex,
+  resolveButtonColor,
 } from '~/components/settings/data/branding'
 import { useTenantBranding } from '~/composables/useTenantBranding'
-import { contrastRatio } from '~/lib/branding-colors'
+import { contrastRatio, getReadableForeground } from '~/lib/branding-colors'
 import BrandingAssetField from './BrandingAssetField.vue'
-import BrandingPreview from './BrandingPreview.vue'
 
 const { branding, isHydrated, saveBranding, syncGuestGuideBranding } = useTenantBranding()
 const draft = ref<TenantBranding>(cloneTenantBranding(branding.value))
@@ -55,8 +55,12 @@ const colorErrors = computed(() => {
   }
   return errors
 })
+const buttonColorError = computed(() =>
+  isHexColor(draft.value.buttonColor) ? '' : 'Use a six-digit hex value such as #F6BB12.')
+const previewButtonColor = computed(() => resolveButtonColor(draft.value))
 const hasBlockingError = computed(() =>
   Object.values(colorErrors.value).some(Boolean)
+  || Boolean(buttonColorError.value)
   || Object.values(assetErrors.value).some(Boolean),
 )
 const hasContrastWarning = computed(() => {
@@ -70,6 +74,10 @@ function setColor(key: keyof GuestGuideBrandColors, value: string) {
     ...draft.value,
     guestGuideColors: { ...draft.value.guestGuideColors, [key]: value },
   }
+}
+
+function setButtonColor(value: string) {
+  draft.value = { ...draft.value, buttonColor: value }
 }
 
 function setAssetError(kind: BrandingAssetKind, hasError: boolean) {
@@ -100,6 +108,7 @@ async function handleSave() {
         background: normalizeHex(draft.value.guestGuideColors.background),
         text: normalizeHex(draft.value.guestGuideColors.text),
       },
+      buttonColor: normalizeHex(draft.value.buttonColor ?? ''),
     }
     const result = await saveBranding(normalized)
 
@@ -138,8 +147,8 @@ async function handleSave() {
   </div>
   <Separator />
 
-  <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-    <div class="space-y-6">
+  <div>
+    <div class="max-w-2xl space-y-6">
       <section class="space-y-4">
         <div>
           <h4 class="font-medium">
@@ -195,6 +204,44 @@ async function handleSave() {
         </div>
       </section>
 
+      <section class="space-y-2 rounded-lg border bg-card p-5">
+        <div>
+          <h4 class="font-medium">
+            Button color
+          </h4>
+          <p class="text-sm text-muted-foreground">
+            The color of your main action buttons. The label turns black or white to stay readable.
+          </p>
+        </div>
+        <Label for="button-hex">Button color</Label>
+        <div class="flex gap-2">
+          <input
+            aria-label="Button color picker"
+            type="color"
+            :value="previewButtonColor"
+            class="size-10 shrink-0 cursor-pointer rounded-md border bg-background p-1"
+            @input="setButtonColor(($event.target as HTMLInputElement).value.toUpperCase())"
+          >
+          <Input
+            id="button-hex"
+            data-testid="button-hex-input"
+            :model-value="draft.buttonColor"
+            maxlength="7"
+            class="font-mono uppercase"
+            @update:model-value="setButtonColor(String($event))"
+          />
+        </div>
+        <p v-if="buttonColorError" role="alert" class="text-sm text-destructive">
+          {{ buttonColorError }}
+        </p>
+        <span
+          class="inline-flex h-9 items-center rounded-md px-4 text-sm font-medium shadow-xs"
+          :style="{ backgroundColor: previewButtonColor, color: getReadableForeground(previewButtonColor) }"
+        >
+          Preview button
+        </span>
+      </section>
+
       <div class="flex flex-wrap gap-2">
         <Button data-testid="save-branding" type="button" :disabled="!canSave" @click="handleSave">
           <Icon v-if="isSaving" name="lucide:loader-2" class="mr-2 size-4 animate-spin" />
@@ -209,10 +256,6 @@ async function handleSave() {
           Reset to Elev8 defaults
         </Button>
       </div>
-    </div>
-
-    <div class="min-w-0 xl:sticky xl:top-20 xl:self-start">
-      <BrandingPreview :branding="draft" />
     </div>
   </div>
 </template>

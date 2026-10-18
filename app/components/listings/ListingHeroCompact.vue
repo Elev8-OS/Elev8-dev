@@ -6,10 +6,14 @@ import { listingSetupProgress } from '~/components/listings/data/listing-setup-p
 import { allTags, getUnitById, getUnits, listings } from '~/components/listings/data/listings'
 import ListingAiScheduleSheet from '~/components/listings/ListingAiScheduleSheet.vue'
 import ListingAssignedUsers from '~/components/listings/ListingAssignedUsers.vue'
+import ListingCopyInfoDialog from '~/components/listings/ListingCopyInfoDialog.vue'
 import ListingPhotosEditor from '~/components/listings/ListingPhotosEditor.vue'
+import ListingTagManagerDialog from '~/components/listings/ListingTagManagerDialog.vue'
 
 const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
+const copyInfoOpen = ref(false)
+const tagManagerOpen = ref(false)
 const router = useRouter()
 
 const setupProgress = computed(() => listingSetupProgress(props.listing))
@@ -353,6 +357,12 @@ const filteredListingsForSwitch = computed(() => {
                     </p>
                   </div>
                 </ScrollArea>
+                <div class="border-t p-1">
+                  <Button variant="ghost" size="sm" class="h-8 w-full justify-start gap-2 text-xs" data-testid="manage-tags" @click="tagPopoverOpen = false; tagManagerOpen = true">
+                    <Icon name="lucide:settings-2" class="size-3.5" />
+                    Manage tags
+                  </Button>
+                </div>
               </PopoverContent>
             </Popover>
           </div>
@@ -361,6 +371,10 @@ const filteredListingsForSwitch = computed(() => {
         <!-- Action buttons -->
         <div class="flex items-center gap-2 mt-auto self-end">
           <ListingAssignedUsers :listing="listing" />
+          <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" data-testid="listing-copy-info" @click="copyInfoOpen = true">
+            <Icon name="lucide:copy" class="size-4" />
+            Copy info
+          </Button>
           <Button variant="outline" size="sm" class="h-9 gap-2 px-3 text-sm" as-child>
             <NuxtLink
               :to="`/listings/${listing.id}/setup`"
@@ -485,5 +499,7 @@ const filteredListingsForSwitch = computed(() => {
     </Dialog>
 
     <ListingAiScheduleSheet v-model:open="showScheduleSheet" :listing="listing" @update="emit('update', $event)" />
+    <ListingCopyInfoDialog v-model:open="copyInfoOpen" :listing="listing" />
+    <ListingTagManagerDialog v-model:open="tagManagerOpen" :listing="listing" @update="emit('update', $event)" />
   </div>
 </template>

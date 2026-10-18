@@ -1,6 +1,7 @@
 import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
 import type { ListingGuideContent } from '~/components/listings/data/guest-guide-content'
+import type { CheckinStepsVisibility } from '~/components/listings/data/checkin-steps-visibility'
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
 import type { ListingAddress } from '~/components/listings/data/listing-address'
 import type { AvoidTopic } from '~/components/listings/data/listing-avoid-topics'
@@ -616,6 +617,8 @@ export interface Listing {
   guestGuide?: ListingGuideContent
   /** Pre-arrival guest verification, set in the Guest Guide tab. Read through `listingGuestVerification`. */
   guestVerification?: GuestVerificationSettings
+  /** When guests see the check-in steps, set in the Guest Guide tab. Read through `listingCheckinStepsVisibility`. */
+  checkinStepsVisibility?: CheckinStepsVisibility
   /** Pets allowed, and the pet packages (Pet upsells) offered. Read through `listingPetPolicy`. */
   petPolicy?: PetPolicy
   /** Extra tabs on the listing detail page, each a web page shown in a frame. Read through `listingCustomTabs`. */

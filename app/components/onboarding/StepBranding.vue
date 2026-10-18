@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { GuestGuideBrandColors, TenantBranding } from '~/components/settings/data/branding'
+import { DEFAULT_ACTION_COLOR } from '~/components/onboarding/data/onboarding'
 import SettingsBrandingAssetField from '~/components/settings/BrandingAssetField.vue'
 import {
   cloneTenantBranding,
   isHexColor,
   normalizeHex,
 } from '~/components/settings/data/branding'
-import { contrastRatio } from '~/lib/branding-colors'
+import { contrastRatio, getReadableForeground } from '~/lib/branding-colors'
 
 const emit = defineEmits<{ (e: 'next'): void, (e: 'back'): void }>()
 
@@ -17,10 +18,17 @@ const draft = ref<TenantBranding>(cloneTenantBranding(branding.value))
 const isSaving = ref(false)
 const assetErrors = ref({ primaryLogo: false, favicon: false, invoiceLogo: false })
 
-// Initialize with onboarding state actionColor if set
-if (state.value.actionColor && isHexColor(state.value.actionColor)) {
-  draft.value.guestGuideColors.primary = normalizeHex(state.value.actionColor)
-}
+/** The button color is its own choice, separate from the Guest Guide primary. */
+const buttonColor = ref(
+  isHexColor(branding.value.buttonColor)
+    ? normalizeHex(branding.value.buttonColor)
+    : state.value.actionColor && isHexColor(state.value.actionColor)
+      ? normalizeHex(state.value.actionColor)
+      : DEFAULT_ACTION_COLOR,
+)
+const buttonColorValid = computed(() => isHexColor(buttonColor.value))
+const previewButtonColor = computed(() => buttonColorValid.value ? normalizeHex(buttonColor.value) : DEFAULT_ACTION_COLOR)
+const previewButtonForeground = computed(() => getReadableForeground(previewButtonColor.value))
 
 const colorFields: Array<{ key: keyof GuestGuideBrandColors, label: string, description: string }> = [
   { key: 'primary', label: 'Primary color', description: 'Used for buttons, links, and accents.' },
@@ -41,6 +49,7 @@ async function persist(): Promise<void> {
   isSaving.value = true
   const normalized: TenantBranding = {
     ...cloneTenantBranding(draft.value),
+    buttonColor: previewButtonColor.value,
     guestGuideColors: {
       primary: isHexColor(draft.value.guestGuideColors.primary) ? normalizeHex(draft.value.guestGuideColors.primary) : '#F6BB12',
       background: isHexColor(draft.value.guestGuideColors.background) ? normalizeHex(draft.value.guestGuideColors.background) : '#FFFFFF',
@@ -53,7 +62,7 @@ async function persist(): Promise<void> {
 
 async function onContinue(): Promise<void> {
   await persist()
-  saveBranding(draft.value.guestGuideColors.primary)
+  saveBranding(previewButtonColor.value)
   emit('next')
 }
 </script>
@@ -126,6 +135,40 @@ async function onContinue(): Promise<void> {
               class="font-mono uppercase text-xs"
               @update:model-value="setColor(field.key, String($event))"
             />
+          </div>
+        </div>
+
+        <div class="space-y-1.5 border-t border-border/60 pt-4">
+          <Label for="ob-brand-button" class="text-xs font-medium">Button color</Label>
+          <p class="text-[11px] text-muted-foreground">
+            The color of your main action buttons. The label turns black or white to stay readable.
+          </p>
+          <div class="flex gap-2">
+            <input
+              id="ob-brand-button"
+              type="color"
+              :value="previewButtonColor"
+              class="size-9 shrink-0 cursor-pointer rounded-md border bg-background p-1"
+              aria-label="Button color picker"
+              @input="buttonColor = ($event.target as HTMLInputElement).value.toUpperCase()"
+            >
+            <Input
+              v-model="buttonColor"
+              maxlength="7"
+              class="font-mono uppercase text-xs"
+              :aria-invalid="!buttonColorValid"
+            />
+          </div>
+          <p v-if="!buttonColorValid" class="text-[11px] text-destructive">
+            Enter a 6 digit hex color, like #F6BB12.
+          </p>
+          <div class="flex items-center gap-3 pt-1">
+            <span
+              class="inline-flex h-9 items-center rounded-md px-4 text-sm font-medium shadow-xs"
+              :style="{ backgroundColor: previewButtonColor, color: previewButtonForeground }"
+            >
+              Preview button
+            </span>
           </div>
         </div>
 

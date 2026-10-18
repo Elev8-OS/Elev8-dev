@@ -18,6 +18,8 @@ export interface TenantBranding {
   favicon: BrandingAsset | null
   invoiceLogo: BrandingAsset | null
   guestGuideColors: GuestGuideBrandColors
+  /** Color of the main action buttons. Optional so branding saved before it existed stays valid. */
+  buttonColor?: string
   updatedAt: string
 }
 
@@ -35,12 +37,19 @@ export const DEFAULT_GUEST_GUIDE_COLORS: GuestGuideBrandColors = {
   text: '#18181B',
 }
 
+export const DEFAULT_BUTTON_COLOR = '#F6BB12'
+
+export function resolveButtonColor(branding: Pick<TenantBranding, 'buttonColor'>): string {
+  return isHexColor(branding.buttonColor) ? normalizeHex(branding.buttonColor) : DEFAULT_BUTTON_COLOR
+}
+
 export function createDefaultTenantBranding(): TenantBranding {
   return {
     primaryLogo: null,
     favicon: null,
     invoiceLogo: null,
     guestGuideColors: { ...DEFAULT_GUEST_GUIDE_COLORS },
+    buttonColor: DEFAULT_BUTTON_COLOR,
     updatedAt: '',
   }
 }
@@ -51,12 +60,13 @@ export function cloneTenantBranding(value: TenantBranding): TenantBranding {
     favicon: value.favicon ? { ...value.favicon } : null,
     invoiceLogo: value.invoiceLogo ? { ...value.invoiceLogo } : null,
     guestGuideColors: { ...value.guestGuideColors },
+    buttonColor: resolveButtonColor(value),
     updatedAt: value.updatedAt,
   }
 }
 
 export function isHexColor(value: unknown): value is string {
-  return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value)
+  return typeof value === 'string' && /^#[0-9A-F]{6}$/i.test(value)
 }
 
 export function normalizeHex(value: string): string {
@@ -68,7 +78,8 @@ function isBrandingAsset(
   allowedTypes: string[],
   maxSize: number,
 ): value is BrandingAsset {
-  if (!value || typeof value !== 'object') return false
+  if (!value || typeof value !== 'object')
+    return false
   const asset = value as Record<string, unknown>
   return typeof asset.name === 'string'
     && typeof asset.type === 'string'
@@ -81,7 +92,8 @@ function isBrandingAsset(
 }
 
 export function isTenantBranding(value: unknown): value is TenantBranding {
-  if (!value || typeof value !== 'object') return false
+  if (!value || typeof value !== 'object')
+    return false
   const branding = value as Record<string, any>
   const colors = branding.guestGuideColors
   const logoTypes = ['image/png', 'image/jpeg', 'image/webp']
@@ -93,6 +105,7 @@ export function isTenantBranding(value: unknown): value is TenantBranding {
     && isHexColor(colors.primary)
     && isHexColor(colors.background)
     && isHexColor(colors.text)
+    && (branding.buttonColor === undefined || isHexColor(branding.buttonColor))
     && typeof branding.updatedAt === 'string'
 }
 

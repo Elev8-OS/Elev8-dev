@@ -52,6 +52,16 @@ function toggleRevenueManagement(): void {
 const selectedPerBooking = computed(() =>
   PER_BOOKING_PLANS.find(p => p.code === perBookingCode.value) ?? null)
 
+const planLabel = computed(() => pricingModel.value === 'per_unit'
+  ? `${perUnitPlan.value.name}, ${perUnitBillable.value} ${perUnitBillable.value === 1 ? 'unit' : 'units'} billed ${billingCycle.value}`
+  : selectedPerBooking.value
+    ? `${selectedPerBooking.value.name}, ${selectedPerBooking.value.quota.toLocaleString('en-US')} bookings`
+    : '')
+const planTotal = computed(() => pricingModel.value === 'per_unit'
+  ? perUnitTotal.value
+  : selectedPerBooking.value ? perBookingAmount(selectedPerBooking.value, model.value) : 0)
+const grandTotal = computed(() => planTotal.value + (revenueManagement.value ? addOnAmount.value : 0))
+
 const canContinue = computed(() =>
   pricingModel.value === 'per_unit' ? unitCount.value >= 1 : Boolean(perBookingCode.value))
 
@@ -248,35 +258,6 @@ function submit(): void {
             </div>
           </div>
         </div>
-
-        <!-- Summary box -->
-        <div class="rounded-xl border border-border/80 bg-muted/30 p-4">
-          <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <p class="text-sm font-semibold text-foreground">
-              {{ perUnitPlan.name }}, {{ perUnitBillable }} {{ perUnitBillable === 1 ? 'unit' : 'units' }} billed {{ billingCycle }}
-            </p>
-            <p class="text-xl font-bold tabular-nums text-foreground">
-              {{ formatPrice(perUnitTotal) }}
-            </p>
-          </div>
-          <p v-if="perUnitBillable > unitCount" class="mt-1 text-xs text-muted-foreground">
-            {{ perUnitPlan.name }} bills a minimum of {{ perUnitPlan.floor }} units, so you are charged for
-            {{ perUnitBillable }} even though you run {{ unitCount }}.
-          </p>
-          <p class="mt-1 text-xs text-muted-foreground">
-            Charged every {{ billingCycle === 'yearly' ? 'year' : 'month' }} until you cancel.
-          </p>
-        </div>
-
-        <!-- Contract terms notice -->
-        <div class="flex gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5">
-          <Icon name="lucide:file-text" class="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-          <p class="text-xs leading-relaxed text-amber-900 dark:text-amber-200">
-            Per unit plans run on a {{ PER_UNIT_CONTRACT_MONTHS }} month contract. Cancelling before the
-            term ends means paying out the remaining months. Switch to per booking if you would rather
-            not commit.
-          </p>
-        </div>
       </TabsContent>
 
       <!-- ── Per booking ──────────────────────────────────────────────── -->
@@ -339,30 +320,6 @@ function submit(): void {
               </dl>
             </div>
           </div>
-        </div>
-
-        <div v-if="selectedPerBooking" class="rounded-xl border border-border/80 bg-muted/30 p-4">
-          <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <p class="text-sm font-semibold text-foreground">
-              {{ selectedPerBooking.name }}, {{ selectedPerBooking.quota.toLocaleString('en-US') }} bookings
-            </p>
-            <p class="text-xl font-bold tabular-nums text-foreground">
-              {{ formatPrice(perBookingAmount(selectedPerBooking, model)) }}
-            </p>
-          </div>
-          <p class="mt-1 text-xs text-muted-foreground">
-            Paid once. Your quota never expires and there is no contract.
-            {{ hasChannelManager(model) ? 'This rate includes channel connections from ELEV8.' : 'This rate is for running ELEV8 alongside your current system.' }}
-          </p>
-        </div>
-
-        <div class="flex gap-2.5 rounded-xl border border-border/60 bg-muted/30 p-3.5">
-          <Icon name="lucide:refresh-cw" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <p class="text-xs leading-relaxed text-muted-foreground">
-            Auto refill keeps you running. We email a warning at {{ percent(PER_BOOKING_WARNING_THRESHOLD) }}
-            of your quota remaining, and at {{ percent(PER_BOOKING_REFILL_THRESHOLD) }} we buy the same
-            package again and charge your saved card.
-          </p>
         </div>
       </TabsContent>
     </Tabs>
@@ -442,5 +399,73 @@ function submit(): void {
         </p>
       </div>
     </section>
+
+    <template v-if="pricingModel === 'per_unit'">
+      <!-- Contract terms notice -->
+      <div class="flex gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5">
+        <Icon name="lucide:file-text" class="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+        <p class="text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+          Per unit plans run on a {{ PER_UNIT_CONTRACT_MONTHS }} month contract. Cancelling before the
+          term ends means paying out the remaining months. Switch to per booking if you would rather
+          not commit.
+        </p>
+      </div>
+    </template>
+    <template v-else>
+      <div class="flex gap-2.5 rounded-xl border border-border/60 bg-muted/30 p-3.5">
+        <Icon name="lucide:refresh-cw" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <p class="text-xs leading-relaxed text-muted-foreground">
+          Auto refill keeps you running. We email a warning at {{ percent(PER_BOOKING_WARNING_THRESHOLD) }}
+          of your quota remaining, and at {{ percent(PER_BOOKING_REFILL_THRESHOLD) }} we buy the same
+          package again and charge your saved card.
+        </p>
+      </div>
+    </template>
+
+    <!-- ── Total ──────────────────────────────────────────────────────── -->
+    <div class="rounded-xl border border-border/80 bg-muted/30 p-4">
+      <dl class="space-y-1.5 text-sm">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <dt class="font-semibold text-foreground">
+            {{ planLabel }}
+          </dt>
+          <dd class="tabular-nums font-medium text-foreground">
+            {{ formatPrice(planTotal) }}
+          </dd>
+        </div>
+        <div v-if="revenueManagement" class="flex flex-wrap items-baseline justify-between gap-2">
+          <dt class="text-muted-foreground">
+            {{ REVENUE_MANAGEMENT_ADDON.name }}, billed {{ addOnCycle }}
+          </dt>
+          <dd class="tabular-nums font-medium text-foreground">
+            {{ formatPrice(addOnAmount) }}
+          </dd>
+        </div>
+        <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-border/60 pt-2">
+          <dt class="font-semibold text-foreground">
+            Total
+          </dt>
+          <dd class="text-xl font-bold tabular-nums text-foreground">
+            {{ formatPrice(grandTotal) }}
+          </dd>
+        </div>
+      </dl>
+      <p v-if="pricingModel === 'per_unit' && perUnitBillable > unitCount" class="mt-2 text-xs text-muted-foreground">
+        {{ perUnitPlan.name }} bills a minimum of {{ perUnitPlan.floor }} units, so you are charged for
+        {{ perUnitBillable }} even though you run {{ unitCount }}.
+      </p>
+      <p class="mt-2 text-xs text-muted-foreground">
+        <template v-if="pricingModel === 'per_unit'">
+          Charged every {{ billingCycle === 'yearly' ? 'year' : 'month' }} until you cancel.
+        </template>
+        <template v-else-if="selectedPerBooking">
+          Package paid once. Your quota never expires and there is no contract.
+          {{ hasChannelManager(model) ? 'This rate includes channel connections from ELEV8.' : 'This rate is for running ELEV8 alongside your current system.' }}
+          <template v-if="revenueManagement">
+            Revenue Management is billed monthly.
+          </template>
+        </template>
+      </p>
+    </div>
   </form>
 </template>
