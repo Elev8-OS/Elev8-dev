@@ -56,6 +56,7 @@ const view = computed(() => props.reservation && newDate.value
   : null)
 const quote = computed(() => view.value?.quote ?? null)
 const isLinked = computed(() => view.value?.mode === 'linked_booking')
+const isDirect = computed(() => props.reservation?.channel === 'Direct')
 /** The boundary that moves: the current check-out, or the current check-in. */
 const anchor = computed(() => view.value?.anchor ?? (isBefore.value ? props.reservation?.checkIn : props.reservation?.checkOut) ?? '')
 
@@ -330,8 +331,11 @@ async function confirm() {
 
           <Alert v-if="isLinked" data-testid="extend-ota-notice">
             <Icon name="lucide:link-2" class="size-4" />
-            <AlertTitle>Booked on {{ reservation.channel }}</AlertTitle>
-            <AlertDescription>
+            <AlertTitle>{{ isDirect ? 'Added as a linked booking' : `Booked on ${reservation.channel}` }}</AlertTitle>
+            <AlertDescription v-if="isDirect">
+              The reservation stays unchanged. The extra nights {{ isBefore ? 'before it ' : '' }}become a new booking linked to it, with its own price and payment.
+            </AlertDescription>
+            <AlertDescription v-else>
               The {{ reservation.channel }} reservation stays unchanged. The extra nights {{ isBefore ? 'before it ' : '' }}become a direct booking linked to it, billed by you.
             </AlertDescription>
           </Alert>

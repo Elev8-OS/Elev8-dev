@@ -5,8 +5,8 @@ import type { GuestProfile, ReservationEntry, ReservationStatus, StayExtension }
  * Demo stays with extensions, so the extension icon, the linked child rows,
  * the "Extended" / "Unpaid extension" filters and the export's period split
  * all have something to show on first load. Shaped exactly like what
- * `extendReservation` (Direct, in place) and `extendViaLinkedBooking` (OTA,
- * linked Direct booking) write. See docs/claude/stay-extension.md.
+ * `extendViaLinkedBooking` writes: every channel, Direct included, adds the
+ * nights as a linked Direct booking. See docs/claude/stay-extension.md.
  *
  * Dates are RELATIVE TO TODAY, computed at module load (same rule as
  * damage-protection-demo.ts). The month-crossing stay is anchored to the end
@@ -68,9 +68,10 @@ const base = {
   guestInfants: 0,
 }
 
-// --- 1. Direct, in place, paid, crossing the month end -----------------------
+// --- 1. Direct, linked booking, paid, crossing the month end ----------------
 // Booked 29th to the 1st (3 nights), extended to the 3rd: the two added nights
-// fall in next month. The case the export's "in period" columns exist for.
+// are their own linked booking and fall in next month. The case the export's
+// "in period" columns exist for.
 
 const crossIn = fromMonthEnd(-2)
 const crossOut0 = fromMonthEnd(1)
@@ -88,11 +89,11 @@ const directCrossing: ReservationEntry = {
   listingName: 'Volcano View Villa Kintamani',
   channel: 'Direct',
   checkIn: crossIn,
-  checkOut: crossOut,
-  nights: 5,
-  totalPrice: 800,
+  checkOut: crossOut0,
+  nights: 3,
+  totalPrice: 500,
   currency: 'USD',
-  priceDetails: { subtotal: 750, cleaningFee: 50, serviceFee: 0, tax: 0, extras: 0, guestPaid: 800, commission: 0, payout: 800 },
+  priceDetails: { subtotal: 450, cleaningFee: 50, serviceFee: 0, tax: 0, extras: 0, guestPaid: 500, commission: 0, payout: 500 },
   status: statusFor(crossIn, crossOut),
   extensions: [
     extension({
@@ -106,18 +107,49 @@ const directCrossing: ReservationEntry = {
       paymentMethod: 'already_paid',
       paymentStatus: 'paid',
       paidAt: iso(-1),
+      linkedReservationId: 'res-ext-direct-paid-x1',
       createdAt: iso(-1),
     }),
   ],
   activity: [
     event('act-ext-1-created', 'Reservation created', `Direct booking, ${crossIn} to ${crossOut0}`, iso(-20)),
-    event('act-ext-1-extend', 'Stay extended', `2 nights added, check-out moved from ${crossOut0} to ${crossOut} · USD 300.00`, iso(-1)),
+    event('act-ext-1-extend', 'Stay extended', `2 nights added from ${crossOut0} to ${crossOut} as direct booking res-ext-direct-paid-x1, the Direct reservation is unchanged · USD 300.00`, iso(-1)),
   ],
 }
 
-// --- 2. Direct, in place, in house, payment pending -------------------------
-// The amber icon and the "Unpaid extension" filter. guestPaid has not moved:
-// it waits for "Mark paid".
+/** The added nights of a Direct stay: their own Direct booking, linked to the stay. */
+function directLinked(stay: ReservationEntry, id: string, checkIn: string, checkOut: string, nights: number, amount: number, paid: boolean, at: string): ReservationEntry {
+  return {
+    ...base,
+    id,
+    guestId: stay.guestId,
+    guestName: stay.guestName,
+    guestEmail: stay.guestEmail,
+    guestPhone: stay.guestPhone,
+    guestCountry: stay.guestCountry,
+    listingId: stay.listingId,
+    listingName: stay.listingName,
+    channel: 'Direct',
+    checkIn,
+    checkOut,
+    nights,
+    totalPrice: amount,
+    currency: stay.currency,
+    priceDetails: { subtotal: amount, cleaningFee: 0, serviceFee: 0, tax: 0, extras: 0, guestPaid: paid ? amount : 0, commission: 0, payout: amount },
+    status: stay.status,
+    bookingNote: `Extension of Direct reservation ${stay.id}.`,
+    extensionOf: stay.id,
+    activity: [
+      event(`act-${id}-created`, 'Created as an extension', `${nights} night${nights === 1 ? '' : 's'} added to Direct reservation ${stay.id}`, at),
+    ],
+  }
+}
+
+const directCrossingLinked = directLinked(directCrossing, 'res-ext-direct-paid-x1', crossOut0, crossOut, 2, 300, true, iso(-1))
+
+// --- 2. Direct, linked booking, in house, payment pending -------------------
+// The amber icon and the "Unpaid extension" filter. The linked booking's
+// guestPaid waits for "Mark paid".
 
 const pendingIn = day(-3)
 const pendingOut0 = day(1)
@@ -135,11 +167,11 @@ const directPending: ReservationEntry = {
   listingName: 'Villa Rice Terrace Jimbaran',
   channel: 'Direct',
   checkIn: pendingIn,
-  checkOut: pendingOut,
-  nights: 6,
-  totalPrice: 11_150_000,
+  checkOut: pendingOut0,
+  nights: 4,
+  totalPrice: 7_550_000,
   currency: 'IDR',
-  priceDetails: { subtotal: 10_800_000, cleaningFee: 350_000, serviceFee: 0, tax: 0, extras: 0, guestPaid: 7_550_000, commission: 0, payout: 11_150_000 },
+  priceDetails: { subtotal: 7_200_000, cleaningFee: 350_000, serviceFee: 0, tax: 0, extras: 0, guestPaid: 7_550_000, commission: 0, payout: 7_550_000 },
   status: statusFor(pendingIn, pendingOut),
   extensions: [
     extension({
@@ -152,14 +184,17 @@ const directPending: ReservationEntry = {
       currency: 'IDR',
       paymentMethod: 'payment_link',
       paymentStatus: 'pending',
+      linkedReservationId: 'res-ext-direct-pending-x1',
       createdAt: iso(0),
     }),
   ],
   activity: [
     event('act-ext-2-created', 'Reservation created', `Direct booking, ${pendingIn} to ${pendingOut0}`, iso(-14)),
-    event('act-ext-2-extend', 'Stay extended', `2 nights added, check-out moved from ${pendingOut0} to ${pendingOut} · IDR 3,600,000 (payment pending)`, iso(0)),
+    event('act-ext-2-extend', 'Stay extended', `2 nights added from ${pendingOut0} to ${pendingOut} as direct booking res-ext-direct-pending-x1, the Direct reservation is unchanged · IDR 3,600,000 (payment pending)`, iso(0)),
   ],
 }
+
+const directPendingLinked = directLinked(directPending, 'res-ext-direct-pending-x1', pendingOut0, pendingOut, 2, 3_600_000, false, iso(0))
 
 // --- 3. Airbnb, linked Direct booking, paid, past ---------------------------
 // The Airbnb booking is never rewritten; the added nights are their own
@@ -403,7 +438,9 @@ const earlyArrivalLinked: ReservationEntry = {
 
 export const stayExtensionDemoReservations: ReservationEntry[] = [
   directCrossing,
+  directCrossingLinked,
   directPending,
+  directPendingLinked,
   airbnbStay,
   airbnbLinked,
   bookingStay,

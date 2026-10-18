@@ -87,8 +87,7 @@ describe('extend reservation dialog', () => {
   it('starts one night out and quotes the added amount', async () => {
     const wrapper = await open(ReservationExtendDialog, live())
     expect(wrapper.text()).toContain('USD 200.00')
-    expect(wrapper.text()).toContain('USD 800.00')
-    expect(wrapper.find('[data-testid="extend-ota-notice"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="extend-ota-notice"]').text()).toContain('linked booking')
   })
 
   it('walks dates, payment and review, then extends with the payment pending', async () => {
@@ -100,9 +99,10 @@ describe('extend reservation dialog', () => {
     expect((wrapper.find('[data-testid="extend-message"]').element as HTMLTextAreaElement).value).toContain('payable at the property')
     await wrapper.find('[data-testid="extend-confirm"]').trigger('click')
     await flushPromises()
-    expect(live().checkOut).toBe('2030-03-06')
-    expect(live().totalPrice).toBe(1000)
-    expect(live().extensions?.[0]).toMatchObject({ extraNights: 2, paymentMethod: 'at_property', paymentStatus: 'pending' })
+    expect(live().checkOut).toBe('2030-03-04')
+    const linked = useReservationsModule().reservations.value.find(r => r.extensionOf === 'res-test-1')!
+    expect(linked).toMatchObject({ checkIn: '2030-03-04', checkOut: '2030-03-06', totalPrice: 400 })
+    expect(live().extensions?.[0]).toMatchObject({ extraNights: 2, paymentMethod: 'at_property', paymentStatus: 'pending', linkedReservationId: linked.id })
     expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false])
   })
 

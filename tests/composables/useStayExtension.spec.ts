@@ -67,12 +67,14 @@ describe('payment', () => {
     const ext = useStayExtension()
     const result = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'at_property' } })
     expect(result.success).toBe(true)
-    expect(find().priceDetails!.guestPaid).toBe(600)
-    expect(find().priceDetails!.payout).toBe(1000)
+    // The direct stay is never rewritten; the added nights bill on their own booking.
+    expect(find().priceDetails).toMatchObject({ guestPaid: 600, payout: 600 })
+    expect(find(result.linkedReservationId!).priceDetails!.guestPaid).toBe(0)
     expect(find().extensions![0]!.paymentStatus).toBe('pending')
 
     expect(ext.markExtensionPaid('res-x', result.extensionId!)).toBe(true)
-    expect(find().priceDetails!.guestPaid).toBe(1000)
+    expect(find().priceDetails!.guestPaid).toBe(600)
+    expect(find(result.linkedReservationId!).priceDetails!.guestPaid).toBe(400)
     expect(find().extensions![0]!.paymentStatus).toBe('paid')
     expect(ext.markExtensionPaid('res-x', result.extensionId!)).toBe(false)
   })
@@ -102,8 +104,9 @@ describe('payment', () => {
     seed(stay({ damageProtection: { card: { provider: 'stripe', paymentMethodId: 'pm_1', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2031, savedAt: '2030-01-01' } } as ReservationEntry['damageProtection'] }))
     const pending = useStayExtension().confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-05', payment: { method: 'saved_card' } })
     await vi.advanceTimersByTimeAsync(SAVED_CARD_CHARGE_MS)
-    expect((await pending).success).toBe(true)
-    expect(find().priceDetails!.guestPaid).toBe(800)
+    const result = await pending
+    expect(result.success).toBe(true)
+    expect(find(result.linkedReservationId!).priceDetails!.guestPaid).toBe(200)
     expect(find().extensions![0]).toMatchObject({ paymentMethod: 'saved_card', paymentStatus: 'paid' })
   })
 
@@ -253,13 +256,14 @@ describe('extension filter', () => {
     const ids = () => filteredReservations.value.map(r => r.id).sort()
 
     filters.value = { ...filters.value, extension: 'extended' }
-    expect(ids()).toEqual([pending.linkedReservationId!, 'res-paid', 'res-x'].sort())
+    const paid = find('res-paid').extensions![0]!.linkedReservationId!
+    expect(ids()).toEqual([pending.linkedReservationId!, paid, 'res-paid', 'res-x'].sort())
 
     filters.value = { ...filters.value, extension: 'unpaid' }
     expect(ids()).toEqual([pending.linkedReservationId!, 'res-x'].sort())
 
     filters.value = { ...filters.value, extension: 'all' }
-    expect(ids()).toHaveLength(4)
+    expect(ids()).toHaveLength(5)
   })
 })
 
@@ -268,12 +272,12 @@ describe('early arrival', () => {
     return stay({ id: 'res-other', guestName: 'Ben Ode', checkIn: '2030-02-25', checkOut: '2030-02-27', ...over })
   }
 
-  it('moves a direct stay\'s check-in back in place and records it as an early arrival', async () => {
+  it('books the nights before a direct stay as a linked booking and leaves the stay alone', async () => {
     seed(stay())
     const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', direction: 'before', checkIn: '2030-02-27', payment: { method: 'already_paid' } })
     expect(result.success).toBe(true)
-    expect(find()).toMatchObject({ checkIn: '2030-02-27', checkOut: '2030-03-04', nights: 5, totalPrice: 1000 })
-    expect(find().priceDetails!.guestPaid).toBe(1000)
+    expect(find()).toMatchObject({ checkIn: '2030-03-01', checkOut: '2030-03-04', nights: 3, totalPrice: 600 })
+    expect(find(result.linkedReservationId!)).toMatchObject({ channel: 'Direct', extensionOf: 'res-x', checkIn: '2030-02-27', checkOut: '2030-03-01', nights: 2, totalPrice: 400 })
     expect(find().extensions![0]).toMatchObject({ direction: 'before', previousCheckIn: '2030-03-01', newCheckIn: '2030-02-27', extraNights: 2 })
     expect(find().extensions![0]!.newCheckOut).toBeUndefined()
   })
@@ -338,13 +342,11 @@ describe('early arrival', () => {
     expect(useCleaningJobs().jobs.value.find(j => j.id === 'cln-1')!.scheduledAt).toBe('2030-03-04T11:00:00+08:00')
   })
 
-  it('adds daily cleanings for the earlier nights and shifts the schedule start', async () => {
+  it('leaves the stay\'s own cleaning schedule alone and starts the linked booking\'s on its first night', async () => {
     seed(stay({ cleaningSchedule: { type: 'daily', startDate: '2030-03-01', time: '10:00' } }))
     const result = await useStayExtension().confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-27', payment: { method: 'already_paid' } })
-    expect(result.cleaningsAdded).toBe(2)
-    expect(find().cleaningSchedule!.startDate).toBe('2030-02-27')
-    const days = useCleaningJobs().jobs.value.filter(j => j.reservationId === 'res-x').map(j => j.scheduledAt.slice(0, 10)).sort()
-    expect(days).toEqual(['2030-02-27', '2030-02-28'])
+    expect(find().cleaningSchedule!.startDate).toBe('2030-03-01')
+    expect(find(result.linkedReservationId!).cleaningSchedule!.startDate).toBe('2030-02-27')
   })
 
   it('drops the linked booking\'s check-out cleaning on the OTA check-in day: the guest stays on', async () => {
@@ -401,32 +403,34 @@ describe('cancelling', () => {
     expect(ext.markExtensionPaid('res-x', created.extensionId!)).toBe(false)
   })
 
-  it('puts an in-place extension back and leaves a paid one with a refund due', async () => {
+  it('cancels a paid direct extension and leaves it with a refund due', async () => {
     seed(stay())
     const ext = useStayExtension()
     const created = await ext.confirmExtension({ reservationId: 'res-x', checkOut: '2030-03-06', payment: { method: 'already_paid' } })
-    expect(find().priceDetails!.guestPaid).toBe(1000)
+    const linkedId = created.linkedReservationId!
+    expect(find(linkedId).priceDetails!.guestPaid).toBe(400)
 
     const result = await ext.cancelExtension('res-x', created.extensionId!)
     expect(result.refundsDue).toHaveLength(1)
+    expect(find(linkedId).status).toBe('cancelled')
     expect(find()).toMatchObject({ checkOut: '2030-03-04', nights: 3, totalPrice: 600 })
-    expect(find().priceDetails).toMatchObject({ subtotal: 600, payout: 600, guestPaid: 1000 })
+    expect(find(linkedId).priceDetails!.guestPaid).toBe(400)
     expect(find().extensions![0]!.refundStatus).toBe('due')
 
     expect(ext.markExtensionRefunded('res-x', created.extensionId!)).toBe(true)
-    expect(find().priceDetails!.guestPaid).toBe(600)
+    expect(find(linkedId).priceDetails!.guestPaid).toBe(0)
     expect(find().extensions![0]!.refundStatus).toBe('refunded')
     expect(ext.markExtensionRefunded('res-x', created.extensionId!)).toBe(false)
   })
 
-  it('takes an in-place early arrival back with its cleanings and door codes', async () => {
+  it('takes a direct early arrival back with its door codes', async () => {
     seed(stay({ cleaningSchedule: { type: 'daily', startDate: '2030-03-01', time: '10:00' } }))
     useSmartLock().codes.value = [code()]
     const ext = useStayExtension()
     const created = await ext.confirmExtension({ reservationId: 'res-x', checkIn: '2030-02-27', payment: { method: 'at_property' } })
 
     const result = await ext.cancelExtension('res-x', created.extensionId!)
-    expect(result).toMatchObject({ success: true, cleaningsCancelled: 2, codesRestored: 1 })
+    expect(result).toMatchObject({ success: true, codesRestored: 1, cancelledIds: [created.linkedReservationId] })
     expect(find()).toMatchObject({ checkIn: '2030-03-01', nights: 3, totalPrice: 600 })
     expect(find().cleaningSchedule!.startDate).toBe('2030-03-01')
     expect(useSmartLock().codes.value[0]).toMatchObject({ startsAt: '2030-03-01T06:00:00.000Z' })

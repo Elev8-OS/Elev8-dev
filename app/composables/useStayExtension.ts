@@ -40,7 +40,7 @@ export type ExtensionCityTaxImpact
     | { kind: 'linked_due', totals: CityTaxTotal[] }
 
 export interface StayExtensionPreview {
-  /** in_place: the stay's own check-out moves. linked_booking: an OTA stay, the nights become a direct booking. */
+  /** linked_booking: the nights become a direct booking linked to the stay. in_place: only older records, no new extension is written this way. */
   mode: 'in_place' | 'linked_booking'
   direction: ExtensionDirection
   /** Where the added nights start. */
@@ -109,9 +109,9 @@ export interface StayExtensionResult {
   guestNotified: boolean
 }
 
-/** Airbnb and Booking.com own their bookings' dates and price; only a direct stay is moved in place. */
-export function isOtaStay(r: Pick<ReservationEntry, 'channel'>): boolean {
-  return r.channel !== 'Direct'
+/** "Airbnb booking", or plain "booking" for a direct stay. */
+function bookingLabel(r: Pick<ReservationEntry, 'channel'>): string {
+  return r.channel === 'Direct' ? 'booking' : `${r.channel} booking`
 }
 
 export function canExtend(r: Pick<ReservationEntry, 'status'>): boolean {
@@ -161,7 +161,7 @@ export function defaultExtensionMessage(r: ReservationEntry, opts: {
       '',
       `Good news: you can arrive earlier at ${r.listingName}. Your new check-in is ${longDate(opts.checkOut)} (${n} more night${n === 1 ? '' : 's'}${totalNights ? `, ${totalNights} nights in total` : ''}).`,
       ...(opts.mode === 'linked_booking'
-        ? ['', `Your ${r.channel} booking stays exactly as it is. The extra nights before it are booked directly with us.`]
+        ? ['', `Your ${bookingLabel(r)} stays exactly as it is. The extra nights before it are booked directly with us.`]
         : []),
       '',
       payment[opts.method],
@@ -176,7 +176,7 @@ export function defaultExtensionMessage(r: ReservationEntry, opts: {
     '',
     `Good news: your stay at ${r.listingName} is extended. Your new check-out is ${longDate(opts.checkOut)} (${n} more night${n === 1 ? '' : 's'}${totalNights ? `, ${totalNights} nights in total` : ''}).`,
     ...(opts.mode === 'linked_booking'
-      ? ['', `Your ${r.channel} booking stays exactly as it is. The extra nights are booked directly with us.`]
+      ? ['', `Your ${bookingLabel(r)} stays exactly as it is. The extra nights are booked directly with us.`]
       : []),
     '',
     payment[opts.method],
@@ -233,7 +233,8 @@ export function useStayExtension() {
    * check-in (early arrival).
    */
   function preview(r: ReservationEntry, date: string, nightlyRate?: number, direction: ExtensionDirection = 'after'): StayExtensionPreview {
-    const mode = isOtaStay(r) ? 'linked_booking' : 'in_place'
+    // Every channel, Direct included, adds nights as a linked booking; the stay itself is never rewritten.
+    const mode: StayExtensionPreview['mode'] = 'linked_booking'
     const before = direction === 'before'
     const { from, to } = module.extensionRange(r, date, direction)
     const anchor = before ? to : from
@@ -245,8 +246,8 @@ export function useStayExtension() {
     const cleaningsToMove = before
       ? 0
       : cleaning.jobs.value.filter(j =>
-          j.reservationId === cleaningOwner && j.source === 'checkout' && j.status !== 'done' && j.status !== 'cancelled' && cleaningDateKey(j.scheduledAt) === from,
-        ).length
+        j.reservationId === cleaningOwner && j.source === 'checkout' && j.status !== 'done' && j.status !== 'cancelled' && cleaningDateKey(j.scheduledAt) === from,
+      ).length
     const hasNights = to > from
     return {
       mode,
@@ -577,7 +578,7 @@ export function useStayExtension() {
       before
         ? `Your early arrival at ${r.listingName} (${nights}) is cancelled. Your check-in stays on ${longDate(ext.previousCheckIn!)}.`
         : `Your extra ${nights} at ${r.listingName} are cancelled. Your check-out stays on ${longDate(ext.previousCheckOut!)}.`,
-      ...(ext.linkedReservationId ? ['', `Your ${r.channel} booking stays exactly as it is.`] : []),
+      ...(ext.linkedReservationId ? ['', `Your ${bookingLabel(r)} stays exactly as it is.`] : []),
       ...(payment ? ['', payment] : []),
       '',
       closing,

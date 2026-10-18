@@ -14,10 +14,14 @@ is possible: status not in `NON_EARLY_ARRIVAL_STATUSES` (checked in, checked out
 and at least tonight still free before the check-in. The new check-in runs from today to the
 night before the current one.
 
-- **Direct stay: in place.** `useReservationsModule().extendReservation` moves
-  `checkOut`, `nights`, `totalPrice`, per-night room lines, `subtotal` and `payout`.
-- **OTA stay (Airbnb, Booking.com): linked direct booking.** The channel owns the
-  booking's dates and price, so it is never rewritten. `extendViaLinkedBooking` creates
+- ⚠️ **Every stay, Direct included, extends through a linked booking** (product decision: Direct
+  used to be moved in place). The stay is never rewritten, so each added stretch has its own price,
+  payment and status. `useStayExtension.preview` always returns `mode: 'linked_booking'`.
+  `extendReservation` (in place) is still in `useReservationsModule` but nothing calls it; older
+  records and the in-place table rows (`inPlaceRows`) are only kept for data written before this.
+  The guest message and the dialog notice say "booking" instead of "Direct booking" for a Direct stay.
+- **Linked direct booking.** The channel (or the original booking) keeps its dates and price.
+  `extendViaLinkedBooking` creates
   a `Direct` reservation from `extensionStart(r)` to the new check-out, with
   `extensionOf: <ota id>`, per-night room lines only (a flat-rate line was paid on the OTA
   booking), and the parent's cleaning schedule. A second extension chains from the last
@@ -27,8 +31,7 @@ night before the current one.
   booking's `assignedUnitIds`, and `reservationUnitIds` returns lines and assignments together. Before
   this, an OTA stay in a flat-rate room got an extension with no room, which the Cockpit and the
   listing rooms timeline drew on "Not assigned to a room" instead of beside the stay.
-- **Early arrival** mirrors both: in place moves `checkIn` (and a daily/custom
-  `cleaningSchedule.startDate`, by the same number of days); for OTA the linked `Direct`
+- **Early arrival** works the same way: the linked `Direct`
   booking runs from the new check-in to `earlyArrivalEnd(r)` (the OTA check-in, or the earliest
   early-arrival booking). The two chains are independent: a stay can have both.
   `extensionRange(r, date, direction)` gives the added nights `[from, to)`; quote, conflicts
@@ -113,11 +116,11 @@ a linked booking is its own Direct line, and gross follows `guestPaid` (cash bas
 extension reaches the owner only once marked paid.
 
 **Demo seed** (`reservations/data/stay-extension-demo.ts`, dates relative to today, guest profiles
-included): a Direct stay extended in place across the month end (29th to the 3rd, paid), a Direct
-in-house stay with an unpaid extension, an Airbnb stay with a paid linked booking, a Booking.com
+included): a Direct stay with a paid linked booking across the month end (29th to the 3rd), a Direct
+in-house stay with an unpaid linked booking (`res-ext-direct-pending`, Wayan Prasetyo), an Airbnb stay with a paid linked booking, a Booking.com
 stay extended twice (chained, second unpaid), and an upcoming Airbnb stay with an unpaid early
 arrival (`res-ext-early`, linked `res-ext-early-x1`, lst-11). Single-unit listings lst-8, lst-11, lst-13, clear of
-other stays. ⚠️ Keep it shaped like what `extendReservation` / `extendViaLinkedBooking` write:
+other stays. ⚠️ Keep it shaped like what `extendViaLinkedBooking` writes:
 `tests/components/reservations/stay-extension-demo.spec.ts` checks the links, money and filters.
 
 **Not implemented:** no real OTA alteration request; no auto "paid" when a payment link is paid

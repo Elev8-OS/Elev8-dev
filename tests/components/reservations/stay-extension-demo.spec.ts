@@ -33,18 +33,6 @@ describe('stay extension demo seed', () => {
     }
   })
 
-  it('in-place extensions moved the stay the way extendReservation does', () => {
-    for (const id of ['res-ext-direct-paid', 'res-ext-direct-pending']) {
-      const r = byId(id)
-      const ext = r.extensions![0]!
-      const pd = r.priceDetails!
-      expect(r.checkOut).toBe(ext.newCheckOut)
-      expect(ext.amount).toBe(ext.nightlyRate * ext.extraNights)
-      expect(r.totalPrice).toBe(pd.subtotal + pd.cleaningFee)
-      expect(pd.guestPaid).toBe(ext.paymentStatus === 'paid' ? r.totalPrice : r.totalPrice - ext.amount)
-    }
-  })
-
   it('the early arrival ends on the Airbnb check-in and is still open to change', () => {
     const r = byId('res-ext-early')
     const linked = byId('res-ext-early-x1')
@@ -54,13 +42,14 @@ describe('stay extension demo seed', () => {
   })
 
   it('the month-crossing stay puts its added nights in next month', () => {
-    const r = byId('res-ext-direct-paid')
+    const r = byId('res-ext-direct-paid-x1')
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
     const next = new Date(now.getFullYear(), now.getMonth() + 1, 1)
     const nextMonth = { from: `${next.getFullYear()}-${pad(next.getMonth() + 1)}-01`, to: `${next.getFullYear()}-${pad(next.getMonth() + 1)}-28` }
     expect(nightsInPeriod(r, nextMonth)).toBe(2)
-    expect(nightsInPeriod(r, { from: '', to: '' })).toBe(5)
+    expect(nightsInPeriod(r, { from: '', to: '' })).toBe(2)
+    expect(nightsInPeriod(byId('res-ext-direct-paid'), nextMonth)).toBe(0)
   })
 
   it('no demo stay overlaps another stay on its listing', () => {
@@ -87,8 +76,9 @@ describe('stay extension demo seed', () => {
 
     filters.value.extension = 'unpaid'
     const unpaid = filteredReservations.value.map(r => r.id)
-    expect(unpaid).toEqual(expect.arrayContaining(['res-ext-direct-pending', 'res-ext-bdc', 'res-ext-bdc-x2', 'res-ext-early', 'res-ext-early-x1']))
+    expect(unpaid).toEqual(expect.arrayContaining(['res-ext-direct-pending', 'res-ext-direct-pending-x1', 'res-ext-bdc', 'res-ext-bdc-x2', 'res-ext-early', 'res-ext-early-x1']))
     expect(unpaid).not.toContain('res-ext-direct-paid')
+    expect(unpaid).not.toContain('res-ext-direct-paid-x1')
     expect(unpaid).not.toContain('res-ext-airbnb')
     expect(unpaid).not.toContain('res-ext-bdc-x1')
   })
