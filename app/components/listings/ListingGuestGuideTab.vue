@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { CheckinStepsVisibility } from '~/components/listings/data/checkin-steps-visibility'
 import type { GuideContentItem, GuideContentKind } from '~/components/listings/data/guest-guide-content'
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
 import type { RoomGuideKind } from '~/components/listings/data/listing-room-overrides'
@@ -6,11 +7,13 @@ import type { Listing } from '~/components/listings/data/listings'
 import type { PetPolicy } from '~/components/listings/data/pet-policy'
 import { toast } from 'vue-sonner'
 import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
+import { listingCheckinStepsVisibility } from '~/components/listings/data/checkin-steps-visibility'
 import { GUIDE_CONTENT_KINDS, GUIDE_CONTENT_META, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { guestVerificationShortLabel, listingGuestVerification } from '~/components/listings/data/guest-verification'
 import { copyGuideItemsToListings, removeGuideItems } from '~/components/listings/data/guide-bulk'
 import { isRoomGuideKind, roomGuideItems, setRoomGuideItems } from '~/components/listings/data/listing-room-overrides'
 import { listingPetPolicy } from '~/components/listings/data/pet-policy'
+import CheckinStepsVisibilityCard from '~/components/listings/guest-guide/CheckinStepsVisibilityCard.vue'
 import GuestVerificationSettingsCard from '~/components/listings/guest-guide/GuestVerificationSettingsCard.vue'
 import GuideItemRows from '~/components/listings/guest-guide/GuideItemRows.vue'
 import GuideSetupCopyDialog from '~/components/listings/guest-guide/GuideSetupCopyDialog.vue'
@@ -60,6 +63,13 @@ const petPolicy = computed(() => listingPetPolicy(props.listing))
 function savePetPolicy(policy: PetPolicy) {
   emit('update', { ...props.listing, petPolicy: policy })
   toast.success('Pet settings updated')
+}
+
+const checkinVisibility = computed(() => listingCheckinStepsVisibility(props.listing))
+
+function saveCheckinVisibility(settings: CheckinStepsVisibility) {
+  emit('update', { ...props.listing, checkinStepsVisibility: settings })
+  toast.success('Check-in steps visibility updated')
 }
 
 function saveVerification(settings: GuestVerificationSettings) {
@@ -335,6 +345,8 @@ function copySelected(targetIds: string[]) {
             Hidden in {{ assignedGuide?.title }}. Turn the section on in the guide to display it.
           </template>
         </p>
+
+        <CheckinStepsVisibilityCard v-if="selectedKind === 'checkin' && !room" :settings="checkinVisibility" @change="saveCheckinVisibility" />
 
         <!-- Property view: the property's items, editable, with Select mode. -->
         <template v-if="!room">
