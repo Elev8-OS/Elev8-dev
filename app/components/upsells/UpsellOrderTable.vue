@@ -307,7 +307,7 @@ const statusOptions = computed(() => [
 ])
 
 function exportCSV() {
-  const headers = ['Order ID', 'Guest', 'Listing', 'Reservation', 'Service', 'Items', 'Total', 'Currency', 'Status', 'Service Date', 'Order Date', 'Channel', 'Notes']
+  const headers = ['Order ID', 'Guest', 'Listing', 'Reservation', 'Service', 'Items', 'Total', 'Currency', 'Status', 'Payment Status', 'Paid By', 'Paid At', 'Service Date', 'Order Date', 'Channel', 'Notes']
   const rows = filteredOrders.value.map(o => [
     o.id,
     o.guestName,
@@ -318,6 +318,9 @@ function exportCSV() {
     o.grandTotal,
     o.currency,
     ORDER_STATUS_LABELS[getOrderStatus(o)],
+    o.paymentStatus === 'paid' ? 'Paid' : o.paymentStatus === 'awaiting_payment' ? 'Awaiting payment' : 'Unpaid',
+    o.paymentStatus === 'paid' && o.paymentMethod ? PAYMENT_METHOD_LABELS[o.paymentMethod] : '',
+    o.paidAt ? new Date(o.paidAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false }) : '',
     o.serviceEndDate ? `${o.serviceDate} – ${o.serviceEndDate}` : o.serviceDate,
     o.orderDate,
     o.channel,
