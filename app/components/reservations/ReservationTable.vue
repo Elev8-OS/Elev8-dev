@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { ReservationEntry, ReservationStatus } from '~/components/reservations/data/reservations'
 import { useResizeObserver, useScroll } from '@vueuse/core'
 import CityTaxStatusChip from '~/components/city-tax/CityTaxStatusChip.vue'
 import DamageProtectionStatusChip from '~/components/damage-protection/DamageProtectionStatusChip.vue'
 import { isActiveExtension } from '~/components/reservations/data/reservations'
 import ReservationGuestCell from '~/components/reservations/ReservationGuestCell.vue'
 import ReservationStatusBadge from '~/components/reservations/ReservationStatusBadge.vue'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useCityTax } from '~/composables/useCityTax'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
@@ -78,6 +79,15 @@ function isEarlyArrival(r: ReservationEntry): boolean {
   return Boolean(parent && r.checkOut <= parent.checkIn)
 }
 
+/** A linked booking whose extension is still unpaid is an inquiry, not the stay's status. */
+function rowStatus(r: ReservationEntry): ReservationStatus {
+  if (!r.extensionOf)
+    return r.status
+  const parent = allReservations.value.find(x => x.id === r.extensionOf)
+  const ext = parent?.extensions?.find(e => e.linkedReservationId === r.id)
+  return ext && isActiveExtension(ext) && ext.paymentStatus === 'pending' ? 'inquiry' : r.status
+}
+
 function openParent(id: string) {
   const parent = allReservations.value.find(x => x.id === id)
   if (parent)
@@ -139,8 +149,14 @@ function sortValue(r: ReservationEntry, key: SortKey): string | number | null {
 }
 
 // Pagination
-const pageSize = 10
+const PAGE_SIZES = [15, 25, 50, 100]
+const pageSize = ref(15)
 const page = ref(1)
+
+function setPageSize(v: string) {
+  pageSize.value = Number(v)
+  page.value = 1
+}
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
@@ -196,11 +212,11 @@ const sortedReservations = computed(() => {
   })
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(sortedReservations.value.length / pageSize)))
+const totalPages = computed(() => Math.max(1, Math.ceil(sortedReservations.value.length / pageSize.value)))
 
 const pagedReservations = computed(() => {
-  const start = (page.value - 1) * pageSize
-  return sortedReservations.value.slice(start, start + pageSize)
+  const start = (page.value - 1) * pageSize.value
+  return sortedReservations.value.slice(start, start + pageSize.value)
 })
 
 /**
@@ -238,8 +254,8 @@ const rangeLabel = computed(() => {
   const total = sortedReservations.value.length
   if (total === 0)
     return 'No reservations'
-  const start = (page.value - 1) * pageSize + 1
-  const end = Math.min(page.value * pageSize, total)
+  const start = (page.value - 1) * pageSize.value + 1
+  const end = Math.min(page.value * pageSize.value, total)
   return `Showing ${start}–${end} of ${total}`
 })
 
@@ -371,9 +387,9 @@ const pageNumbers = computed(() => {
                 {{ fmtCurrency(inPlace.ext.amount, inPlace.ext.currency) }}
               </td>
               <td class="px-4 py-3">
-                <!-- The stay's status, as on every row; only an unpaid extension adds a badge. -->
+                <!-- Paid nights carry the stay's status; unpaid ones are still an inquiry and add a payment badge. -->
                 <div class="flex flex-wrap items-center gap-1.5">
-                  <ReservationStatusBadge :status="r.status" />
+                  <ReservationStatusBadge :status="inPlace.ext.paymentStatus === 'pending' ? 'inquiry' : r.status" />
                   <Badge
                     v-if="inPlace.ext.paymentStatus === 'pending'"
                     variant="outline"
@@ -461,7 +477,7 @@ const pageNumbers = computed(() => {
               </td>
               <td class="px-4 py-3">
                 <div class="flex flex-wrap items-center gap-1.5">
-                  <ReservationStatusBadge :status="r.status" />
+                  <ReservationStatusBadge :status="rowStatus(r)" />
                   <button
                     v-if="r.extensionOf && !child"
                     type="button"
@@ -548,7 +564,19 @@ const pageNumbers = computed(() => {
 
     <!-- Pagination footer -->
     <div v-if="sortedReservations.length > 0" class="flex items-center justify-between gap-3 border-t px-4 py-3">
-      <span class="text-xs text-muted-foreground">{{ rangeLabel }}</span>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-muted-foreground">{{ rangeLabel }}</span>
+        <Select :model-value="String(pageSize)" @update:model-value="setPageSize(String($event))">
+          <SelectTrigger class="h-7 w-28 text-xs" aria-label="Rows per page">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="s in PAGE_SIZES" :key="s" :value="String(s)">
+              {{ s }} per page
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div class="flex items-center gap-1">
         <Button
           variant="outline"

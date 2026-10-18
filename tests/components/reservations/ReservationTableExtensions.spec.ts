@@ -59,6 +59,18 @@ describe('reservation list extension indicators', () => {
     expect(chip.classes()).toContain('text-amber-600')
   })
 
+  it('shows a linked booking as an inquiry until its extension is paid', () => {
+    const linked = stay({ id: 'res-direct', channel: 'Direct', checkIn: '2030-03-04', checkOut: '2030-03-06', extensionOf: 'res-ota' })
+    const statusOf = (paymentStatus: StayExtension['paymentStatus']) => {
+      const parent = stay({ extensions: [extension({ paymentStatus })] })
+      useReservationsModule().reservations.value = [parent, linked]
+      const wrapper = mount(ReservationTable, { props: { reservations: [parent, linked] }, global })
+      return wrapper.find('[data-testid="row-child"]').findComponent({ name: 'ReservationStatusBadge' }).props('status')
+    }
+    expect(statusOf('pending')).toBe('inquiry')
+    expect(statusOf('paid')).toBe(linked.status)
+  })
+
   it('shows a filtered-out stay\'s extension on its own, linking back to it', async () => {
     const parent = stay({ extensions: [extension()] })
     const linked = stay({ id: 'res-direct', channel: 'Direct', checkIn: '2030-03-04', checkOut: '2030-03-06', extensionOf: 'res-ota' })
@@ -90,9 +102,12 @@ describe('reservation list extension indicators', () => {
     expect(rows[0]!.text()).toContain('Early arrival')
     expect(rows[0]!.text()).toContain('27 Feb 2030')
     expect(rows[0]!.text()).toContain('Payment pending')
+    // Unpaid nights are an inquiry, not the stay's status.
+    expect(rows[0]!.findComponent({ name: 'ReservationStatusBadge' }).props('status')).toBe('inquiry')
     expect(rows[1]!.text()).toContain('Extension')
     expect(rows[1]!.text()).toContain('06 Mar 2030')
     // Paid: only the stay's status, no payment badge.
+    expect(rows[1]!.findComponent({ name: 'ReservationStatusBadge' }).props('status')).toBe(parent.status)
     expect(rows[1]!.find('[data-testid="row-in-place-payment"]').exists()).toBe(false)
     // Still one stay for paging, and a click opens it.
     expect(wrapper.text()).toContain('Showing 1–1 of 1')
