@@ -3,7 +3,7 @@ import type { BookingMode, ContactType, GuestOccupant, PaymentFeeMode, Reservati
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 import TimePicker from '~/components/base/TimePicker.vue'
-import { COUNTRIES, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { COUNTRIES, COUNTRY_DIAL_CODES, DIAL_CODES, matchDialCode, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -140,7 +140,14 @@ const editIdType = ref<GuestOccupant['idType']>('passport')
 const editIdNumber = ref('')
 const editIsPrimary = ref(false)
 
-const dialCodes = ['+62', '+41', '+1', '+44', '+61', '+49', '+33', '+31', '+48', '+43', '+65']
+const dialCodes = DIAL_CODES
+
+function onCountryChange(country: unknown) {
+  guestCountry.value = String(country ?? '')
+  const code = COUNTRY_DIAL_CODES[guestCountry.value]
+  if (code)
+    phoneDialCode.value = code
+}
 
 const hasPaymentLink = computed(() => Boolean(props.reservation?.paymentRequestId))
 
@@ -167,7 +174,7 @@ watch(() => props.open, (open) => {
     const [first = '', ...rest] = (r.guestFirstName ? '' : r.guestName).split(' ')
     guestFirstName.value = r.guestFirstName ?? first
     guestLastName.value = r.guestLastName ?? rest.join(' ')
-    const matchedDial = dialCodes.find(code => r.guestPhone?.startsWith(code))
+    const matchedDial = matchDialCode(r.guestPhone)
     phoneDialCode.value = matchedDial ?? '+62'
     phoneNumber.value = matchedDial ? r.guestPhone.slice(matchedDial.length).trim() : (r.guestPhone ?? '')
     sendPaymentInbox.value = false
@@ -602,6 +609,19 @@ function categoryLabel(category: string): string {
                   </p>
                 </div>
                 <div class="space-y-2 sm:col-span-2">
+                  <Label>Country</Label>
+                  <Select :model-value="guestCountry" @update:model-value="onCountryChange">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="c in COUNTRIES" :key="c" :value="c">
+                        {{ c }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div class="space-y-2 sm:col-span-2">
                   <Label>Phone Number</Label>
                   <div class="flex gap-2">
                     <Select v-model="phoneDialCode">
@@ -674,19 +694,6 @@ function categoryLabel(category: string): string {
                 <div class="space-y-2">
                   <Label>Zip Code</Label>
                   <Input v-model="guestZip" placeholder="Enter guest zip code" />
-                </div>
-                <div class="space-y-2">
-                  <Label>Country</Label>
-                  <Select v-model="guestCountry">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem v-for="c in COUNTRIES" :key="c" :value="c">
-                        {{ c }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
             </AccordionContent>

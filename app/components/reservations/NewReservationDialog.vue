@@ -9,7 +9,7 @@ import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/we
 import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
 import { firstInvalidField, validateNewReservation } from '~/components/reservations/data/new-reservation-validation'
-import { COUNTRIES, manualPaymentMethods, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { COUNTRIES, COUNTRY_DIAL_CODES, DIAL_CODES, manualPaymentMethods, matchDialCode, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { buildWebsiteBookingSource } from '~/components/reservations/data/website-booking'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
@@ -219,13 +219,20 @@ watch(guestTotal, (total) => {
     guestCount.value = total
 })
 
-const dialCodes = ['+62', '+41', '+1', '+44', '+61', '+49', '+33', '+31', '+48', '+43', '+65']
+const dialCodes = DIAL_CODES
+
+function onCountryChange(country: unknown) {
+  guestCountry.value = String(country ?? '')
+  const code = COUNTRY_DIAL_CODES[guestCountry.value]
+  if (code)
+    phoneDialCode.value = code
+}
 
 function selectGuest(guest: GuestSearchOption) {
   guestFirstName.value = guest.firstName ?? guest.name.split(' ')[0] ?? ''
   guestLastName.value = guest.lastName ?? guest.name.split(' ').slice(1).join(' ')
   guestEmail.value = guest.email
-  const matchedDial = dialCodes.find(code => guest.phone.startsWith(code))
+  const matchedDial = matchDialCode(guest.phone)
   phoneDialCode.value = matchedDial ?? '+62'
   phoneNumber.value = matchedDial ? guest.phone.slice(matchedDial.length).trim() : guest.phone
   guestAddress.value = guest.address ?? ''
@@ -953,6 +960,19 @@ watch(() => props.open, (open) => {
                   </p>
                 </div>
                 <div class="space-y-2 sm:col-span-2">
+                  <Label>Country</Label>
+                  <Select :model-value="guestCountry" @update:model-value="onCountryChange">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem v-for="c in COUNTRIES" :key="c" :value="c">
+                        {{ c }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div class="space-y-2 sm:col-span-2">
                   <Label>Phone Number</Label>
                   <div class="flex gap-2">
                     <Select v-model="phoneDialCode">
@@ -1025,19 +1045,6 @@ watch(() => props.open, (open) => {
                 <div class="space-y-2">
                   <Label>Zip Code</Label>
                   <Input v-model="guestZip" placeholder="Enter guest zip code" />
-                </div>
-                <div class="space-y-2">
-                  <Label>Country</Label>
-                  <Select v-model="guestCountry">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem v-for="c in COUNTRIES" :key="c" :value="c">
-                        {{ c }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div class="space-y-2 sm:col-span-2">
                   <Label>Guests</Label>

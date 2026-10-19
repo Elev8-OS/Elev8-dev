@@ -720,6 +720,70 @@ export const COUNTRIES: string[] = [
   'Israel',
 ]
 
+/** Phone dial code of each country in COUNTRIES. */
+export const COUNTRY_DIAL_CODES: Record<string, string> = {
+  'Indonesia': '+62',
+  'Switzerland': '+41',
+  'Australia': '+61',
+  'Singapore': '+65',
+  'Malaysia': '+60',
+  'United States': '+1',
+  'United Kingdom': '+44',
+  'Germany': '+49',
+  'France': '+33',
+  'Netherlands': '+31',
+  'Italy': '+39',
+  'Spain': '+34',
+  'Austria': '+43',
+  'Belgium': '+32',
+  'Denmark': '+45',
+  'Sweden': '+46',
+  'Norway': '+47',
+  'Finland': '+358',
+  'Ireland': '+353',
+  'Portugal': '+351',
+  'Poland': '+48',
+  'Czech Republic': '+420',
+  'Japan': '+81',
+  'South Korea': '+82',
+  'China': '+86',
+  'Hong Kong': '+852',
+  'Taiwan': '+886',
+  'India': '+91',
+  'Thailand': '+66',
+  'Vietnam': '+84',
+  'Philippines': '+63',
+  'New Zealand': '+64',
+  'Canada': '+1',
+  'United Arab Emirates': '+971',
+  'Saudi Arabia': '+966',
+  'Qatar': '+974',
+  'Turkey': '+90',
+  'South Africa': '+27',
+  'Brazil': '+55',
+  'Argentina': '+54',
+  'Mexico': '+52',
+  'Russia': '+7',
+  'Ukraine': '+380',
+  'Greece': '+30',
+  'Hungary': '+36',
+  'Luxembourg': '+352',
+  'Liechtenstein': '+423',
+  'Monaco': '+377',
+  'Iceland': '+354',
+  'Israel': '+972',
+}
+
+/** Every dial code the phone selector offers, in COUNTRIES order. */
+export const DIAL_CODES: string[] = [...new Set(COUNTRIES.map(c => COUNTRY_DIAL_CODES[c]).filter((c): c is string => !!c))]
+
+/** The dial code at the start of a phone number, longest match first. */
+export function matchDialCode(phone: string | undefined): string | undefined {
+  if (!phone)
+    return undefined
+  return [...DIAL_CODES].sort((a, b) => b.length - a.length).find(code => phone.startsWith(code))
+}
+
 export const reservationStatusLabels: Record<ReservationStatus, string> = {
   inquiry: 'Inquiry',
   unverified: 'Unverified',
