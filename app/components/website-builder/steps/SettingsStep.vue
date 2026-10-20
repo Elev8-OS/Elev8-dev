@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ruleSetSummary, websiteChannel } from '~/components/channels/data/website-channel'
+import type { WebsiteRuleSet } from '~/components/channels/data/website-channel'
+import { ruleSetIssues } from '~/components/channels/data/website-channel'
+import WebsiteRuleSetForm from '~/components/channels/WebsiteRuleSetForm.vue'
 
 export interface WebsiteSettings {
   name: string
@@ -11,15 +13,17 @@ export interface WebsiteSettings {
   faviconFile: string | null
   useDefaultFavicon: boolean
   /**
-   * The Website channel rule set picked in the form. Not saved on the Website:
-   * on save the wizard hands it to `useWebsiteChannel().assignWebsite()`, the
-   * channel's only writer. Undefined leaves the site's rule set as it is.
+   * This website's own booking rules (length of stay, stay rules, prepayment).
+   * Not saved on the Website: on publish the wizard hands them to
+   * `useWebsiteChannel().saveSiteRules()`, the channel's only writer.
    */
-  ruleSetId?: string | null
+  rules?: WebsiteRuleSet
 }
 
 const props = defineProps<{
   modelValue: WebsiteSettings
+  /** Inside the website editor: no Back / Next, the editor saves. */
+  embedded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -80,17 +84,17 @@ function removeFavicon() {
   updateField('faviconFile', null)
 }
 
-// Rule sets live on the Website channel (/channels); the page hydrates it on mount.
-const NO_RULE_SET = '__none__'
-const ruleSets = computed(() => websiteChannel.value.ruleSets)
-const channelEnabled = computed(() => websiteChannel.value.enabled)
+// Rules of this site only. The name and websites are the channel's business, so only the settings are checked.
+const rulesIssues = computed(() => form.value.rules
+  ? ruleSetIssues({ ...form.value.rules, name: 'site', websiteIds: ['site'] }, [])
+  : [])
 
-function onRuleSetChange(value: unknown) {
-  updateField('ruleSetId', value === NO_RULE_SET || value == null ? null : String(value))
+function updateRules(rules: WebsiteRuleSet) {
+  updateField('rules', rules)
 }
 
 const isValid = computed(() => {
-  return form.value.name.trim() !== '' && form.value.domain.trim() !== ''
+  return form.value.name.trim() !== '' && form.value.domain.trim() !== '' && rulesIssues.value.length === 0
 })
 
 function handleNext() {
@@ -151,44 +155,6 @@ function handleBack() {
         class="min-h-[100px]"
         @update:model-value="updateField('description', $event)"
       />
-    </div>
-
-    <!-- Booking rules (Website channel rule set) -->
-    <div class="space-y-2" data-testid="ws-booking-rules">
-      <Label for="website-rule-set">Booking rules</Label>
-      <template v-if="ruleSets.length > 0">
-        <Select :model-value="form.ruleSetId ?? NO_RULE_SET" @update:model-value="onRuleSetChange">
-          <SelectTrigger id="website-rule-set" class="w-full @xl/main:w-96" data-testid="ws-rule-set-select">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem :value="NO_RULE_SET">
-              No rule set
-            </SelectItem>
-            <SelectItem v-for="set in ruleSets" :key="set.id" :value="set.id">
-              {{ set.name }}
-              <span class="text-muted-foreground">· {{ ruleSetSummary(set) }}</span>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <p class="text-xs text-muted-foreground">
-          <template v-if="!channelEnabled">
-            The Website channel is removed, so these rules apply once you add it again.
-          </template>
-          <template v-else>
-            Discounts, stay rules and prepayment for direct bookings on this site. With no rule set, the site takes bookings without Website discounts.
-          </template>
-          <NuxtLink to="/channels" class="font-medium text-primary underline-offset-4 hover:underline" data-testid="ws-manage-rule-sets">
-            Manage on the Channels page
-          </NuxtLink>
-        </p>
-      </template>
-      <p v-else class="text-sm text-muted-foreground" data-testid="ws-no-rule-sets">
-        No rule sets yet, so this site takes direct bookings without Website discounts.
-        <NuxtLink to="/channels" class="font-medium text-primary underline-offset-4 hover:underline" data-testid="ws-manage-rule-sets">
-          Manage on the Channels page
-        </NuxtLink>
-      </p>
     </div>
 
     <!-- Brand Color + Font Family -->
@@ -337,8 +303,22 @@ function handleBack() {
       </div>
     </div>
 
+    <!-- Booking rules (this website only) -->
+    <div v-if="form.rules" class="flex flex-col gap-4" data-testid="ws-booking-rules">
+      <Separator />
+      <div>
+        <h3 class="text-lg font-semibold">
+          Booking rules
+        </h3>
+        <p class="text-sm text-muted-foreground">
+          Length of stay discounts, stay rules and prepayment for direct bookings on this website only.
+        </p>
+      </div>
+      <WebsiteRuleSetForm :rule-set="form.rules" :issues="rulesIssues" site-only @update:rule-set="updateRules" />
+    </div>
+
     <!-- Navigation -->
-    <div class="flex items-center justify-between pt-2">
+    <div v-if="!embedded" class="flex items-center justify-between pt-2">
       <Button variant="ghost" @click="handleBack">
         <Icon name="i-lucide-arrow-left" class="size-4 mr-2" />
         Back

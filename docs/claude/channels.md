@@ -54,7 +54,7 @@ Direct bookings on the tenant's own websites (Website Builder) and booking widge
 - `WidgetRuleSetSelect` ("Booking rules") is shared by the v1 editor (top of Pricing & Fees; prepayment, booking notice and stay discounts then read from the set) and v2 (own card, "No discounts or stay rules" when none). It says so when a picked set was deleted. The preview's sidebar names the source.
 
 #### Elsewhere
-- Website Builder shows and sets a site's rule set (through `assignWebsite`), Listings show which websites sell a listing, reservations keep a frozen `websiteBooking` snapshot, Analytics splits Direct by website. See those module docs.
+- Website Builder has no rule set picker: its Settings step (section "Site Settings" in the edit layout) (in the edit layout, section "Site Settings") holds this site's own rules inline (`WebsiteRuleSetForm` with `siteOnly`: length of stay tiers, early bird / last minute, stay rules, prepayment; no name, website list, promo list or price check). On publish `useWebsiteChannel().saveSiteRules(websiteId, siteName, rules)` saves them: a set only this site uses is updated in place, a shared set is left to the others and the site gets its own set named after the site. `assignWebsite` is no longer used by the wizard, Listings show which websites sell a listing, reservations keep a frozen `websiteBooking` snapshot, Analytics splits Direct by website. See those module docs.
 - Revenue → Channel markups keeps one "Direct" row for every website. No markup per rule set yet: the rule set's discounts already cover website pricing.
 
 #### Tests

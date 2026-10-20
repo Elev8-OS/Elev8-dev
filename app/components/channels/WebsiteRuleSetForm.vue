@@ -8,7 +8,8 @@ import { usePromoCodes } from '~/composables/usePromoCodes'
 import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 import WebsitePriceCheck from './WebsitePriceCheck.vue'
 
-const props = defineProps<{ issues: WebsiteSettingsIssue[] }>()
+/** `siteOnly`: rules of one website (Website Builder), so no name, website picker, promo list or price check. */
+const props = defineProps<{ issues: WebsiteSettingsIssue[], siteOnly?: boolean }>()
 
 const draft = defineModel<WebsiteRuleSet>('ruleSet', { required: true })
 
@@ -84,7 +85,7 @@ const validCodes = computed(() => codes.value
 <template>
   <div class="flex flex-col gap-6">
     <!-- Name -->
-    <div class="flex flex-col gap-1.5">
+    <div v-if="!siteOnly" class="flex flex-col gap-1.5">
       <Label for="wrs-name">Rule set name</Label>
       <Input id="wrs-name" v-model="draft.name" data-testid="wrs-name" placeholder="e.g. Long stay sites" :class="issueFor('name') && 'border-destructive'" />
       <p v-if="issueFor('name')" class="text-xs text-destructive">
@@ -93,7 +94,7 @@ const validCodes = computed(() => codes.value
     </div>
 
     <!-- Websites -->
-    <section class="flex flex-col gap-3">
+    <section v-if="!siteOnly" class="flex flex-col gap-3">
       <div>
         <h3 class="text-sm font-semibold">
           Websites
@@ -153,7 +154,7 @@ const validCodes = computed(() => codes.value
       </p>
     </section>
 
-    <Separator />
+    <Separator v-if="!siteOnly" />
 
     <!-- Length of stay -->
     <section class="flex flex-col gap-3">
@@ -285,7 +286,7 @@ const validCodes = computed(() => codes.value
     <!-- Payment and codes -->
     <section class="flex flex-col gap-3">
       <h3 class="text-sm font-semibold">
-        Payment and promo codes
+        {{ siteOnly ? 'Payment' : 'Payment and promo codes' }}
       </h3>
       <div class="flex flex-col gap-1.5">
         <Label for="wrs-prepay">Prepayment at booking</Label>
@@ -297,7 +298,7 @@ const validCodes = computed(() => codes.value
           {{ issueFor('prepaymentPct') }}
         </p>
       </div>
-      <div class="flex flex-col gap-1.5">
+      <div v-if="!siteOnly" class="flex flex-col gap-1.5">
         <div class="flex items-center justify-between gap-2">
           <Label>Promo codes valid on these websites</Label>
           <NuxtLink to="/promo-codes" class="text-xs text-primary hover:underline">
@@ -319,8 +320,10 @@ const validCodes = computed(() => codes.value
       </div>
     </section>
 
-    <Separator />
+    <template v-if="!siteOnly">
+      <Separator />
 
-    <WebsitePriceCheck :rule-set="draft" />
+      <WebsitePriceCheck :rule-set="draft" />
+    </template>
   </div>
 </template>

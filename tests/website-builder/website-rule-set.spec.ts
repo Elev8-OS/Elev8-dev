@@ -65,7 +65,7 @@ const global = { stubs: STUBS, config: { warnHandler: () => {} } }
 
 const originalWebsites = JSON.parse(JSON.stringify(websites.value))
 
-function settings(ruleSetId?: string | null) {
+function settings(rules?: ReturnType<typeof newRuleSet>) {
   return {
     name: 'Villa Test',
     domain: 'villa-test.com',
@@ -75,7 +75,7 @@ function settings(ruleSetId?: string | null) {
     logoFile: null,
     faviconFile: null,
     useDefaultFavicon: true,
-    ...(ruleSetId === undefined ? {} : { ruleSetId }),
+    ...(rules ? { rules } : {}),
   }
 }
 
@@ -107,57 +107,30 @@ afterEach(() => {
 })
 
 describe('settingsStep booking rules', () => {
-  it('says there are no rule sets and links to Channels when the channel has none', () => {
-    const wrapper = mount(SettingsStep, { props: { modelValue: settings(null) }, global })
-    expect(wrapper.find('[data-testid="ws-no-rule-sets"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="ws-booking-rules"]').find('[data-testid="select-stub"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="ws-manage-rule-sets"]').attributes('href')).toBe('/channels')
+  it('shows this site\'s rules inline, with no website or rule set picker', () => {
+    seedChannel()
+    const wrapper = mount(SettingsStep, { props: { modelValue: settings(newRuleSet()) }, global })
+    const rules = wrapper.get('[data-testid="ws-booking-rules"]')
+    expect(rules.text()).toContain('Length of stay discounts')
+    expect(rules.text()).toContain('Minimum stay')
+    expect(rules.text()).not.toContain('Websites')
+    expect(rules.text()).not.toContain('Rule set name')
+    expect(rules.find('[data-testid="wrs-website"]').exists()).toBe(false)
   })
 
-  it('lists No rule set plus every rule set with its summary', () => {
-    seedChannel()
-    const wrapper = mount(SettingsStep, { props: { modelValue: settings(null) }, global })
-    const items = wrapper.get('[data-testid="ws-booking-rules"]').findAll('.select-item')
-    expect(items.map(i => i.attributes('data-value'))).toEqual(['__none__', 'wrs-bali', 'wrs-long'])
-    expect(items[0]!.text()).toBe('No rule set')
-    expect(items[1]!.text()).toContain('Bali sites')
-    expect(items[1]!.text()).toContain('2 stay discounts, up to 20%')
-    expect(wrapper.get('[data-testid="ws-booking-rules"] [data-testid="select-stub"]').attributes('data-value')).toBe('__none__')
-    expect(wrapper.get('[data-testid="ws-manage-rule-sets"]').text()).toContain('Manage on the Channels page')
-  })
-
-  it('emits the picked rule set, and null for No rule set', async () => {
-    seedChannel()
-    const wrapper = mount(SettingsStep, { props: { modelValue: settings(null) }, global })
-    // The first Select on the step is Booking rules (the font picker comes after it).
-    const select = wrapper.findAllComponents(SelectStub)[0]!
-    expect(select.props('modelValue')).toBe('__none__')
-
-    select.vm.$emit('update:modelValue', 'wrs-long')
-    await nextTick()
-    let emitted = wrapper.emitted('update:modelValue')!
-    expect((emitted.at(-1)![0] as { ruleSetId: string | null }).ruleSetId).toBe('wrs-long')
-
-    select.vm.$emit('update:modelValue', '__none__')
-    await nextTick()
-    emitted = wrapper.emitted('update:modelValue')!
-    expect((emitted.at(-1)![0] as { ruleSetId: string | null }).ruleSetId).toBeNull()
-  })
-
-  it('preselects the rule set passed in', () => {
-    seedChannel()
-    const wrapper = mount(SettingsStep, { props: { modelValue: settings('wrs-bali') }, global })
-    expect(wrapper.get('[data-testid="ws-booking-rules"] [data-testid="select-stub"]').attributes('data-value')).toBe('wrs-bali')
+  it('shows no rules section when the form has none', () => {
+    const wrapper = mount(SettingsStep, { props: { modelValue: settings() }, global })
+    expect(wrapper.find('[data-testid="ws-booking-rules"]').exists()).toBe(false)
   })
 })
 
-describe('previewStep saves the rule set through the channel', () => {
-  function mountPreview(ruleSetId: string | null | undefined, editId?: string) {
+describe('previewStep saves the site rules through the channel', () => {
+  function mountPreview(rules: ReturnType<typeof newRuleSet> | undefined, editId?: string) {
     vi.stubGlobal('useRoute', () => ({ query: editId ? { edit: editId } : {} }))
     return mount(PreviewStep, {
       props: {
         template: { id: 'luxury-villa', name: 'Luxury Villa', description: '', gradient: '', icon: '' },
-        settings: settings(ruleSetId),
+        settings: settings(rules),
         property: { propertyIds: ['prop-1'], roomIds: [] },
         reviews: {
           selectedReviewIds: [],
@@ -175,47 +148,61 @@ describe('previewStep saves the rule set through the channel', () => {
     return wrapper.findAll('button').find(b => b.text().includes(label))!.trigger('click')
   }
 
-  it('puts a new website in the picked rule set on publish', async () => {
+  it('gives a new website its own rule set on publish', async () => {
     seedChannel()
     vi.useFakeTimers()
     const before = websites.value.length
-    const wrapper = mountPreview('wrs-long')
-    expect(wrapper.get('[data-testid="preview-rule-set"]').text()).toContain('Long stays')
+    const rules = { ...newRuleSet(), minNights: 3, lengthOfStayDiscounts: [{ id: 'a', minNights: 5, pct: 15 }] }
+    const wrapper = mountPreview(rules)
+    expect(wrapper.get('[data-testid="preview-rule-set"]').text()).toContain('up to 15%')
 
     await clickButton(wrapper, 'Publish Website')
     vi.advanceTimersByTime(1000)
 
     expect(websites.value).toHaveLength(before + 1)
     const created = websites.value.at(-1)!
-    expect(ruleSetForWebsite(websiteChannel.value, created.id)?.id).toBe('wrs-long')
-    expect(created).not.toHaveProperty('ruleSetId')
+    const set = ruleSetForWebsite(websiteChannel.value, created.id)!
+    expect(set.name).toBe('Villa Test')
+    expect(set.websiteIds).toEqual([created.id])
+    expect(set.minNights).toBe(3)
+    expect(set.lengthOfStayDiscounts[0]!.pct).toBe(15)
+    expect(created).not.toHaveProperty('rules')
   })
 
-  it('moves an edited site out of its rule set when No rule set is picked', async () => {
+  it('updates the set in place when only this site uses it', async () => {
     seedChannel()
     vi.useFakeTimers()
-    const wrapper = mountPreview(null, '1')
-    expect(wrapper.get('[data-testid="preview-rule-set"]').text()).toContain('No rule set')
+    const wrapper = mountPreview({ ...newRuleSet(), minNights: 4 }, '1')
 
     await clickButton(wrapper, 'Update Website')
     vi.advanceTimersByTime(1000)
 
-    expect(ruleSetForWebsite(websiteChannel.value, '1')).toBeUndefined()
+    const set = ruleSetForWebsite(websiteChannel.value, '1')!
+    expect(set.id).toBe('wrs-bali')
+    expect(set.name).toBe('Bali sites')
+    expect(set.minNights).toBe(4)
+    expect(websiteChannel.value.ruleSets).toHaveLength(2)
   })
 
-  it('moves an edited site into another rule set, out of its old one', async () => {
+  it('splits the site off a shared rule set and leaves the others untouched', async () => {
     seedChannel()
+    websiteChannel.value = { ...websiteChannel.value, ruleSets: websiteChannel.value.ruleSets.map(r => r.id === 'wrs-bali' ? { ...r, websiteIds: ['1', '2'] } : r) }
     vi.useFakeTimers()
-    const wrapper = mountPreview('wrs-long', '1')
+    const wrapper = mountPreview({ ...newRuleSet(), minNights: 6 }, '1')
 
     await clickButton(wrapper, 'Update Website')
     vi.advanceTimersByTime(1000)
 
-    expect(ruleSetForWebsite(websiteChannel.value, '1')?.id).toBe('wrs-long')
-    expect(websiteChannel.value.ruleSets.find(r => r.id === 'wrs-bali')!.websiteIds).not.toContain('1')
+    const own = ruleSetForWebsite(websiteChannel.value, '1')!
+    expect(own.id).not.toBe('wrs-bali')
+    expect(own.websiteIds).toEqual(['1'])
+    expect(own.minNights).toBe(6)
+    const shared = websiteChannel.value.ruleSets.find(r => r.id === 'wrs-bali')!
+    expect(shared.websiteIds).toEqual(['2'])
+    expect(shared.minNights).toBe(1)
   })
 
-  it('leaves the rule set alone when the form never set one', async () => {
+  it('leaves the channel alone when the form has no rules', async () => {
     seedChannel()
     vi.useFakeTimers()
     const wrapper = mountPreview(undefined, '1')
@@ -228,11 +215,17 @@ describe('previewStep saves the rule set through the channel', () => {
   })
 })
 
-describe('create page preselects the site rule set when editing', () => {
+describe('create page prefills the site rules when editing', () => {
   const SettingsStepStub = defineComponent({
     name: 'SettingsStepStub',
     props: { modelValue: { type: Object, required: true } },
-    template: '<div data-testid="settings-step" :data-rule-set="String(modelValue.ruleSetId)" />',
+    template: '<div data-testid="settings-step" :data-min="String(modelValue.rules?.minNights)" :data-name="String(modelValue.rules?.name)" />',
+  })
+  // Editing opens the website editor, which gets the settings as `settings`.
+  const EditorStub = defineComponent({
+    name: 'EditorStub',
+    props: { settings: { type: Object, required: true } },
+    template: '<div data-testid="settings-step" :data-min="String(settings.rules?.minNights)" :data-name="String(settings.rules?.name)" />',
   })
   const pageGlobal = {
     ...global,
@@ -243,27 +236,27 @@ describe('create page preselects the site rule set when editing', () => {
       WebsiteBuilderStepsPropertyStep: true,
       WebsiteBuilderStepsReviewStep: true,
       WebsiteBuilderStepsPreviewStep: true,
+      WebsiteBuilderWebsiteEditor: EditorStub,
     },
   }
 
-  it('starts on the rule set the site is in', async () => {
+  it('starts on a copy of the rule set the site is in', async () => {
     seedChannel()
+    websiteChannel.value = { ...websiteChannel.value, ruleSets: websiteChannel.value.ruleSets.map(r => r.id === 'wrs-bali' ? { ...r, minNights: 5 } : r) }
     vi.stubGlobal('useRoute', () => ({ query: { edit: '1' } }))
     const wrapper = mount(CreatePage, { global: pageGlobal })
     await nextTick()
-    // The edit prefill runs client-side only; jump to Settings to read the form state.
-    ;(wrapper.vm as unknown as { currentStep: number }).currentStep = 1
-    await nextTick()
-    expect(wrapper.get('[data-testid="settings-step"]').attributes('data-rule-set')).toBe('wrs-bali')
+    expect(wrapper.get('[data-testid="settings-step"]').attributes('data-min')).toBe('5')
+    expect(wrapper.get('[data-testid="settings-step"]').attributes('data-name')).toBe('Bali sites')
   })
 
-  it('starts on No rule set for a new website', async () => {
+  it('starts on default rules for a new website', async () => {
     seedChannel()
     const wrapper = mount(CreatePage, { global: pageGlobal })
     await nextTick()
     ;(wrapper.vm as unknown as { currentStep: number }).currentStep = 1
     await nextTick()
-    expect(wrapper.get('[data-testid="settings-step"]').attributes('data-rule-set')).toBe('null')
+    expect(wrapper.get('[data-testid="settings-step"]').attributes('data-min')).toBe('1')
   })
 })
 

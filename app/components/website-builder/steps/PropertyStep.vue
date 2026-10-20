@@ -25,6 +25,8 @@ interface Property {
 
 const props = defineProps<{
   modelValue: PropertySelection
+  /** Inside the website editor: no Back / Next, the editor saves. */
+  embedded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -399,7 +401,7 @@ function handleBack() {
     </div>
 
     <!-- Navigation -->
-    <div class="flex items-center justify-between pt-2">
+    <div v-if="!embedded" class="flex items-center justify-between pt-2">
       <Button variant="ghost" @click="handleBack">
         <Icon name="i-lucide-arrow-left" class="size-4 mr-2" />
         Back

@@ -1,6 +1,6 @@
 import type { WebsiteRuleSet } from '~/components/channels/data/website-channel'
 import { computed } from 'vue'
-import { parseWebsiteState, ruleSetIssues, upsertRuleSet, WEBSITE_CHANNEL_STORAGE_KEY, websiteChannel } from '~/components/channels/data/website-channel'
+import { cloneRuleSet, newRuleSet, parseWebsiteState, ruleSetIssues, upsertRuleSet, WEBSITE_CHANNEL_STORAGE_KEY, websiteChannel } from '~/components/channels/data/website-channel'
 
 let hydrated = false
 
@@ -84,5 +84,21 @@ export function useWebsiteChannel() {
     persist()
   }
 
-  return { websiteChannel, ruleSets, hydrate, assignWebsite, enable, disable, getRuleSet, saveRuleSet, deleteRuleSet }
+  /**
+   * Saves the rules set up inside Website Builder for one site. The site ends
+   * up alone in its rule set: a set only this site used is updated in place, a
+   * shared set is left to the others and the site gets its own copy, named
+   * after the site. Returns the issues and saves nothing when there are any.
+   */
+  function saveSiteRules(websiteId: string, siteName: string, rules: WebsiteRuleSet) {
+    const current = websiteChannel.value.ruleSets.find(r => r.websiteIds.includes(websiteId))
+    const own = current && current.websiteIds.length === 1 ? current : undefined
+    const taken = (name: string) => websiteChannel.value.ruleSets.some(r => r.id !== own?.id && r.name.trim().toLowerCase() === name.toLowerCase())
+    const base = siteName.trim() || 'Website'
+    const name = own?.name ?? (taken(base) ? `${base} rules` : base)
+    const set: WebsiteRuleSet = { ...cloneRuleSet(rules), id: own?.id ?? newRuleSet().id, name, websiteIds: [websiteId] }
+    return saveRuleSet(set)
+  }
+
+  return { websiteChannel, ruleSets, hydrate, assignWebsite, saveSiteRules, enable, disable, getRuleSet, saveRuleSet, deleteRuleSet }
 }

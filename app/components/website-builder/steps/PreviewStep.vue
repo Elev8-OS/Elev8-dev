@@ -6,6 +6,7 @@ import type { ReviewSelection } from '~/components/website-builder/steps/ReviewS
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { toast } from 'vue-sonner'
+import { ruleSetSummary } from '~/components/channels/data/website-channel'
 import {
   channelIcons,
   channelLabels,
@@ -16,7 +17,7 @@ import { getListingsForProperties } from '~/components/website-builder/data/prop
 import { compareByReceivedDesc, meetsMinCount, resolveAutoReviews } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import { useReviewHub } from '~/composables/useReviewHub'
-import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
+import { useWebsiteSave } from '~/composables/useWebsiteSave'
 
 // Re-export for convenience
 export type { PropertySelection, Template, WebsiteSettings }
@@ -196,60 +197,13 @@ function loadMoreReviews() {
 const isPublishing = ref(false)
 const route = useRoute()
 const editId = computed(() => route.query.edit as string | undefined)
-const { assignWebsite, getRuleSet } = useWebsiteChannel()
-const chosenRuleSet = computed(() => getRuleSet(props.settings.ruleSetId))
-
-/** The Website channel owns the rule set; the Website object never stores it. */
-function applyRuleSet(websiteId: string) {
-  if (props.settings.ruleSetId !== undefined)
-    assignWebsite(websiteId, props.settings.ruleSetId)
-}
+const { saveWebsite } = useWebsiteSave()
 
 function persistWebsite(status: Website['status'], message: string) {
   isPublishing.value = true
   setTimeout(() => {
     isPublishing.value = false
-    if (editId.value) {
-      const index = websites.value.findIndex(w => w.id === editId.value)
-      const existing = websites.value[index]
-      if (existing) {
-        websites.value[index] = {
-          ...existing,
-          name: props.settings.name,
-          url: props.settings.domain,
-          status,
-          template: props.template?.name ?? existing.template,
-          lastUpdated: new Date().toISOString(),
-          propertyIds: props.property.propertyIds,
-          reviewIds: props.reviews.selectedReviewIds,
-          featuredReviewIds: props.reviews.featuredReviewIds,
-          manualReviews: props.reviews.manualReviews,
-          featuredManualReviewIds: props.reviews.featuredManualReviewIds,
-          reviewConfig: props.reviews.config,
-        }
-        applyRuleSet(existing.id)
-      }
-    }
-    else {
-      const id = String(Date.now())
-      websites.value.push({
-        id,
-        name: props.settings.name,
-        url: props.settings.domain,
-        status,
-        template: props.template?.name ?? 'Luxury Villa',
-        visits: 0,
-        lastUpdated: new Date().toISOString(),
-        thumbnail: null,
-        propertyIds: props.property.propertyIds,
-        reviewIds: props.reviews.selectedReviewIds,
-        featuredReviewIds: props.reviews.featuredReviewIds,
-        manualReviews: props.reviews.manualReviews,
-        featuredManualReviewIds: props.reviews.featuredManualReviewIds,
-        reviewConfig: props.reviews.config,
-      })
-      applyRuleSet(id)
-    }
+    saveWebsite({ template: props.template, settings: props.settings, property: props.property, reviews: props.reviews }, status, editId.value)
     toast.success(message)
     navigateTo('/website-builder')
   }, 800)
@@ -350,12 +304,12 @@ function handleBack() {
               {{ settings.description || '—' }}
             </p>
           </div>
-          <div v-if="settings.ruleSetId !== undefined" class="space-y-1 @xl/main:col-span-2" data-testid="preview-rule-set">
+          <div v-if="settings.rules" class="space-y-1 @xl/main:col-span-2" data-testid="preview-rule-set">
             <p class="text-xs text-muted-foreground">
               Booking rules
             </p>
             <p class="text-sm font-medium">
-              {{ chosenRuleSet ? chosenRuleSet.name : 'No rule set' }}
+              {{ ruleSetSummary(settings.rules) }}, minimum {{ settings.rules.minNights }} {{ settings.rules.minNights === 1 ? 'night' : 'nights' }}
             </p>
           </div>
         </div>

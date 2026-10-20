@@ -3,7 +3,7 @@ import type { PropertySelection } from '~/components/website-builder/steps/Prope
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
-import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
+import { cloneRuleSet, newRuleSet, ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
@@ -34,7 +34,7 @@ const websiteSettings = ref<WebsiteSettings>({
   logoFile: null,
   faviconFile: null,
   useDefaultFavicon: false,
-  ruleSetId: null,
+  rules: newRuleSet(),
 })
 const propertySelection = ref<PropertySelection>({
   propertyIds: [],
@@ -70,9 +70,10 @@ if (import.meta.client && editingWebsite.value) {
     logoFile: null,
     faviconFile: null,
     useDefaultFavicon: false,
-    ruleSetId: null,
+    rules: newRuleSet(),
   }
   selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
+  propertySelection.value = { propertyIds: site.propertyIds ?? [], roomIds: [] }
   reviewSelection.value = {
     selectedReviewIds: site.reviewIds ?? [],
     featuredReviewIds: site.featuredReviewIds ?? [],
@@ -83,7 +84,7 @@ if (import.meta.client && editingWebsite.value) {
   currentStep.value = 1
 }
 
-// The site's rule set comes from the Website channel, saved in localStorage, so it is
+// The site's rules come from the Website channel, saved in localStorage, so it is
 // read after mount to keep the server and first client render the same.
 const { hydrate } = useWebsiteChannel()
 onMounted(() => {
@@ -91,7 +92,7 @@ onMounted(() => {
   if (editingWebsite.value) {
     websiteSettings.value = {
       ...websiteSettings.value,
-      ruleSetId: ruleSetForWebsite(websiteChannel.value, editingWebsite.value.id)?.id ?? null,
+      rules: cloneRuleSet(ruleSetForWebsite(websiteChannel.value, editingWebsite.value.id) ?? newRuleSet()),
     }
   }
 })
@@ -128,7 +129,21 @@ function goBack() {
 </script>
 
 <template>
-  <div class="w-full flex flex-col gap-6">
+  <div v-if="editingWebsite" class="w-full flex flex-col gap-4">
+    <Button variant="ghost" size="sm" class="self-start" @click="router.push('/website-builder')">
+      <Icon name="i-lucide-arrow-left" class="size-4 mr-2" />
+      Back to Website Builder
+    </Button>
+    <WebsiteBuilderWebsiteEditor
+      v-model:settings="websiteSettings"
+      v-model:property="propertySelection"
+      v-model:reviews="reviewSelection"
+      :website="editingWebsite"
+      :template="selectedTemplate"
+    />
+  </div>
+
+  <div v-else class="w-full flex flex-col gap-6">
     <!-- Header -->
     <div class="flex items-center gap-4">
       <Button variant="ghost" size="sm" @click="router.push('/website-builder')">

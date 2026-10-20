@@ -30,6 +30,8 @@ export interface ReviewSelection {
 const props = defineProps<{
   modelValue: ReviewSelection
   propertyIds: string[]
+  /** Inside the website editor: no Back / Next, the editor saves. */
+  embedded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -865,7 +867,7 @@ function handleBack() {
       </div>
     </div>
 
-    <div class="flex items-center justify-between pt-2">
+    <div v-if="!embedded" class="flex items-center justify-between pt-2">
       <Button variant="ghost" data-testid="review-step-back" @click="handleBack">
         <Icon name="i-lucide-arrow-left" class="mr-2 size-4" />
         Back

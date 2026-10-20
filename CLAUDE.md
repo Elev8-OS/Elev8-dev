@@ -35,6 +35,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Journeys | `docs/claude/journeys.md` | AI journey builder, editor, marketplace |
 | Airbnb reviews | `docs/claude/airbnb-reviews.md` | Review automation queue + settings |
 | Review Hub | `docs/claude/review-hub.md` | Channex-aligned review aggregator, double-blind, host review, tags |
+| Website builder | `docs/claude/website-builder.md` | Create wizard, edit layout (section nav, AI Generate, embedded steps), `useWebsiteSave` |
 | Website builder reviews | `docs/claude/website-builder-reviews.md` | Auto/manual review rules, picker UI, publish state |
 | Payment requests | `docs/claude/payment-requests.md` | Payment links, fee modes, payout integration |
 | Activities | `docs/claude/activities.md` | `/activities` time and activity report per staff: range presets, per-person day groups, edit/delete logs, listings sheet, xlsx export |
