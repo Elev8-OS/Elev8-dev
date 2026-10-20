@@ -8,13 +8,14 @@ import { websites } from '~/components/website-builder/data/websites'
 import WebsiteEditor from '~/components/website-builder/WebsiteEditor.vue'
 
 const passthrough = { template: '<div><slot /></div>' }
-const SettingsStub = { props: { embedded: Boolean }, template: '<div data-testid="settings-step" :data-embedded="String(embedded)" />' }
+const SettingsStub = { template: '<div data-testid="settings-step" />' }
 const global = {
   stubs: {
     Icon: true,
     Button: { template: '<button><slot /></button>' },
     Badge: passthrough,
     Textarea: true,
+    Input: { props: ['modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">' },
     Select: passthrough,
     SelectTrigger: passthrough,
     SelectValue: true,
@@ -27,7 +28,8 @@ const global = {
     AlertDialogFooter: passthrough,
     AlertDialogCancel: passthrough,
     AlertDialogAction: passthrough,
-    WebsiteBuilderStepsSettingsStep: SettingsStub,
+    WebsiteBuilderWebsiteSiteSettings: SettingsStub,
+    WebsiteBuilderWebsiteBookingRules: { template: '<div data-testid="rules-section" />' },
     WebsiteBuilderStepsPropertyStep: { template: '<div data-testid="property-step" />' },
     WebsiteBuilderStepsReviewStep: { template: '<div data-testid="review-step" />' },
   },
@@ -78,8 +80,10 @@ describe('websiteEditor', () => {
     expect(wrapper.get('[data-testid="we-title"]').text()).toBe('Villa Sunset Bali')
     expect(wrapper.text()).toContain('Listings')
     const labels = wrapper.findAll('nav button').map(b => b.text())
-    expect(labels).toEqual(['AI Generate', 'Site Settings', 'Hero Media', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Analytics'])
+    expect(labels).toEqual(['AI Generate', 'Site Settings', 'Booking Rules', 'Hero Media', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Analytics'])
     expect(wrapper.find('[data-testid="we-ai"]').exists()).toBe(true)
+    // The empty state is for sections with nothing to set up, never under AI Generate.
+    expect(wrapper.find('[data-testid="we-empty"]').exists()).toBe(false)
     // Chat and preview are split by a draggable handle.
     expect(wrapper.find('[data-testid="we-ai-handle"]').exists()).toBe(true)
   })
@@ -87,7 +91,9 @@ describe('websiteEditor', () => {
   it('opens the builder steps embedded, without their own Back / Next', async () => {
     const wrapper = mountEditor()
     await wrapper.get('[data-testid="we-nav-settings"]').trigger('click')
-    expect(wrapper.get('[data-testid="settings-step"]').attributes('data-embedded')).toBe('true')
+    expect(wrapper.find('[data-testid="settings-step"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="we-nav-rules"]').trigger('click')
+    expect(wrapper.find('[data-testid="rules-section"]').exists()).toBe(true)
     await wrapper.get('[data-testid="we-nav-listings"]').trigger('click')
     expect(wrapper.find('[data-testid="property-step"]').exists()).toBe(true)
     await wrapper.get('[data-testid="we-nav-reviews"]').trigger('click')
@@ -115,5 +121,28 @@ describe('websiteEditor', () => {
     await wrapper.get('[data-testid="we-unpublish"]').trigger('click')
     await wrapper.get('[data-testid="we-unpublish-confirm"]').trigger('click')
     expect(websites.value.find(w => w.id === '1')!.status).toBe('draft')
+  })
+})
+
+describe('inline title edit', () => {
+  it('renames the site from the header and keeps the change on Enter', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-testid="we-title-edit"]').trigger('click')
+    const input = wrapper.get('[data-testid="we-title-input"]')
+    await input.setValue('Villa Renamed')
+    await input.trigger('keydown', { key: 'Enter' })
+    const updates = wrapper.emitted('update:settings')!
+    expect((updates.at(-1)![0] as { name: string }).name).toBe('Villa Renamed')
+    expect(wrapper.find('[data-testid="we-title-input"]').exists()).toBe(false)
+  })
+
+  it('drops the change on Escape', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-testid="we-title-edit"]').trigger('click')
+    const input = wrapper.get('[data-testid="we-title-input"]')
+    await input.setValue('Nope')
+    await input.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('update:settings')).toBeUndefined()
+    expect(wrapper.get('[data-testid="we-title"]').text()).toBe('Villa Sunset Bali')
   })
 })

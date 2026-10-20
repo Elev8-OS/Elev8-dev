@@ -8,7 +8,7 @@ import { defaultWebsiteState, newRuleSet, ruleSetForWebsite, websiteChannel } fr
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import PreviewStep from '~/components/website-builder/steps/PreviewStep.vue'
-import SettingsStep from '~/components/website-builder/steps/SettingsStep.vue'
+import BookingRules from '~/components/website-builder/WebsiteBookingRules.vue'
 import CreatePage from '~/pages/website-builder/create.vue'
 import IndexPage from '~/pages/website-builder/index.vue'
 
@@ -106,10 +106,10 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('settingsStep booking rules', () => {
+describe('booking rules section', () => {
   it('shows this site\'s rules inline, with no website or rule set picker', () => {
     seedChannel()
-    const wrapper = mount(SettingsStep, { props: { modelValue: settings(newRuleSet()) }, global })
+    const wrapper = mount(BookingRules, { props: { settings: settings(newRuleSet()) }, global })
     const rules = wrapper.get('[data-testid="ws-booking-rules"]')
     expect(rules.text()).toContain('Length of stay discounts')
     expect(rules.text()).toContain('Minimum stay')
@@ -119,7 +119,7 @@ describe('settingsStep booking rules', () => {
   })
 
   it('shows no rules section when the form has none', () => {
-    const wrapper = mount(SettingsStep, { props: { modelValue: settings() }, global })
+    const wrapper = mount(BookingRules, { props: { settings: settings() }, global })
     expect(wrapper.find('[data-testid="ws-booking-rules"]').exists()).toBe(false)
   })
 })
@@ -233,6 +233,12 @@ describe('create page prefills the site rules when editing', () => {
       ...STUBS,
       WebsiteBuilderStepsTemplateStep: true,
       WebsiteBuilderStepsSettingsStep: SettingsStepStub,
+      // A new website sets its rules on the Details screen.
+      WebsiteBuilderWizardDetailsStep: defineComponent({
+        name: 'DetailsStepStub',
+        props: { settings: { type: Object, required: true } },
+        template: '<div data-testid="settings-step" :data-min="String(settings.rules?.minNights)" />',
+      }),
       WebsiteBuilderStepsPropertyStep: true,
       WebsiteBuilderStepsReviewStep: true,
       WebsiteBuilderStepsPreviewStep: true,
@@ -254,7 +260,7 @@ describe('create page prefills the site rules when editing', () => {
     seedChannel()
     const wrapper = mount(CreatePage, { global: pageGlobal })
     await nextTick()
-    ;(wrapper.vm as unknown as { currentStep: number }).currentStep = 1
+    ;(wrapper.vm as unknown as { step: string }).step = 'details'
     await nextTick()
     expect(wrapper.get('[data-testid="settings-step"]').attributes('data-min')).toBe('1')
   })

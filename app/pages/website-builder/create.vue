@@ -6,25 +6,35 @@ import type { Template } from '~/components/website-builder/steps/TemplateStep.v
 import { cloneRuleSet, newRuleSet, ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
+import { fontFamilyFor, GUEST_OPTIONS, newWizardAnswers, SITE_DOMAIN, STYLE_PRESETS, templateForPreset, TONE_OPTIONS } from '~/components/website-builder/data/wizard'
 import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
 
 definePageMeta({
-  layout: 'default',
+  layout: 'builder',
 })
 
 const router = useRouter()
 const route = useRoute()
 
-const STEPS = [
-  { key: 'template', label: 'Template', icon: 'i-lucide-layout-template' },
-  { key: 'settings', label: 'Settings', icon: 'i-lucide-settings' },
-  { key: 'property', label: 'Property', icon: 'i-lucide-home' },
-  { key: 'reviews', label: 'Reviews', icon: 'i-lucide-star' },
-  { key: 'preview', label: 'Preview', icon: 'i-lucide-eye' },
-] as const
+// The mobile onboarding order: short questions first, then style, listings and details.
+type StepKey = 'guests' | 'tone' | 'languages' | 'transition' | 'style' | 'listings' | 'details' | 'review' | 'generating' | 'preview'
+const step = ref<StepKey>('guests')
+const answers = ref(newWizardAnswers())
 
-const currentStep = ref(0)
-const selectedTemplate = ref<Template | null>(null)
+// Steps with a progress bar entry. Transition and Generating are full-screen, Preview has its own footer.
+const PROGRESS: { key: StepKey, label: string }[] = [
+  { key: 'guests', label: 'Guests' },
+  { key: 'tone', label: 'Tone' },
+  { key: 'languages', label: 'Languages' },
+  { key: 'style', label: 'Style' },
+  { key: 'listings', label: 'Listings' },
+  { key: 'details', label: 'Details' },
+  { key: 'review', label: 'Review' },
+]
+const progressIndex = computed(() => PROGRESS.findIndex(p => p.key === step.value))
+const progressPercent = computed(() => Math.round(((progressIndex.value + 1) / PROGRESS.length) * 100))
+const selectedTemplate = computed<Template>(() => templateForPreset(answers.value.stylePreset))
+
 const websiteSettings = ref<WebsiteSettings>({
   name: '',
   domain: '',
@@ -52,12 +62,13 @@ const reviewSelection = ref<ReviewSelection>({
 const editId = computed(() => route.query.edit as string | undefined)
 const editingWebsite = computed(() => websites.value.find(w => w.id === editId.value) ?? null)
 
-const templates: Template[] = [
-  { id: 'luxury-villa', name: 'Luxury Villa', description: 'Elegant design with full-screen hero, amenity showcases, and booking integration for premium properties.', gradient: 'from-amber-500/20 to-orange-600/20', icon: 'i-lucide-crown' },
-  { id: 'modern-tropical', name: 'Modern Tropical', description: 'Clean, airy layout with lush imagery and nature-inspired accents for tropical getaways.', gradient: 'from-emerald-500/20 to-teal-600/20', icon: 'i-lucide-palmtree' },
-  { id: 'beach-house', name: 'Beach House', description: 'Coastal vibes with ocean palettes, photo galleries, and weather widget for seaside stays.', gradient: 'from-sky-500/20 to-blue-600/20', icon: 'i-lucide-waves' },
-  { id: 'minimal-bali', name: 'Minimal Bali', description: 'Minimalist zen aesthetic with earthy tones and focused content for serene Bali retreats.', gradient: 'from-stone-400/20 to-stone-600/20', icon: 'i-lucide-flower-2' },
-]
+const STYLE_TEMPLATES = STYLE_PRESETS.map(p => p.template)
+
+// Edit mode only: the saved site stores the template by name.
+const editTemplate = computed<Template | null>(() => {
+  const name = editingWebsite.value?.template
+  return name ? STYLE_TEMPLATES.find(t => t.name === name) ?? null : null
+})
 
 if (import.meta.client && editingWebsite.value) {
   const site = editingWebsite.value
@@ -72,7 +83,6 @@ if (import.meta.client && editingWebsite.value) {
     useDefaultFavicon: false,
     rules: newRuleSet(),
   }
-  selectedTemplate.value = templates.find(t => t.name === site.template) ?? null
   propertySelection.value = { propertyIds: site.propertyIds ?? [], roomIds: [] }
   reviewSelection.value = {
     selectedReviewIds: site.reviewIds ?? [],
@@ -81,7 +91,6 @@ if (import.meta.client && editingWebsite.value) {
     featuredManualReviewIds: site.featuredManualReviewIds ?? [],
     config: site.reviewConfig ?? createDefaultReviewConfig(),
   }
-  currentStep.value = 1
 }
 
 // The site's rules come from the Website channel, saved in localStorage, so it is
@@ -97,39 +106,51 @@ onMounted(() => {
   }
 })
 
-function onSelectTemplate(template: Template) {
-  selectedTemplate.value = template
-}
+const FLOW: StepKey[] = ['guests', 'tone', 'languages', 'transition', 'style', 'listings', 'details', 'review']
+const detailsRef = ref<{ hasValidData: boolean } | null>(null)
+
+// What the site is saved with: the wizard's address and font choices folded into the settings.
+const finalSettings = computed<WebsiteSettings>(() => ({
+  ...websiteSettings.value,
+  domain: answers.value.hasCustomDomain ? answers.value.customDomain.trim().toLowerCase() : `${answers.value.subdomain.trim().toLowerCase()}${SITE_DOMAIN}`,
+  fontFamily: fontFamilyFor(answers.value.fontPairing),
+}))
+
+const canNext = computed(() => {
+  if (step.value === 'listings')
+    return propertySelection.value.propertyIds.length > 0
+  if (step.value === 'details')
+    return detailsRef.value?.hasValidData ?? false
+  return true
+})
+const showFooter = computed(() => ['style', 'listings', 'details'].includes(step.value))
 
 function goNext() {
-  if (currentStep.value === 0 && selectedTemplate.value) {
-    currentStep.value = 1
-  }
-  else if (currentStep.value === 1 && websiteSettings.value.name && websiteSettings.value.domain) {
-    currentStep.value = 2
-  }
-  else if (currentStep.value === 2 && propertySelection.value.propertyIds.length > 0 && propertySelection.value.roomIds.length > 0) {
-    currentStep.value = 3
-  }
-  // ReviewStep owns review validity (it differs by Auto/Manual mode) and only emits
-  // `next` when its own rules pass, so this step just advances.
-  else if (currentStep.value === 3) {
-    currentStep.value = 4
-  }
+  const i = FLOW.indexOf(step.value)
+  if (i >= 0 && i < FLOW.length - 1 && canNext.value)
+    step.value = FLOW[i + 1]!
 }
 
+// Back skips the transition screen.
 function goBack() {
-  if (currentStep.value > 0) {
-    currentStep.value--
-  }
-  else {
+  const i = FLOW.indexOf(step.value)
+  if (i <= 0) {
     router.push('/website-builder')
+    return
   }
+  const prev = FLOW[i - 1]!
+  step.value = prev === 'transition' ? 'languages' : prev
+}
+
+// PreviewStep's "Change" buttons use the old numbered steps.
+const PREVIEW_STEP_TARGETS: Record<number, StepKey> = { 0: 'style', 1: 'details', 2: 'listings', 3: 'details' }
+function onPreviewGoTo(index: number) {
+  step.value = PREVIEW_STEP_TARGETS[index] ?? 'review'
 }
 </script>
 
 <template>
-  <!-- h-full: the layout scroller is a definite-height flex child, so the editor fills it instead of guessing the header height. -->
+  <!-- h-full: the builder layout is a definite-height flex column, so the editor fills it instead of guessing a header height. -->
   <div v-if="editingWebsite" class="flex h-full w-full flex-col gap-4">
     <Button variant="ghost" size="sm" class="shrink-0 self-start" @click="router.push('/website-builder')">
       <Icon name="i-lucide-arrow-left" class="size-4 mr-2" />
@@ -140,101 +161,106 @@ function goBack() {
       v-model:property="propertySelection"
       v-model:reviews="reviewSelection"
       :website="editingWebsite"
-      :template="selectedTemplate"
+      :template="editTemplate"
     />
   </div>
 
-  <div v-else class="w-full flex flex-col gap-6">
-    <!-- Header -->
-    <div class="flex items-center gap-4">
-      <Button variant="ghost" size="sm" @click="router.push('/website-builder')">
-        <Icon name="i-lucide-arrow-left" class="size-4 mr-2" />
-        Back to Website Builder
-      </Button>
+  <div v-else class="flex w-full flex-col gap-6" data-testid="create-wizard">
+    <!-- Progress (question, style, listing and detail screens only) -->
+    <div v-if="progressIndex >= 0" class="mx-auto w-full max-w-2xl" data-testid="wz-progress">
+      <ol class="mb-2 flex justify-between">
+        <li
+          v-for="(p, i) in PROGRESS"
+          :key="p.key"
+          class="text-xs font-medium transition-colors"
+          :class="progressIndex >= i ? 'text-foreground' : 'text-muted-foreground'"
+          :aria-current="progressIndex === i ? 'step' : undefined"
+        >
+          {{ p.label }}
+        </li>
+      </ol>
+      <Progress :model-value="progressPercent" class="h-1.5" />
     </div>
 
-    <div>
-      <h2 class="text-2xl font-bold tracking-tight">
-        {{ editingWebsite ? 'Edit Website' : 'Create Website' }}
-      </h2>
-      <p class="text-muted-foreground mt-1">
-        Set up your new property website in a few steps.
-      </p>
-    </div>
-
-    <!-- Step Indicator -->
-    <div class="flex items-center gap-2">
-      <template v-for="(step, index) in STEPS" :key="step.key">
-        <div class="flex items-center gap-2">
-          <div
-            class="flex items-center justify-center size-8 rounded-full border text-xs font-medium transition-colors"
-            :class="{
-              'bg-primary text-primary-foreground border-primary': index < currentStep,
-              'bg-primary text-primary-foreground border-primary ring-2 ring-primary/30': index === currentStep,
-              'bg-muted text-muted-foreground border-border': index > currentStep,
-            }"
-          >
-            <Icon v-if="index < currentStep" name="i-lucide-check" class="size-4" />
-            <span v-else>{{ index + 1 }}</span>
-          </div>
-          <span
-            class="text-sm font-medium hidden sm:inline"
-            :class="index <= currentStep ? 'text-foreground' : 'text-muted-foreground'"
-          >
-            {{ step.label }}
-          </span>
-        </div>
-        <div
-          v-if="index < STEPS.length - 1"
-          class="h-px flex-1 min-w-4 max-w-16"
-          :class="index < currentStep ? 'bg-primary' : 'bg-border'"
-        />
-      </template>
-    </div>
-
-    <!-- Step Content -->
     <div class="flex-1">
-      <WebsiteBuilderStepsTemplateStep
-        v-if="currentStep === 0"
-        @select="onSelectTemplate"
+      <WebsiteBuilderWizardChoiceStep
+        v-if="step === 'guests'"
+        v-model="answers.guestType"
+        title="Who are your guests?"
+        :options="GUEST_OPTIONS"
         @next="goNext"
-        @back="goBack"
       />
 
-      <WebsiteBuilderStepsSettingsStep
-        v-else-if="currentStep === 1"
-        v-model="websiteSettings"
+      <WebsiteBuilderWizardChoiceStep
+        v-else-if="step === 'tone'"
+        v-model="answers.tone"
+        title="What's the tone of voice?"
+        :options="TONE_OPTIONS"
         @next="goNext"
-        @back="goBack"
       />
 
-      <!-- Step 3: Property & Rooms -->
-      <WebsiteBuilderStepsPropertyStep
-        v-else-if="currentStep === 2"
-        v-model="propertySelection"
-        @next="goNext"
-        @back="goBack"
+      <WebsiteBuilderWizardLanguagesStep v-else-if="step === 'languages'" v-model="answers" @next="goNext" />
+
+      <WebsiteBuilderWizardTransitionStep v-else-if="step === 'transition'" @done="step = 'style'" />
+
+      <WebsiteBuilderWizardStyleStep
+        v-else-if="step === 'style'"
+        v-model:answers="answers"
+        v-model:settings="websiteSettings"
+        class="mx-auto max-w-4xl"
       />
 
-      <!-- Step 4: Reviews -->
-      <WebsiteBuilderStepsReviewStep
-        v-else-if="currentStep === 3"
-        v-model="reviewSelection"
+      <div v-else-if="step === 'listings'" class="mx-auto w-full max-w-4xl">
+        <WebsiteBuilderStepsPropertyStep v-model="propertySelection" embedded />
+      </div>
+
+      <WebsiteBuilderWizardDetailsStep
+        v-else-if="step === 'details'"
+        ref="detailsRef"
+        v-model:settings="websiteSettings"
+        v-model:answers="answers"
+        v-model:reviews="reviewSelection"
         :property-ids="propertySelection.propertyIds"
-        @next="goNext"
-        @back="goBack"
       />
 
-      <!-- Step 5: Preview & Publish -->
+      <WebsiteBuilderWizardFinalReviewStep
+        v-else-if="step === 'review'"
+        :settings="finalSettings"
+        :answers="answers"
+        :property="propertySelection"
+        @generate="step = 'generating'"
+        @go-to="step = $event"
+      />
+
+      <WebsiteBuilderWizardGeneratingStep v-else-if="step === 'generating'" @done="step = 'preview'" @back="step = 'review'" />
+
       <WebsiteBuilderStepsPreviewStep
-        v-else-if="currentStep === 4"
+        v-else-if="step === 'preview'"
         :template="selectedTemplate"
-        :settings="websiteSettings"
+        :settings="finalSettings"
         :property="propertySelection"
         :reviews="reviewSelection"
-        @back="goBack"
-        @go-to-step="(s: number) => currentStep = s"
+        @back="step = 'review'"
+        @go-to-step="onPreviewGoTo"
       />
+    </div>
+
+    <!-- Footer: Back and Next. Question screens move on by themselves; review and generate have their own button. -->
+    <div v-if="showFooter || step === 'review'" class="mx-auto flex w-full items-center justify-between border-t pt-4" :class="step === 'details' || step === 'review' ? 'max-w-3xl' : 'max-w-4xl'">
+      <Button variant="ghost" data-testid="wz-back" @click="goBack">
+        <Icon name="i-lucide-arrow-left" class="mr-2 size-4" />
+        Back
+      </Button>
+      <Button v-if="showFooter" :disabled="!canNext" data-testid="wz-next" @click="goNext">
+        Next
+        <Icon name="i-lucide-arrow-right" class="ml-2 size-4" />
+      </Button>
+    </div>
+    <div v-else-if="step === 'guests' || step === 'tone' || step === 'languages'" class="mx-auto w-full max-w-2xl">
+      <Button variant="ghost" data-testid="wz-back" @click="goBack">
+        <Icon name="i-lucide-arrow-left" class="mr-2 size-4" />
+        Back
+      </Button>
     </div>
   </div>
 </template>

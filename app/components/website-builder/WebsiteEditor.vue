@@ -5,6 +5,7 @@ import type { ReviewSelection } from '~/components/website-builder/steps/ReviewS
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { useMediaQuery } from '@vueuse/core'
+import { nextTick } from 'vue'
 import { toast } from 'vue-sonner'
 import { ruleSetIssues } from '~/components/channels/data/website-channel'
 import { getListingIdsForWebsite } from '~/components/website-builder/data/property-listings'
@@ -23,6 +24,7 @@ const reviews = defineModel<ReviewSelection>('reviews', { required: true })
 const SECTIONS = [
   { key: 'ai', label: 'AI Generate', icon: 'elev8:elevai' },
   { key: 'settings', label: 'Site Settings', icon: 'lucide:settings' },
+  { key: 'rules', label: 'Booking Rules', icon: 'lucide:calendar-check' },
   { key: 'hero', label: 'Hero Media', icon: 'lucide:image' },
   { key: 'listings', label: 'Manage Listings', icon: 'lucide:house' },
   { key: 'blog', label: 'Blog', icon: 'lucide:newspaper' },
@@ -60,13 +62,43 @@ const problem = computed(() => {
   return null
 })
 
+const settingsSaved = ref(false)
+
+// Inline title edit: Enter or leaving the field keeps it, Escape drops it. It is saved with the rest of the site.
+const editingTitle = ref(false)
+const titleDraft = ref('')
+const titleInput = ref<{ $el?: HTMLInputElement } | HTMLInputElement | null>(null)
+
+function startTitleEdit() {
+  titleDraft.value = settings.value.name
+  editingTitle.value = true
+  nextTick(() => {
+    const el = titleInput.value && '$el' in titleInput.value ? titleInput.value.$el : titleInput.value as HTMLInputElement | null
+    el?.focus()
+    el?.select()
+  })
+}
+function commitTitle() {
+  if (!editingTitle.value)
+    return
+  editingTitle.value = false
+  const name = titleDraft.value.trim()
+  if (name && name !== settings.value.name)
+    settings.value = { ...settings.value, name }
+}
+function cancelTitle() {
+  editingTitle.value = false
+}
+
 function save(status: Website['status'], message: string) {
   if (problem.value) {
     toast.error('Cannot save yet', { description: problem.value })
-    return
+    return false
   }
   saveWebsite({ template: props.template, settings: settings.value, property: property.value, reviews: reviews.value }, status, props.website.id)
+  settingsSaved.value = true
   toast.success(message)
+  return true
 }
 
 const unpublishOpen = ref(false)
@@ -91,9 +123,26 @@ function unpublish() {
     <!-- Header -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
       <div class="min-w-0">
-        <h2 class="truncate text-xl font-semibold tracking-tight" data-testid="we-title">
-          {{ settings.name || 'Untitled website' }}
-        </h2>
+        <div v-if="editingTitle" class="max-w-md">
+          <Input
+            ref="titleInput"
+            v-model="titleDraft"
+            class="h-9 text-xl font-semibold tracking-tight"
+            aria-label="Website title"
+            data-testid="we-title-input"
+            @keydown.enter.prevent="commitTitle"
+            @keydown.esc.prevent="cancelTitle"
+            @blur="commitTitle"
+          />
+        </div>
+        <div v-else class="flex min-w-0 items-center gap-1.5">
+          <h2 class="truncate text-xl font-semibold tracking-tight" data-testid="we-title">
+            {{ settings.name || 'Untitled website' }}
+          </h2>
+          <Button variant="ghost" size="icon-sm" aria-label="Edit website title" data-testid="we-title-edit" @click="startTitleEdit">
+            <Icon name="lucide:pencil" class="size-4" aria-hidden="true" />
+          </Button>
+        </div>
         <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <button type="button" class="underline decoration-dotted underline-offset-4 hover:text-foreground" @click="section = 'listings'">
             {{ listingCount }} {{ listingCount === 1 ? 'Listing' : 'Listings' }}
@@ -133,7 +182,7 @@ function unpublish() {
             <button
               type="button"
               class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
-              :class="section === s.key ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+              :class="section === s.key ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
               :aria-current="section === s.key ? 'page' : undefined"
               :data-testid="`we-nav-${s.key}`"
               @click="section = s.key"
@@ -167,7 +216,20 @@ function unpublish() {
 
         <!-- Existing builder steps, without their Back / Next -->
         <div v-if="section === 'settings'" class="p-5" data-testid="we-settings">
-          <WebsiteBuilderStepsSettingsStep v-model="settings" embedded />
+          <WebsiteBuilderWebsiteSiteSettings
+            v-model:settings="settings"
+            :published="isPublished"
+            :rendering="rendering"
+            :saved="settingsSaved"
+            @save="moved => save(isPublished ? 'published' : 'draft', 'Settings saved') && moved && rerender()"
+            @rerender="rerender"
+          />
+        </div>
+        <div v-else-if="section === 'rules'" class="p-5">
+          <WebsiteBuilderWebsiteBookingRules
+            v-model:settings="settings"
+            @save="save(isPublished ? 'published' : 'draft', 'Booking rules saved')"
+          />
         </div>
         <div v-else-if="section === 'listings'" class="p-5">
           <WebsiteBuilderStepsPropertyStep v-model="property" embedded />
@@ -190,7 +252,8 @@ function unpublish() {
             </p>
           </div>
         </div>
-        <div v-else class="flex min-h-72 flex-col items-center justify-center gap-2 p-5 text-center" data-testid="we-empty">
+        <!-- Not for AI Generate: that panel is `v-show`, so it is outside this v-if chain. -->
+        <div v-else-if="section !== 'ai'" class="flex min-h-72 flex-col items-center justify-center gap-2 p-5 text-center" data-testid="we-empty">
           <Icon :name="current.icon" class="size-8 text-muted-foreground" aria-hidden="true" />
           <h3 class="text-lg font-semibold">
             {{ current.label }}
