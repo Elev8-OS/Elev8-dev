@@ -181,14 +181,14 @@ describe('cancel extension dialog', () => {
     return useReservationsModule().reservations.value
   }
 
-  it('cancels the stay with every linked booking, and says a refund is due', async () => {
+  it('cancels the stay with every linked booking', async () => {
     const ext = useStayExtension()
     await ext.confirmExtension({ reservationId: 'res-test-1', checkIn: '2030-03-03', payment: { method: 'already_paid' } })
     await ext.confirmExtension({ reservationId: 'res-test-1', checkOut: '2030-03-09', payment: { method: 'at_property' } })
     const wrapper = await open(ReservationCancelExtensionDialog, live())
     expect(wrapper.find('[data-testid="cancel-linked-list"]').text()).toContain('Early arrival')
     expect(wrapper.find('[data-testid="cancel-linked-list"]').text()).toContain('Extension')
-    expect(wrapper.find('[data-testid="cancel-money"]').text()).toContain('refund is due')
+    expect(wrapper.text()).not.toContain('refund')
     await wrapper.find('[data-testid="cancel-confirm"]').trigger('click')
     await flushPromises()
     expect(rows().every(r => r.status === 'cancelled')).toBe(true)

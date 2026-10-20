@@ -3,6 +3,8 @@ import type { CleaningStatus, Conversation, StayStatus } from '~/components/inbo
 import { format, formatDistanceToNow } from 'date-fns'
 import { toast } from 'vue-sonner'
 import { otaSources, resolveConversationTenantId } from '~/components/inbox/data/conversations'
+import { unpaidExtensions } from '~/components/reservations/data/extension-events'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 import { cn } from '~/lib/utils'
 
 interface ListItemProps {
@@ -57,6 +59,9 @@ function handleCleaningClick(conv: Conversation) {
 }
 
 const otaIconMap: Record<string, string> = Object.fromEntries(otaSources.map(s => [s.name, s.icon]))
+// An extension of this stay still waiting for its money.
+const { reservations: stays } = useReservationsModule()
+const pendingExtensions = computed(() => unpaidExtensions(stays.value.find(r => r.id === props.conversation.reservationId)))
 const stayConfig = computed(() => stayStatusConfig[props.conversation.stayStatus])
 
 const gro = useGroScope()
@@ -108,6 +113,16 @@ const stayDateLabel = computed(() => {
               <TooltipContent side="top" class="text-xs">
                 {{ cleaningLabel[conversation.cleaningStatus] }}
                 <span v-if="conversation.cleaningStatus === 'cleaning_finished'" class="text-muted-foreground"> · Click to mark</span>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip v-if="pendingExtensions.length" :delay-duration="0">
+              <TooltipTrigger as-child>
+                <span class="inline-flex items-center" data-testid="inbox-extension-pending" aria-label="Extension payment pending">
+                  <Icon name="lucide:calendar-plus" class="size-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" class="text-xs">
+                {{ pendingExtensions.length === 1 ? 'Extension payment pending' : `${pendingExtensions.length} extension payments pending` }}
               </TooltipContent>
             </Tooltip>
             <span class="min-w-0 truncate text-xs text-muted-foreground" :title="conversation.listingName">{{ conversation.listingName }}</span>

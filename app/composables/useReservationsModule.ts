@@ -850,7 +850,6 @@ export function useReservationsModule() {
       ...e,
       cancelledAt: at,
       cancelledBy: actorName(),
-      ...(e.paymentStatus === 'paid' ? { refundStatus: 'due' as const } : {}),
     }
   }
 
@@ -883,8 +882,7 @@ export function useReservationsModule() {
   /**
    * Takes one extension back: in place, the stay's dates, nights, price and
    * room lines return to what they were; for an OTA stay, the linked booking
-   * is cancelled (the OTA booking was never touched). A paid extension is left
-   * with a refund due; `guestPaid` moves only when it is marked refunded.
+   * is cancelled (the OTA booking was never touched). No refund is tracked.
    */
   function cancelExtension(id: string, extensionId: string): { success: boolean, error?: string, extension?: StayExtension } {
     const check = canCancelExtension(id, extensionId)
@@ -895,10 +893,9 @@ export function useReservationsModule() {
     const before = ext.direction === 'before'
     const now = new Date().toISOString()
     const nightsLabel = `${ext.extraNights} night${ext.extraNights === 1 ? '' : 's'}`
-    const refund = ext.paymentStatus === 'paid' ? ` · ${moneyLabel(ext.amount, ext.currency)} refund due` : ''
 
     if (ext.linkedReservationId) {
-      const event = activityEvent('extension-cancel', before ? 'Early arrival cancelled' : 'Extension cancelled', `${nightsLabel} on direct booking ${ext.linkedReservationId} cancelled${refund}`)
+      const event = activityEvent('extension-cancel', before ? 'Early arrival cancelled' : 'Extension cancelled', `${nightsLabel} on direct booking ${ext.linkedReservationId} cancelled`)
       reservations.value = reservations.value.map((x) => {
         if (x.id === id)
           return { ...x, extensions: x.extensions!.map(e => e.id === extensionId ? cancelledRecord(e, now) : e), activity: [...x.activity, event] }
@@ -929,7 +926,7 @@ export function useReservationsModule() {
     const event = activityEvent(
       'extension-cancel',
       before ? 'Early arrival cancelled' : 'Extension cancelled',
-      `${nightsLabel} removed, ${before ? `check-in back to ${ext.previousCheckIn}` : `check-out back to ${ext.previousCheckOut}`}${refund}`,
+      `${nightsLabel} removed, ${before ? `check-in back to ${ext.previousCheckIn}` : `check-out back to ${ext.previousCheckOut}`}`,
     )
     reservations.value = reservations.value.map(x => x.id === id
       ? {
@@ -948,31 +945,6 @@ export function useReservationsModule() {
     void import('~/composables/useDamageProtection')
       .then(m => m.useDamageProtection().reassessOnExtension(id, previousNights))
     return { success: true, extension: ext }
-  }
-
-  /** The money for a cancelled, paid extension went back: guestPaid drops on the stay that was billed. */
-  function markExtensionRefunded(id: string, extensionId: string): boolean {
-    const r = reservations.value.find(x => x.id === id)
-    const ext = r?.extensions?.find(e => e.id === extensionId)
-    if (!r || !ext || ext.refundStatus !== 'due')
-      return false
-    const billedId = ext.linkedReservationId ?? r.id
-    const refundedAt = new Date().toISOString()
-    const event = activityEvent('extension-refund', 'Extension refunded', `${moneyLabel(ext.amount, ext.currency)} for ${ext.extraNights} cancelled night${ext.extraNights === 1 ? '' : 's'}`)
-    reservations.value = reservations.value.map((x) => {
-      let next = x
-      if (x.id === id) {
-        next = {
-          ...next,
-          extensions: (next.extensions ?? []).map(e => e.id === extensionId ? { ...e, refundStatus: 'refunded' as const, refundedAt } : e),
-          activity: [...next.activity, event],
-        }
-      }
-      if (x.id === billedId && next.priceDetails)
-        next = { ...next, priceDetails: { ...next.priceDetails, guestPaid: roundForCurrency(Math.max(next.priceDetails.guestPaid - ext.amount, 0), next.currency) } }
-      return next
-    })
-    return true
   }
 
   function moneyLabel(amount: number, currency: string): string {
@@ -1284,7 +1256,6 @@ export function useReservationsModule() {
     markReservationPaid,
     canCancelExtension,
     cancelExtension,
-    markExtensionRefunded,
     reset,
   }
 }

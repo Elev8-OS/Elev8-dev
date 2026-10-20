@@ -557,9 +557,6 @@ export interface StayExtension {
    */
   cancelledAt?: string
   cancelledBy?: string
-  /** A paid extension that was cancelled owes the guest its `amount` back until staff mark it refunded. */
-  refundStatus?: 'due' | 'refunded'
-  refundedAt?: string
 }
 
 /** Still counts: not cancelled. */
@@ -818,6 +815,13 @@ export const reservationStatusClasses: Record<ReservationStatus, string> = {
   owner_request: 'border-dashed bg-violet-500/10 text-violet-700 border-violet-500/40',
 }
 
+/** A local YYYY-MM-DD relative to today, for demo stays that must always be in the house. */
+function seedDay(offset: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export const initialReservations: ReservationEntry[] = [
   // Rich records (from inbox, enriched)
   {
@@ -831,8 +835,10 @@ export const initialReservations: ReservationEntry[] = [
     listingId: 'lst-1',
     listingName: '5BR Pool the R Villa Luwa – Serene near Canggu',
     channel: 'Airbnb',
-    checkIn: '2026-07-10',
-    checkOut: '2026-07-15',
+    // Arrives next week, in the gap on lst-1 after res-dp-awaiting and before the owner stay, so the stay
+    // overlaps nothing and both Stay longer and Arrive earlier (one free night before it) are open.
+    checkIn: seedDay(7),
+    checkOut: seedDay(12),
     nights: 5,
     guestCount: 2,
     totalPrice: 750,
@@ -847,7 +853,7 @@ export const initialReservations: ReservationEntry[] = [
       commission: 75,
       payout: 675,
     },
-    status: 'checked_out',
+    status: 'verified',
     conversationId: 'conv-1',
     guests: [
       {
@@ -980,28 +986,8 @@ export const initialReservations: ReservationEntry[] = [
         title: 'Cleaning Completed',
         description: 'Pre-arrival clean finished.',
         actor: 'Made Surya',
-        timestamp: '2026-07-09T14:00:00Z',
+        timestamp: `${seedDay(-1)}T14:00:00Z`,
         colorDot: 'gold',
-      },
-      {
-        id: 'act-res1-6',
-        type: 'message',
-        title: 'Guest checked in',
-        description: 'Arrived and settled in. Welcomed by staff.',
-        actor: 'Sarah Mitchell',
-        timestamp: '2026-07-10T13:30:00Z',
-        channel: 'WhatsApp',
-        colorDot: 'green',
-      },
-      {
-        id: 'act-res1-7',
-        type: 'message',
-        title: 'Guest checked out',
-        description: 'Departed. Keys returned and property inspected.',
-        actor: 'Sarah Mitchell',
-        timestamp: '2026-07-15T11:10:00Z',
-        channel: 'WhatsApp',
-        colorDot: 'blue',
       },
     ],
   },

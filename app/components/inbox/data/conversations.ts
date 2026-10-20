@@ -358,12 +358,12 @@ export const conversations: Conversation[] = [
     isAssignedToMe: false,
     assignedTo: 'staff-1',
     tags: ['Canggu', 'Pool', '4BR'],
-    labels: ['check-in-today'],
+    labels: [],
     sentiment: 'positive',
     sentimentNote: 'Guest is excited about the stay',
-    stayStatus: 'current',
-    checkIn: '2026-07-10T15:00:00Z',
-    checkOut: '2026-07-15T11:00:00Z',
+    stayStatus: 'future',
+    checkIn: `${seedDay(7)}T15:00:00Z`,
+    checkOut: `${seedDay(12)}T11:00:00Z`,
     verification: 'check_in',
     cleaningStatus: 'cleaning_finished',
     linkedUpsellOrderIds: [],
@@ -2183,6 +2183,13 @@ export const messages: Record<string, Message[]> = {
   ],
 }
 
+/** A local YYYY-MM-DD relative to today, so the demo stay of conv-1 always arrives next week. */
+function seedDay(offset: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export const reservations: Record<string, Reservation> = {
   'res-1': {
     id: 'res-1',
@@ -2190,8 +2197,8 @@ export const reservations: Record<string, Reservation> = {
     roomName: 'Villa Canggu',
     listingName: '5BR Pool the R Villa Luwa – Serene near Canggu',
     otaSource: 'Airbnb',
-    checkIn: '2026-07-10T15:00:00Z',
-    checkOut: '2026-07-15T11:00:00Z',
+    checkIn: `${seedDay(7)}T15:00:00Z`,
+    checkOut: `${seedDay(12)}T11:00:00Z`,
     nights: 5,
     guestCount: 2,
     totalPrice: 750,

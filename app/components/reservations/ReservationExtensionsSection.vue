@@ -15,7 +15,7 @@ const props = defineProps<{
 
 const { reservations } = useReservationsModule()
 const { requests } = usePaymentRequests()
-const { markExtensionPaid, markExtensionRefunded, canCancelExtension } = useStayExtension()
+const { markExtensionPaid, canCancelExtension } = useStayExtension()
 
 const cancellingId = ref<string | undefined>()
 const cancelOpen = computed({
@@ -31,11 +31,6 @@ function cancellable(extensionId: string): boolean {
   return canCancelExtension(props.reservation.id, extensionId).ok
 }
 
-function markRefunded(extensionId: string) {
-  if (markExtensionRefunded(props.reservation.id, extensionId))
-    toast.success('Refund recorded')
-}
-
 const METHOD_LABELS: Record<ExtensionPaymentMethod, string> = {
   payment_link: 'Payment link',
   saved_card: 'Saved card',
@@ -45,7 +40,6 @@ const METHOD_LABELS: Record<ExtensionPaymentMethod, string> = {
 
 const extensions = computed(() => [...(props.reservation.extensions ?? [])].reverse())
 const pendingCount = computed(() => extensions.value.filter(e => isActiveExtension(e) && e.paymentStatus === 'pending').length)
-const refundCount = computed(() => extensions.value.filter(e => e.refundStatus === 'due').length)
 
 const parent = computed(() => props.reservation.extensionOf
   ? reservations.value.find(r => r.id === props.reservation.extensionOf) ?? null
@@ -107,9 +101,6 @@ function copyLink(link: string) {
           <Badge v-if="pendingCount" variant="outline" class="h-4 border-amber-500/40 px-1 text-[9px] text-amber-700 dark:text-amber-400">
             {{ pendingCount }} unpaid
           </Badge>
-          <Badge v-if="refundCount" variant="outline" class="h-4 border-destructive/40 px-1 text-[9px] text-destructive">
-            {{ refundCount }} refund due
-          </Badge>
         </span>
       </AccordionTrigger>
       <AccordionContent class="px-3 pb-3">
@@ -145,16 +136,7 @@ function copyLink(link: string) {
                 <Badge variant="outline" class="text-[10px] text-muted-foreground">
                   Cancelled {{ fmtDate(ext.cancelledAt.slice(0, 10)) }}
                 </Badge>
-                <Badge v-if="ext.refundStatus === 'due'" variant="outline" class="border-destructive/40 bg-destructive/10 text-[10px] text-destructive">
-                  Refund due
-                </Badge>
-                <Badge v-else-if="ext.refundStatus === 'refunded'" variant="outline" class="text-[10px] text-muted-foreground">
-                  Refunded
-                </Badge>
               </span>
-              <Button v-if="ext.refundStatus === 'due'" variant="outline" size="sm" class="h-7 px-2 text-xs" data-testid="extension-mark-refunded" @click="markRefunded(ext.id)">
-                Mark refunded
-              </Button>
             </div>
             <div v-else class="mt-2 flex items-center justify-between gap-2">
               <Badge v-if="ext.paymentStatus === 'paid'" variant="outline" class="border-green-500/30 bg-green-500/10 text-[10px] text-green-700 dark:text-green-400">

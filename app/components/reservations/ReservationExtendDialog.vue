@@ -224,6 +224,9 @@ const PAYMENT_OPTIONS = computed(() => [
   },
 ])
 
+/** Paid at confirm (saved card, already paid): door codes move now. Otherwise when it is marked paid. */
+const paidNow = computed(() => method.value === 'saved_card' || method.value === 'already_paid')
+
 const methodLabel = computed(() => PAYMENT_OPTIONS.value.find(o => o.id === method.value)?.label ?? '')
 
 /** The night picked for the cleaning; falls back to the first added night when the range moves. */
@@ -341,10 +344,6 @@ function fmtMoney(amount: number, currency = props.reservation?.currency ?? 'USD
   const locale = currency === 'CHF' ? 'de-CH' : 'en-US'
   const digits = currency === 'IDR' ? 0 : 2
   return `${currency} ${amount.toLocaleString(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
-}
-
-function fmtTotals(totals: { amount: number, currency: string }[]): string {
-  return totals.length ? totals.map(t => fmtMoney(t.amount, t.currency)).join(' + ') : fmtMoney(0)
 }
 
 function plural(n: number, word: string): string {
@@ -691,15 +690,9 @@ async function confirm() {
                 </li>
                 <li class="flex items-start gap-2">
                   <Icon name="lucide:key-round" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <span v-if="view.codesToExtend && isBefore">{{ plural(view.codesToExtend, 'door code') }} now start{{ view.codesToExtend === 1 ? 's' : '' }} on {{ fmtDate(newDate) }}</span>
-                  <span v-else-if="view.codesToExtend">{{ plural(view.codesToExtend, 'door code') }} extended to {{ fmtDate(newDate) }}</span>
+                  <span v-if="view.codesToExtend && isBefore">{{ plural(view.codesToExtend, 'door code') }} {{ paidNow ? `now start${view.codesToExtend === 1 ? 's' : ''}` : 'will start' }} on {{ fmtDate(newDate) }}{{ paidNow ? '' : ' once the extension is paid' }}</span>
+                  <span v-else-if="view.codesToExtend">{{ plural(view.codesToExtend, 'door code') }} {{ paidNow ? 'extended' : 'will be extended' }} to {{ fmtDate(newDate) }}{{ paidNow ? '' : ' once the extension is paid' }}</span>
                   <span v-else class="text-muted-foreground">No door code {{ isBefore ? 'starts on the old check-in' : 'ends on the old check-out' }}</span>
-                </li>
-                <li v-if="view.cityTax.kind !== 'none'" class="flex items-start gap-2">
-                  <Icon name="lucide:landmark" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <span v-if="view.cityTax.kind === 'due'">City tax due goes from {{ fmtTotals(view.cityTax.before) }} to {{ fmtTotals(view.cityTax.after) }}</span>
-                  <span v-else-if="view.cityTax.kind === 'linked_due'">The new booking owes {{ fmtTotals(view.cityTax.totals) }} city tax</span>
-                  <span v-else class="text-amber-700 dark:text-amber-400">City tax was already settled for the original nights. Undo it in City tax to collect the added nights.</span>
                 </li>
               </ul>
             </div>

@@ -8,7 +8,7 @@ import { useStayExtension } from '~/composables/useStayExtension'
 // Confirms every cancel from the detail sheet. Two modes:
 // - the stay (no `extensionId`, not a linked booking): the stay and every
 //   linked booking go, open payment links and cleanings are cancelled, door
-//   codes are revoked, paid extensions owe a refund;
+//   codes are revoked;
 // - one extension (`extensionId`, or `reservation` is its linked booking):
 //   only that extension is taken back, if `canCancelExtension` allows it.
 const props = defineProps<{
@@ -66,9 +66,6 @@ const linkedBookings = computed(() => stayPreview.value?.linked ?? [])
 const pendingLinks = computed(() => isExtensionMode.value
   ? (extension.value?.paymentStatus === 'pending' && extension.value.paymentRequestId ? 1 : 0)
   : stayPreview.value?.pendingLinks ?? 0)
-const refunds = computed(() => isExtensionMode.value
-  ? (extension.value?.paymentStatus === 'paid' ? [extension.value] : [])
-  : stayPreview.value?.refunds ?? [])
 
 // Rebuilt each time the dialog opens; staff can rewrite it or switch it off.
 watch(() => props.open, (open) => {
@@ -89,12 +86,6 @@ const title = computed(() => {
 
 function fmtDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function fmtMoney(amount: number, currency: string): string {
-  const locale = currency === 'CHF' ? 'de-CH' : 'en-US'
-  const digits = currency === 'IDR' ? 0 : 2
-  return `${currency} ${amount.toLocaleString(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 }
 
 function plural(n: number, word: string): string {
@@ -118,13 +109,9 @@ async function confirm() {
     toast.error(result.error ?? 'Could not cancel.')
     return
   }
-  const refundTotal = result.refundsDue.length
-    ? result.refundsDue.map(e => fmtMoney(e.amount, e.currency)).join(' + ')
-    : ''
   const details = [
     result.cancelledIds.length > 1 ? `${plural(result.cancelledIds.length - 1, 'linked booking')} cancelled too` : '',
     result.paymentLinksCancelled ? `${plural(result.paymentLinksCancelled, 'payment link')} cancelled` : '',
-    refundTotal ? `${refundTotal} refund due` : '',
     result.codesRevoked ? `${plural(result.codesRevoked, 'door code')} revoked` : '',
     result.guestNotified ? 'guest notified' : '',
   ].filter(Boolean).join(', ')
@@ -195,14 +182,10 @@ async function confirm() {
           </li>
         </ul>
 
-        <ul v-if="!blocked && (pendingLinks || refunds.length)" class="space-y-1.5" data-testid="cancel-money">
+        <ul v-if="!blocked && pendingLinks" class="space-y-1.5" data-testid="cancel-money">
           <li v-if="pendingLinks" class="flex items-start gap-2">
             <Icon name="lucide:link" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span>{{ plural(pendingLinks, 'open payment link') }} {{ pendingLinks === 1 ? 'is' : 'are' }} cancelled</span>
-          </li>
-          <li v-for="e in refunds" :key="e.id" class="flex items-start gap-2">
-            <Icon name="lucide:undo-2" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span>{{ fmtMoney(e.amount, e.currency) }} was paid for {{ plural(e.extraNights, 'night') }}: a refund is due. Mark it refunded once it is sent.</span>
           </li>
         </ul>
 

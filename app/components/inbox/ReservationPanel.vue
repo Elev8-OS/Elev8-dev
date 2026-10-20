@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { Conversation, PhoneCall, Reservation } from '~/components/inbox/data/conversations'
 import ReservationExtendDialog from '~/components/reservations/ReservationExtendDialog.vue'
+import ReservationExtensionsSection from '~/components/reservations/ReservationExtensionsSection.vue'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 import { canExtend } from '~/composables/useStayExtension'
 
@@ -51,6 +52,9 @@ const conversationPhoneCalls = computed((): PhoneCall[] =>
       </div>
 
       <Separator />
+
+      <!-- The stay's extensions with their payment, so the agent can finish one (mark paid, copy the link, cancel) without leaving the thread -->
+      <ReservationExtensionsSection v-if="stay" :reservation="stay" />
 
       <Tabs default-value="summary" class="flex flex-col">
         <TabsList class="w-full justify-start rounded-none border-b bg-transparent px-2 h-9 overflow-x-auto">

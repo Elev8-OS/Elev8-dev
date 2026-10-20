@@ -65,17 +65,18 @@ night before the current one.
   a daily/custom schedule gets jobs for the added nights; existing jobs are kept, not regenerated.
 - Door codes: `useSmartLock.extendCodesForReservation` shifts active, dated codes that end on the
   old check-out day (Bali time). Ongoing codes are left alone. Early arrival:
-  `advanceCodesForReservation` moves codes that start on the old check-in day.
+  `advanceCodesForReservation` moves codes that start on the old check-in day. ⚠️ **Only once the extension is paid**: at confirm for a saved-card or already-paid extension, otherwise in `useStayExtension.markExtensionPaid`. A pending extension leaves the codes alone (the review step and the guest message say so), and cancelling an unpaid one has nothing to restore.
 - Early arrival cleaning: the check-out cleaning stays put. In place, a daily/custom schedule gets
   jobs for the earlier days. For OTA, `useCleaningJobs.dropArrivalOverlap` removes the linked
   booking's own check-out job on the OTA check-in day (the guest stays on) and any job of it the
   stay already has that day.
-- City tax: derived, so an unsettled stay recalculates itself. The review step warns when it was
-  already settled (the added nights are not included). A linked booking owes its own city tax.
-- Damage protection: `reassessOnExtension` (in place only).
+- City tax: not handled for the added nights yet (the review step shows nothing about it; `preview().cityTax` is computed but unused by the UI). See the PRD, R5.5.
+- Damage protection: an extension is not covered; `reassessOnExtension` only runs for older in-place records.
 - Guest message channels (review step): Email and/or WhatsApp, multi-select (no thread/Inbox chip; default Email, else WhatsApp; the composable still accepts `'thread'`); Email needs a guest email, WhatsApp a phone. All go into the stay's conversation tagged with that channel, and channels that resolve to the same one (thread of an email stay + Email) are sent once (`GuestMessageChannel`). Mock delivery only.
 - Guest message: `ensureConversationForReservation` + `sendMessage` via ⚠️ dynamic `import()` of
   `useInbox` (cycle rule). Editable in the review step; blank sends nothing.
+
+**Inbox** (`inbox/ReservationPanel.vue`, `Thread.vue`, `ListItem.vue`): the reservation panel shows `ReservationExtensionsSection` above its tabs (same component as the detail sheet: payment status, Mark paid, copy link, cancel) when the matched stay has extensions. The thread gets centered system lines for each step (`InboxThreadExtensionEvent`: created, paid, cancelled), **derived** from `stay.extensions` by `extensionEvents()` in `reservations/data/extension-events.ts` (never stored as messages, so they cannot go stale; the "paid at creation" case shows no separate paid line). The reservation panel's **Activity** tab (`InboxReservationActivity`) shows the same lines in its timeline (it reads the stay from the Reservations module, since the inbox keeps its own display copy of the reservation). A conversation list item shows an amber `calendar-plus` icon with a tooltip while an active extension is unpaid (`unpaidExtensions()`). Tests: `tests/lib/extension-events.spec.ts`.
 
 **Reservation list** (`ReservationTable.vue`): an extended stay gets a `lucide:calendar-plus`
 icon beside the guest's name (sky, amber while a payment is pending; details on hover). A linked booking is
@@ -106,14 +107,13 @@ extension is never revived. Guest registration is synced once, for the root stay
   In place, dates, nights, price, room lines and a shifted `cleaningSchedule.startDate` go back; for
   OTA the linked booking is cancelled. Door codes and the check-out cleaning return to the original
   day, cleanings for the removed nights are cancelled, a pending payment link is cancelled.
-- ⚠️ **Refunds follow the money too**: a cancelled paid extension gets `refundStatus: 'due'`;
-  `guestPaid` on the billed stay drops only on `markExtensionRefunded` ("Mark refunded").
+- No refunds: cancelling a paid extension tracks nothing (no `refundStatus`, no "Mark refunded", no refund line in the message). Money handed back is handled outside the dashboard.
 - A cancelled extension counts nowhere: table icon, Extended / Unpaid filters, `markExtensionPaid`
   (refused). Use `isActiveExtension(e)` when reading `extensions`.
 - `updateReservationStatus(..., 'cancelled')` also marks the matching records cancelled, so a cancel
   that skips `useStayExtension` never leaves an "active" record; it does not do the clean-up.
 - **Guest message**: the dialog starts from `defaultCancelMessage(stayId, extensionId?)` (dates,
-  "your Airbnb booking stays as it is", refund or "the payment link is no longer needed"); editable,
+  "your Airbnb booking stays as it is", and "the payment link is no longer needed" when it was unpaid); editable,
   switch off to send nothing. Sent like the extend message (dynamic `useInbox` import).
 - `cancelStay` / `cancelExtension` are async (the message).
 

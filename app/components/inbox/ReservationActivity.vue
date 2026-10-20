@@ -2,6 +2,8 @@
 import type { ActivityEvent, AiSkipReason, PhoneCall, Reservation } from '~/components/inbox/data/conversations'
 import { format, isToday } from 'date-fns'
 import { toast } from 'vue-sonner'
+import { extensionEvents } from '~/components/reservations/data/extension-events'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 interface ReservationActivityProps {
   activity: ActivityEvent[]
@@ -25,6 +27,19 @@ function formatTimestamp(ts: string) {
   }
   return format(date, 'EEEE, d MMM yyyy, HH:mm')
 }
+
+// The inbox keeps its own display copy of the reservation, so the stay's extensions (kept in the
+// Reservations module) are read from there and shown as timeline lines.
+const { reservations: stays } = useReservationsModule()
+const extensionTimeline = computed(() => extensionEvents(stays.value.find(r => r.id === props.reservation.id)).map(e => ({
+  id: `ext-${e.id}`,
+  title: e.title,
+  description: e.detail,
+  timestamp: e.timestamp,
+  type: 'reservation',
+  colorDot: e.tone === 'pending' ? 'gold' : e.tone === 'ok' ? 'green' : 'gray',
+  channel: undefined,
+})))
 
 const reversedActivity = computed(() =>
   props.activity
@@ -154,6 +169,7 @@ const allActivities = computed(() => {
       channel: 'Phone' as const,
     })),
     ...generatedEvents.value,
+    ...extensionTimeline.value,
   ]
   return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 })

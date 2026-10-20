@@ -2,6 +2,8 @@
 import type { AiSkipReason, PhoneCall, ScheduledTemplate } from '~/components/inbox/data/conversations'
 import { differenceInDays, format, isToday, isYesterday } from 'date-fns'
 import { toast } from 'vue-sonner'
+import { extensionEvents } from '~/components/reservations/data/extension-events'
+import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const { selectedConversation, selectedMessages, selectedReservation, markAsHandled, markAsUnread, isElevaiEnabled, useSuggestion, getNotes, addNote, editNote, deleteNote, rightPanelCollapsed, toggleRightPanel, autoTranslate, matchUnmatched, createFromUnmatched, dismissUnmatched, conversations, threadSelectionMode, selectedThreadMessageIds, clearThreadSelection } = useInbox()
 const { refsFromGuestMessages, listingIdForName } = useInternalInbox()
@@ -154,6 +156,9 @@ const displayMessages = computed(() =>
   selectedMessages.value.filter(m => !m.isAISuggestion),
 )
 
+const { reservations: stayReservations } = useReservationsModule()
+const threadStay = computed(() => stayReservations.value.find(r => r.id === selectedConversation.value?.reservationId) ?? null)
+
 const threadItems = computed(() => {
   const msgs = displayMessages.value.map(m => ({ type: 'message' as const, data: m, timestamp: m.timestamp }))
   const notes = conversationNotes.value
@@ -164,7 +169,9 @@ const threadItems = computed(() => {
   const skips = (selectedReservation.value?.scheduledTemplates ?? [])
     .filter((t): t is ScheduledTemplate & { skipReason: AiSkipReason } => t.status === 'skipped' && !!t.skipReason)
     .map(t => ({ type: 'skip' as const, data: t, timestamp: t.skipReason.decidedAt }))
-  const combined = [...msgs, ...notes, ...skips]
+  // Extensions of this stay (created, paid, cancelled), derived from the Reservations module.
+  const extensions = extensionEvents(threadStay.value).map(e => ({ type: 'extension' as const, data: e, timestamp: e.timestamp }))
+  const combined = [...msgs, ...notes, ...skips, ...extensions]
   combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
   return combined
 })
@@ -510,6 +517,7 @@ function formatCallDate(timestamp: string): string {
               </div>
               <InboxThreadMessage v-if="item.type === 'message'" :message="item.data" />
               <InboxThreadSkipNotice v-else-if="item.type === 'skip'" :template="item.data" />
+              <InboxThreadExtensionEvent v-else-if="item.type === 'extension'" :event="item.data" />
               <div v-else class="flex justify-end">
                 <div class="flex flex-col gap-1 max-w-[75%]">
                   <div class="flex items-center gap-2">
