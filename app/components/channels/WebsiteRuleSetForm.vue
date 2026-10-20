@@ -293,47 +293,49 @@ const validCodes = computed(() => codes.value
       </div>
     </section>
 
-    <Separator />
+    <!-- Payment and codes. Not in a website's own rules yet: how prepayment works on a site is still to be defined. -->
+    <template v-if="!siteOnly">
+      <Separator />
 
-    <!-- Payment and codes -->
-    <section class="flex flex-col gap-3">
-      <h3 class="text-sm font-semibold">
-        {{ siteOnly ? 'Payment' : 'Payment and promo codes' }}
-      </h3>
-      <div class="flex flex-col gap-1.5">
-        <div class="flex items-center gap-1.5">
-          <Label for="wrs-prepay">Prepayment at booking</Label>
-          <ChannelsWebsiteRuleHint label="Prepayment at booking" text="Share of the stay total charged when the guest books. The rest is due before arrival." />
+      <section class="flex flex-col gap-3">
+        <h3 class="text-sm font-semibold">
+          Payment and promo codes
+        </h3>
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center gap-1.5">
+            <Label for="wrs-prepay">Prepayment at booking</Label>
+            <ChannelsWebsiteRuleHint label="Prepayment at booking" text="Share of the stay total charged when the guest books. The rest is due before arrival." />
+          </div>
+          <div class="flex items-center gap-2">
+            <Input id="wrs-prepay" v-model.number="draft.prepaymentPct" type="number" min="0" max="100" class="w-28" :class="issueFor('prepaymentPct') && 'border-destructive'" />
+            <span class="text-sm text-muted-foreground">% of the stay, the rest is due before arrival</span>
+          </div>
+          <p v-if="issueFor('prepaymentPct')" class="text-xs text-destructive">
+            {{ issueFor('prepaymentPct') }}
+          </p>
         </div>
-        <div class="flex items-center gap-2">
-          <Input id="wrs-prepay" v-model.number="draft.prepaymentPct" type="number" min="0" max="100" class="w-28" :class="issueFor('prepaymentPct') && 'border-destructive'" />
-          <span class="text-sm text-muted-foreground">% of the stay, the rest is due before arrival</span>
+        <div class="flex flex-col gap-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <Label>Promo codes valid on these websites</Label>
+            <NuxtLink to="/promo-codes" class="text-xs text-primary hover:underline">
+              Manage in Promo Codes
+            </NuxtLink>
+          </div>
+          <ul v-if="validCodes.length" class="flex flex-col divide-y rounded-md border" data-testid="wrs-promo-codes">
+            <li v-for="{ code, status } in validCodes" :key="code.id" class="flex items-center gap-3 px-3 py-2 text-sm">
+              <span class="font-mono font-medium">{{ code.code }}</span>
+              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ formatPromoDiscount(code) }}</span>
+              <Badge :variant="status === 'active' ? 'default' : 'outline'" class="shrink-0 capitalize">
+                {{ status }}
+              </Badge>
+            </li>
+          </ul>
+          <p v-else class="text-xs text-muted-foreground">
+            No promo code is set to work on these websites. Set where a code works in Promo Codes.
+          </p>
         </div>
-        <p v-if="issueFor('prepaymentPct')" class="text-xs text-destructive">
-          {{ issueFor('prepaymentPct') }}
-        </p>
-      </div>
-      <div v-if="!siteOnly" class="flex flex-col gap-1.5">
-        <div class="flex items-center justify-between gap-2">
-          <Label>Promo codes valid on these websites</Label>
-          <NuxtLink to="/promo-codes" class="text-xs text-primary hover:underline">
-            Manage in Promo Codes
-          </NuxtLink>
-        </div>
-        <ul v-if="validCodes.length" class="flex flex-col divide-y rounded-md border" data-testid="wrs-promo-codes">
-          <li v-for="{ code, status } in validCodes" :key="code.id" class="flex items-center gap-3 px-3 py-2 text-sm">
-            <span class="font-mono font-medium">{{ code.code }}</span>
-            <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ formatPromoDiscount(code) }}</span>
-            <Badge :variant="status === 'active' ? 'default' : 'outline'" class="shrink-0 capitalize">
-              {{ status }}
-            </Badge>
-          </li>
-        </ul>
-        <p v-else class="text-xs text-muted-foreground">
-          No promo code is set to work on these websites. Set where a code works in Promo Codes.
-        </p>
-      </div>
-    </section>
+      </section>
+    </template>
 
     <template v-if="!siteOnly">
       <Separator />

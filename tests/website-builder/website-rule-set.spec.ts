@@ -123,10 +123,17 @@ describe('booking rules section', () => {
 
   it('explains each stay rule with a hint', () => {
     const wrapper = mount(BookingRules, { props: { settings: settings(newRuleSet()) }, global })
-    for (const label of ['Minimum stay', 'Maximum stay', 'Booking notice', 'Arrival days', 'Departure days', 'Prepayment at booking']) {
+    for (const label of ['Minimum stay', 'Maximum stay', 'Booking notice', 'Arrival days', 'Departure days']) {
       const hint = wrapper.get(`[aria-label="About ${label}"]`)
       expect(hint.attributes('title')!.length).toBeGreaterThan(20)
     }
+  })
+
+  it('does not offer prepayment in a website\'s own rules yet', () => {
+    const wrapper = mount(BookingRules, { props: { settings: settings(newRuleSet()) }, global })
+    expect(wrapper.find('#wrs-prepay').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Prepayment')
+    expect(wrapper.text()).not.toContain('Payment')
   })
 
   it('the real hint shows its label and keeps the text for the tooltip', () => {
