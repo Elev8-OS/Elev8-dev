@@ -1,4 +1,5 @@
 import type { ReviewSource } from '~/components/review-hub/data/types'
+import type { BlogPost } from '~/components/website-builder/data/blog'
 import type { WebsiteReviewConfig } from '~/components/website-builder/data/review-config'
 
 // Shared website-builder data. Originally lived inline in
@@ -39,6 +40,11 @@ export interface Website {
   // an older website with no coverage recorded is treated as covering
   // everything rather than nothing, so nothing silently disappears.
   propertyIds?: string[]
+  /** Site languages as codes (`en`, `de`...). Missing = English only. */
+  languages?: string[]
+  defaultLanguage?: string
+  autoDetectLanguage?: boolean
+  blogPosts?: BlogPost[]
 }
 
 export const websites = ref<Website[]>([

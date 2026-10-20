@@ -21,7 +21,7 @@ function updateRules(rules: WebsiteRuleSet) {
 </script>
 
 <template>
-  <div class="max-w-2xl" data-testid="we-booking-rules">
+  <div class="mx-auto w-full max-w-3xl" data-testid="we-booking-rules">
     <h3 class="text-xl font-semibold tracking-tight">
       Booking rules
     </h3>

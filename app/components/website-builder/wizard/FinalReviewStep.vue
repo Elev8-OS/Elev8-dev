@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import type { PropertySelection } from '~/components/website-builder/data/property-listings'
 import type { WizardAnswers } from '~/components/website-builder/data/wizard'
-import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import { STYLE_PRESETS } from '~/components/website-builder/data/wizard'
 

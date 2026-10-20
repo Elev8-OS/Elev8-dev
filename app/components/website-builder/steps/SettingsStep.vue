@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import type { WebsiteRuleSet } from '~/components/channels/data/website-channel'
+import type { BlogPost } from '~/components/website-builder/data/blog'
 import { ruleSetIssues } from '~/components/channels/data/website-channel'
 import WebsiteRuleSetForm from '~/components/channels/WebsiteRuleSetForm.vue'
+
+export type HeroMode = 'static' | 'carousel' | 'video'
+
+/** A hero photo. `url` is a local preview, nothing is uploaded in this demo. */
+export interface HeroImage {
+  id: string
+  name: string
+  url: string
+}
 
 export interface WebsiteSettings {
   name: string
@@ -12,6 +22,16 @@ export interface WebsiteSettings {
   logoFile: string | null
   faviconFile: string | null
   useDefaultFavicon: boolean
+  /** Hero media of the site. Unset means a static hero with no photos yet. */
+  heroMode?: HeroMode
+  heroImages?: HeroImage[]
+  heroVideoFile?: string | null
+  /** Site languages and the default one. Unset = English only. */
+  languages?: string[]
+  defaultLanguage?: string
+  autoDetectLanguage?: boolean
+  /** The Blog menu's posts, saved on the Website. */
+  blogPosts?: BlogPost[]
   /**
    * This website's own booking rules (length of stay, stay rules, prepayment).
    * Not saved on the Website: on publish the wizard hands them to

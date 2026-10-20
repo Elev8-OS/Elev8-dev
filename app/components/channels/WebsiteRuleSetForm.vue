@@ -235,21 +235,30 @@ const validCodes = computed(() => codes.value
       </h3>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div class="flex flex-col gap-1.5">
-          <Label for="wrs-min-nights">Minimum stay</Label>
+          <div class="flex items-center gap-1.5">
+            <Label for="wrs-min-nights">Minimum stay</Label>
+            <ChannelsWebsiteRuleHint label="Minimum stay" text="The fewest nights a guest can book. A minimum of 1 allows any stay." />
+          </div>
           <div class="flex items-center gap-2">
             <Input id="wrs-min-nights" v-model.number="draft.minNights" type="number" min="1" :class="issueFor('minNights') && 'border-destructive'" />
             <span class="text-sm text-muted-foreground">nights</span>
           </div>
         </div>
         <div class="flex flex-col gap-1.5">
-          <Label for="wrs-max-nights">Maximum stay</Label>
+          <div class="flex items-center gap-1.5">
+            <Label for="wrs-max-nights">Maximum stay</Label>
+            <ChannelsWebsiteRuleHint label="Maximum stay" text="The most nights a guest can book. Leave empty for no limit." />
+          </div>
           <div class="flex items-center gap-2">
             <Input id="wrs-max-nights" v-model="maxNightsInput" type="number" min="1" placeholder="No limit" :class="issueFor('maxNights') && 'border-destructive'" />
             <span class="text-sm text-muted-foreground">nights</span>
           </div>
         </div>
         <div class="flex flex-col gap-1.5">
-          <Label for="wrs-notice">Booking notice</Label>
+          <div class="flex items-center gap-1.5">
+            <Label for="wrs-notice">Booking notice</Label>
+            <ChannelsWebsiteRuleHint label="Booking notice" text="How many days before arrival a booking must be made. 0 allows same day bookings, 2 closes the next 2 days." />
+          </div>
           <div class="flex items-center gap-2">
             <Input id="wrs-notice" v-model.number="draft.minDaysBeforeArrival" type="number" min="0" :class="issueFor('minDaysBeforeArrival') && 'border-destructive'" />
             <span class="text-sm text-muted-foreground">days</span>
@@ -260,8 +269,11 @@ const validCodes = computed(() => codes.value
         {{ issueFor('minNights') || issueFor('maxNights') || issueFor('minDaysBeforeArrival') }}
       </p>
 
-      <div v-for="field in [{ key: 'arrivalDays', label: 'Arrival days' }, { key: 'departureDays', label: 'Departure days' }] as const" :key="field.key" class="flex flex-col gap-1.5">
-        <Label>{{ field.label }}</Label>
+      <div v-for="field in [{ key: 'arrivalDays', label: 'Arrival days', hint: 'Days of the week a stay can start. Leave all unselected to allow any day.' }, { key: 'departureDays', label: 'Departure days', hint: 'Days of the week a stay can end. Leave all unselected to allow any day.' }] as const" :key="field.key" class="flex flex-col gap-1.5">
+        <div class="flex items-center gap-1.5">
+          <Label>{{ field.label }}</Label>
+          <ChannelsWebsiteRuleHint :label="field.label" :text="field.hint" />
+        </div>
         <div class="flex flex-wrap gap-1.5">
           <button
             v-for="day in WEEKDAYS"
@@ -289,7 +301,10 @@ const validCodes = computed(() => codes.value
         {{ siteOnly ? 'Payment' : 'Payment and promo codes' }}
       </h3>
       <div class="flex flex-col gap-1.5">
-        <Label for="wrs-prepay">Prepayment at booking</Label>
+        <div class="flex items-center gap-1.5">
+          <Label for="wrs-prepay">Prepayment at booking</Label>
+          <ChannelsWebsiteRuleHint label="Prepayment at booking" text="Share of the stay total charged when the guest books. The rest is due before arrival." />
+        </div>
         <div class="flex items-center gap-2">
           <Input id="wrs-prepay" v-model.number="draft.prepaymentPct" type="number" min="0" max="100" class="w-28" :class="issueFor('prepaymentPct') && 'border-destructive'" />
           <span class="text-sm text-muted-foreground">% of the stay, the rest is due before arrival</span>

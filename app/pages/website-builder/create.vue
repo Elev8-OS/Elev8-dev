@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
+import type { PropertySelection } from '~/components/website-builder/data/property-listings'
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { cloneRuleSet, newRuleSet, ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
+import { getListingsForProperties, selectionForListings } from '~/components/website-builder/data/property-listings'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import { fontFamilyFor, GUEST_OPTIONS, newWizardAnswers, SITE_DOMAIN, STYLE_PRESETS, templateForPreset, TONE_OPTIONS } from '~/components/website-builder/data/wizard'
@@ -82,8 +83,12 @@ if (import.meta.client && editingWebsite.value) {
     faviconFile: null,
     useDefaultFavicon: false,
     rules: newRuleSet(),
+    languages: site.languages ?? ['en'],
+    defaultLanguage: site.defaultLanguage ?? site.languages?.[0] ?? 'en',
+    autoDetectLanguage: site.autoDetectLanguage ?? false,
+    blogPosts: site.blogPosts ?? [],
   }
-  propertySelection.value = { propertyIds: site.propertyIds ?? [], roomIds: [] }
+  propertySelection.value = selectionForListings(getListingsForProperties(site.propertyIds ?? []))
   reviewSelection.value = {
     selectedReviewIds: site.reviewIds ?? [],
     featuredReviewIds: site.featuredReviewIds ?? [],
@@ -114,6 +119,10 @@ const finalSettings = computed<WebsiteSettings>(() => ({
   ...websiteSettings.value,
   domain: answers.value.hasCustomDomain ? answers.value.customDomain.trim().toLowerCase() : `${answers.value.subdomain.trim().toLowerCase()}${SITE_DOMAIN}`,
   fontFamily: fontFamilyFor(answers.value.fontPairing),
+  languages: answers.value.languages,
+  defaultLanguage: answers.value.defaultLanguage,
+  autoDetectLanguage: answers.value.autoDetectLanguage,
+  blogPosts: [],
 }))
 
 const canNext = computed(() => {
@@ -211,7 +220,7 @@ function onPreviewGoTo(index: number) {
       />
 
       <div v-else-if="step === 'listings'" class="mx-auto w-full max-w-4xl">
-        <WebsiteBuilderStepsPropertyStep v-model="propertySelection" embedded />
+        <WebsiteBuilderStepsListingsStep v-model="propertySelection" />
       </div>
 
       <WebsiteBuilderWizardDetailsStep

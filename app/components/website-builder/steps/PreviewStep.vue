@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { ReviewSource } from '~/components/review-hub/data/types'
+import type { PropertySelection } from '~/components/website-builder/data/property-listings'
 import type { Website } from '~/components/website-builder/data/websites'
-import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { toast } from 'vue-sonner'
 import { ruleSetSummary } from '~/components/channels/data/website-channel'
+import { getUnitTypes, listings } from '~/components/listings/data/listings'
 import {
   channelIcons,
   channelLabels,
@@ -22,25 +23,6 @@ import { useWebsiteSave } from '~/composables/useWebsiteSave'
 // Re-export for convenience
 export type { PropertySelection, Template, WebsiteSettings }
 
-interface Room {
-  id: string
-  name: string
-  type: 'bedroom' | 'bathroom' | 'living' | 'kitchen' | 'outdoor'
-  description: string
-  amenities: string[]
-  photos: string[]
-}
-
-interface Property {
-  id: string
-  title: string
-  location: string
-  maxCapacity: number
-  amenities: string[]
-  photos: string[]
-  rooms: Room[]
-}
-
 const props = defineProps<{
   template: Template | null
   settings: WebsiteSettings
@@ -53,96 +35,22 @@ const emit = defineEmits<{
   goToStep: [step: number]
 }>()
 
-// ── Mock properties (mirrors PropertyStep data) ─────────────────
-const allProperties: Property[] = [
-  {
-    id: 'prop-1',
-    title: 'Villa Sunset Bay',
-    location: 'Seminyak, Bali',
-    maxCapacity: 8,
-    amenities: ['Pool', 'WiFi', 'A/C'],
-    photos: [],
-    rooms: [
-      { id: 'r1', name: 'Master Bedroom', type: 'bedroom', description: '', amenities: [], photos: ['p1', 'p2'] },
-      { id: 'r2', name: 'Guest Bedroom', type: 'bedroom', description: '', amenities: [], photos: ['p3'] },
-      { id: 'r3', name: 'Kids Bedroom', type: 'bedroom', description: '', amenities: [], photos: ['p4'] },
-      { id: 'r4', name: 'Living Room', type: 'living', description: '', amenities: [], photos: ['p5', 'p6'] },
-      { id: 'r5', name: 'Kitchen', type: 'kitchen', description: '', amenities: [], photos: ['p7'] },
-      { id: 'r6', name: 'Master Bathroom', type: 'bathroom', description: '', amenities: [], photos: ['p8'] },
-      { id: 'r7', name: 'Pool & Terrace', type: 'outdoor', description: '', amenities: [], photos: ['p9', 'p10'] },
-    ],
-  },
-  {
-    id: 'prop-2',
-    title: 'Ubud Jungle Retreat',
-    location: 'Ubud, Bali',
-    maxCapacity: 6,
-    amenities: ['Pool', 'WiFi'],
-    photos: [],
-    rooms: [
-      { id: 'r8', name: 'Master Suite', type: 'bedroom', description: '', amenities: [], photos: ['p11'] },
-      { id: 'r9', name: 'Guest Room', type: 'bedroom', description: '', amenities: [], photos: ['p12'] },
-      { id: 'r10', name: 'Open Living Pavilion', type: 'living', description: '', amenities: [], photos: ['p13'] },
-      { id: 'r11', name: 'Bamboo Kitchen', type: 'kitchen', description: '', amenities: [], photos: ['p14'] },
-      { id: 'r12', name: 'Yoga Deck', type: 'outdoor', description: '', amenities: [], photos: ['p15'] },
-    ],
-  },
-  {
-    id: 'prop-3',
-    title: 'Beachfront Canggu Villa',
-    location: 'Canggu, Bali',
-    maxCapacity: 10,
-    amenities: ['Pool', 'WiFi', 'Beach Access'],
-    photos: [],
-    rooms: [
-      { id: 'r13', name: 'Master Bedroom', type: 'bedroom', description: '', amenities: [], photos: ['p16', 'p17'] },
-      { id: 'r14', name: 'Ocean View Suite', type: 'bedroom', description: '', amenities: [], photos: ['p18'] },
-      { id: 'r15', name: 'Garden Room', type: 'bedroom', description: '', amenities: [], photos: ['p19'] },
-      { id: 'r16', name: 'Bunk Room', type: 'bedroom', description: '', amenities: [], photos: ['p20'] },
-      { id: 'r17', name: 'Main Living Area', type: 'living', description: '', amenities: [], photos: ['p21', 'p22'] },
-      { id: 'r18', name: 'Gourmet Kitchen', type: 'kitchen', description: '', amenities: [], photos: ['p23'] },
-      { id: 'r19', name: 'Master En-suite', type: 'bathroom', description: '', amenities: [], photos: ['p24'] },
-      { id: 'r20', name: 'Guest Bathroom', type: 'bathroom', description: '', amenities: [], photos: ['p25'] },
-      { id: 'r21', name: 'Pool Deck', type: 'outdoor', description: '', amenities: [], photos: ['p26', 'p27'] },
-    ],
-  },
-  {
-    id: 'prop-4',
-    title: 'Cliffside Uluwatu',
-    location: 'Uluwatu, Bali',
-    maxCapacity: 4,
-    amenities: ['Pool', 'WiFi'],
-    photos: [],
-    rooms: [
-      { id: 'r22', name: 'Honeymoon Suite', type: 'bedroom', description: '', amenities: [], photos: ['p28', 'p29'] },
-      { id: 'r23', name: 'Cozy Lounge', type: 'living', description: '', amenities: [], photos: ['p30'] },
-      { id: 'r24', name: 'Kitchenette', type: 'kitchen', description: '', amenities: [], photos: ['p31'] },
-      { id: 'r25', name: 'Cliffside Pool', type: 'outdoor', description: '', amenities: [], photos: ['p32'] },
-    ],
-  },
-]
-
-// ── Computed ─────────────────────────────────────────────────────
+// ── Picked listings and rooms, from the real Listings data ─────────────
 const selectedProperties = computed(() =>
-  allProperties.filter(p => props.property.propertyIds.includes(p.id)),
+  listings.value.filter(l => props.property.propertyIds.includes(l.id)),
 )
 
 const selectedRooms = computed(() =>
-  selectedProperties.value.flatMap(p => p.rooms).filter(r => props.property.roomIds.includes(r.id)),
+  selectedProperties.value.flatMap(l =>
+    getUnitTypes(l).flatMap(t => t.units
+      .filter(u => props.property.roomIds.includes(u.id))
+      .map(u => ({ id: u.id, name: u.name, typeName: t.name }))),
+  ),
 )
 
 const totalPhotos = computed(() =>
-  selectedRooms.value.reduce((sum, r) => sum + r.photos.length, 0),
+  selectedProperties.value.reduce((sum, l) => sum + l.photos.length, 0),
 )
-
-// ── Room type helpers ────────────────────────────────────────────
-const roomTypeConfig: Record<Room['type'], { label: string, variant: 'default' | 'secondary' | 'outline', icon: string }> = {
-  bedroom: { label: 'Bedroom', variant: 'default', icon: 'i-lucide-bed' },
-  bathroom: { label: 'Bathroom', variant: 'secondary', icon: 'i-lucide-bath' },
-  living: { label: 'Living', variant: 'secondary', icon: 'i-lucide-sofa' },
-  kitchen: { label: 'Kitchen', variant: 'outline', icon: 'i-lucide-chef-hat' },
-  outdoor: { label: 'Outdoor', variant: 'outline', icon: 'i-lucide-trees' },
-}
 
 // ── Review resolution (mirrors what the published site will render) ─────
 const { reviewRecords } = useReviewHub()
@@ -401,16 +309,16 @@ function handleBack() {
             <Icon name="i-lucide-home" class="size-4 text-muted-foreground" />
             <div>
               <p class="text-sm font-medium">
-                {{ selectedProperties.length }} propert{{ selectedProperties.length !== 1 ? 'ies' : 'y' }} selected
+                {{ selectedProperties.length }} listing{{ selectedProperties.length !== 1 ? 's' : '' }} selected
               </p>
               <p class="text-xs text-muted-foreground">
-                {{ selectedProperties.map(p => p.title).join(', ') }}
+                {{ selectedProperties.map(p => p.name).join(', ') }}
               </p>
             </div>
           </div>
 
-          <!-- Rooms -->
-          <div class="space-y-2">
+          <!-- Rooms (multi-unit listings only) -->
+          <div v-if="selectedRooms.length > 0" class="space-y-2">
             <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Rooms ({{ selectedRooms.length }})
             </p>
@@ -420,10 +328,10 @@ function handleBack() {
                 :key="room.id"
                 class="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
               >
-                <Icon :name="roomTypeConfig[room.type].icon" class="size-3 text-muted-foreground" />
+                <Icon name="i-lucide-bed" class="size-3 text-muted-foreground" />
                 <span class="font-medium">{{ room.name }}</span>
-                <Badge :variant="roomTypeConfig[room.type].variant" class="text-[9px] px-1 py-0 ml-0.5">
-                  {{ roomTypeConfig[room.type].label }}
+                <Badge variant="secondary" class="text-[9px] px-1 py-0 ml-0.5">
+                  {{ room.typeName }}
                 </Badge>
               </div>
             </div>
@@ -441,10 +349,10 @@ function handleBack() {
         <div v-else class="flex flex-col items-center justify-center py-6 gap-2 text-muted-foreground">
           <Icon name="i-lucide-alert-circle" class="size-8" />
           <p class="text-sm">
-            No property selected
+            No listing selected
           </p>
           <Button variant="outline" size="sm" @click="emit('goToStep', 2)">
-            Select Property
+            Select listings
           </Button>
         </div>
       </CardContent>

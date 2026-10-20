@@ -164,7 +164,7 @@ function resetFilters() {
 }
 
 const propertyOptions = computed(() =>
-  props.propertyIds.map(id => ({ id, name: propertyNames[id] ?? id })),
+  props.propertyIds.map(id => ({ id, name: listings.value.find(l => l.id === id)?.name ?? propertyNames[id] ?? id })),
 )
 
 const filterListingIds = computed(() =>

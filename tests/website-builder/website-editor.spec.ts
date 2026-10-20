@@ -30,7 +30,7 @@ const global = {
     AlertDialogAction: passthrough,
     WebsiteBuilderWebsiteSiteSettings: SettingsStub,
     WebsiteBuilderWebsiteBookingRules: { template: '<div data-testid="rules-section" />' },
-    WebsiteBuilderStepsPropertyStep: { template: '<div data-testid="property-step" />' },
+    WebsiteBuilderStepsListingsStep: { template: '<div data-testid="property-step" />' },
     WebsiteBuilderStepsReviewStep: { template: '<div data-testid="review-step" />' },
   },
   config: { warnHandler: () => {} },
@@ -80,7 +80,7 @@ describe('websiteEditor', () => {
     expect(wrapper.get('[data-testid="we-title"]').text()).toBe('Villa Sunset Bali')
     expect(wrapper.text()).toContain('Listings')
     const labels = wrapper.findAll('nav button').map(b => b.text())
-    expect(labels).toEqual(['AI Generate', 'Site Settings', 'Booking Rules', 'Hero Media', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Analytics'])
+    expect(labels).toEqual(['AI Generate', 'Site Settings', 'Booking Rules', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Analytics'])
     expect(wrapper.find('[data-testid="we-ai"]').exists()).toBe(true)
     // The empty state is for sections with nothing to set up, never under AI Generate.
     expect(wrapper.find('[data-testid="we-empty"]').exists()).toBe(false)
@@ -144,5 +144,15 @@ describe('inline title edit', () => {
     await input.trigger('keydown', { key: 'Escape' })
     expect(wrapper.emitted('update:settings')).toBeUndefined()
     expect(wrapper.get('[data-testid="we-title"]').text()).toBe('Villa Sunset Bali')
+  })
+})
+
+describe('save changes per section', () => {
+  it('has a Save changes button under Manage Listings and Reviews', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-testid="we-nav-listings"]').trigger('click')
+    expect(wrapper.get('[data-testid="we-save-listings"]').text()).toBe('Save changes')
+    await wrapper.get('[data-testid="we-nav-reviews"]').trigger('click')
+    expect(wrapper.get('[data-testid="we-save-reviews"]').text()).toBe('Save changes')
   })
 })

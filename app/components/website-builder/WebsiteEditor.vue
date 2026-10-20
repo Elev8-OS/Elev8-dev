@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import type { PropertySelection } from '~/components/website-builder/data/property-listings'
 import type { Website } from '~/components/website-builder/data/websites'
-import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
@@ -25,7 +25,6 @@ const SECTIONS = [
   { key: 'ai', label: 'AI Generate', icon: 'elev8:elevai' },
   { key: 'settings', label: 'Site Settings', icon: 'lucide:settings' },
   { key: 'rules', label: 'Booking Rules', icon: 'lucide:calendar-check' },
-  { key: 'hero', label: 'Hero Media', icon: 'lucide:image' },
   { key: 'listings', label: 'Manage Listings', icon: 'lucide:house' },
   { key: 'blog', label: 'Blog', icon: 'lucide:newspaper' },
   { key: 'surroundings', label: 'Surroundings', icon: 'lucide:map-pin' },
@@ -99,6 +98,11 @@ function save(status: Website['status'], message: string) {
   settingsSaved.value = true
   toast.success(message)
   return true
+}
+
+// Keeps the site as it is (live stays live, a draft stays a draft).
+function saveSection(message: string) {
+  save(isPublished.value ? 'published' : 'draft', message)
 }
 
 const unpublishOpen = ref(false)
@@ -225,21 +229,34 @@ function unpublish() {
             @rerender="rerender"
           />
         </div>
+        <div v-else-if="section === 'blog'" class="p-5">
+          <WebsiteBuilderWebsiteBlog v-model:settings="settings" @save="saveSection" />
+        </div>
         <div v-else-if="section === 'rules'" class="p-5">
           <WebsiteBuilderWebsiteBookingRules
             v-model:settings="settings"
             @save="save(isPublished ? 'published' : 'draft', 'Booking rules saved')"
           />
         </div>
-        <div v-else-if="section === 'listings'" class="p-5">
-          <WebsiteBuilderStepsPropertyStep v-model="property" embedded />
+        <div v-else-if="section === 'listings'" class="mx-auto w-full max-w-3xl p-5">
+          <WebsiteBuilderStepsListingsStep v-model="property" />
+          <div class="mt-6 flex justify-end">
+            <Button data-testid="we-save-listings" @click="saveSection('Listings saved')">
+              Save changes
+            </Button>
+          </div>
         </div>
         <div v-else-if="section === 'reviews'" class="p-5">
           <WebsiteBuilderStepsReviewStep v-model="reviews" :property-ids="property.propertyIds" embedded />
+          <div class="mx-auto mt-6 flex w-full max-w-3xl justify-end">
+            <Button data-testid="we-save-reviews" @click="saveSection('Reviews saved')">
+              Save changes
+            </Button>
+          </div>
         </div>
 
         <!-- Sections with nothing to set up in this demo yet -->
-        <div v-else-if="section === 'analytics'" class="p-5" data-testid="we-analytics">
+        <div v-else-if="section === 'analytics'" class="mx-auto w-full max-w-3xl p-5" data-testid="we-analytics">
           <h3 class="text-lg font-semibold">
             Analytics
           </h3>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
+import type { HeroMode, WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { SITE_DOMAIN, slugify } from '~/components/website-builder/data/wizard'
+import { VueDraggable } from 'vue-draggable-plus'
+import { LANGUAGE_OPTIONS, SITE_DOMAIN, slugify } from '~/components/website-builder/data/wizard'
 
 const props = defineProps<{
   /** The site is live, so its custom domain shows Active instead of Pending. */
@@ -65,11 +66,65 @@ function reset(key: 'logoFile' | 'faviconFile') {
 }
 onBeforeUnmount(() => Object.values(previews).forEach(url => url && URL.revokeObjectURL(url)))
 
+// ── Hero media: static (first photo), carousel (all photos, in order) or a video ──
+const HERO_MODES: { value: HeroMode, label: string, icon: string }[] = [
+  { value: 'static', label: 'Static', icon: 'lucide:image' },
+  { value: 'carousel', label: 'Carousel', icon: 'lucide:images' },
+  { value: 'video', label: 'Video', icon: 'lucide:video' },
+]
+const heroMode = computed(() => settings.value.heroMode ?? 'static')
+const heroImages = computed(() => settings.value.heroImages ?? [])
+
+function addHeroPhotos(e: Event) {
+  const input = e.target as HTMLInputElement
+  const added = Array.from(input.files ?? []).map(file => ({
+    id: `hero-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: file.name,
+    url: URL.createObjectURL(file),
+  }))
+  input.value = ''
+  if (added.length)
+    patch({ heroImages: [...heroImages.value, ...added] })
+}
+function removeHeroPhoto(id: string) {
+  const gone = heroImages.value.find(i => i.id === id)
+  if (gone)
+    URL.revokeObjectURL(gone.url)
+  patch({ heroImages: heroImages.value.filter(i => i.id !== id) })
+}
+function reorderHeroPhotos(images: typeof heroImages.value) {
+  patch({ heroImages: images })
+}
+function pickHeroVideo(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file)
+    patch({ heroVideoFile: file.name })
+}
+
+// ── Languages: the site and its blog are written in each of these ──
+const languages = computed(() => settings.value.languages ?? ['en'])
+const defaultLanguage = computed(() => settings.value.defaultLanguage ?? languages.value[0] ?? 'en')
+
+function toggleLanguage(code: string) {
+  if (languages.value.includes(code)) {
+    // The site always keeps one language.
+    if (languages.value.length === 1)
+      return
+    const next = languages.value.filter(c => c !== code)
+    patch({ languages: next, defaultLanguage: defaultLanguage.value === code ? next[0] : defaultLanguage.value })
+  }
+  else {
+    patch({ languages: [...languages.value, code], defaultLanguage: defaultLanguage.value })
+  }
+}
+
 const canSave = computed(() => settings.value.name.trim() !== '' && address.value !== SITE_DOMAIN)
 </script>
 
 <template>
-  <div class="max-w-2xl" data-testid="we-site-settings">
+  <div class="mx-auto w-full max-w-3xl" data-testid="we-site-settings">
     <h3 class="text-xl font-semibold tracking-tight">
       Site settings
     </h3>
@@ -116,6 +171,153 @@ const canSave = computed(() => settings.value.name.trim() !== '' && address.valu
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- Hero media -->
+    <section class="mb-4 rounded-xl border bg-card p-5" data-testid="ss-hero">
+      <div class="text-sm font-semibold">
+        Hero media
+      </div>
+      <p class="mb-4 text-xs text-muted-foreground">
+        The first thing visitors see at the top of your homepage.
+      </p>
+
+      <div class="space-y-2">
+        <Label>Display mode</Label>
+        <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Hero display mode">
+          <button
+            v-for="mode in HERO_MODES"
+            :key="mode.value"
+            type="button"
+            role="radio"
+            :aria-checked="heroMode === mode.value"
+            class="flex items-center justify-center gap-1.5 rounded-lg border px-3 py-3 text-sm font-medium transition-colors"
+            :class="heroMode === mode.value ? 'border-2 border-primary' : 'hover:border-muted-foreground/50'"
+            :data-testid="`ss-hero-${mode.value}`"
+            @click="patch({ heroMode: mode.value })"
+          >
+            <Icon :name="mode.icon" class="size-4" aria-hidden="true" />
+            {{ mode.label }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="heroMode !== 'video'" class="mt-4" data-testid="ss-hero-photos">
+        <div class="mb-2 text-xs text-muted-foreground">
+          Photos ({{ heroImages.length }})
+        </div>
+        <p class="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
+          <Icon name="lucide:info" class="size-3.5" aria-hidden="true" />
+          {{ heroMode === 'static' ? 'The first photo becomes the hero. Drag photos to reorder.' : 'Photos play in this order. Drag photos to reorder.' }}
+        </p>
+        <VueDraggable :model-value="heroImages" :animation="200" class="flex flex-wrap gap-3" @update:model-value="reorderHeroPhotos">
+          <div v-for="(img, i) in heroImages" :key="img.id" class="group relative size-24 shrink-0 cursor-grab overflow-hidden rounded-lg border" data-testid="ss-hero-photo">
+            <img :src="img.url" :alt="`Hero photo ${i + 1}`" class="size-full object-cover">
+            <Badge v-if="heroMode === 'static' && i === 0" class="absolute left-1 top-1">
+              Hero
+            </Badge>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              class="absolute right-1 top-1 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+              :aria-label="`Remove hero photo ${i + 1}`"
+              @click="removeHeroPhoto(img.id)"
+            >
+              <Icon name="lucide:trash-2" class="size-4" aria-hidden="true" />
+            </Button>
+          </div>
+          <label class="flex size-24 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-muted-foreground transition-colors hover:border-primary">
+            <Icon name="lucide:plus" class="size-5" aria-hidden="true" />
+            <span class="text-xs">Add photo</span>
+            <input type="file" accept="image/*" multiple class="sr-only" aria-label="Add hero photos" @change="addHeroPhotos">
+          </label>
+        </VueDraggable>
+        <p class="mt-3 text-xs text-muted-foreground">
+          JPG or PNG.
+        </p>
+      </div>
+
+      <div v-else class="mt-4 space-y-2" data-testid="ss-hero-video-upload">
+        <label class="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors hover:border-primary">
+          <Icon name="lucide:video" class="size-8 text-muted-foreground" aria-hidden="true" />
+          <div>
+            <div class="text-sm font-medium">
+              {{ settings.heroVideoFile ?? 'Upload video file' }}
+            </div>
+            <div class="mt-0.5 text-xs text-muted-foreground">
+              {{ settings.heroVideoFile ? 'Click to replace' : 'Click to browse' }}
+            </div>
+          </div>
+          <input type="file" accept="video/mp4,video/quicktime,video/webm" class="sr-only" aria-label="Upload hero video" @change="pickHeroVideo">
+        </label>
+        <p class="text-xs text-muted-foreground">
+          Up to 3 minutes and 20 MB, MP4, MOV or WebM. The first photo stays as the poster while the video loads.
+        </p>
+      </div>
+    </section>
+
+    <!-- Languages -->
+    <section class="mb-4 rounded-xl border bg-card p-5" data-testid="ss-languages">
+      <div class="text-sm font-semibold">
+        Languages
+      </div>
+      <p class="mb-4 text-xs text-muted-foreground">
+        The site and its blog are available in each language you add. Use the star to choose the default.
+      </p>
+
+      <div class="flex flex-wrap gap-2">
+        <template v-for="lang in LANGUAGE_OPTIONS" :key="lang.code">
+          <div
+            v-if="languages.includes(lang.code)"
+            class="flex items-center gap-1 rounded-full border border-primary bg-primary/10 py-1 pl-1.5 pr-2.5 text-sm font-semibold"
+            :data-testid="`ss-lang-${lang.code}`"
+          >
+            <button
+              type="button"
+              class="rounded-full p-1 hover:bg-primary/10"
+              :aria-label="defaultLanguage === lang.code ? `${lang.label} is the default language` : `Set ${lang.label} as default language`"
+              :aria-pressed="defaultLanguage === lang.code"
+              @click="patch({ defaultLanguage: lang.code })"
+            >
+              <Icon name="lucide:star" class="size-3.5" :class="defaultLanguage === lang.code && 'fill-current text-primary'" aria-hidden="true" />
+            </button>
+            {{ lang.label }}
+            <button
+              type="button"
+              class="rounded-full p-1 hover:bg-primary/10 disabled:opacity-40"
+              :aria-label="`Remove ${lang.label}`"
+              :disabled="languages.length === 1"
+              @click="toggleLanguage(lang.code)"
+            >
+              <Icon name="lucide:x" class="size-3.5" aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            v-else
+            type="button"
+            class="flex items-center gap-1 rounded-full border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:border-muted-foreground/50"
+            :data-testid="`ss-lang-${lang.code}`"
+            :aria-label="`Add ${lang.label}`"
+            @click="toggleLanguage(lang.code)"
+          >
+            <Icon name="lucide:plus" class="size-3.5" aria-hidden="true" />
+            {{ lang.label }}
+          </button>
+        </template>
+      </div>
+
+      <div class="mt-4 flex cursor-pointer items-center gap-2" data-testid="ss-autodetect" @click="patch({ autoDetectLanguage: !settings.autoDetectLanguage })">
+        <div
+          class="flex size-4 items-center justify-center rounded-[4px] border"
+          :class="settings.autoDetectLanguage ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+        >
+          <Icon v-if="settings.autoDetectLanguage" name="lucide:check" class="size-3" />
+        </div>
+        <span class="text-sm">Auto-detect visitor language</span>
+      </div>
+      <p v-if="settings.autoDetectLanguage" class="mt-1.5 text-xs text-muted-foreground">
+        If the visitor's browser language is one of these, the site opens in it. Otherwise it opens in the default.
+      </p>
     </section>
 
     <!-- Address -->

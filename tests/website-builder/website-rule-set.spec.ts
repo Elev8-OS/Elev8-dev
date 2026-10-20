@@ -5,6 +5,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
 import { defaultWebsiteState, newRuleSet, ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
+import WebsiteRuleHint from '~/components/channels/WebsiteRuleHint.vue'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
 import PreviewStep from '~/components/website-builder/steps/PreviewStep.vue'
@@ -61,7 +62,9 @@ const STUBS = {
   AlertDialogCancel: passthrough,
   AlertDialogAction: passthrough,
 }
-const global = { stubs: STUBS, config: { warnHandler: () => {} } }
+// The hint's own tooltip is a Reka portal: stub it to a title so the text can be read.
+const HINT_STUB = defineComponent({ name: 'ChannelsWebsiteRuleHint', props: { label: String, text: String }, template: '<button :aria-label="\'About \' + label" :title="text" />' })
+const global = { stubs: STUBS, components: { ChannelsWebsiteRuleHint: HINT_STUB }, config: { warnHandler: () => {} } }
 
 const originalWebsites = JSON.parse(JSON.stringify(websites.value))
 
@@ -116,6 +119,20 @@ describe('booking rules section', () => {
     expect(rules.text()).not.toContain('Websites')
     expect(rules.text()).not.toContain('Rule set name')
     expect(rules.find('[data-testid="wrs-website"]').exists()).toBe(false)
+  })
+
+  it('explains each stay rule with a hint', () => {
+    const wrapper = mount(BookingRules, { props: { settings: settings(newRuleSet()) }, global })
+    for (const label of ['Minimum stay', 'Maximum stay', 'Booking notice', 'Arrival days', 'Departure days', 'Prepayment at booking']) {
+      const hint = wrapper.get(`[aria-label="About ${label}"]`)
+      expect(hint.attributes('title')!.length).toBeGreaterThan(20)
+    }
+  })
+
+  it('the real hint shows its label and keeps the text for the tooltip', () => {
+    const wrapper = mount(WebsiteRuleHint, { props: { label: 'Minimum stay', text: 'Fewest nights.' }, global: { stubs: { Tooltip: { template: '<div><slot /></div>' }, TooltipTrigger: { template: '<div><slot /></div>' }, TooltipContent: { template: '<p data-testid="tip"><slot /></p>' }, Icon: true } } })
+    expect(wrapper.get('button').attributes('aria-label')).toBe('About Minimum stay')
+    expect(wrapper.get('[data-testid="tip"]').text()).toBe('Fewest nights.')
   })
 
   it('shows no rules section when the form has none', () => {
@@ -239,7 +256,7 @@ describe('create page prefills the site rules when editing', () => {
         props: { settings: { type: Object, required: true } },
         template: '<div data-testid="settings-step" :data-min="String(settings.rules?.minNights)" />',
       }),
-      WebsiteBuilderStepsPropertyStep: true,
+      WebsiteBuilderStepsListingsStep: true,
       WebsiteBuilderStepsReviewStep: true,
       WebsiteBuilderStepsPreviewStep: true,
       WebsiteBuilderWebsiteEditor: EditorStub,

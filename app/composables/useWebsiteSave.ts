@@ -1,5 +1,5 @@
+import type { PropertySelection } from '~/components/website-builder/data/property-listings'
 import type { Website } from '~/components/website-builder/data/websites'
-import type { PropertySelection } from '~/components/website-builder/steps/PropertyStep.vue'
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
@@ -35,6 +35,10 @@ export function useWebsiteSave() {
       manualReviews: reviews.manualReviews,
       featuredManualReviewIds: reviews.featuredManualReviewIds,
       reviewConfig: reviews.config,
+      languages: settings.languages,
+      defaultLanguage: settings.defaultLanguage,
+      autoDetectLanguage: settings.autoDetectLanguage,
+      blogPosts: settings.blogPosts,
     }
     const index = editId ? websites.value.findIndex(w => w.id === editId) : -1
     const existing = websites.value[index]
