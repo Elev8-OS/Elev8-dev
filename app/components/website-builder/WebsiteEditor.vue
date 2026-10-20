@@ -83,32 +83,11 @@ function unpublish() {
   save('draft', 'Website unpublished. It is a draft again')
 }
 
-// ── AI Generate (mock: nothing is sent anywhere) ──────────────────
-const SUGGESTIONS = {
-  Content: ['Hero headline', 'Shorter subtext', 'Rename feature', 'Footer tagline', 'Fix airport time', 'More emotional'],
-  Design: ['Bolder colors', 'Larger photos', 'Simpler menu', 'Softer buttons'],
-  SEO: ['Meta description', 'Page titles', 'Alt text for photos', 'Local keywords'],
-} as const
-const scope = ref<keyof typeof SUGGESTIONS>('Content')
-const prompt = ref('')
-const editing = ref(false)
-
-function startEditing() {
-  if (!prompt.value.trim())
-    return
-  editing.value = true
-  setTimeout(() => {
-    editing.value = false
-    prompt.value = ''
-    toast.success('ElevAI updated the draft', { description: 'Re-render the site to publish the change.' })
-  }, 1200)
-}
-
 const created = computed(() => new Date(live.value.lastUpdated).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }))
 </script>
 
 <template>
-  <div class="flex flex-col overflow-hidden rounded-lg border bg-background" data-testid="website-editor">
+  <div class="flex min-h-[32rem] flex-1 flex-col overflow-hidden rounded-lg border bg-background" data-testid="website-editor">
     <!-- Header -->
     <div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
       <div class="min-w-0">
@@ -146,9 +125,9 @@ const created = computed(() => new Date(live.value.lastUpdated).toLocaleDateStri
       </div>
     </div>
 
-    <div class="flex min-h-[32rem] flex-col md:flex-row">
+    <div class="flex min-h-0 flex-1 flex-col md:flex-row">
       <!-- Sections -->
-      <nav class="shrink-0 border-b p-3 md:w-60 md:border-b-0 md:border-r" aria-label="Website sections">
+      <nav class="shrink-0 overflow-y-auto border-b p-3 md:w-60 md:border-b-0 md:border-r" aria-label="Website sections">
         <ul class="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
           <li v-for="s in SECTIONS" :key="s.key" class="shrink-0">
             <button
@@ -167,74 +146,13 @@ const created = computed(() => new Date(live.value.lastUpdated).toLocaleDateStri
       </nav>
 
       <!-- Content -->
-      <div class="min-w-0 flex-1 bg-muted/30">
-        <!-- AI Generate: suggestions, prompt and live preview -->
-        <div v-if="section === 'ai'" class="flex flex-col gap-4 p-5" data-testid="we-ai">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="inline-flex items-center gap-1.5 text-sm font-medium">
-              <Icon name="elev8:elevai" class="size-4" aria-hidden="true" />
-              Quick suggestions
-            </span>
-            <Select v-model="scope">
-              <SelectTrigger class="h-8 w-32" aria-label="Suggestion type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="key in Object.keys(SUGGESTIONS)" :key="key" :value="key">
-                  {{ key }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              v-for="chip in SUGGESTIONS[scope]"
-              :key="chip"
-              variant="outline"
-              size="sm"
-              class="rounded-full"
-              @click="prompt = chip"
-            >
-              {{ chip }}
-            </Button>
+      <div class="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/30">
+        <!-- AI Generate: chat on the left, live preview on the right -->
+        <div v-if="section === 'ai'" class="grid h-full min-h-[28rem] grid-rows-[minmax(28rem,1fr)_minmax(20rem,auto)] lg:grid-rows-[minmax(0,1fr)] gap-4 p-4 lg:grid-cols-2" data-testid="we-ai">
+          <div class="min-h-0 overflow-hidden rounded-lg border bg-background">
+            <WebsiteBuilderWebsiteAiChat v-model:settings="settings" />
           </div>
-          <div class="flex items-start gap-2">
-            <Textarea v-model="prompt" class="min-h-20 flex-1 bg-background" placeholder="e.g. Make the hero headline more punchy..." aria-label="What should ElevAI change?" />
-            <Button :disabled="!prompt.trim() || editing" data-testid="we-start-editing" @click="startEditing">
-              <Icon :name="editing ? 'lucide:loader-circle' : 'elev8:elevai'" class="mr-2 size-4" :class="editing && 'animate-spin'" aria-hidden="true" />
-              Start editing
-            </Button>
-          </div>
-
-          <!-- Preview -->
-          <div class="overflow-hidden rounded-lg border bg-background" data-testid="we-preview">
-            <div class="flex items-center gap-3 border-b bg-muted/50 px-4 py-2.5">
-              <div class="flex gap-1.5" aria-hidden="true">
-                <span class="size-2.5 rounded-full bg-destructive" />
-                <span class="size-2.5 rounded-full bg-warning" />
-                <span class="size-2.5 rounded-full bg-success" />
-              </div>
-              <div class="min-w-0 flex-1 truncate rounded-md border bg-background px-3 py-1 text-xs text-muted-foreground">
-                {{ siteUrl }}
-              </div>
-              <a :href="siteUrl" target="_blank" rel="noopener" aria-label="Open the site in a new tab" class="text-muted-foreground hover:text-foreground">
-                <Icon name="lucide:external-link" class="size-4" aria-hidden="true" />
-              </a>
-            </div>
-            <div class="flex min-h-72 flex-col bg-gradient-to-br from-muted to-muted-foreground/30 p-4">
-              <div class="flex items-center justify-between gap-3 rounded-full bg-background/80 px-5 py-2.5 backdrop-blur">
-                <span class="truncate text-lg font-semibold" :style="{ fontFamily: settings.fontFamily }">{{ settings.name }}</span>
-                <span class="hidden text-sm text-muted-foreground sm:inline">Properties · About · Contact · Blog</span>
-                <span class="rounded-full px-4 py-1.5 text-sm font-medium text-white" :style="{ backgroundColor: settings.brandColor }">Book now</span>
-              </div>
-              <div class="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-                <p class="text-xs uppercase tracking-[0.3em] text-muted-foreground">
-                  {{ template?.name ?? 'Bali' }}
-                </p>
-                <p class="max-w-xl text-3xl font-semibold" :style="{ fontFamily: settings.fontFamily }">
-                  {{ settings.description || 'Your private retreat in the heart of Bali' }}
-                </p>
-              </div>
-            </div>
-          </div>
+          <WebsiteBuilderWebsitePreviewFrame :settings="settings" :template-name="template?.name" :url="siteUrl" class="min-h-0" />
         </div>
 
         <!-- Existing builder steps, without their Back / Next -->

@@ -129,8 +129,9 @@ function goBack() {
 </script>
 
 <template>
-  <div v-if="editingWebsite" class="w-full flex flex-col gap-4">
-    <Button variant="ghost" size="sm" class="self-start" @click="router.push('/website-builder')">
+  <!-- h-full: the layout scroller is a definite-height flex child, so the editor fills it instead of guessing the header height. -->
+  <div v-if="editingWebsite" class="flex h-full w-full flex-col gap-4">
+    <Button variant="ghost" size="sm" class="shrink-0 self-start" @click="router.push('/website-builder')">
       <Icon name="i-lucide-arrow-left" class="size-4 mr-2" />
       Back to Website Builder
     </Button>
