@@ -126,6 +126,13 @@ export interface ReservationCharge {
   kind: ReservationChargeKind
   label: string
   amount: number
+  /** Already inside the room price: shown for information, never added to the total. */
+  inclusive?: boolean
+}
+
+/** What the charges add on top of the rooms: inclusive ones are already in the price. */
+export function billableChargesTotal(charges: Pick<ReservationCharge, 'amount' | 'inclusive'>[] | undefined): number {
+  return (charges ?? []).reduce((sum, c) => c.inclusive ? sum : sum + c.amount, 0)
 }
 
 export type CityTaxPaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'other'

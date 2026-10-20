@@ -9,7 +9,7 @@ import { ruleSetForWebsite, websiteChannel } from '~/components/channels/data/we
 import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
 import { firstInvalidField, validateNewReservation } from '~/components/reservations/data/new-reservation-validation'
-import { COUNTRIES, COUNTRY_DIAL_CODES, DIAL_CODES, manualPaymentMethods, matchDialCode, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { billableChargesTotal, COUNTRIES, COUNTRY_DIAL_CODES, DIAL_CODES, manualPaymentMethods, matchDialCode, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { buildWebsiteBookingSource } from '~/components/reservations/data/website-booking'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
@@ -292,7 +292,7 @@ const roomsSectionModel = computed({
   },
 })
 
-const roomsTotal = computed(() => rooms.value.reduce((sum, r) => sum + r.lineTotal, 0) + charges.value.reduce((sum, c) => sum + c.amount, 0))
+const roomsTotal = computed(() => rooms.value.reduce((sum, r) => sum + r.lineTotal, 0) + billableChargesTotal(charges.value))
 
 watch(roomsTotal, (total) => {
   if (total > 0)

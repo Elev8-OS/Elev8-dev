@@ -1018,7 +1018,7 @@ const guestGuideRoute = computed(() => {
                             </span>
                           </div>
                           <div v-for="charge in reservation.charges" :key="charge.id" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
-                            <span class="text-muted-foreground">{{ charge.label }}</span>
+                            <span class="text-muted-foreground">{{ charge.label }}{{ charge.inclusive ? ' (included in price)' : '' }}</span>
                             <span class="font-medium">{{ fmtCurrency(charge.amount, reservation.currency) }}</span>
                           </div>
                         </div>

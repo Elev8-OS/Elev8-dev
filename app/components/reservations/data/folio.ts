@@ -113,7 +113,7 @@ export function folioBookingTotal(reservation: ReservationEntry): number {
     return reservation.totalPrice
 
   const rooms = reservation.rooms.reduce((sum, line) => sum + line.lineTotal, 0)
-  const charges = (reservation.charges ?? []).reduce((sum, charge) => sum + charge.amount, 0)
+  const charges = (reservation.charges ?? []).reduce((sum, charge) => charge.inclusive ? sum : sum + charge.amount, 0)
   return roundFolioAmount(rooms + charges + folioPaymentFee(reservation, rooms))
 }
 

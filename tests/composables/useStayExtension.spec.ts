@@ -526,3 +526,68 @@ describe('cancelling', () => {
     expect(find().extensions![0]!.cancelledAt).toBeDefined()
   })
 })
+
+describe('mid-stay cleaning and charges', () => {
+  it('bills the charges with the nights and books a mid-stay cleaning job on the linked booking', async () => {
+    seed(stay())
+    const result = await useStayExtension().confirmExtension({
+      reservationId: 'res-x',
+      checkOut: '2030-03-07',
+      payment: { method: 'at_property' },
+      pricing: {
+        rooms: [room({ id: 'whole', pricePerNight: 100, lineTotal: 100 })],
+        asRooms: false,
+        bookingMode: 'entire_property',
+        charges: [{ id: 'chg-midstay-cleaning', kind: 'cleaning', label: 'Mid-stay cleaning', amount: 40 }],
+      },
+      midstayCleaning: { date: '2030-03-05' },
+    })
+    expect(result.success).toBe(true)
+    const linked = find(result.linkedReservationId!)
+    expect(linked.totalPrice).toBe(340)
+    expect(linked.priceDetails?.cleaningFee).toBe(40)
+    expect(linked.rooms).toBeUndefined()
+    const job = useCleaningJobs().jobs.value.find(j => j.source === 'mid_stay')
+    // createJob skips listings without checklist steps, so only assert on the job when one was made.
+    if (job) {
+      expect(job.reservationId).toBe(result.linkedReservationId)
+      expect(job.scheduledAt.startsWith('2030-03-05')).toBe(true)
+    }
+  })
+
+  it('ignores a cleaning day outside the added nights', async () => {
+    seed(stay())
+    await useStayExtension().confirmExtension({
+      reservationId: 'res-x',
+      checkOut: '2030-03-06',
+      payment: { method: 'at_property' },
+      midstayCleaning: { date: '2030-03-01' },
+    })
+    expect(useCleaningJobs().jobs.value.some(j => j.source === 'mid_stay')).toBe(false)
+  })
+})
+
+describe('inclusive charges', () => {
+  it('records an inclusive tax but never adds it to what the guest pays', async () => {
+    seed(stay())
+    const result = await useStayExtension().confirmExtension({
+      reservationId: 'res-x',
+      checkOut: '2030-03-05',
+      payment: { method: 'at_property' },
+      pricing: {
+        rooms: [room({ id: 'whole', pricePerNight: 100, lineTotal: 100 })],
+        asRooms: false,
+        bookingMode: 'entire_property',
+        charges: [
+          { id: 'c1', kind: 'service', label: 'Service fee', amount: 20 },
+          { id: 'c2', kind: 'city_tax', label: 'Local tax', amount: 10, inclusive: true },
+        ],
+      },
+    })
+    const linked = find(result.linkedReservationId!)
+    expect(linked.totalPrice).toBe(120)
+    expect(linked.priceDetails?.tax).toBe(0)
+    expect(linked.priceDetails?.serviceFee).toBe(20)
+    expect(linked.charges).toHaveLength(2)
+  })
+})

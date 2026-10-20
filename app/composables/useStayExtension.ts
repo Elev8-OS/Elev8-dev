@@ -1,10 +1,10 @@
-import type { CityTaxTotal, ExtensionDirection, ExtensionPaymentMethod, ReservationEntry, SavedCard, StayExtension } from '~/components/reservations/data/reservations'
-import type { ExtensionPaymentInput, ExtensionQuote } from '~/composables/useReservationsModule'
+import type { CityTaxTotal, ExtensionDirection, ExtensionPaymentMethod, PaymentFeeMode, ReservationEntry, SavedCard, StayExtension } from '~/components/reservations/data/reservations'
+import type { ExtensionPaymentInput, ExtensionPricing, ExtensionQuote } from '~/composables/useReservationsModule'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { cleaningDateKey } from '~/components/cleaning/data/cleaning-link'
 import { generateCleaningJobsForReservation } from '~/components/reservations/data/cleaning-schedule'
 import { formatSavedCard } from '~/components/reservations/data/damage-protection'
-import { isActiveExtension } from '~/components/reservations/data/reservations'
+import { billableChargesTotal, isActiveExtension } from '~/components/reservations/data/reservations'
 import { useCityTax } from '~/composables/useCityTax'
 import { useCleaningJobs } from '~/composables/useCleaningJobs'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
@@ -17,7 +17,13 @@ export const PAYMENT_LINK_TOKEN = '[payment link]'
 /** Mock card charge, long enough for the button's loading state to show. */
 export const SAVED_CARD_CHARGE_MS = 1200
 
-export type ExtensionFeeMode = 'card' | 'no_fee'
+/** How long the payment link stays valid, in hours. */
+export const LINK_EXPIRY_OPTIONS = [1, 3, 6, 12, 24, 48, 72] as const
+
+/** Where the guest message goes: the stay's own thread (Airbnb, Booking.com, email...), or a direct email or WhatsApp message. */
+export type GuestMessageChannel = 'thread' | 'email' | 'whatsapp'
+
+export type ExtensionFeeMode = PaymentFeeMode
 
 export interface StayExtensionPlan {
   reservationId: string
@@ -28,9 +34,17 @@ export interface StayExtensionPlan {
   /** `before`: the new check-in. */
   checkIn?: string
   nightlyRate?: number
-  payment: { method: ExtensionPaymentMethod, feeMode?: ExtensionFeeMode }
+  /** Schedule a mid-stay cleaning job on this day (one of the added nights), linked to the booking that holds them. */
+  midstayCleaning?: { date: string }
+  /** Rooms, rates and charges (taxes and fees) from the pricing section; charges are part of the payment amount. */
+  pricing?: ExtensionPricing
+  /** Guests added for the extra nights, on top of the stay's own. */
+  extraGuests?: { adults?: number, children?: number, infants?: number }
+  payment: { method: ExtensionPaymentMethod, feeMode?: ExtensionFeeMode, /** `manual` only, percent. */ customFeePercentage?: number, /** Payment link validity, default 24. */ expiresInHours?: number, /** Payment link only: hold the nights while unpaid. Default true. */ blocksAvailability?: boolean }
   /** Sent to the guest's thread; `PAYMENT_LINK_TOKEN` becomes the link. Blank sends nothing. */
   guestMessage?: string
+  /** Defaults to the stay's thread. Channels that resolve to the same one are sent once. */
+  guestChannels?: GuestMessageChannel[]
 }
 
 export type ExtensionCityTaxImpact
@@ -232,13 +246,13 @@ export function useStayExtension() {
    * `date` is the new check-out, or with `direction: 'before'` the new
    * check-in (early arrival).
    */
-  function preview(r: ReservationEntry, date: string, nightlyRate?: number, direction: ExtensionDirection = 'after'): StayExtensionPreview {
+  function preview(r: ReservationEntry, date: string, nightlyRate?: number, direction: ExtensionDirection = 'after', pricing?: ExtensionPricing): StayExtensionPreview {
     // Every channel, Direct included, adds nights as a linked booking; the stay itself is never rewritten.
     const mode: StayExtensionPreview['mode'] = 'linked_booking'
     const before = direction === 'before'
     const { from, to } = module.extensionRange(r, date, direction)
     const anchor = before ? to : from
-    const quote = module.quoteExtension(r, date, nightlyRate, direction)
+    const quote = module.quoteExtension(r, date, nightlyRate, direction, pricing)
     // The cleaning to move belongs to whichever stay currently ends at `from`.
     // An early arrival moves none: the turnover is still on the last day.
     const lastLinked = module.reservations.value.find(x => x.extensionOf === r.id && x.checkOut === from && x.status !== 'cancelled')
@@ -286,7 +300,7 @@ export function useStayExtension() {
     }
   }
 
-  async function messageGuest(r: ReservationEntry, text: string): Promise<boolean> {
+  async function messageGuest(r: ReservationEntry, text: string, channels: GuestMessageChannel[] = ['thread']): Promise<boolean> {
     try {
       // ⚠️ useInbox imports useUpsellOrders, which reaches back into the
       // reservation composables: a static import closes a cycle. Same rule as
@@ -297,8 +311,10 @@ export function useStayExtension() {
       const conversation = inbox.conversations.value.find(c => c.id === conversationId)
       if (!conversation)
         return false
-      inbox.sendMessage(conversation.id, text, conversation.otaSource)
-      return true
+      const sendOn = new Set(channels.map(c => c === 'email' ? 'Email' : c === 'whatsapp' ? 'WhatsApp' : conversation.otaSource))
+      for (const channel of sendOn)
+        inbox.sendMessage(conversation.id, text, channel)
+      return sendOn.size > 0
     }
     catch {
       return false
@@ -316,7 +332,9 @@ export function useStayExtension() {
     const direction: ExtensionDirection = plan.direction ?? (plan.checkIn ? 'before' : 'after')
     const before = direction === 'before'
     const date = (before ? plan.checkIn : plan.checkOut) ?? ''
-    const { mode, from, to, anchor, quote, conflicts } = preview(r, date, plan.nightlyRate, direction)
+    const { mode, from, to, anchor, quote: nightsQuote, conflicts } = preview(r, date, plan.nightlyRate, direction, plan.pricing)
+    const chargesTotal = billableChargesTotal(plan.pricing?.charges)
+    const quote = { ...nightsQuote, amount: nightsQuote.amount + chargesTotal }
     if (quote.extraNights <= 0)
       return { ...empty, success: false, error: before ? 'Pick a check-in date before the current one.' : 'Pick a check-out date after the current one.' }
     if (conflicts.length)
@@ -344,7 +362,8 @@ export function useStayExtension() {
         amount: quote.amount,
         currency: r.currency as 'USD' | 'IDR' | 'EUR' | 'CHF',
         feeMode: plan.payment.feeMode ?? 'card',
-        expiresInHours: 24,
+        ...(plan.payment.feeMode === 'manual' ? { customFeePercentage: plan.payment.customFeePercentage ?? 0 } : {}),
+        expiresInHours: plan.payment.expiresInHours ?? 24,
       })
       payment = { method, status: 'pending', paymentRequestId: request.id }
       paymentLink = request.paymentLink
@@ -352,7 +371,7 @@ export function useStayExtension() {
 
     // 2. The nights themselves.
     const cleaningOwner = module.reservations.value.find(x => x.extensionOf === r.id && x.checkOut === from && x.status !== 'cancelled')?.id ?? r.id
-    const input = { ...(before ? { checkIn: date } : { checkOut: date }), nightlyRate: plan.nightlyRate, payment }
+    const input = { ...(before ? { checkIn: date } : { checkOut: date }), nightlyRate: plan.nightlyRate, pricing: plan.pricing, extraGuests: plan.extraGuests, ...(method === 'payment_link' && plan.payment.blocksAvailability === false ? { blocksAvailability: false } : {}), payment }
     const outcome: { success: boolean, error?: string, extensionId?: string, linkedReservationId?: string } = mode === 'in_place'
       ? module.extendReservation(r.id, input)
       : module.extendViaLinkedBooking(r.id, input)
@@ -381,10 +400,33 @@ export function useStayExtension() {
       codesExtended = smartLock.extendCodesForReservation(r.id, from, to)
     }
 
+    // A mid-stay cleaning that was charged is also booked for housekeeping. The job belongs to
+    // the booking holding the added nights, so cancelling that extension cancels it too.
+    if (plan.midstayCleaning && plan.midstayCleaning.date >= from && plan.midstayCleaning.date < to) {
+      const job = cleaning.createJob({
+        listingId: r.listingId,
+        listingName: r.listingName,
+        scheduledAt: `${plan.midstayCleaning.date}T11:00:00+08:00`,
+        cleanerIds: [],
+        cleanerNames: [],
+        teamName: 'Housekeeping',
+        status: 'scheduled',
+        priority: 'normal',
+        durationMinutes: 120,
+        notes: `Mid-stay cleaning for reservation ${linkedReservationId ?? r.id} (${r.guestName})`,
+        source: 'mid_stay',
+        reservationId: linkedReservationId ?? r.id,
+        recurrence: null,
+        releaseAt: null,
+      })
+      if (job)
+        cleaningsAdded += 1
+    }
+
     // 4. Tell the guest.
     const text = plan.guestMessage?.trim()
     const guestNotified = text
-      ? await messageGuest(r, paymentLink ? text.replaceAll(PAYMENT_LINK_TOKEN, paymentLink) : text)
+      ? await messageGuest(r, paymentLink ? text.replaceAll(PAYMENT_LINK_TOKEN, paymentLink) : text, plan.guestChannels)
       : false
 
     return {

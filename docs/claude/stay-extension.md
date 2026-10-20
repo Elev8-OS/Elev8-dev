@@ -7,7 +7,7 @@ Adds nights to a stay, after it (later check-out) or before it (early arrival,
 (also on the guest page), and **Extend stay** in the inbox reservation panel
 (`inbox/ReservationPanel.vue`, matched to the Reservations module stay by id).
 
-**Wizard** (`ReservationExtendDialog.vue`): Dates & price → Payment → Review. Nothing
+**Wizard** (`ReservationExtendDialog.vue`, a right-side Sheet laid out like New Reservation: header, steps bar, `ScrollArea` body, footer): Dates & price → Payment → Review. Nothing
 is written until Confirm, which calls `useStayExtension().confirmExtension(plan)`.
 The dates step has a **Stay longer / Arrive earlier** switch, shown only while early arrival
 is possible: status not in `NON_EARLY_ARRIVAL_STATUSES` (checked in, checked out, cancelled)
@@ -43,8 +43,14 @@ night before the current one.
 - **`StayExtension` records live on the stay the guest booked** (`ReservationEntry.extensions`),
   even when the nights sit on a linked booking (`linkedReservationId`).
 
+**Availability while picking:** the calendar greys out (`is-date-unavailable`) every date whose added nights collide with another stay (`getExtensionConflicts`), and the quick +N buttons disable the same way. The destructive alert still shows the blocking stay if a conflict appears anyway.
+
+**Rooms & price** (dates step) is the New Reservation section (`ReservationRoomsSection.vue`), not custom UI: room lines with a rate plan select (`changeRoomRate`, also in New Reservation) and editable price, Taxes & fees (charges: cleaning, city tax, service, other; each marked **Included in price** or **Added on top**, `ReservationCharge.inclusive`: an inclusive one is listed but never added to any total, see `billableChargesTotal` and the folio), and the Payment charge (Card 3% / Custom % / No fee) right under Taxes & fees, with its own row and the total including the fee (`payment-charge` prop, on by default). It prices the **added nights** (`check-in`/`check-out` = the added range, `nights` = extra nights, `exclude-reservation-id` = the stay) and starts from the stay's own per-night room lines, or one "Entire property" line at the stay's average rate when the stay has no rooms. ⚠️ Two props exist for this use: `auto-import-fees="false"` (no listing fees are pre-filled: they were charged with the stay) and `fee-base="all"` (the payment charge is a percent of rooms plus charges, matching the payment request). The result is `plan.pricing` (`ExtensionPricing`: `rooms`, `asRooms`, `bookingMode`, `charges`); `quoteExtension` prices from its lines (per-night lines grow with the nights, flat ones are charged as typed), charges are added on top. On the linked booking they are stored as `rooms` + `charges` (folio total = rooms + charges) and mirrored in `priceDetails` (`cleaning` to `cleaningFee`, `service`/`other` to `serviceFee`, `city_tax` to `tax`). A stay with no rooms keeps a roomless linked booking. The payment charge is not stored on the booking: it is the payment link's `feeMode` (`manual` carries `customFeePercentage`). The **mid-stay cleaning** switch above it just adds or removes a `cleaning` charge (id `chg-midstay-cleaning`, "Mid-stay cleaning", default the stay's cleaning fee), so it also shows in Taxes & fees and can be removed there. With the switch on, a day picker (one of the added nights) appears and confirming also creates a `mid_stay` cleaning job at 11:00 (`plan.midstayCleaning`), linked to the linked booking (so cancelling that extension cancels it); `createJob` returns null, and no job is made, when the listing has no cleaning steps. A cleaning charge added by hand in Taxes & fees creates no job.
+
+**Extra guests** (dates step): adults/children/infants steppers add people for the added nights only. The linked booking gets the stay's counts plus the extras (`extraGuests` on the plan and `ExtensionInput`); the stay itself is untouched and the price does not change per guest.
+
 **Payment** (`ExtensionPaymentMethod`):
-- `payment_link`: a payment request (`usePaymentRequests.createRequest`, 24h, card fee or none).
+- `payment_link`: a payment request (`usePaymentRequests.createRequest`), valid 1/3/6/12/24/48/72h (`LINK_EXPIRY_OPTIONS`, default 24). **Availability**: Block (default) or Do not block; the latter creates the linked booking with `blocksAvailability: false`, which `holdsDates()` honours for inquiries and linked bookings (ignored by conflict checks until `markExtensionPaid` flips it back to true). Card fee comes from the Payment charge in Rooms & price.
   `[payment link]` in the guest message becomes the link. Pending.
 - `saved_card`: only when `damageProtection.card` exists; mock charge (`SAVED_CARD_CHARGE_MS`). Paid.
 - `at_property`: pending. `already_paid`: paid.
@@ -67,6 +73,7 @@ night before the current one.
 - City tax: derived, so an unsettled stay recalculates itself. The review step warns when it was
   already settled (the added nights are not included). A linked booking owes its own city tax.
 - Damage protection: `reassessOnExtension` (in place only).
+- Guest message channels (review step): Email and/or WhatsApp, multi-select (no thread/Inbox chip; default Email, else WhatsApp; the composable still accepts `'thread'`); Email needs a guest email, WhatsApp a phone. All go into the stay's conversation tagged with that channel, and channels that resolve to the same one (thread of an email stay + Email) are sent once (`GuestMessageChannel`). Mock delivery only.
 - Guest message: `ensureConversationForReservation` + `sendMessage` via ⚠️ dynamic `import()` of
   `useInbox` (cycle rule). Editable in the review step; blank sends nothing.
 

@@ -1,12 +1,12 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
-import type { ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestProfile, ReservationDraft, ReservationEntry, ReservationPaymentMethod, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
+import type { BookingMode, ExtensionDirection, ExtensionPaymentMethod, GuestDocument, GuestProfile, ReservationCharge, ReservationDraft, ReservationEntry, ReservationPaymentMethod, ReservationRoomLine, ReservationStatus, StayExtension } from '~/components/reservations/data/reservations'
 import type { ReservationDateBasis } from '~/lib/reservation-period'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { addIsoDays } from '~/components/gm/data/gm-dashboard'
 import { listings } from '~/components/listings/data/listings'
 import { generateCleaningJobsForReservation, resolveDefaultCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import { folioBookingTotal } from '~/components/reservations/data/folio'
-import { DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { billableChargesTotal, DOCUMENT_KIND_LABELS, generateGuestId, generateReservationId, initialGuests, initialReservations, isActiveExtension, nightsBetween, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import { listingHasCleaningSteps, useCleaningJobs } from '~/composables/useCleaningJobs'
 import { useCleaningScheduleDefault } from '~/composables/useCleaningScheduleDefault'
 import { useCurrentDashboardUser } from '~/composables/useCurrentDashboardUser'
@@ -75,6 +75,17 @@ export interface BookingConflict {
  * - no room named on a multi-unit listing: a stay sharing a night on which
  *   every room is taken (stays without a room take one each).
  */
+/**
+ * Whether a stay holds its dates. An inquiry or a linked extension booking
+ * that was set to not block availability (`blocksAvailability: false`) does
+ * not; an extension starts blocking again once it is marked paid.
+ */
+export function holdsDates(r: Pick<ReservationEntry, 'status' | 'blocksAvailability' | 'extensionOf'>): boolean {
+  if (r.blocksAvailability !== false)
+    return true
+  return !(r.status === 'inquiry' || r.extensionOf)
+}
+
 export function newReservationConflicts(
   draft: { listingId: string, checkIn: string, checkOut: string, unitIds?: string[] },
   reservations: ReservationEntry[],
@@ -87,7 +98,7 @@ export function newReservationConflicts(
   const others = reservations.filter(r =>
     r.listingId === draft.listingId
     && r.status !== 'cancelled'
-    && !(r.status === 'inquiry' && r.blocksAvailability === false)
+    && holdsDates(r)
     && rangesOverlap(draft.checkIn, draft.checkOut, r.checkIn, r.checkOut))
   const toConflict = (r: ReservationEntry, unitNames: string[] = []): BookingConflict => ({
     reservationId: r.id,
@@ -178,11 +189,29 @@ export interface ExtensionQuote {
   rateFromRooms: boolean
 }
 
+/**
+ * What the New Reservation pricing section holds for the added nights: room
+ * lines, charges (taxes and fees). `asRooms: false` prices the nights from one
+ * line but leaves the new booking without room lines (a stay that had none).
+ */
+export interface ExtensionPricing {
+  rooms: ReservationRoomLine[]
+  asRooms: boolean
+  bookingMode: BookingMode
+  charges: ReservationCharge[]
+}
+
 /** Exactly one of the two: `checkOut` adds nights after the stay, `checkIn` before it (early arrival). */
 export interface ExtensionInput {
   checkOut?: string
   checkIn?: string
   nightlyRate?: number
+  /** Guests added for the extra nights only (linked booking). The stay's own guests carry over. */
+  extraGuests?: { adults?: number, children?: number, infants?: number }
+  /** Rooms, rates and charges for the added nights (linked booking). Without it the nights are priced from the stay's own rates. */
+  pricing?: ExtensionPricing
+  /** Linked booking only: `false` leaves the nights open to other bookings until the extension is paid. Default true. */
+  blocksAvailability?: boolean
 }
 
 function extensionTarget(input: ExtensionInput): { direction: ExtensionDirection, date: string } {
@@ -724,12 +753,15 @@ export function useReservationsModule() {
    * lands on the same number. `newNights` / `newTotal` describe an in-place
    * extension; a linked OTA extension bills only `amount`, on its own booking.
    */
-  function quoteExtension(r: ReservationEntry, date: string, nightlyRate?: number, direction: ExtensionDirection = 'after'): ExtensionQuote {
+  function quoteExtension(r: ReservationEntry, date: string, nightlyRate?: number, direction: ExtensionDirection = 'after', pricing?: ExtensionPricing): ExtensionQuote {
     const { from, to } = extensionRange(r, date, direction)
     const extraNights = Math.max(nightsBetween(from, to), 0)
-    const rateFromRooms = Boolean(r.rooms?.length)
-    const rate = rateFromRooms ? defaultNightlyRate(r) : Math.max(nightlyRate ?? defaultNightlyRate(r), 0)
-    const amount = roundForCurrency(rate * extraNights, r.currency)
+    const rateFromRooms = Boolean(pricing || r.rooms?.length)
+    // From the pricing section: per-night lines grow with the added nights, flat lines are charged as typed.
+    const amount = pricing
+      ? roundForCurrency(pricing.rooms.reduce((sum, l) => sum + (isPerNightLine(l) ? l.pricePerNight * extraNights : (l.pricePerStay ?? l.lineTotal)), 0), r.currency)
+      : roundForCurrency((rateFromRooms ? defaultNightlyRate(r) : Math.max(nightlyRate ?? defaultNightlyRate(r), 0)) * extraNights, r.currency)
+    const rate = pricing ? roundForCurrency(amount / Math.max(extraNights, 1), r.currency) : (rateFromRooms ? defaultNightlyRate(r) : Math.max(nightlyRate ?? defaultNightlyRate(r), 0))
     return {
       extraNights,
       newNights: r.nights + extraNights,
@@ -756,7 +788,7 @@ export function useReservationsModule() {
     return reservations.value.filter((other) => {
       if (other.id === r.id || other.extensionOf === r.id || other.listingId !== r.listingId || other.status === 'cancelled')
         return false
-      if (other.status === 'inquiry' && other.blocksAvailability === false)
+      if (!holdsDates(other))
         return false
       if (!rangesOverlap(from, to, other.checkIn, other.checkOut))
         return false
@@ -1031,13 +1063,23 @@ export function useReservationsModule() {
 
     const before = direction === 'before'
     const { from, to } = extensionRange(r, date, direction)
-    const quote = quoteExtension(r, date, input.nightlyRate, direction)
+    const quote = quoteExtension(r, date, input.nightlyRate, direction, input.pricing)
     const paid = input.payment.status === 'paid'
-    // Per-night room lines carry over for the added nights; a flat-rate line
-    // was paid once on the OTA booking and is not charged again.
-    const rooms = r.rooms
-      ?.filter(isPerNightLine)
-      .map(l => ({ ...l, id: `${l.id}-ext`, lineTotal: roundForCurrency(l.pricePerNight * quote.extraNights, r.currency) }))
+    const extraAdults = Math.max(input.extraGuests?.adults ?? 0, 0)
+    const extraChildren = Math.max(input.extraGuests?.children ?? 0, 0)
+    const extraInfants = Math.max(input.extraGuests?.infants ?? 0, 0)
+    const charges = input.pricing?.charges ?? []
+    const chargesTotal = roundForCurrency(billableChargesTotal(charges), r.currency)
+    const chargeSum = (...kinds: ReservationCharge['kind'][]) => roundForCurrency(charges.filter(c => !c.inclusive && kinds.includes(c.kind)).reduce((n, c) => n + c.amount, 0), r.currency)
+    const billed = { ...quote, amount: roundForCurrency(quote.amount + chargesTotal, r.currency) }
+    // From the pricing section the lines are the ones picked there; else the stay's per-night
+    // lines carry over (a flat-rate line was paid once on the OTA booking and is not charged again).
+    const sectionRooms = input.pricing?.asRooms ? input.pricing.rooms : input.pricing ? [] : r.rooms?.filter(isPerNightLine)
+    const rooms = sectionRooms?.map(l => ({
+      ...l,
+      id: `${l.id}-ext`,
+      lineTotal: isPerNightLine(l) ? roundForCurrency(l.pricePerNight * quote.extraNights, r.currency) : roundForCurrency(l.pricePerStay ?? l.lineTotal, r.currency),
+    }))
     const draft: ReservationDraft & Partial<ReservationEntry> = {
       guestId: r.guestId,
       guestName: r.guestName,
@@ -1053,23 +1095,24 @@ export function useReservationsModule() {
       checkIn: from,
       checkOut: to,
       nights: quote.extraNights,
-      guestCount: r.guestCount,
-      guestAdults: r.guestAdults,
-      guestChildren: r.guestChildren,
-      guestInfants: r.guestInfants,
-      totalPrice: quote.amount,
+      guestCount: r.guestCount + extraAdults + extraChildren + extraInfants,
+      guestAdults: (r.guestAdults ?? r.guestCount) + extraAdults,
+      guestChildren: (r.guestChildren ?? 0) + extraChildren,
+      guestInfants: (r.guestInfants ?? 0) + extraInfants,
+      totalPrice: billed.amount,
       currency: r.currency,
       priceDetails: {
         subtotal: quote.amount,
-        cleaningFee: 0,
-        serviceFee: 0,
-        tax: 0,
+        cleaningFee: chargeSum('cleaning'),
+        serviceFee: chargeSum('service', 'other'),
+        tax: chargeSum('city_tax'),
         extras: 0,
-        guestPaid: paid ? quote.amount : 0,
+        guestPaid: paid ? billed.amount : 0,
         commission: 0,
-        payout: quote.amount,
+        payout: billed.amount,
       },
-      ...(rooms?.length ? { rooms } : {}),
+      ...(rooms?.length ? { rooms, bookingMode: input.pricing?.bookingMode } : {}),
+      ...(charges.length ? { charges } : {}),
       // The added nights are in the same rooms. Rooms without a carried line
       // (a flat-rate line, or a stay only assigned to a room) ride along as an
       // assignment, so the extension sits on them, not on "Not assigned".
@@ -1081,10 +1124,11 @@ export function useReservationsModule() {
       // The guest is the one already in the house: carry the stay's cleaning
       // rhythm over the added nights instead of the listing default.
       ...(r.cleaningSchedule ? { cleaningSchedule: { ...r.cleaningSchedule, startDate: from } } : {}),
-      bookingNote: before
+      bookingNote: `${before
         ? `Early arrival for ${r.channel} reservation ${r.id}.`
-        : `Extension of ${r.channel} reservation ${r.id}.`,
+        : `Extension of ${r.channel} reservation ${r.id}.`}${extraAdults + extraChildren + extraInfants ? ` ${extraAdults + extraChildren + extraInfants} more guest${extraAdults + extraChildren + extraInfants === 1 ? '' : 's'} than the original stay.` : ''}`,
       extensionOf: r.id,
+      ...(input.blocksAvailability === false ? { blocksAvailability: false } : {}),
       // One guest stay, one status (see `statusGroupIds`).
       status: r.status,
     }
@@ -1094,13 +1138,13 @@ export function useReservationsModule() {
     const linkedId = created.id
 
     const extension = before
-      ? buildExtension(r, direction, to, from, quote, input.payment, linkedId)
-      : buildExtension(r, direction, from, to, quote, input.payment, linkedId)
+      ? buildExtension(r, direction, to, from, billed, input.payment, linkedId)
+      : buildExtension(r, direction, from, to, billed, input.payment, linkedId)
     const nightsLabel = `${quote.extraNights} night${quote.extraNights === 1 ? '' : 's'}`
     const parentEvent = activityEvent(
       'extend',
       before ? 'Early arrival' : 'Stay extended',
-      `${nightsLabel} added from ${from} to ${to} as direct booking ${linkedId}, the ${r.channel} reservation is unchanged · ${moneyLabel(quote.amount, r.currency)}${paid ? '' : ' (payment pending)'}`,
+      `${nightsLabel} added from ${from} to ${to} as direct booking ${linkedId}, the ${r.channel} reservation is unchanged · ${moneyLabel(billed.amount, r.currency)}${chargesTotal ? ` incl. ${moneyLabel(chargesTotal, r.currency)} taxes & fees` : ''}${paid ? '' : ' (payment pending)'}`,
     )
     const linkedEvent = activityEvent(
       'extension-of',
@@ -1140,7 +1184,7 @@ export function useReservationsModule() {
         }
       }
       if (x.id === billedId && next.priceDetails)
-        next = { ...next, priceDetails: { ...next.priceDetails, guestPaid: roundForCurrency(next.priceDetails.guestPaid + ext.amount, next.currency) } }
+        next = { ...next, priceDetails: { ...next.priceDetails, guestPaid: roundForCurrency(next.priceDetails.guestPaid + ext.amount, next.currency) }, ...(next.blocksAvailability === false ? { blocksAvailability: true } : {}) }
       return next
     })
     return true

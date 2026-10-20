@@ -3,6 +3,7 @@ import type { UnitType } from '~/components/listings/data/listings'
 import type { BookingMode, PaymentFeeMode, ReservationCharge, ReservationChargeKind, ReservationRoomLine } from '~/components/reservations/data/reservations'
 import { toast } from 'vue-sonner'
 import { createCancellationPolicyConfig, listings, ratePlanNightlyRate } from '~/components/listings/data/listings'
+import { billableChargesTotal } from '~/components/reservations/data/reservations'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
 const props = withDefaults(defineProps<{
@@ -12,8 +13,17 @@ const props = withDefaults(defineProps<{
   nights: number
   currency: string
   excludeReservationId?: string
+  /** Fill the charges from the listing's own fees (the New Reservation default). */
+  autoImportFees?: boolean
+  /** What the payment charge is a percent of: the room lines only (default) or rooms plus charges. */
+  feeBase?: 'rooms' | 'all'
+  /** Show the payment charge (card fee) picker and its row in the summary. */
+  paymentCharge?: boolean
 }>(), {
   excludeReservationId: '',
+  autoImportFees: true,
+  feeBase: 'rooms',
+  paymentCharge: true,
 })
 
 const model = defineModel<{
@@ -303,6 +313,49 @@ function updateRoomPriceMode(roomId: string, mode: 'per_night' | 'per_stay') {
   }
 }
 
+/** The rate plans the line's room type offers, for changing the rate after the room is added. */
+function ratePlansFor(room: ReservationRoomLine) {
+  return unitTypes.value.find(ut => ut.id === room.unitTypeId)?.pricing.ratePlans ?? []
+}
+
+/**
+ * The plan to show as selected: the one the line was booked on, else the one its
+ * label or nightly price matches, else the type's base plan. Display only, the
+ * line's price is not touched until staff pick a plan.
+ */
+function selectedRatePlanId(room: ReservationRoomLine): string {
+  const plans = ratePlansFor(room)
+  return (plans.find(rp => rp.id === room.ratePlanId)
+    ?? plans.find(rp => room.rateLabel.endsWith(`— ${rp.name}`) || room.rateLabel === rp.name)
+    ?? plans.find(rp => ratePlanNightlyRate(rp) === room.pricePerNight)
+    ?? plans.find(rp => rp.isBase)
+    ?? plans[0])?.id ?? ''
+}
+
+/** Re-prices a room line on another rate plan of its type: per night, at that plan's nightly rate. */
+function changeRoomRate(roomId: string, rateId: string) {
+  const nights = Math.max(props.nights, 1)
+  model.value = {
+    ...model.value,
+    rooms: model.value.rooms.map((r) => {
+      if (r.id !== roomId)
+        return r
+      const rate = ratePlansFor(r).find(rp => rp.id === rateId)
+      if (!rate)
+        return r
+      const typeName = unitTypes.value.find(ut => ut.id === r.unitTypeId)?.name ?? r.rateLabel.split(' — ')[0]
+      return {
+        ...r,
+        ratePlanId: rate.id,
+        rateLabel: `${typeName} — ${rate.name}`,
+        priceMode: 'per_night' as const,
+        pricePerNight: ratePlanNightlyRate(rate),
+        lineTotal: ratePlanNightlyRate(rate) * nights,
+      }
+    }),
+  }
+}
+
 function roomInputValue(room: ReservationRoomLine): number {
   return room.priceMode === 'per_stay' ? (room.pricePerStay ?? 0) : room.pricePerNight
 }
@@ -362,8 +415,9 @@ const chargeKindLabels: Record<ReservationChargeKind, string> = {
 const chargeKindInput = ref<ReservationChargeKind>('cleaning')
 const chargeLabelInput = ref('')
 const chargeAmountInput = ref(0)
+const chargeInclusiveInput = ref(false)
 
-const chargesTotal = computed(() => model.value.charges.reduce((sum, c) => sum + c.amount, 0))
+const chargesTotal = computed(() => billableChargesTotal(model.value.charges))
 
 function kindOfFeeType(type: 'cleaning' | 'early_checkin' | 'late_checkout'): ReservationChargeKind {
   return type === 'cleaning' ? 'cleaning' : 'other'
@@ -415,13 +469,14 @@ function importPropertyFees() {
 watch(listing, (newListing, oldListing) => {
   if (newListing?.id !== oldListing?.id) {
     model.value = { ...model.value, charges: [] }
-    importPropertyFees()
+    if (props.autoImportFees)
+      importPropertyFees()
   }
 })
 
 // Accordion content can mount after the property is already picked; import fees on mount.
 onMounted(() => {
-  if (!model.value.charges.length)
+  if (props.autoImportFees && !model.value.charges.length)
     importPropertyFees()
 })
 
@@ -437,8 +492,10 @@ function addCharge() {
     kind: chargeKindInput.value,
     label,
     amount,
+    ...(chargeInclusiveInput.value ? { inclusive: true } : {}),
   }
   model.value = { ...model.value, charges: [...model.value.charges, charge] }
+  chargeInclusiveInput.value = false
   chargeKindInput.value = 'cleaning'
   chargeLabelInput.value = ''
   chargeAmountInput.value = 0
@@ -457,11 +514,13 @@ const feeLabel = computed(() => {
   return 'No fee'
 })
 
+const feeBaseAmount = computed(() => props.feeBase === 'all' ? roomLinesTotal.value + chargesTotal.value : roomLinesTotal.value)
+
 const feeAmount = computed(() => {
   if (model.value.paymentFeeMode === 'card')
-    return Math.round(roomLinesTotal.value * 0.03 * 100) / 100
+    return Math.round(feeBaseAmount.value * 0.03 * 100) / 100
   if (model.value.paymentFeeMode === 'manual')
-    return Math.round(roomLinesTotal.value * (model.value.paymentCustomFeePct / 100) * 100) / 100
+    return Math.round(feeBaseAmount.value * (model.value.paymentCustomFeePct / 100) * 100) / 100
   return 0
 })
 
@@ -516,7 +575,21 @@ function fmt(value: number): string {
                 Conflict
               </Badge>
             </p>
-            <p class="text-xs text-muted-foreground">
+            <Select
+              v-if="ratePlansFor(room).length"
+              :model-value="selectedRatePlanId(room)"
+              @update:model-value="(v: any) => changeRoomRate(room.id, String(v))"
+            >
+              <SelectTrigger class="mt-1 h-7 w-64 max-w-full text-xs" :data-testid="`room-rate-${room.id}`" aria-label="Rate plan">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="rp in ratePlansFor(room)" :key="rp.id" :value="rp.id">
+                  {{ rp.name }} — {{ fmt(ratePlanNightlyRate(rp)) }}/night
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p v-else class="text-xs text-muted-foreground">
               {{ room.rateLabel }}
             </p>
             <p v-if="room.guestNames" class="text-xs text-muted-foreground">
@@ -689,9 +762,14 @@ function fmt(value: number): string {
         </Button>
       </div>
       <div v-for="charge in model.charges" :key="charge.id" class="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
-        <span class="text-sm">{{ charge.label }}</span>
+        <span class="text-sm">
+          {{ charge.label }}
+          <Badge :variant="charge.inclusive ? 'secondary' : 'outline'" class="ml-1 text-[9px]">
+            {{ charge.inclusive ? 'Included in price' : 'Added on top' }}
+          </Badge>
+        </span>
         <div class="flex shrink-0 items-center gap-2">
-          <span class="text-sm font-medium">{{ fmt(charge.amount) }}</span>
+          <span class="text-sm font-medium" :class="charge.inclusive ? 'text-muted-foreground' : ''">{{ fmt(charge.amount) }}</span>
           <Button variant="ghost" size="sm" class="h-7 w-7 p-0 hover:text-destructive" title="Remove charge" @click="removeCharge(charge.id)">
             <Icon name="lucide:x" class="size-3.5" />
           </Button>
@@ -734,10 +812,16 @@ function fmt(value: number): string {
           Add
         </Button>
       </div>
+      <div class="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground" role="checkbox" :aria-checked="chargeInclusiveInput" data-testid="charge-inclusive" @click="chargeInclusiveInput = !chargeInclusiveInput">
+        <div class="flex size-4 items-center justify-center rounded-[4px] border" :class="chargeInclusiveInput ? 'border-primary bg-primary text-primary-foreground' : 'border-input'">
+          <Icon v-if="chargeInclusiveInput" name="lucide:check" class="size-3" />
+        </div>
+        <span>Already included in the room price (not added to the total)</span>
+      </div>
     </div>
 
     <!-- Payment charge -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div v-if="paymentCharge" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div class="space-y-2">
         <Label>Payment charge</Label>
         <Select
@@ -779,16 +863,16 @@ function fmt(value: number): string {
         <span class="font-medium">{{ fmt(roomLinesTotal) }}</span>
       </div>
       <div v-for="charge in model.charges" :key="charge.id" class="flex items-center justify-between">
-        <span class="text-muted-foreground">{{ charge.label }}</span>
-        <span class="font-medium">{{ fmt(charge.amount) }}</span>
+        <span class="text-muted-foreground">{{ charge.label }}{{ charge.inclusive ? ' (included)' : '' }}</span>
+        <span class="font-medium" :class="charge.inclusive ? 'text-muted-foreground' : ''">{{ fmt(charge.amount) }}</span>
       </div>
-      <div class="flex items-center justify-between">
+      <div v-if="paymentCharge" class="flex items-center justify-between">
         <span class="text-muted-foreground">{{ feeLabel }}</span>
         <span class="font-medium">{{ fmt(feeAmount) }}</span>
       </div>
       <div class="mt-1 flex items-center justify-between border-t pt-1">
-        <span class="text-muted-foreground">Guest pays via payment link</span>
-        <span class="font-semibold">{{ fmt(grandTotal) }}</span>
+        <span class="text-muted-foreground">{{ paymentCharge ? 'Guest pays via payment link' : 'Total' }}</span>
+        <span class="font-semibold">{{ fmt(paymentCharge ? grandTotal : roomLinesTotal + chargesTotal) }}</span>
       </div>
     </div>
 

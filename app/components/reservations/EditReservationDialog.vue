@@ -3,7 +3,7 @@ import type { BookingMode, ContactType, GuestOccupant, PaymentFeeMode, Reservati
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { toast } from 'vue-sonner'
 import TimePicker from '~/components/base/TimePicker.vue'
-import { COUNTRIES, COUNTRY_DIAL_CODES, DIAL_CODES, matchDialCode, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
+import { billableChargesTotal, COUNTRIES, COUNTRY_DIAL_CODES, DIAL_CODES, matchDialCode, nightsBetween, reservationStatusLabels } from '~/components/reservations/data/reservations'
 import ReservationRoomsSection from '~/components/reservations/ReservationRoomsSection.vue'
 import { usePaymentRequests } from '~/composables/usePaymentRequests'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -104,7 +104,7 @@ const roomsSectionModel = computed({
   },
 })
 
-const roomsTotal = computed(() => rooms.value.reduce((sum, r) => sum + r.lineTotal, 0) + charges.value.reduce((sum, c) => sum + c.amount, 0))
+const roomsTotal = computed(() => rooms.value.reduce((sum, r) => sum + r.lineTotal, 0) + billableChargesTotal(charges.value))
 
 watch(roomsTotal, (total) => {
   if (total > 0)
