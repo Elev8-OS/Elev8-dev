@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import { ref } from 'vue'
+import { toast } from 'vue-sonner'
 
 interface ChatMessage {
   id: string
@@ -8,7 +9,19 @@ interface ChatMessage {
   content: string
 }
 
+const props = defineProps<{
+  /** The version the site has now: what History starts from. */
+  baseline: { label: string, at: string }
+}>()
+
 const settings = defineModel<WebsiteSettings>('settings', { required: true })
+
+interface Version {
+  id: string
+  label: string
+  at: string
+  settings: WebsiteSettings
+}
 
 const SUGGESTIONS = [
   { label: 'Rewrite the hero headline', prompt: 'Rewrite the hero headline to be more emotional' },
@@ -25,22 +38,37 @@ const HEADLINES = [
 
 // Mock engine: it only changes what the preview can show (headline, brand color, font).
 let headlineIndex = 0
-function respond(text: string): string {
+function respond(text: string): { reply: string, label: string | null } {
   const t = text.toLowerCase()
   if (/headline|hero|punchy|emotional|subtext|shorter/.test(t)) {
     const headline = HEADLINES[headlineIndex++ % HEADLINES.length]!
     settings.value = { ...settings.value, description: headline }
-    return `I rewrote the hero headline:\n\n**${headline}**\n\nIt is in the preview. Save changes to put it live.`
+    return { label: 'Rewrote the hero headline', reply: `I rewrote the hero headline:\n\n**${headline}**\n\nIt is in the preview. Save changes to put it live.` }
   }
   if (/colou?r|bold|brand/.test(t)) {
     settings.value = { ...settings.value, brandColor: '#b45309' }
-    return 'I switched the brand color to a warmer amber. It shows on the Book now button in the preview.'
+    return { label: 'Changed the brand color', reply: 'I switched the brand color to a warmer amber. It shows on the Book now button in the preview.' }
   }
   if (/font|typograph|serif|elegant/.test(t)) {
     settings.value = { ...settings.value, fontFamily: 'Playfair Display' }
-    return 'I changed the font to Playfair Display for headings and the menu.'
+    return { label: 'Changed the font', reply: 'I changed the font to Playfair Display for headings and the menu.' }
   }
-  return 'In this demo I can change the hero headline, the brand color and the font. Try one of those.'
+  return { label: null, reply: 'In this demo I can change the hero headline, the brand color and the font. Try one of those.' }
+}
+
+// History: the version the site has now, then one version per change ElevAI made in this session.
+const versions = ref<Version[]>([{ id: 'base', label: props.baseline.label, at: props.baseline.at, settings: { ...settings.value } }])
+const currentId = ref('base')
+
+function time(iso: string) {
+  const d = new Date(iso)
+  return `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+function restore(v: Version) {
+  settings.value = { ...v.settings }
+  currentId.value = v.id
+  toast.success('Version restored', { description: `${v.label}. Save changes to put it live.` })
 }
 
 const messages = ref<ChatMessage[]>([])
@@ -53,7 +81,13 @@ function send(text: string) {
   messages.value = [...messages.value, { id: `m-${Date.now()}`, role: 'user', content }]
   thinking.value = true
   setTimeout(() => {
-    messages.value = [...messages.value, { id: `m-${Date.now()}-a`, role: 'assistant', content: respond(content) }]
+    const { reply, label } = respond(content)
+    messages.value = [...messages.value, { id: `m-${Date.now()}-a`, role: 'assistant', content: reply }]
+    if (label) {
+      const version = { id: `v-${Date.now()}`, label, at: new Date().toISOString(), settings: { ...settings.value } }
+      versions.value = [...versions.value, version]
+      currentId.value = version.id
+    }
     thinking.value = false
   }, 900)
 }
@@ -69,12 +103,45 @@ function newChat() {
 
 <template>
   <div class="flex h-full min-h-0 flex-col" data-testid="we-chat">
-    <div v-if="messages.length > 0" class="flex items-center justify-between border-b px-4 py-2">
+    <div class="flex items-center justify-between gap-2 border-b px-4 py-2">
       <span class="text-sm font-medium">Edit with ElevAI</span>
-      <Button variant="ghost" size="sm" data-testid="we-chat-new" @click="newChat">
-        <Icon name="lucide:square-pen" class="mr-1.5 size-4" aria-hidden="true" />
-        New chat
-      </Button>
+      <div class="flex items-center gap-1">
+        <Popover>
+          <PopoverTrigger as-child>
+            <Button variant="ghost" size="sm" data-testid="we-history-trigger">
+              <Icon name="lucide:history" class="mr-1.5 size-4" aria-hidden="true" />
+              History
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" class="w-80 p-0" data-testid="we-history">
+            <p class="border-b px-3 py-2 text-sm font-medium">
+              Version history
+            </p>
+            <ul class="max-h-72 divide-y overflow-y-auto">
+              <li v-for="v in [...versions].reverse()" :key="v.id" class="flex items-center justify-between gap-3 px-3 py-2.5" data-testid="we-version">
+                <div class="min-w-0">
+                  <p class="truncate text-sm">
+                    {{ v.label }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ time(v.at) }}
+                  </p>
+                </div>
+                <Badge v-if="v.id === currentId" variant="secondary" class="shrink-0">
+                  Current
+                </Badge>
+                <Button v-else variant="outline" size="sm" class="shrink-0" data-testid="we-version-restore" @click="restore(v)">
+                  Restore
+                </Button>
+              </li>
+            </ul>
+          </PopoverContent>
+        </Popover>
+        <Button v-if="messages.length > 0" variant="ghost" size="sm" data-testid="we-chat-new" @click="newChat">
+          <Icon name="lucide:square-pen" class="mr-1.5 size-4" aria-hidden="true" />
+          New chat
+        </Button>
+      </div>
     </div>
 
     <!-- Empty state -->

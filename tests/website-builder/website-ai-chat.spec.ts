@@ -24,6 +24,10 @@ const global = {
   stubs: {
     Icon: true,
     Button: { template: '<button><slot /></button>' },
+    Badge: passthrough,
+    Popover: passthrough,
+    PopoverTrigger: passthrough,
+    PopoverContent: passthrough,
     Conversation: passthrough,
     ConversationContent: passthrough,
     ConversationScrollButton: true,
@@ -43,6 +47,7 @@ const global = {
 function mountChat(): ReturnType<typeof mount> {
   return mount(WebsiteAiChat, {
     props: {
+      'baseline': { label: 'Published version', at: '2026-10-20T10:30:00Z' },
       'settings': { name: 'Villa Test', domain: 'villa.test', description: '', brandColor: '#1a1a2e', fontFamily: 'Inter', logoFile: null, faviconFile: null, useDefaultFavicon: false },
       'onUpdate:settings': (v: unknown) => wrapperRef.setProps({ settings: v as never }),
     },
@@ -80,5 +85,27 @@ describe('websiteAiChat', () => {
     await vi.advanceTimersByTimeAsync(1000)
     await wrapperRef.get('[data-testid="we-chat-new"]').trigger('click')
     expect(wrapperRef.find('[data-testid="we-chat-empty"]').exists()).toBe(true)
+  })
+
+  it('history starts at the current version and gains one entry per change, which can be restored', async () => {
+    vi.useFakeTimers()
+    wrapperRef = mountChat()
+    let versions = wrapperRef.findAll('[data-testid="we-version"]')
+    expect(versions).toHaveLength(1)
+    expect(versions[0]!.text()).toContain('Published version')
+    expect(versions[0]!.text()).toContain('Current')
+
+    await wrapperRef.get('[data-testid="we-chat-suggestion"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(1000)
+    versions = wrapperRef.findAll('[data-testid="we-version"]')
+    expect(versions).toHaveLength(2)
+    // Newest first, and it is the current one.
+    expect(versions[0]!.text()).toContain('Rewrote the hero headline')
+    expect(versions[0]!.text()).toContain('Current')
+
+    await versions[1]!.get('[data-testid="we-version-restore"]').trigger('click')
+    const emitted = wrapperRef.emitted('update:settings')!
+    expect((emitted.at(-1)![0] as { description: string }).description).toBe('')
+    expect(wrapperRef.findAll('[data-testid="we-version"]')[1]!.text()).toContain('Current')
   })
 })

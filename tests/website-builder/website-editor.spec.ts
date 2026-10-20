@@ -78,8 +78,10 @@ describe('websiteEditor', () => {
     expect(wrapper.get('[data-testid="we-title"]').text()).toBe('Villa Sunset Bali')
     expect(wrapper.text()).toContain('Listings')
     const labels = wrapper.findAll('nav button').map(b => b.text())
-    expect(labels).toEqual(['AI Generate', 'Site Settings', 'Hero Media', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Version History', 'Analytics'])
+    expect(labels).toEqual(['AI Generate', 'Site Settings', 'Hero Media', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Analytics'])
     expect(wrapper.find('[data-testid="we-ai"]').exists()).toBe(true)
+    // Chat and preview are split by a draggable handle.
+    expect(wrapper.find('[data-testid="we-ai-handle"]').exists()).toBe(true)
   })
 
   it('opens the builder steps embedded, without their own Back / Next', async () => {

@@ -4,6 +4,7 @@ import type { PropertySelection } from '~/components/website-builder/steps/Prope
 import type { ReviewSelection } from '~/components/website-builder/steps/ReviewStep.vue'
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
+import { useMediaQuery } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 import { ruleSetIssues } from '~/components/channels/data/website-channel'
 import { getListingIdsForWebsite } from '~/components/website-builder/data/property-listings'
@@ -29,12 +30,13 @@ const SECTIONS = [
   { key: 'reviews', label: 'Reviews', icon: 'lucide:star' },
   { key: 'seo', label: 'SEO', icon: 'lucide:search' },
   { key: 'legal', label: 'Cookie & Legal', icon: 'lucide:shield-check' },
-  { key: 'history', label: 'Version History', icon: 'lucide:history' },
   { key: 'analytics', label: 'Analytics', icon: 'lucide:chart-no-axes-column' },
 ] as const
 type SectionKey = typeof SECTIONS[number]['key']
 
 const section = ref<SectionKey>('ai')
+// Below lg the chat sits above the preview instead of beside it.
+const wide = useMediaQuery('(min-width: 1024px)')
 const current = computed(() => SECTIONS.find(s => s.key === section.value)!)
 
 const { saveWebsite } = useWebsiteSave()
@@ -82,8 +84,6 @@ function unpublish() {
   unpublishOpen.value = false
   save('draft', 'Website unpublished. It is a draft again')
 }
-
-const created = computed(() => new Date(live.value.lastUpdated).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }))
 </script>
 
 <template>
@@ -147,16 +147,26 @@ const created = computed(() => new Date(live.value.lastUpdated).toLocaleDateStri
 
       <!-- Content -->
       <div class="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/30">
-        <!-- AI Generate: chat on the left, live preview on the right -->
-        <div v-if="section === 'ai'" class="grid h-full min-h-[28rem] grid-rows-[minmax(28rem,1fr)_minmax(20rem,auto)] lg:grid-rows-[minmax(0,1fr)] gap-4 p-4 lg:grid-cols-2" data-testid="we-ai">
-          <div class="min-h-0 overflow-hidden rounded-lg border bg-background">
-            <WebsiteBuilderWebsiteAiChat v-model:settings="settings" />
-          </div>
-          <WebsiteBuilderWebsitePreviewFrame :settings="settings" :template-name="template?.name" :url="siteUrl" class="min-h-0" />
+        <!-- AI Generate: chat and live preview, the divider between them can be dragged. v-show keeps the chat and its history while another section is open. -->
+        <div v-show="section === 'ai'" class="h-full min-h-[28rem] p-4" data-testid="we-ai">
+          <ResizablePanelGroup
+            :key="wide ? 'row' : 'column'"
+            :direction="wide ? 'horizontal' : 'vertical'"
+            :auto-save-id="`website-editor-ai-${wide ? 'row' : 'column'}`"
+            class="min-h-[28rem]"
+          >
+            <ResizablePanel :default-size="40" :min-size="25" :max-size="75" class="overflow-hidden rounded-lg border bg-background">
+              <WebsiteBuilderWebsiteAiChat v-model:settings="settings" :baseline="{ label: isPublished ? 'Published version' : 'Latest draft', at: live.lastUpdated }" />
+            </ResizablePanel>
+            <ResizableHandle with-handle class="mx-1.5 my-1.5 bg-transparent" aria-label="Resize chat" data-testid="we-ai-handle" />
+            <ResizablePanel :default-size="60" :min-size="25" class="flex flex-col">
+              <WebsiteBuilderWebsitePreviewFrame :settings="settings" :template-name="template?.name" :url="siteUrl" class="min-h-0 flex-1" />
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
 
         <!-- Existing builder steps, without their Back / Next -->
-        <div v-else-if="section === 'settings'" class="p-5" data-testid="we-settings">
+        <div v-if="section === 'settings'" class="p-5" data-testid="we-settings">
           <WebsiteBuilderStepsSettingsStep v-model="settings" embedded />
         </div>
         <div v-else-if="section === 'listings'" class="p-5">
@@ -167,17 +177,6 @@ const created = computed(() => new Date(live.value.lastUpdated).toLocaleDateStri
         </div>
 
         <!-- Sections with nothing to set up in this demo yet -->
-        <div v-else-if="section === 'history'" class="p-5" data-testid="we-history">
-          <h3 class="text-lg font-semibold">
-            Version History
-          </h3>
-          <ul class="mt-3 divide-y rounded-md border bg-background text-sm">
-            <li class="flex items-center justify-between gap-3 px-4 py-3">
-              <span class="font-medium">{{ isPublished ? 'Published version' : 'Latest draft' }}</span>
-              <span class="text-muted-foreground">{{ created }}</span>
-            </li>
-          </ul>
-        </div>
         <div v-else-if="section === 'analytics'" class="p-5" data-testid="we-analytics">
           <h3 class="text-lg font-semibold">
             Analytics
