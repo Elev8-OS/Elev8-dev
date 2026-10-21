@@ -10,7 +10,7 @@ export interface PublicGuideResponse {
    * The listing's own guide content (check-in/out steps, house rules, Good to
    * Know), keyed by section type. The listing owns it; sections render it.
    */
-  guideContent?: Record<string, Array<{ id: string, title: string, text?: string, photoUrl?: string, icon?: string }>>
+  guideContent?: Record<string, Array<{ id: string, title: string, text?: string, photoUrl?: string }>>
   checkIn: string | null
   checkOut: string | null
   branding: PublicGuestGuideBranding

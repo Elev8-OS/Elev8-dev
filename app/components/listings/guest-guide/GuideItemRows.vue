@@ -5,8 +5,8 @@ import ExpandableText from '~/components/shared/ExpandableText.vue'
 import { toSafeHtml } from '~/lib/rich-text-sanitize.client'
 
 /**
- * Guest guide items as one row list: a number for steps, the chosen icon for
- * Good to Know, a check for rules; photos as a fixed thumbnail. With
+ * Guest guide items as one row list: a number for steps, a check for rules,
+ * nothing before a Good to Know tip; photos as a fixed thumbnail. With
  * `selecting`, each row gets a select tick (`v-model:selected`, item ids).
  */
 defineProps<{
@@ -46,10 +46,7 @@ function toggle(id: string) {
         class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
         :class="muted ? 'bg-muted text-muted-foreground' : 'bg-primary text-primary-foreground'"
       >{{ (startAt ?? 0) + i + 1 }}</span>
-      <span v-else-if="meta.iconPicker" class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-foreground">
-        <Icon :name="item.icon || 'lucide:info'" class="size-4" />
-      </span>
-      <Icon v-else name="lucide:check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />
+      <Icon v-else-if="meta.checkMark" name="lucide:check" class="mt-0.5 size-4 shrink-0 text-emerald-600" />
       <div class="min-w-0 flex-1" :class="muted ? 'opacity-80' : ''">
         <p class="text-sm font-medium">
           {{ item.title }}

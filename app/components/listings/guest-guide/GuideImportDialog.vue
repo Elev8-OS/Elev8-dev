@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GuideContentItem, GuideContentKind } from '~/components/listings/data/guest-guide-content'
+import type { Listing } from '~/components/listings/data/listings'
 import { GUIDE_CONTENT_META, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { listings } from '~/components/listings/data/listings'
 
@@ -7,10 +8,11 @@ import { listings } from '~/components/listings/data/listings'
  * Import a kind of guest guide content from ONE other listing: pick the listing,
  * then add its items to the end or replace this listing's. Writes through the
  * parent (`import`), like the check-in/out steps, house rules and Good to Know
- * import in the dashboard.
+ * import in the dashboard. Pets are part of the house rules, so importing
+ * house rules can bring the pet settings too (they replace this listing's).
  */
 const props = defineProps<{ kind: GuideContentKind, listingId: string, currentCount: number }>()
-const emit = defineEmits<{ import: [items: GuideContentItem[], mode: 'append' | 'replace', sourceName: string] }>()
+const emit = defineEmits<{ import: [items: GuideContentItem[], mode: 'append' | 'replace', source: Listing, withPets: boolean] }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const meta = computed(() => GUIDE_CONTENT_META[props.kind])
@@ -18,6 +20,7 @@ const meta = computed(() => GUIDE_CONTENT_META[props.kind])
 const search = ref('')
 const sourceId = ref('')
 const mode = ref<'append' | 'replace'>('append')
+const withPets = ref(true)
 
 watch(open, (isOpen) => {
   if (!isOpen)
@@ -25,6 +28,7 @@ watch(open, (isOpen) => {
   search.value = ''
   sourceId.value = ''
   mode.value = props.currentCount ? 'append' : 'replace'
+  withPets.value = true
 }, { immediate: true })
 
 const sources = computed(() => listings.value
@@ -43,7 +47,7 @@ const MODES = [
 function apply() {
   if (!source.value)
     return
-  emit('import', sourceItems.value, mode.value, source.value.name)
+  emit('import', sourceItems.value, mode.value, source.value, props.kind === 'house_rules' && withPets.value)
   open.value = false
 }
 </script>
@@ -104,6 +108,26 @@ function apply() {
         <p v-if="mode === 'replace' && currentCount" class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
           This replaces your {{ currentCount }} {{ currentCount === 1 ? meta.noun : `${meta.noun}s` }}.
         </p>
+      </div>
+
+      <div
+        v-if="source && kind === 'house_rules'"
+        role="checkbox"
+        tabindex="0"
+        :aria-checked="withPets"
+        class="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/50"
+        data-testid="guide-import-pets"
+        @click="withPets = !withPets"
+        @keydown.space.prevent="withPets = !withPets"
+        @keydown.enter.prevent="withPets = !withPets"
+      >
+        <span class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border" :class="withPets ? 'border-foreground bg-foreground text-background' : 'border-input'">
+          <Icon v-if="withPets" name="lucide:check" class="size-3" />
+        </span>
+        <span class="flex flex-col gap-0.5">
+          <span class="text-sm font-medium">Also import the pet settings</span>
+          <span class="text-xs text-muted-foreground">Pets allowed and the pet packages. These replace yours.</span>
+        </span>
       </div>
 
       <DialogFooter>

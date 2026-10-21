@@ -2,14 +2,14 @@
 import type { GuideContentItem, GuideContentKind } from '~/components/listings/data/guest-guide-content'
 import { VueDraggable } from 'vue-draggable-plus'
 import { toast } from 'vue-sonner'
-import { GOOD_TO_KNOW_ICONS, GUIDE_CONTENT_META, GUIDE_PHOTO_MAX_BYTES, GUIDE_PHOTO_TYPES, newGuideItemId } from '~/components/listings/data/guest-guide-content'
+import { GUIDE_CONTENT_META, GUIDE_PHOTO_MAX_BYTES, GUIDE_PHOTO_TYPES, newGuideItemId } from '~/components/listings/data/guest-guide-content'
 import RichTextEditor from '~/components/shared/RichTextEditor.vue'
 
 /**
  * Edits one kind of guest guide content in place (`v-model`): check-in or
  * check-out steps, house rules, Good to Know. Items reorder by drag handle (or
  * the arrow keys on it) and expand for their text, plus a photo for steps or
- * an icon for Good to Know. Used by the listing's Guest Guide tab and by
+ * Good to Know. Used by the listing's Guest Guide tab and by
  * Settings > Guest Guide > Content Templates.
  *
  * Slots: `toolbar` (beside Expand/Collapse all) and `empty` (actions shown
@@ -46,7 +46,7 @@ function toggleAll() {
 }
 
 function addItem() {
-  items.value = [...items.value, { id: newGuideItemId(), title: '', ...(props.kind === 'good_to_know' ? { icon: 'lucide:info' } : {}) }]
+  items.value = [...items.value, { id: newGuideItemId(), title: '' }]
 }
 
 function update(id: string, patch: Partial<GuideContentItem>) {
@@ -138,7 +138,6 @@ function uploadPhoto(id: string, event: Event) {
             <Icon name="lucide:grip-vertical" class="size-4" />
           </button>
           <span v-if="meta.numbered" class="w-5 shrink-0 text-center text-xs font-semibold text-muted-foreground">{{ index + 1 }}</span>
-          <Icon v-else-if="meta.iconPicker" :name="item.icon || 'lucide:info'" class="size-4 shrink-0 text-muted-foreground" />
           <Input
             :model-value="item.title"
             :placeholder="meta.titlePlaceholder"
@@ -185,23 +184,6 @@ function uploadPhoto(id: string, event: Event) {
             <Button v-if="item.photoUrl" variant="ghost" size="sm" class="h-7 text-xs text-muted-foreground" @click="update(item.id, { photoUrl: undefined })">
               Remove
             </Button>
-          </div>
-
-          <div v-if="meta.iconPicker" class="flex flex-wrap gap-1" role="radiogroup" aria-label="Icon">
-            <button
-              v-for="icon in GOOD_TO_KNOW_ICONS"
-              :key="icon"
-              type="button"
-              role="radio"
-              :aria-checked="(item.icon || 'lucide:info') === icon"
-              :aria-label="icon.replace('lucide:', '')"
-              class="flex size-8 items-center justify-center rounded-md border transition-colors"
-              :class="(item.icon || 'lucide:info') === icon ? 'border-primary bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted'"
-              data-testid="guide-item-icon"
-              @click="update(item.id, { icon })"
-            >
-              <Icon :name="icon" class="size-4" />
-            </button>
           </div>
         </div>
       </div>

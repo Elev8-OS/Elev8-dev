@@ -50,7 +50,7 @@ beforeEach(() => {
 })
 
 describe('guideItemsEditor', () => {
-  function mountEditor(kind: 'checkin' | 'good_to_know', items = [] as Array<{ id: string, title: string, icon?: string }>) {
+  function mountEditor(kind: 'checkin' | 'good_to_know', items = [] as Array<{ id: string, title: string }>) {
     const wrapper = mount(GuideItemsEditor, {
       props: { 'kind': kind, 'modelValue': items, 'onUpdate:modelValue': (v: unknown) => wrapper.setProps({ modelValue: v as never }) },
       global: { components: COMPONENTS, stubs: STUBS },
@@ -66,17 +66,16 @@ describe('guideItemsEditor', () => {
     expect(wrapper.props('modelValue')).toHaveLength(3)
   })
 
-  it('offers a photo for steps and Good to Know, and an icon only for Good to Know', async () => {
+  it('offers a photo for steps and Good to Know, and no icon for either', async () => {
     const steps = mountEditor('checkin', [{ id: 'a', title: 'Park' }])
     await steps.get('[data-testid="guide-item-toggle"]').trigger('click')
     expect(steps.find('[data-testid="guide-item-photo-input"]').exists()).toBe(true)
     expect(steps.find('[data-testid="guide-item-icon"]').exists()).toBe(false)
 
-    const tips = mountEditor('good_to_know', [{ id: 'g', title: 'Pool', icon: 'lucide:info' }])
+    const tips = mountEditor('good_to_know', [{ id: 'g', title: 'Pool' }])
     await tips.get('[data-testid="guide-item-toggle"]').trigger('click')
     expect(tips.find('[data-testid="guide-item-photo-input"]').exists()).toBe(true)
-    await tips.findAll('[data-testid="guide-item-icon"]').find(b => b.attributes('aria-label') === 'waves')!.trigger('click')
-    expect((tips.props('modelValue') as Array<{ icon: string }>)[0]!.icon).toBe('lucide:waves')
+    expect(tips.find('[data-testid="guide-item-icon"]').exists()).toBe(false)
   })
 
   it('refuses a step photo that is not an image', async () => {
@@ -189,8 +188,8 @@ describe('good to Know layout', () => {
   it('lists items as rows like the steps, with a photo as a thumbnail in its own row', async () => {
     const base = listings.value.find(l => l.id === 'lst-1')!
     const listing = { ...base, guestGuide: { ...base.guestGuide, good_to_know: [
-      { id: 'p', title: 'Pool', icon: 'lucide:waves', photoUrl: 'data:image/png;base64,AA' },
-      { id: 'r', title: 'Rubbish', icon: 'lucide:trash-2' },
+      { id: 'p', title: 'Pool', photoUrl: 'data:image/png;base64,AA' },
+      { id: 'r', title: 'Rubbish' },
     ] } }
     const wrapper = mount(ListingGuestGuideTab, { props: { listing }, global: { components: COMPONENTS, stubs: { ...STUBS, ListingGuideContentSheet: true } } })
     await wrapper.get('[data-testid="guide-nav-good_to_know"]').trigger('click')
@@ -209,13 +208,14 @@ describe('pets', () => {
     const base = listings.value.find(l => l.id === 'lst-1')!
     const listing = { ...base, ...listingOverride }
     const wrapper = mount(ListingGuestGuideTab, { props: { listing }, global: { components: COMPONENTS, stubs: { ...STUBS, ListingGuideContentSheet: true, Switch: SWITCH, Popover: POPOVER, PopoverTrigger: POPOVER, PopoverContent: POPOVER } } })
-    await wrapper.get('[data-testid="guide-nav-pets"]').trigger('click')
+    await wrapper.get('[data-testid="guide-nav-house_rules"]').trigger('click')
     return { wrapper, listing }
   }
 
-  it('shows pets allowed with no packages, as set on the listing', async () => {
+  it('shows pets inside the house rules, allowed with no packages, as set on the listing', async () => {
     const { wrapper } = await openPets()
-    expect(wrapper.get('[data-testid="guide-nav-pets"]').text()).toContain('Allowed')
+    expect(wrapper.find('[data-testid="guide-nav-pets"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="guide-pets-section"]').text()).toContain('Pets')
     expect(wrapper.get('[data-testid="pets-no-packages"]').text()).toContain('no package selection or payment will be required')
   })
 

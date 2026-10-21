@@ -10,19 +10,21 @@ import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
 import { listingCheckinStepsVisibility } from '~/components/listings/data/checkin-steps-visibility'
 import { GUIDE_CONTENT_KINDS, GUIDE_CONTENT_META, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { guestVerificationShortLabel, listingGuestVerification } from '~/components/listings/data/guest-verification'
-import { copyGuideItemsToListings, GUIDE_PER_LISTING, importGuideItems, removeGuideItems } from '~/components/listings/data/guide-bulk'
+import { copyGuideItemsToListings, GUIDE_PER_LISTING, importGuestVerification, importGuideItems, importPetPolicy, removeGuideItems } from '~/components/listings/data/guide-bulk'
 import { isRoomGuideKind, roomGuideItems, setRoomGuideItems } from '~/components/listings/data/listing-room-overrides'
-import { listingPetPolicy } from '~/components/listings/data/pet-policy'
+import { isPetPackageOffered, listingPetPolicy } from '~/components/listings/data/pet-policy'
 import CheckinStepsVisibilityCard from '~/components/listings/guest-guide/CheckinStepsVisibilityCard.vue'
 import GuestVerificationSettingsCard from '~/components/listings/guest-guide/GuestVerificationSettingsCard.vue'
 import GuideImportDialog from '~/components/listings/guest-guide/GuideImportDialog.vue'
 import GuideItemRows from '~/components/listings/guest-guide/GuideItemRows.vue'
 import GuideSetupCopyDialog from '~/components/listings/guest-guide/GuideSetupCopyDialog.vue'
+import GuideVerificationImportDialog from '~/components/listings/guest-guide/GuideVerificationImportDialog.vue'
 import ListingGuideContentSheet from '~/components/listings/guest-guide/ListingGuideContentSheet.vue'
 import PetPolicySettingsCard from '~/components/listings/guest-guide/PetPolicySettingsCard.vue'
 import GuideAssignPopover from '~/components/listings/GuideAssignPopover.vue'
 import SetupBulkBar from '~/components/listings/setup/SetupBulkBar.vue'
 import { useGuestGuides } from '~/composables/useGuestGuides'
+import { useUpsellServices } from '~/composables/useUpsellServices'
 
 /**
  * The listing's guest guide content: which guide it uses, and the content the
@@ -34,6 +36,7 @@ const props = defineProps<{ listing: Listing }>()
 const emit = defineEmits<{ update: [listing: Listing] }>()
 
 const { guides } = useGuestGuides()
+const { services } = useUpsellServices()
 /** "Copy to listings": this listing's whole guest guide setup. */
 const copyAllOpen = ref(false)
 const assignedGuide = computed(() => guides.value.find(g => g.assignedListingIds.includes(props.listing.id)))
@@ -52,8 +55,8 @@ function guideGap(kind: GuideContentKind): 'missing' | 'hidden' | null {
 }
 
 /** The section shown on the right: a content kind, or the guest verification settings. */
-const selected = ref<GuideContentKind | 'verification' | 'pets'>('checkin')
-const selectedKind = computed<GuideContentKind>(() => selected.value === 'verification' || selected.value === 'pets' ? 'checkin' : selected.value)
+const selected = ref<GuideContentKind | 'verification'>('checkin')
+const selectedKind = computed<GuideContentKind>(() => selected.value === 'verification' ? 'checkin' : selected.value)
 const selectedMeta = computed(() => GUIDE_CONTENT_META[selectedKind.value])
 const selectedItems = computed(() => listingGuideItems(props.listing, selectedKind.value))
 
@@ -156,10 +159,28 @@ function copySelected(targetIds: string[]) {
 // --- Import from another listing (the property's content, never a room's).
 const importOpen = ref(false)
 
-function importFromListing(items: GuideContentItem[], mode: 'append' | 'replace', sourceName: string) {
+/** House rules can bring the pet settings with them: pets are part of the house rules. */
+function importFromListing(items: GuideContentItem[], mode: 'append' | 'replace', source: Listing, withPets: boolean) {
   const kind = selectedKind.value
-  emit('update', importGuideItems(props.listing, kind, items, mode))
-  toast.success(`${items.length} ${items.length === 1 ? GUIDE_CONTENT_META[kind].noun : `${GUIDE_CONTENT_META[kind].noun}s`} imported from ${sourceName}`)
+  const noun = GUIDE_CONTENT_META[kind].noun
+  let next = importGuideItems(props.listing, kind, items, mode)
+  let skipped = 0
+  if (withPets) {
+    const pets = importPetPolicy(next, source, (id, name) => isPetPackageOffered(services.value, id, name))
+    next = pets.listing
+    skipped = pets.skippedPackageIds.length
+  }
+  emit('update', next)
+  const done = `${items.length} ${items.length === 1 ? noun : `${noun}s`} imported from ${source.name}${withPets ? ' with the pet settings' : ''}`
+  toast.success(skipped ? `${done}. ${skipped} pet ${skipped === 1 ? 'package is' : 'packages are'} not offered on this listing and left out.` : done)
+}
+
+// --- Import the guest verification from another listing.
+const verificationImportOpen = ref(false)
+
+function importVerification(source: Listing) {
+  emit('update', importGuestVerification(props.listing, source))
+  toast.success(`Guest verification imported from ${source.name}`)
 }
 </script>
 
@@ -274,42 +295,23 @@ function importFromListing(items: GuideContentItem[], mode: 'append' | 'replace'
           <span class="min-w-0 flex-1 truncate text-sm">Guest verification</span>
           <span class="shrink-0 truncate text-xs text-muted-foreground">{{ guestVerificationShortLabel(verification.mode) }}</span>
         </button>
-        <button
-          type="button"
-          class="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors"
-          :class="selected === 'pets' ? 'bg-muted font-medium' : 'hover:bg-muted/50'"
-          :aria-current="selected === 'pets' ? 'true' : undefined"
-          data-testid="guide-nav-pets"
-          @click="selected = 'pets'"
-        >
-          <Icon name="lucide:paw-print" class="size-4 shrink-0 text-muted-foreground" />
-          <span class="min-w-0 flex-1 truncate text-sm">Pets</span>
-          <span class="shrink-0 text-xs text-muted-foreground">{{ petPolicy.allowed ? 'Allowed' : 'Not allowed' }}</span>
-        </button>
       </Card>
 
-      <Card v-if="selected === 'pets'" class="gap-4 p-5 xl:col-span-3" data-testid="guide-content-pets">
-        <div>
-          <h3 class="flex items-center gap-2 text-base font-semibold">
-            <Icon name="lucide:paw-print" class="size-4 text-muted-foreground" />
-            Pets
-          </h3>
-          <p class="mt-0.5 text-sm text-muted-foreground">
-            Whether guests can bring pets, and the packages they choose from.
-          </p>
-        </div>
-        <PetPolicySettingsCard :policy="petPolicy" :listing-name="listing.name" @change="savePetPolicy" />
-      </Card>
-
-      <Card v-else-if="selected === 'verification'" class="gap-4 p-5 xl:col-span-3" data-testid="guide-content-verification">
-        <div>
-          <h3 class="flex items-center gap-2 text-base font-semibold">
-            <Icon name="lucide:shield-check" class="size-4 text-muted-foreground" />
-            Guest Verification
-          </h3>
-          <p class="mt-0.5 text-sm text-muted-foreground">
-            What guests of this listing are asked before arrival.
-          </p>
+      <Card v-if="selected === 'verification'" class="gap-4 p-5 xl:col-span-3" data-testid="guide-content-verification">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 class="flex items-center gap-2 text-base font-semibold">
+              <Icon name="lucide:shield-check" class="size-4 text-muted-foreground" />
+              Guest Verification
+            </h3>
+            <p class="mt-0.5 text-sm text-muted-foreground">
+              What guests of this listing are asked before arrival.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" class="gap-1.5" data-testid="guide-import-verification" @click="verificationImportOpen = true">
+            <Icon name="lucide:import" class="size-3.5" />
+            Import
+          </Button>
         </div>
         <GuestVerificationSettingsCard :settings="verification" @change="saveVerification" />
       </Card>
@@ -457,10 +459,25 @@ function importFromListing(items: GuideContentItem[], mode: 'append' | 'replace'
             {{ selectedMeta.label }} are the same for every room. Edit them under Property.
           </p>
         </template>
+
+        <!-- Pets are part of the house rules. -->
+        <div v-if="selectedKind === 'house_rules' && !room" class="flex flex-col gap-3 border-t pt-4" data-testid="guide-pets-section">
+          <div>
+            <h4 class="flex items-center gap-2 text-sm font-semibold">
+              <Icon name="lucide:paw-print" class="size-4 text-muted-foreground" />
+              Pets
+            </h4>
+            <p class="mt-0.5 text-sm text-muted-foreground">
+              Whether guests can bring pets, and the packages they choose from.
+            </p>
+          </div>
+          <PetPolicySettingsCard :policy="petPolicy" :listing-name="listing.name" @change="savePetPolicy" />
+        </div>
       </Card>
     </div>
 
     <GuideSetupCopyDialog v-model:open="copyAllOpen" :listing="listing" />
+    <GuideVerificationImportDialog v-model:open="verificationImportOpen" :listing-id="listing.id" @import="importVerification" />
     <GuideImportDialog v-model:open="importOpen" :kind="selectedKind" :listing-id="listing.id" :current-count="selectedItems.length" @import="importFromListing" />
 
     <ListingGuideContentSheet

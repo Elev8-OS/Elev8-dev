@@ -738,7 +738,7 @@ export const listings = ref<Listing[]>([
             overrides: {
               guide: {
                 checkin: [{ id: 'gci-room-ms-1', title: 'Find the Master Suite', text: 'Upstairs, the second door on the left. The door code is sent on the morning of arrival.' }],
-                good_to_know: [{ id: 'gci-room-ms-2', title: 'Freestanding bathtub', text: 'Fill it to the line only; the overflow is slow.', icon: 'lucide:bath' }],
+                good_to_know: [{ id: 'gci-room-ms-2', title: 'Freestanding bathtub', text: 'Fill it to the line only; the overflow is slow.' }],
               },
             },
           },
@@ -955,9 +955,9 @@ export const listings = ref<Listing[]>([
         { id: 'lst1-hr-3', title: 'Quiet hours after 22:00', text: 'The neighbours are close; please keep music and pool noise down.' },
       ],
       good_to_know: [
-        { id: 'lst1-gk-1', icon: 'lucide:waves', title: 'Pool', text: 'Cleaned every morning at 08:00. No glass by the pool.' },
-        { id: 'lst1-gk-2', icon: 'lucide:trash-2', title: 'Rubbish', text: 'Bins by the side gate; staff collect them daily.' },
-        { id: 'lst1-gk-3', icon: 'lucide:droplets', title: 'Drinking water', text: 'Tap water is not drinkable. Refill bottles from the water dispenser.' },
+        { id: 'lst1-gk-1', title: 'Pool', text: 'Cleaned every morning at 08:00. No glass by the pool.' },
+        { id: 'lst1-gk-2', title: 'Rubbish', text: 'Bins by the side gate; staff collect them daily.' },
+        { id: 'lst1-gk-3', title: 'Drinking water', text: 'Tap water is not drinkable. Refill bottles from the water dispenser.' },
       ],
     },
   },

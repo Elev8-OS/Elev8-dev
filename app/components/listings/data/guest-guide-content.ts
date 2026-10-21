@@ -25,8 +25,6 @@ export interface GuideContentItem {
   text?: string
   /** Steps and Good to Know: a photo of the gate, the key box, the pool... (data URL). */
   photoUrl?: string
-  /** Good to Know: a lucide icon name, e.g. `lucide:wifi`. */
-  icon?: string
   /**
    * Set only on items a room adds to the guest guide (`guideContentForRooms`),
    * so the guest page can label them "Your room: …". Never stored.
@@ -44,7 +42,8 @@ export interface GuideContentKindMeta {
   description: string
   numbered: boolean
   photo: boolean
-  iconPicker: boolean
+  /** A green check beside each item (the house rules). */
+  checkMark: boolean
   titlePlaceholder: string
   textPlaceholder: string
 }
@@ -57,7 +56,7 @@ export const GUIDE_CONTENT_META: Record<GuideContentKind, GuideContentKindMeta> 
     description: 'How the guest gets in, in order.',
     numbered: true,
     photo: true,
-    iconPicker: false,
+    checkMark: false,
     titlePlaceholder: 'e.g. Park at the north gate',
     textPlaceholder: 'What to do, what to look for.',
   },
@@ -68,7 +67,7 @@ export const GUIDE_CONTENT_META: Record<GuideContentKind, GuideContentKindMeta> 
     description: 'What the guest does before leaving.',
     numbered: true,
     photo: true,
-    iconPicker: false,
+    checkMark: false,
     titlePlaceholder: 'e.g. Leave the keys on the kitchen counter',
     textPlaceholder: 'Details, if any.',
   },
@@ -79,7 +78,7 @@ export const GUIDE_CONTENT_META: Record<GuideContentKind, GuideContentKindMeta> 
     description: 'What the guest agrees to. Also printed on the house-rules agreement.',
     numbered: false,
     photo: false,
-    iconPicker: false,
+    checkMark: true,
     titlePlaceholder: 'e.g. No smoking inside',
     textPlaceholder: 'Why, or what happens if not.',
   },
@@ -90,33 +89,11 @@ export const GUIDE_CONTENT_META: Record<GuideContentKind, GuideContentKindMeta> 
     description: 'Practical tips for the stay.',
     numbered: false,
     photo: true,
-    iconPicker: true,
+    checkMark: false,
     titlePlaceholder: 'e.g. Pool hours',
     textPlaceholder: 'The details the guest needs.',
   },
 }
-
-/** Icons offered for Good to Know items. */
-export const GOOD_TO_KNOW_ICONS = [
-  'lucide:info',
-  'lucide:wifi',
-  'lucide:waves',
-  'lucide:trash-2',
-  'lucide:car',
-  'lucide:utensils',
-  'lucide:shopping-bag',
-  'lucide:sun',
-  'lucide:key-round',
-  'lucide:zap',
-  'lucide:droplets',
-  'lucide:phone',
-  'lucide:map-pin',
-  'lucide:shield-check',
-  'lucide:volume-x',
-  'lucide:baby',
-  'lucide:dog',
-  'lucide:cigarette-off',
-] as const
 
 /** Largest step photo accepted, as for other uploads stored in the browser. */
 export const GUIDE_PHOTO_MAX_BYTES = 2 * 1024 * 1024
@@ -182,8 +159,6 @@ export function cleanGuideItems(items: GuideContentItem[]): GuideContentItem[] {
         out.text = item.text!.trim()
       if (item.photoUrl)
         out.photoUrl = item.photoUrl
-      if (item.icon)
-        out.icon = item.icon
       return out
     })
     .filter(item => item.title)

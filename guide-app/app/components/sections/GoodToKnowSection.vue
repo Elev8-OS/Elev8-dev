@@ -6,7 +6,6 @@ interface GoodToKnowItem {
   id: string
   title: string
   text?: string
-  icon?: string
   photoUrl?: string
   /** Set only on a tip for the guest's room. */
   roomName?: string
@@ -42,9 +41,6 @@ const { translate } = useAutoTranslate()
           Your room: {{ item.roomName }}
         </li>
         <li class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-          <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Icon :name="item.icon || 'lucide:info'" class="size-5" />
-          </span>
           <div class="min-w-0 flex-1">
             <p class="font-medium">
               {{ translate(item.title) }}
