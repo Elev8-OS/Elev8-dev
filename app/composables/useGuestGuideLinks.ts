@@ -15,7 +15,7 @@ export function useGuestGuideLinks() {
     guestLanguage?: string
     channel: LinkChannel
     expiresAt: string
-    metadata?: { journeyId?: string; templateId?: string }
+    metadata?: { journeyId?: string, templateId?: string }
   }): GuestGuideLink {
     if (links.value.some(l => l.reservationId === input.reservationId)) {
       throw new Error(`Link already issued for reservation ${input.reservationId}`)
@@ -47,7 +47,8 @@ export function useGuestGuideLinks() {
 
   function markOpened(id: string): void {
     const link = links.value.find(l => l.id === id)
-    if (!link) return
+    if (!link)
+      return
     updateLink(id, {
       status: 'opened',
       openedAt: link.openedAt ?? new Date().toISOString(),
@@ -73,6 +74,16 @@ export function useGuestGuideLinks() {
     return links.value.find(l => l.reservationId === reservationId)
   }
 
+  /**
+   * The guide link meant for one room of a multi-room stay: the link whose
+   * `unitIds` is exactly that room. Falls back to the stay's own link, so a
+   * booking with one shared guide still opens it from every room.
+   */
+  function findForRoom(reservationId: string, unitId: string): GuestGuideLink | undefined {
+    const own = links.value.filter(l => l.reservationId === reservationId)
+    return own.find(l => l.unitIds?.length === 1 && l.unitIds[0] === unitId) ?? own[0]
+  }
+
   function findByGuide(guideId: string): GuestGuideLink[] {
     return links.value.filter(l => l.guideId === guideId)
   }
@@ -86,6 +97,7 @@ export function useGuestGuideLinks() {
     revokeLink,
     findByToken,
     findByReservation,
+    findForRoom,
     findByGuide,
   }
 }

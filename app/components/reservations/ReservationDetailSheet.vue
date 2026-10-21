@@ -520,6 +520,31 @@ function locksForListing(listingId: string) {
   return smartLock.getLocksForListing(listingId)
 }
 
+/**
+ * Locks by room for a multi-room stay (plus any property-level lock), so each
+ * room shows its own lock and codes. A single-room stay is one untitled group.
+ */
+const lockGroups = computed(() => {
+  const r = reservation.value
+  if (!r)
+    return []
+  if (!r.rooms?.length)
+    return [{ key: 'listing', title: '', locks: locksForListing(r.listingId) }]
+  const groups = r.rooms.map(room => ({ key: room.id, title: room.unitName, locks: smartLock.getLocksForUnit(r.listingId, room.unitId) }))
+  const shared = locksForListing(r.listingId).filter(l => !l.unitId)
+  return shared.length ? [...groups, { key: 'property', title: 'Property', locks: shared }] : groups
+})
+
+const hasAnyLock = computed(() => lockGroups.value.some(g => g.locks.length))
+
+function roomLockLabel(unitId: string): string {
+  const r = reservation.value
+  if (!r || !smartLock.isConnected.value)
+    return 'No smart lock'
+  const names = smartLock.getLocksForUnit(r.listingId, unitId).map(l => l.name)
+  return names.length ? names.join(', ') : 'No smart lock'
+}
+
 function codesForReservation(reservation: ReservationEntry) {
   return smartLock.codes.value
     .filter(c => c.reservationId === reservation.id && c.status === 'active')
@@ -609,7 +634,7 @@ function downloadInvoice() {
   }
 }
 
-const { findByReservation: findGuestGuideLink } = useGuestGuideLinks()
+const { findByReservation: findGuestGuideLink, findForRoom: findRoomGuideLink } = useGuestGuideLinks()
 
 const guestGuideRoute = computed(() => {
   if (!reservation.value)
@@ -624,6 +649,12 @@ const guestGuideRoute = computed(() => {
     return `/guest-guides/${assignedGuide.id}`
   return '/guest-guides'
 })
+
+/** A room's own guide link when it has one, else the stay's guide. */
+function roomGuideRoute(unitId: string): string {
+  const link = reservation.value ? findRoomGuideLink(reservation.value.id, unitId) : undefined
+  return link ? `/guest-guides/${link.guideId}` : guestGuideRoute.value
+}
 </script>
 
 <template>
@@ -1010,6 +1041,16 @@ const guestGuideRoute = computed(() => {
                             <div class="mt-1 flex items-center justify-between text-xs text-muted-foreground">
                               <span>{{ fmtCurrency(room.pricePerNight, reservation.currency) }} × {{ reservation.nights }} nights</span>
                             </div>
+                            <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                              <span class="flex items-center gap-1" data-testid="room-lock">
+                                <Icon name="lucide:key-round" class="size-3" />
+                                {{ roomLockLabel(room.unitId) }}
+                              </span>
+                              <NuxtLink :to="roomGuideRoute(room.unitId)" class="flex items-center gap-1 text-primary hover:underline" data-testid="room-guide-link">
+                                <Icon name="lucide:book-open" class="size-3" />
+                                Guest guide
+                              </NuxtLink>
+                            </div>
                           </div>
                           <div v-if="reservation.paymentFeeMode && reservation.paymentFeeMode !== 'no_fee'" class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
                             <span class="text-muted-foreground">Payment charge</span>
@@ -1351,74 +1392,83 @@ const guestGuideRoute = computed(() => {
                           </NuxtLink>
                         </div>
 
-                        <div v-else-if="locksForListing(reservation.listingId).length === 0" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        <div v-else-if="!hasAnyLock" class="border border-dashed p-3 text-center text-xs text-muted-foreground">
                           No smart locks paired to this listing.
                         </div>
 
-                        <div v-else class="space-y-2">
-                          <div
-                            v-for="lock in locksForListing(reservation.listingId)"
-                            :key="lock.id"
-                            class="border p-3"
-                          >
-                            <div class="flex items-center gap-2">
-                              <Icon
-                                :name="lock.online ? 'lucide:lock' : 'lucide:lock-open'"
-                                class="size-4 shrink-0"
-                                :class="lock.online ? 'text-green-600' : 'text-muted-foreground'"
-                              />
-                              <div class="min-w-0 flex-1">
-                                <p class="text-sm font-medium truncate">
-                                  {{ lock.name }}
-                                </p>
-                                <p class="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                  <Icon name="lucide:battery" class="size-2.5" :class="lock.batteryLevel <= 20 ? 'text-amber-500' : ''" />
-                                  {{ lock.batteryLevel }}%
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                class="h-7 gap-1 text-xs"
-                                :disabled="!lock.online || generatingLockId === lock.id"
-                                @click="generateCode(reservation, lock.id)"
-                              >
-                                <Icon
-                                  v-if="generatingLockId === lock.id"
-                                  name="lucide:loader-2"
-                                  class="size-3 animate-spin"
-                                />
-                                <Icon v-else name="lucide:plus" class="size-3" />
-                                {{ generatingLockId === lock.id ? 'Generating…' : 'Generate code' }}
-                              </Button>
-                            </div>
-
-                            <div
-                              v-for="code in codesForReservation(reservation).filter(c => c.lockId === lock.id)"
-                              :key="code.id"
-                              class="mt-2 flex items-center justify-between gap-2 border bg-muted/30 p-2"
-                            >
-                              <div class="min-w-0 flex-1">
-                                <p class="font-mono text-base font-bold tracking-widest">
-                                  {{ code.code }}
-                                </p>
-                                <p class="text-[10px] text-muted-foreground">
-                                  {{ code.guestName || 'Guest' }} · expires {{ formatExpiry(code.endsAt) }}
-                                </p>
-                              </div>
-                              <div class="flex shrink-0 items-center gap-1">
-                                <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Copy code" @click="copyCode(code.code)">
-                                  <Icon name="lucide:copy" class="size-3.5" />
-                                </Button>
-                                <Button variant="ghost" size="sm" class="h-7 w-7 p-0 hover:text-destructive" title="Revoke" @click="revokeCode(code.id)">
-                                  <Icon name="lucide:trash-2" class="size-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            <p v-if="codesForReservation(reservation).filter(c => c.lockId === lock.id).length === 0" class="mt-2 text-[10px] text-muted-foreground italic">
-                              No active codes. Click "Generate code" to create one.
+                        <div v-else class="space-y-3">
+                          <div v-for="group in lockGroups" :key="group.key" class="space-y-2" :data-testid="`lock-group-${group.key}`">
+                            <p v-if="group.title" class="flex items-center gap-1.5 text-xs font-medium">
+                              <Icon name="lucide:door-open" class="size-3.5 text-muted-foreground" />
+                              {{ group.title }}
                             </p>
+                            <p v-if="group.title && !group.locks.length" class="text-[10px] italic text-muted-foreground">
+                              No lock paired to this room.
+                            </p>
+                            <div
+                              v-for="lock in group.locks"
+                              :key="lock.id"
+                              class="border p-3"
+                            >
+                              <div class="flex items-center gap-2">
+                                <Icon
+                                  :name="lock.online ? 'lucide:lock' : 'lucide:lock-open'"
+                                  class="size-4 shrink-0"
+                                  :class="lock.online ? 'text-green-600' : 'text-muted-foreground'"
+                                />
+                                <div class="min-w-0 flex-1">
+                                  <p class="text-sm font-medium truncate">
+                                    {{ lock.name }}
+                                  </p>
+                                  <p class="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                    <Icon name="lucide:battery" class="size-2.5" :class="lock.batteryLevel <= 20 ? 'text-amber-500' : ''" />
+                                    {{ lock.batteryLevel }}%
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  class="h-7 gap-1 text-xs"
+                                  :disabled="!lock.online || generatingLockId === lock.id"
+                                  @click="generateCode(reservation, lock.id)"
+                                >
+                                  <Icon
+                                    v-if="generatingLockId === lock.id"
+                                    name="lucide:loader-2"
+                                    class="size-3 animate-spin"
+                                  />
+                                  <Icon v-else name="lucide:plus" class="size-3" />
+                                  {{ generatingLockId === lock.id ? 'Generating…' : 'Generate code' }}
+                                </Button>
+                              </div>
+
+                              <div
+                                v-for="code in codesForReservation(reservation).filter(c => c.lockId === lock.id)"
+                                :key="code.id"
+                                class="mt-2 flex items-center justify-between gap-2 border bg-muted/30 p-2"
+                              >
+                                <div class="min-w-0 flex-1">
+                                  <p class="font-mono text-base font-bold tracking-widest">
+                                    {{ code.code }}
+                                  </p>
+                                  <p class="text-[10px] text-muted-foreground">
+                                    {{ code.guestName || 'Guest' }} · expires {{ formatExpiry(code.endsAt) }}
+                                  </p>
+                                </div>
+                                <div class="flex shrink-0 items-center gap-1">
+                                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0" title="Copy code" @click="copyCode(code.code)">
+                                    <Icon name="lucide:copy" class="size-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" class="h-7 w-7 p-0 hover:text-destructive" title="Revoke" @click="revokeCode(code.id)">
+                                    <Icon name="lucide:trash-2" class="size-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              <p v-if="codesForReservation(reservation).filter(c => c.lockId === lock.id).length === 0" class="mt-2 text-[10px] text-muted-foreground italic">
+                                No active codes. Click "Generate code" to create one.
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </AccordionContent>
@@ -1438,7 +1488,25 @@ const guestGuideRoute = computed(() => {
                       <Icon name="lucide:download" class="size-3.5" />
                       Download invoice
                     </Button>
-                    <Button variant="outline" size="sm" class="w-full gap-1.5" as-child>
+                    <DropdownMenu v-if="(reservation.rooms?.length ?? 0) > 1">
+                      <DropdownMenuTrigger as-child>
+                        <Button variant="outline" size="sm" class="w-full gap-1.5" data-testid="view-guest-guide-menu">
+                          <Icon name="lucide:book-open" class="size-3.5" />
+                          View guest guide
+                          <Icon name="lucide:chevron-down" class="size-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" class="w-64">
+                        <DropdownMenuLabel>Guest guide per room</DropdownMenuLabel>
+                        <DropdownMenuItem v-for="room in reservation.rooms" :key="room.id" as-child>
+                          <NuxtLink :to="roomGuideRoute(room.unitId)" data-testid="guide-menu-room">
+                            <Icon name="lucide:door-open" class="size-3.5" />
+                            {{ room.unitName }}
+                          </NuxtLink>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button v-else variant="outline" size="sm" class="w-full gap-1.5" as-child>
                       <NuxtLink :to="guestGuideRoute">
                         <Icon name="lucide:book-open" class="size-3.5" />
                         View guest guide

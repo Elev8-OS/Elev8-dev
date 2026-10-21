@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { useGuestGuideLinks } from '~/composables/useGuestGuideLinks'
 
 describe('useGuestGuideLinks', () => {
@@ -26,7 +26,7 @@ describe('useGuestGuideLinks', () => {
       expiresAt: new Date(Date.now() + 86400000 * 5).toISOString(),
     })
     expect(link.id).toMatch(/^ggl-/)
-    expect(link.token).toMatch(/^[A-Za-z0-9_-]{12}$/)
+    expect(link.token).toMatch(/^[\w-]{12}$/)
     expect(link.status).toBe('pending')
     expect(link.guestName).toBe('Anna Schmidt')
   })
@@ -93,5 +93,30 @@ describe('useGuestGuideLinks', () => {
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
     })
     expect(findByToken(link.token)?.id).toBe(link.id)
+  })
+
+  describe('findForRoom', () => {
+    const base = { listingId: 'lst-1', guestName: 'Dan', channel: 'manual' as const, expiresAt: new Date(Date.now() + 86400000).toISOString() }
+
+    it('returns the link made for that room', () => {
+      const { links, findForRoom } = useGuestGuideLinks()
+      links.value = [
+        { id: 'a', token: 'ta', guideId: 'gg-a', reservationId: 'res-1', unitIds: ['un-1'], sentAt: '', status: 'pending', ...base },
+        { id: 'b', token: 'tb', guideId: 'gg-b', reservationId: 'res-1', unitIds: ['un-3'], sentAt: '', status: 'pending', ...base },
+      ]
+      expect(findForRoom('res-1', 'un-3')?.guideId).toBe('gg-b')
+    })
+
+    it('falls back to the stay link when the room has none', () => {
+      const { links, findForRoom } = useGuestGuideLinks()
+      links.value = [{ id: 'a', token: 'ta', guideId: 'gg-a', reservationId: 'res-1', sentAt: '', status: 'pending', ...base }]
+      expect(findForRoom('res-1', 'un-9')?.guideId).toBe('gg-a')
+    })
+
+    it('is undefined for another reservation', () => {
+      const { links, findForRoom } = useGuestGuideLinks()
+      links.value = [{ id: 'a', token: 'ta', guideId: 'gg-a', reservationId: 'res-1', sentAt: '', status: 'pending', ...base }]
+      expect(findForRoom('res-2', 'un-1')).toBeUndefined()
+    })
   })
 })

@@ -105,3 +105,12 @@ Single-connection (one API key per tenant), multi-lock assignment (many locks pe
 - **Web server webhook receiver** — `/api/webhooks/smartlock` route does not exist; webhook events are simulated in-app via `emitMockAlerts`
 - **Auto-generate code on reservation create** — codes are auto-generated when pairing a lock, but not when a new reservation is created later
 - **Guest-facing code share** — codes are generated but not auto-messaged to the guest (future: via WhatsApp/inbox)
+
+### Multi-room stays in the reservation detail sheet
+
+`ReservationDetailSheet.vue`, for a reservation with `rooms[]`:
+- **Rooms section:** each room card shows its lock name(s) (`getLocksForUnit(listingId, room.unitId)`, "No smart lock" when none or not connected) and a "Guest guide" link.
+- **Smart lock section:** `lockGroups` groups locks by room (title = unit name, "No lock paired to this room." when empty), then a "Property" group for locks with no `unitId`. A single-room stay is one untitled group of the listing's locks, as before. Codes and Generate code still work per lock.
+- **View guest guide:** a dropdown "Guest guide per room" when there are several rooms, one item per room; one room keeps the plain link.
+- ⚠️ Guide links are one per reservation today. `useGuestGuideLinks().findForRoom(reservationId, unitId)` returns a link whose `unitIds` is exactly that room, else the stay's link, so until per-room links exist every room opens the same guide.
+- Specs: `tests/components/reservations/ReservationDetailRoomLocksGuides.spec.ts`, `tests/composables/useGuestGuideLinks.test.ts`.
