@@ -115,6 +115,8 @@ describe('listingGuideContentSheet', () => {
       const wrapper = mountSheet([{ id: 'a', title: 'Ring the bell' }])
       await wrapper.get('[data-testid="guide-copy"]').trigger('click')
       await wrapper.get('[data-testid="pick-two"]').trigger('click')
+      await wrapper.get('[data-testid="guide-copy-next"]').trigger('click')
+      expect(wrapper.text()).toContain('lose their current')
       await wrapper.get('[data-testid="guide-copy-apply"]').trigger('click')
       const targets = listings.value.filter(l => l.id !== 'lst-1').slice(0, 2)
       expect(targets.every(l => listingGuideItems(l, 'checkin').map(i => i.title).join() === 'Ring the bell')).toBe(true)

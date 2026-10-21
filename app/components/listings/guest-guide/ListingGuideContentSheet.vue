@@ -76,6 +76,8 @@ function applyImport() {
 // --- Copy to other listings ---------------------------------------------------
 
 const copyOpen = ref(false)
+/** The second step: name what gets replaced before anything is written. */
+const copyConfirm = ref(false)
 const copyTargets = ref<string[]>([])
 
 const copyOptions = computed<PropertyPickerOption[]>(() =>
@@ -86,8 +88,15 @@ const copyOptions = computed<PropertyPickerOption[]>(() =>
 
 function openCopy() {
   copyTargets.value = []
+  copyConfirm.value = false
   copyOpen.value = true
 }
+
+/** The first three picked listings by name, then a count. */
+const copyTargetNames = computed(() => {
+  const names = copyTargets.value.map(id => copyOptions.value.find(o => o.id === id)?.name ?? id)
+  return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')
+})
 
 function applyCopy() {
   const count = copyToListings(props.kind, cleanGuideItems(draft.value), copyTargets.value)
@@ -229,23 +238,42 @@ function save() {
 
     <Dialog v-model:open="copyOpen">
       <DialogContent class="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Copy to other listings</DialogTitle>
-          <DialogDescription>
-            Copies these {{ itemCount }} {{ itemCount === 1 ? meta.noun : `${meta.noun}s` }}, as they are in the editor now. The listings you pick lose their current {{ meta.label.toLowerCase() }}.
-          </DialogDescription>
-        </DialogHeader>
-        <div class="py-1">
-          <PropertyPicker v-model="copyTargets" :options="copyOptions" />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" @click="copyOpen = false">
-            Cancel
-          </Button>
-          <Button :disabled="!copyTargets.length" data-testid="guide-copy-apply" @click="applyCopy">
-            Copy to {{ copyTargets.length }} {{ copyTargets.length === 1 ? 'listing' : 'listings' }}
-          </Button>
-        </DialogFooter>
+        <template v-if="!copyConfirm">
+          <DialogHeader>
+            <DialogTitle>Copy to other listings</DialogTitle>
+            <DialogDescription>
+              Copies these {{ itemCount }} {{ itemCount === 1 ? meta.noun : `${meta.noun}s` }}, as they are in the editor now. The listings you pick lose their current {{ meta.label.toLowerCase() }}.
+            </DialogDescription>
+          </DialogHeader>
+          <div class="py-1">
+            <PropertyPicker v-model="copyTargets" :options="copyOptions" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" @click="copyOpen = false">
+              Cancel
+            </Button>
+            <Button :disabled="!copyTargets.length" data-testid="guide-copy-next" @click="copyConfirm = true">
+              Copy to {{ copyTargets.length }} {{ copyTargets.length === 1 ? 'listing' : 'listings' }}
+            </Button>
+          </DialogFooter>
+        </template>
+
+        <template v-else>
+          <DialogHeader>
+            <DialogTitle>Replace {{ meta.label.toLowerCase() }} on {{ copyTargets.length }} {{ copyTargets.length === 1 ? 'listing' : 'listings' }}?</DialogTitle>
+            <DialogDescription>
+              {{ copyTargetNames }} will lose {{ copyTargets.length === 1 ? 'its' : 'their' }} current {{ meta.label.toLowerCase() }} and get these {{ itemCount }} {{ itemCount === 1 ? meta.noun : `${meta.noun}s` }} instead.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" @click="copyConfirm = false">
+              Back
+            </Button>
+            <Button data-testid="guide-copy-apply" @click="applyCopy">
+              Replace on {{ copyTargets.length }} {{ copyTargets.length === 1 ? 'listing' : 'listings' }}
+            </Button>
+          </DialogFooter>
+        </template>
       </DialogContent>
     </Dialog>
   </Sheet>
