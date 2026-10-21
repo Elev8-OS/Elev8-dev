@@ -96,6 +96,14 @@ paid).
 `tests/composables/useReservationFolio.spec.ts` (17),
 `tests/components/reservations/ReservationFolio.spec.ts` (28).
 
+### Invoice PDF for a multi-room booking (`app/lib/folio-invoice-pdf.ts`)
+
+`buildInvoiceRoomRows(reservation)` (pure) returns the rows that replace the single "Accommodation" row when the stay has `rooms[]`: one per room line (unit, nights, rate plan, guest names), then each non-inclusive charge, then the payment fee (`folioPaymentFee`). They add up to `buildFolioSummary().bookingTotal`. One invoice for the whole group, one total paid, never one per room (recommendation in PRD PP-594). Without room lines it returns `[]` and the single row stays.
+- The Tax / Svc column shows `—` on these rows; tax and service still print as the "Includes" totals. No per-room tax split, so no rounding drift.
+- ⚠️ Reads one `ReservationEntry`. If the backend later delivers N linked rows for a website group, the builder must be fed the merged group, not a single row, or each invoice shows only its share.
+- Not done: reissue after a partial cancellation (earlier invoice kept as a corrected document), one invoice number for a group.
+- Tests: `tests/lib/folio-invoice-pdf.spec.ts` (multi-room block).
+
 ### Website booking source (`app/components/reservations/data/website-booking.ts`)
 
 `ReservationEntry.websiteBooking?` (also on `ReservationDraft`) records which website a Direct booking came from and which Website channel rule set priced it: `{ websiteId, websiteName, websiteUrl, ruleSetId, ruleSetName, discounts: { label, amount }[] }`.

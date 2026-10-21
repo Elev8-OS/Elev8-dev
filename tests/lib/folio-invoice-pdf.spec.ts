@@ -1,8 +1,9 @@
 import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { buildFolioSummary } from '~/components/reservations/data/folio'
 import { initialReservations } from '~/components/reservations/data/reservations'
-import { buildFolioInvoicePdf } from '~/lib/folio-invoice-pdf'
+import { buildFolioInvoicePdf, buildInvoiceRoomRows } from '~/lib/folio-invoice-pdf'
 
 describe('buildFolioInvoicePdf', () => {
   it('generates an A4 PDF matching the new receipt layout', async () => {
@@ -94,5 +95,40 @@ describe('buildFolioInvoicePdf', () => {
     const resBali = { ...initialReservations[0]!, listingId: 'listing-11' }
     const blobBali = buildFolioInvoicePdf(resBali, { download: false })
     expect(blobBali.size).toBeGreaterThan(500)
+  })
+
+  describe('multi-room booking', () => {
+    const multi = () => initialReservations.find(r => r.id === 'res-multi-1')!
+
+    it('lists one row per room, then the billable charges, adding up to the booking total', () => {
+      const reservation = multi()
+      const rows = buildInvoiceRoomRows(reservation)
+
+      expect(rows.slice(0, 3).map(r => r.title.split(' - ')[0])).toEqual(['Master Suite', 'Pool Unit', 'Loft Unit'])
+      expect(rows.map(r => r.title)).toEqual(expect.arrayContaining(['Cleaning Fee', 'City Tax']))
+      const sum = Math.round(rows.reduce((s, r) => s + r.amount, 0) * 100) / 100
+      expect(sum).toBe(buildFolioSummary(reservation).bookingTotal)
+    })
+
+    it('skips inclusive charges and adds the payment charge row', () => {
+      const reservation = {
+        ...multi(),
+        charges: [{ id: 'c1', kind: 'cleaning' as const, label: 'Cleaning Fee', amount: 85, inclusive: true }],
+        paymentFeeMode: 'card' as const,
+      }
+      const rows = buildInvoiceRoomRows(reservation)
+      expect(rows.map(r => r.title)).not.toContain('Cleaning Fee')
+      expect(rows.at(-1)?.title).toBe('Payment charge')
+    })
+
+    it('has no room rows for a stay without room lines, which keeps the Accommodation row', () => {
+      expect(buildInvoiceRoomRows({ ...multi(), rooms: undefined })).toEqual([])
+    })
+
+    it('still builds the PDF', () => {
+      const blob = buildFolioInvoicePdf(multi(), { download: false })
+      expect(blob.type).toBe('application/pdf')
+      expect(blob.size).toBeGreaterThan(500)
+    })
   })
 })

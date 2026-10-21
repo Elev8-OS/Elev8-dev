@@ -17,6 +17,7 @@ import {
   folioLineService,
   folioLineTax,
   folioLineTotal,
+  folioPaymentFee,
   roundFolioAmount,
 } from '~/components/reservations/data/folio'
 import { useInvoiceTemplates } from '~/composables/useInvoiceTemplates'
@@ -86,6 +87,43 @@ function formatShortDate(iso: string | Date): string {
   catch {
     return String(iso)
   }
+}
+
+export interface InvoiceRoomRow {
+  title: string
+  sub?: string
+  amount: number
+}
+
+/**
+ * Rows that replace the single Accommodation row on a multi-room booking:
+ * one per room line, then the billable charges and the payment fee, so the
+ * rows add up to `buildFolioSummary().bookingTotal`. Empty for a stay without
+ * room lines, which keeps the single Accommodation row.
+ */
+export function buildInvoiceRoomRows(reservation: ReservationEntry): InvoiceRoomRow[] {
+  const rooms = reservation.rooms
+  if (!rooms?.length)
+    return []
+
+  const nightsLabel = `${reservation.nights} night${reservation.nights > 1 ? 's' : ''} on ${formatShortDate(reservation.checkIn)} to ${formatShortDate(reservation.checkOut)}`
+  const rows: InvoiceRoomRow[] = rooms.map(room => ({
+    title: `${room.unitName} - ${nightsLabel}`,
+    sub: [room.rateLabel, room.guestNames].filter(Boolean).join(' · '),
+    amount: room.lineTotal,
+  }))
+
+  for (const charge of reservation.charges ?? []) {
+    if (!charge.inclusive)
+      rows.push({ title: charge.label, amount: charge.amount })
+  }
+
+  const roomsTotal = rooms.reduce((sum, line) => sum + line.lineTotal, 0)
+  const fee = folioPaymentFee(reservation, roomsTotal)
+  if (fee > 0)
+    rows.push({ title: 'Payment charge', amount: fee })
+
+  return rows
 }
 
 /**
@@ -289,7 +327,7 @@ export function buildFolioInvoicePdf(
 
   let rowY = tableY + 11
 
-  // Row 1: Accommodation
+  // Row 1: Accommodation, or one row per room on a multi-room booking
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(17, 24, 39)
@@ -311,18 +349,43 @@ export function buildFolioInvoicePdf(
   const accomFeeNote = accomFeeBadges.length > 0 ? ` · ${accomFeeBadges.join(' · ')}` : ''
   const accomSub = `${reservation.listingName} (${reservation.guestCount} guest${reservation.guestCount > 1 ? 's' : ''})${channelNote}${accomFeeNote}`
 
-  doc.text(accomTitle, MARGIN + 3, rowY)
-  doc.setFontSize(7.5)
-  doc.setTextColor(100, 116, 139)
-  doc.text(accomSub, MARGIN + 3, rowY + 4)
+  const roomRows = buildInvoiceRoomRows(reservation)
+  if (roomRows.length) {
+    for (const row of roomRows) {
+      if (rowY > 230) {
+        doc.addPage()
+        rowY = 20
+      }
+      doc.setFontSize(8.5)
+      doc.setTextColor(17, 24, 39)
+      doc.text(row.title, MARGIN + 3, rowY)
+      if (row.sub) {
+        doc.setFontSize(7.5)
+        doc.setTextColor(100, 116, 139)
+        doc.text(row.sub, MARGIN + 3, rowY + 4)
+        doc.setFontSize(8.5)
+        doc.setTextColor(17, 24, 39)
+      }
+      doc.text('—', PAGE_WIDTH - MARGIN - 32, rowY, { align: 'right' })
+      doc.text(fmtCurrency(row.amount, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+      rowY += row.sub ? 11 : 7
+    }
+    rowY += 2
+  }
+  else {
+    doc.text(accomTitle, MARGIN + 3, rowY)
+    doc.setFontSize(7.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text(accomSub, MARGIN + 3, rowY + 4)
 
-  doc.setFontSize(8.5)
-  doc.setTextColor(17, 24, 39)
+    doc.setFontSize(8.5)
+    doc.setTextColor(17, 24, 39)
 
-  doc.text(taxSvcText, PAGE_WIDTH - MARGIN - 32, rowY, { align: 'right' })
-  doc.text(fmtCurrency(summary.bookingTotal, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
+    doc.text(taxSvcText, PAGE_WIDTH - MARGIN - 32, rowY, { align: 'right' })
+    doc.text(fmtCurrency(summary.bookingTotal, currency), PAGE_WIDTH - MARGIN - 3, rowY, { align: 'right' })
 
-  rowY += 11
+    rowY += 11
+  }
 
   // Folio Items / Extras
   const items = reservation.folioItems ?? []
