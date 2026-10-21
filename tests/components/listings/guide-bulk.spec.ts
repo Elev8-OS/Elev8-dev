@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { toRaw } from 'vue'
 import { listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { listingGuestVerification } from '~/components/listings/data/guest-verification'
-import { applyGuideSetup, copyGuideItemsToListings, copyGuideSetupToListings, removeGuideItems } from '~/components/listings/data/guide-bulk'
+import { applyGuideSetup, copyGuideItemsToListings, copyGuideSetupToListings, importGuideItems, removeGuideItems } from '~/components/listings/data/guide-bulk'
 import { listings } from '~/components/listings/data/listings'
 
 let snapshot: Listing[]
@@ -52,5 +52,24 @@ describe('copy the whole guest guide setup', () => {
   it('writes every picked listing, never the source', () => {
     expect(copyGuideSetupToListings(byId('lst-1'), ['lst-2', 'lst-3', 'lst-1'], ['pets'])).toBe(2)
     expect(byId('lst-3').petPolicy).toEqual(byId('lst-1').petPolicy)
+  })
+
+  it('imports another listing\'s items to the end, as copies without a room label', () => {
+    const target = byId('lst-1')
+    const source = [{ id: 'z', title: 'Ring the bell', roomName: 'Master Suite' }]
+    const before = listingGuideItems(target, 'checkout')
+    const next = listingGuideItems(importGuideItems(target, 'checkout', source, 'append'), 'checkout')
+    expect(next).toHaveLength(before.length + 1)
+    expect(next.slice(0, before.length).map(i => i.id)).toEqual(before.map(i => i.id))
+    expect(next.at(-1)).toMatchObject({ title: 'Ring the bell' })
+    expect(next.at(-1)!.id).not.toBe('z')
+    expect(next.at(-1)).not.toHaveProperty('roomName')
+  })
+
+  it('replaces the section when importing in replace mode, and leaves the other sections alone', () => {
+    const target = byId('lst-1')
+    const next = importGuideItems(target, 'checkout', [{ id: 'z', title: 'Ring the bell' }], 'replace')
+    expect(listingGuideItems(next, 'checkout').map(i => i.title)).toEqual(['Ring the bell'])
+    expect(listingGuideItems(next, 'checkin')).toEqual(listingGuideItems(target, 'checkin'))
   })
 })

@@ -10,11 +10,12 @@ import GuideStatusBadge from '~/components/guest-guides/GuideStatusBadge.vue'
 import { listingCheckinStepsVisibility } from '~/components/listings/data/checkin-steps-visibility'
 import { GUIDE_CONTENT_KINDS, GUIDE_CONTENT_META, listingGuideItems } from '~/components/listings/data/guest-guide-content'
 import { guestVerificationShortLabel, listingGuestVerification } from '~/components/listings/data/guest-verification'
-import { copyGuideItemsToListings, removeGuideItems } from '~/components/listings/data/guide-bulk'
+import { copyGuideItemsToListings, GUIDE_PER_LISTING, importGuideItems, removeGuideItems } from '~/components/listings/data/guide-bulk'
 import { isRoomGuideKind, roomGuideItems, setRoomGuideItems } from '~/components/listings/data/listing-room-overrides'
 import { listingPetPolicy } from '~/components/listings/data/pet-policy'
 import CheckinStepsVisibilityCard from '~/components/listings/guest-guide/CheckinStepsVisibilityCard.vue'
 import GuestVerificationSettingsCard from '~/components/listings/guest-guide/GuestVerificationSettingsCard.vue'
+import GuideImportDialog from '~/components/listings/guest-guide/GuideImportDialog.vue'
 import GuideItemRows from '~/components/listings/guest-guide/GuideItemRows.vue'
 import GuideSetupCopyDialog from '~/components/listings/guest-guide/GuideSetupCopyDialog.vue'
 import ListingGuideContentSheet from '~/components/listings/guest-guide/ListingGuideContentSheet.vue'
@@ -42,7 +43,7 @@ const assignedGuide = computed(() => guides.value.find(g => g.assignedListingIds
  * guide has no such section, or has it switched off.
  */
 function guideGap(kind: GuideContentKind): 'missing' | 'hidden' | null {
-  if (!assignedGuide.value)
+  if (!GUIDE_PER_LISTING || !assignedGuide.value)
     return null
   const section = assignedGuide.value.sections.find(s => s.type === kind)
   if (!section)
@@ -151,11 +152,21 @@ function copySelected(targetIds: string[]) {
   const count = copyGuideItemsToListings(props.listing.id, kind, items, targetIds)
   toast.success(`${items.length} ${items.length === 1 ? GUIDE_CONTENT_META[kind].noun : `${GUIDE_CONTENT_META[kind].noun}s`} copied to ${count} ${count === 1 ? 'listing' : 'listings'}`)
 }
+
+// --- Import from another listing (the property's content, never a room's).
+const importOpen = ref(false)
+
+function importFromListing(items: GuideContentItem[], mode: 'append' | 'replace', sourceName: string) {
+  const kind = selectedKind.value
+  emit('update', importGuideItems(props.listing, kind, items, mode))
+  toast.success(`${items.length} ${items.length === 1 ? GUIDE_CONTENT_META[kind].noun : `${GUIDE_CONTENT_META[kind].noun}s`} imported from ${sourceName}`)
+}
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
-    <Card class="gap-3 p-5" data-testid="guide-assignment">
+    <!-- Hidden while one guide serves every listing (`GUIDE_PER_LISTING`). -->
+    <Card v-if="GUIDE_PER_LISTING" class="gap-3 p-5" data-testid="guide-assignment">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 class="text-sm font-semibold">
@@ -166,10 +177,6 @@ function copySelected(targetIds: string[]) {
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <Button variant="outline" size="sm" class="gap-1.5" data-testid="guide-copy-all" @click="copyAllOpen = true">
-            <Icon name="lucide:copy" class="size-3.5" />
-            Copy to listings
-          </Button>
           <GuideAssignPopover :listing-id="listing.id" :listing-name="listing.name" />
         </div>
       </div>
@@ -200,25 +207,32 @@ function copySelected(targetIds: string[]) {
       </p>
     </Card>
 
-    <!-- Multi-unit: show the property's content, or one room (property items + that room's own). -->
-    <div v-if="rooms.length" class="flex flex-wrap items-center gap-3" data-testid="guide-room-picker">
-      <span class="text-sm font-medium">Showing</span>
-      <Select :model-value="roomId ?? 'property'" @update:model-value="(v) => roomId = v === 'property' ? null : String(v)">
-        <SelectTrigger class="h-9 w-64" aria-label="Property or room">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="property">
-            Property (every room)
-          </SelectItem>
-          <SelectItem v-for="r in rooms" :key="r.id" :value="r.id">
-            {{ r.name }} · {{ r.typeName }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-      <span class="text-xs text-muted-foreground">
-        {{ room ? `Guests in ${room.name} see the property's items, then the ones only for ${room.name}.` : 'Every room gets these. Pick a room to add what is only for it.' }}
-      </span>
+    <!-- Toolbar: the room picker on the left (multi-unit), "Copy to listings" (the whole setup) on the right. -->
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- Multi-unit: show the property's content, or one room (property items + that room's own). -->
+      <div v-if="rooms.length" class="flex flex-wrap items-center gap-3" data-testid="guide-room-picker">
+        <span class="text-sm font-medium">Showing</span>
+        <Select :model-value="roomId ?? 'property'" @update:model-value="(v) => roomId = v === 'property' ? null : String(v)">
+          <SelectTrigger class="h-9 w-64" aria-label="Property or room">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="property">
+              Property (every room)
+            </SelectItem>
+            <SelectItem v-for="r in rooms" :key="r.id" :value="r.id">
+              {{ r.name }} · {{ r.typeName }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <span class="text-xs text-muted-foreground">
+          {{ room ? `Guests in ${room.name} see the property's items, then the ones only for ${room.name}.` : 'Every room gets these. Pick a room to add what is only for it.' }}
+        </span>
+      </div>
+      <Button variant="outline" size="sm" class="ml-auto gap-1.5" data-testid="guide-copy-all" @click="copyAllOpen = true">
+        <Icon name="lucide:copy" class="size-3.5" />
+        Copy to listings
+      </Button>
     </div>
 
     <!-- One 4-column grid: the section list in the first column, the selected section across the other three. -->
@@ -312,6 +326,17 @@ function copySelected(targetIds: string[]) {
             </p>
           </div>
           <div v-if="!room" class="flex shrink-0 items-center gap-2">
+            <Button
+              v-if="!selecting"
+              variant="outline"
+              size="sm"
+              class="gap-1.5"
+              data-testid="guide-import"
+              @click="importOpen = true"
+            >
+              <Icon name="lucide:import" class="size-3.5" />
+              Import
+            </Button>
             <Button
               v-if="selectedItems.length && !selecting"
               variant="outline"
@@ -436,6 +461,7 @@ function copySelected(targetIds: string[]) {
     </div>
 
     <GuideSetupCopyDialog v-model:open="copyAllOpen" :listing="listing" />
+    <GuideImportDialog v-model:open="importOpen" :kind="selectedKind" :listing-id="listing.id" :current-count="selectedItems.length" @import="importFromListing" />
 
     <ListingGuideContentSheet
       v-if="editingKind"

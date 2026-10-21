@@ -3,14 +3,15 @@ import type { GuideSetupPart } from '~/components/listings/data/guide-bulk'
 import type { Listing } from '~/components/listings/data/listings'
 import type { PropertyPickerOption } from '~/components/shared/PropertyPicker.vue'
 import { toast } from 'vue-sonner'
-import { copyGuideSetupToListings, GUIDE_SETUP_PARTS } from '~/components/listings/data/guide-bulk'
+import { copyGuideSetupToListings, GUIDE_PER_LISTING, GUIDE_SETUP_PARTS } from '~/components/listings/data/guide-bulk'
 import { listings } from '~/components/listings/data/listings'
 import PropertyPicker from '~/components/shared/PropertyPicker.vue'
 import { useGuestGuides } from '~/composables/useGuestGuides'
 
 /**
- * Copy this listing's guest guide setup to other listings: the assigned guide,
- * the content, guest verification and pets (each can be left out). A room's
+ * Copy this listing's guest guide setup to other listings: the content, guest
+ * verification and pets, and the assigned guide once `GUIDE_PER_LISTING` is on
+ * (each can be left out). A room's
  * own items are not copied; the other listings' rooms differ.
  */
 const props = defineProps<{ listing: Listing }>()
@@ -19,13 +20,14 @@ const open = defineModel<boolean>('open', { default: false })
 const { guides, updateGuide } = useGuestGuides()
 const sourceGuide = computed(() => guides.value.find(g => g.assignedListingIds.includes(props.listing.id)))
 
+const setupParts = GUIDE_SETUP_PARTS.filter(p => GUIDE_PER_LISTING || p.value !== 'guide')
 const parts = ref<GuideSetupPart[]>([])
 const targets = ref<string[]>([])
 watch(open, (isOpen) => {
   if (!isOpen)
     return
   targets.value = []
-  parts.value = GUIDE_SETUP_PARTS.map(p => p.value).filter(p => p !== 'guide' || sourceGuide.value)
+  parts.value = setupParts.map(p => p.value).filter(p => p !== 'guide' || sourceGuide.value)
 }, { immediate: true })
 
 function togglePart(part: GuideSetupPart) {
@@ -55,7 +57,7 @@ function assignGuideTo(targetIds: string[]) {
 function apply() {
   const ids = targets.value.filter(id => id !== props.listing.id)
   const count = copyGuideSetupToListings(props.listing, ids, parts.value)
-  if (parts.value.includes('guide'))
+  if (GUIDE_PER_LISTING && parts.value.includes('guide'))
     assignGuideTo(ids)
   toast.success(`Guest guide settings copied to ${count} ${count === 1 ? 'listing' : 'listings'}`)
   open.value = false
@@ -74,7 +76,7 @@ function apply() {
 
       <div class="flex flex-col gap-2" role="group" aria-label="What to copy" data-testid="guide-copy-parts">
         <div
-          v-for="part in GUIDE_SETUP_PARTS"
+          v-for="part in setupParts"
           :key="part.value"
           role="checkbox"
           tabindex="0"

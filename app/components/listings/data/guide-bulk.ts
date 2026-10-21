@@ -31,9 +31,26 @@ export function copyGuideItemsToListings(sourceId: string, kind: GuideContentKin
   return targets.size
 }
 
+/**
+ * The listing with the items imported from another listing: copies (fresh ids,
+ * no room label) added to the end, or replacing this kind's items.
+ */
+export function importGuideItems(target: Listing, kind: GuideContentKind, items: GuideContentItem[], mode: 'append' | 'replace'): Listing {
+  const copies = cloneGuideItems(items).map(({ roomName: _room, ...item }) => item)
+  const next = mode === 'replace' ? copies : [...listingGuideItems(target, kind), ...copies]
+  return { ...target, guestGuide: { ...target.guestGuide, [kind]: next } }
+}
+
 // --- Copy a listing's whole guest guide setup to other listings ---------------
 
 export type GuideSetupPart = 'guide' | 'content' | 'verification' | 'pets'
+
+/**
+ * One guide PER LISTING is not the model yet: for now one guide serves every
+ * listing. While false the Guest Guide tab hides the assigned guide (card, "not
+ * in the guide" warnings) and the whole-setup copy leaves the guide out.
+ */
+export const GUIDE_PER_LISTING = false
 
 export const GUIDE_SETUP_PARTS: { value: GuideSetupPart, label: string, description: string }[] = [
   { value: 'guide', label: 'Assigned guide', description: 'They use the same guest guide (the look and which sections show).' },
