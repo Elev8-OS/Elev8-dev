@@ -22,6 +22,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Internal staff messaging | `docs/claude/internal-inbox.md` | Derived listing+role rooms, forward/create-task context menu, delivery state, image viewer |
 | WhatsApp | `docs/claude/whatsapp.md` | Multi-account settings, test send, 24h window, unmatched queue |
 | Reservation payment + business contact | `docs/claude/reservation-payment-business.md` | New Reservation payment method (link, bank, cash), Personal/Business tab, company fields, Paid via strip, Mark as paid |
+| Mobile payment + business contact | `docs/claude/mobile-reservation-payment-business.md` | Figma spec for the mobile app (not in this repo): payment method, Personal/Business tab, Mark as paid sheet, toasts, flows, acceptance criteria |
 | Reservation folio | `docs/claude/reservation-folio.md` | Staff-posted charges, tax/service rounding, voids/refunds, `priceDetails.extras` ownership |
 | Stay extension | `docs/claude/stay-extension.md` | Extend wizard (dates, payment, review), OTA linked direct booking, cleaning/lock/city tax follow-up, inbox entry point |
 | City tax | `docs/claude/city-tax.md` | Collector policy, guest-category rates, age bands, alerts, `/city-tax` worklist |
