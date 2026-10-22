@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { listings } from '~/components/listings/data/listings'
 import { useChannels } from '~/composables/useChannels'
-import { getChannel, MAPPING_STATUS_LABEL } from './data/channels'
+import { getChannel, MAPPING_STATUS_DOT, MAPPING_STATUS_LABEL } from './data/channels'
 import { formatSyncTime } from './data/format'
 
 const props = defineProps<{ listingId: string | null, channel: string | null }>()
@@ -32,13 +32,7 @@ watch(open, (value) => {
   }
 })
 
-const statusDotClass = computed(() => {
-  switch (mapping.value?.status) {
-    case 'syncing': return 'bg-amber-500 animate-pulse'
-    case 'error': return 'bg-destructive'
-    default: return 'bg-green-500'
-  }
-})
+const statusDotClass = computed(() => mapping.value ? MAPPING_STATUS_DOT[mapping.value.status] : '')
 
 const idChanged = computed(() => !!mapping.value && externalId.value.trim() !== '' && externalId.value.trim() !== mapping.value.externalId)
 const accountChanged = computed(() => !!mapping.value && !!accountId.value && accountId.value !== mapping.value.accountId)

@@ -7,6 +7,7 @@ import BasePersonAvatar from '~/components/base/PersonAvatar.vue'
 import { cleanerOptions } from '~/components/cleaning/data/cleaning-jobs'
 import { everyGuestUploadsDocuments, listingGuestVerification } from '~/components/listings/data/guest-verification'
 import { listings } from '~/components/listings/data/listings'
+import ChannelRequestBanner from '~/components/reservations/ChannelRequestBanner.vue'
 import { folioBookingTotal } from '~/components/reservations/data/folio'
 import { guestRatingForReservation } from '~/components/reservations/data/guest-rating'
 import { DOCUMENT_KIND_LABELS, manualPaymentMethods, reservationPaymentMethodLabels, reservationStatusLabels } from '~/components/reservations/data/reservations'
@@ -240,7 +241,8 @@ const partyBreakdown = computed(() => {
   return parts.join(' · ')
 })
 
-const statusOptions = Object.entries(reservationStatusLabels).map(([value, label]) => ({ value, label }))
+// "Request to book" comes only from a channel and is answered with Accept / Decline, never picked here.
+const statusOptions = Object.entries(reservationStatusLabels).filter(([value]) => value !== 'request').map(([value, label]) => ({ value, label }))
 
 const statusDotClass = computed(() => {
   const map: Record<ReservationStatus, string> = {
@@ -251,6 +253,7 @@ const statusDotClass = computed(() => {
     cancelled: 'bg-neutral-400',
     blocked: 'bg-black',
     inquiry: 'bg-amber-500',
+    request: 'bg-sky-500',
     owner_request: 'bg-violet-500',
   }
   return reservation.value ? map[reservation.value.status] : 'bg-neutral-400'
@@ -674,7 +677,7 @@ function roomGuideRoute(unitId: string): string {
             <div v-if="activeTab === 'details'" class="flex flex-col h-full overflow-hidden">
               <!-- Header: status dropdown + Modify menu (edit / check-in time / extend) -->
               <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-5">
-                <Select :model-value="reservation.status" @update:model-value="onStatusChange">
+                <Select :model-value="reservation.status" :disabled="reservation.status === 'request'" @update:model-value="onStatusChange">
                   <SelectTrigger class="h-8 gap-2 border-0 bg-muted/60 px-3 text-sm font-semibold shadow-none hover:bg-muted">
                     <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <span class="size-2 shrink-0 rounded-full" :class="statusDotClass" />
@@ -731,6 +734,9 @@ function roomGuideRoute(unitId: string): string {
 
               <ScrollArea class="h-full min-h-0 flex-1">
                 <div class="flex flex-col">
+                  <div v-if="reservation.status === 'request' || reservation.alteration" class="border-b px-5 py-4">
+                    <ChannelRequestBanner :reservation="reservation" />
+                  </div>
                   <!-- Guest -->
                   <div class="border-b px-5 py-4">
                     <div class="flex items-center gap-3">

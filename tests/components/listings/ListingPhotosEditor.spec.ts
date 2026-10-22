@@ -68,3 +68,57 @@ describe('listingPhotosEditor', () => {
     expect(w.find('[data-testid="photo-add"]').exists()).toBe(false)
   })
 })
+
+describe('listingPhotosEditor photo details', () => {
+  const passthrough = { template: '<div><slot /></div>' }
+  function mountWithDetails(details?: Record<string, { type?: string, caption?: string }>) {
+    return mount(ListingPhotosEditor, {
+      props: { 'photos': ['a.jpg', 'b.jpg'], 'onUpdate:photos': () => {}, details, 'onUpdate:details': () => {} },
+      global: {
+        stubs: {
+          Icon: true,
+          Badge: passthrough,
+          Dialog: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
+          DialogContent: passthrough,
+          DialogHeader: passthrough,
+          DialogTitle: passthrough,
+          DialogDescription: passthrough,
+          DialogFooter: passthrough,
+          Label: passthrough,
+          Select: passthrough,
+          SelectTrigger: passthrough,
+          SelectValue: true,
+          SelectContent: passthrough,
+          SelectItem: passthrough,
+          Input: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)">' },
+          Button: { template: '<button><slot /></button>' },
+        },
+      },
+    })
+  }
+
+  it('offers no type or caption without details, as in the hero dialog', () => {
+    expect(mountWithDetails().find('[aria-label="Type and caption of photo 1"]').exists()).toBe(false)
+  })
+
+  it('shows a photo\'s type and caption, and saves a new caption', async () => {
+    const w = mountWithDetails({ 'a.jpg': { type: 'Pool', caption: 'Infinity pool' } })
+    expect(w.find('[data-testid="photo-detail-line"]').text()).toBe('Pool · Infinity pool')
+
+    await w.find('[aria-label="Type and caption of photo 2"]').trigger('click')
+    await w.find('#photo-caption').setValue('  Garden view  ')
+    await w.find('[data-testid="photo-detail-save"]').trigger('click')
+    expect(w.emitted('update:details')![0]![0]).toEqual({
+      'a.jpg': { type: 'Pool', caption: 'Infinity pool' },
+      'b.jpg': { type: undefined, caption: 'Garden view' },
+    })
+  })
+
+  it('drops a photo\'s entry when its type and caption are cleared', async () => {
+    const w = mountWithDetails({ 'a.jpg': { caption: 'Pool' } })
+    await w.find('[aria-label="Type and caption of photo 1"]').trigger('click')
+    await w.find('#photo-caption').setValue('')
+    await w.find('[data-testid="photo-detail-save"]').trigger('click')
+    expect(w.emitted('update:details')![0]![0]).toEqual({})
+  })
+})

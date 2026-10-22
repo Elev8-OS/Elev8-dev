@@ -1,5 +1,7 @@
 <script lang="ts" setup>
 import type { Conversation, PhoneCall, Reservation } from '~/components/inbox/data/conversations'
+import ChannelRequestBanner from '~/components/reservations/ChannelRequestBanner.vue'
+import { needsAnswer } from '~/components/reservations/data/channel-requests'
 import ReservationExtendDialog from '~/components/reservations/ReservationExtendDialog.vue'
 import ReservationExtensionsSection from '~/components/reservations/ReservationExtensionsSection.vue'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -47,6 +49,10 @@ const conversationPhoneCalls = computed((): PhoneCall[] =>
     </div>
 
     <ScrollArea class="flex-1 min-h-0">
+      <!-- A request to book or a guest change the channel waits on: answered here without leaving the thread. -->
+      <div v-if="stay && needsAnswer(stay)" class="px-4 pt-2">
+        <ChannelRequestBanner :reservation="stay" />
+      </div>
       <div class="px-4 pt-2 pb-2">
         <InboxReservationGuest :guest="reservation.guestDetails" :reservation="reservation" :stay-status="conversation.stayStatus" :conversation="conversation" :sentiment="conversation.sentiment" :sentiment-note="conversation.sentimentNote" />
       </div>

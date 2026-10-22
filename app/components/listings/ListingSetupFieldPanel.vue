@@ -8,6 +8,7 @@ import AvoidTopicDialog from '~/components/listings/AvoidTopicDialog.vue'
 import { countryName, LISTING_COUNTRIES, listingAddress, listingPin, listingPropertyType, listingTimeZone, locationLabel, PROPERTY_TYPES, reverseGeocode, timeZoneOptions } from '~/components/listings/data/listing-address'
 import { amenityConfigKey, LISTING_ROOMS_TARGET, PROPERTY_AMENITY_GROUPS, propertyAmenityGroups, ROOM_AMENITY_GROUPS, roomAmenityTargets, setRoomAmenities, toggleAmenity } from '~/components/listings/data/listing-amenities'
 import { AVOID_TOPIC_ACTIONS, avoidTopicActionLabel, avoidTopicStagesLabel, copyAvoidTopicsToListings, listingAvoidTopics, removeAvoidTopic, removeAvoidTopics, saveAvoidTopic } from '~/components/listings/data/listing-avoid-topics'
+import { listingPhotoDetails, prunePhotoDetails } from '~/components/listings/data/listing-content'
 import { LISTING_DETAIL_GROUPS } from '~/components/listings/data/listing-details'
 import { roomCustomCount } from '~/components/listings/data/listing-room-overrides'
 import { addCustomSop, copySopsToListings, customSopConfigKey, customSopCounts, customSopSelectionId, customSopsIn, deleteSops, removeCustomSop, removedSopFieldsIn, restoreSopGroup, selectableSopIds, SOP_GROUPS, updateCustomSop, visibleSopGroups } from '~/components/listings/data/listing-sops'
@@ -15,7 +16,9 @@ import { getUnitById } from '~/components/listings/data/listings'
 import FieldConfigDialog from '~/components/listings/FieldConfigDialog.vue'
 import ListingPhotosEditor from '~/components/listings/ListingPhotosEditor.vue'
 import ListingSetupFieldGroups from '~/components/listings/ListingSetupFieldGroups.vue'
+import DescriptionTranslationsCard from '~/components/listings/setup/DescriptionTranslationsCard.vue'
 import LocationPinMap from '~/components/listings/setup/LocationPinMap.vue'
+import NearbyPlacesCard from '~/components/listings/setup/NearbyPlacesCard.vue'
 import PlaceSearch from '~/components/listings/setup/PlaceSearch.vue'
 import RoomPhotosCard from '~/components/listings/setup/RoomPhotosCard.vue'
 import RoomSettingsCard from '~/components/listings/setup/RoomSettingsCard.vue'
@@ -416,10 +419,13 @@ function actionIcon(topic: AvoidTopic) {
                 <AccordionContent class="flex flex-col gap-3 px-0.5">
                   <p class="text-xs text-muted-foreground">
                     Drag to reorder. The first photo is the thumbnail. Max 20 photos, 10MB each (JPEG, PNG, WebP).
+                    The pencil sets what a photo shows and its caption, which channels display.
                   </p>
                   <ListingPhotosEditor
                     :photos="listing.photos"
-                    @update:photos="(photos) => emit('update', { ...listing, photos })"
+                    :details="listingPhotoDetails(listing)"
+                    @update:photos="(photos) => emit('update', { ...listing, photos, photoDetails: prunePhotoDetails(listing.photoDetails ?? {}, photos) })"
+                    @update:details="(photoDetails) => emit('update', { ...listing, photoDetails: prunePhotoDetails(photoDetails ?? {}, listing.photos) })"
                   />
                 </AccordionContent>
               </AccordionItem>
@@ -439,6 +445,8 @@ function actionIcon(topic: AvoidTopic) {
               @update="emit('update', $event)"
               @configure="openConfig"
             />
+            <DescriptionTranslationsCard :listing="listing" @update="emit('update', $event)" />
+            <NearbyPlacesCard :listing="listing" @update="emit('update', $event)" />
           </template>
           <RoomSettingsCard v-else-if="activeUnitId" :listing="listing" :unit-id="activeUnitId" @update="emit('update', $event)" />
         </div>

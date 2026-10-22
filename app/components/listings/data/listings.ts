@@ -1,10 +1,12 @@
+import type { ChannelAdjustment, ChannelPromotion } from '~/components/channels/data/channel-pricing'
 import type { CleaningTemplateType } from '~/components/cleaning/data/cleaning-step-templates'
 import type { CleaningStepSection } from '~/components/cleaning/data/cleaning-steps'
-import type { ListingGuideContent } from '~/components/listings/data/guest-guide-content'
 import type { CheckinStepsVisibility } from '~/components/listings/data/checkin-steps-visibility'
+import type { ListingGuideContent } from '~/components/listings/data/guest-guide-content'
 import type { GuestVerificationSettings } from '~/components/listings/data/guest-verification'
 import type { ListingAddress } from '~/components/listings/data/listing-address'
 import type { AvoidTopic } from '~/components/listings/data/listing-avoid-topics'
+import type { DescriptionTranslation, ListingPhotoDetails, NearbyPlace } from '~/components/listings/data/listing-content'
 import type { ListingCustomTab } from '~/components/listings/data/listing-custom-tabs'
 import type { ListingDetailsInfo } from '~/components/listings/data/listing-details'
 import type { RoomOverrides } from '~/components/listings/data/listing-room-overrides'
@@ -196,6 +198,7 @@ export type BookingStatus
     | 'checked_out'
     | 'cancelled'
     | 'inquiry'
+    | 'request'
 
 export interface Booking {
   id: string
@@ -426,6 +429,10 @@ export interface RatePlan {
   mealType: RateMealType
   /** Channex `tax_set_id`. */
   taxSetId?: string | null
+  /** NextPax `supplierRateplanCode` (`RP0001`), unique per account. Given on save; older plans fall back to their id. */
+  code?: string
+  /** NextPax `applicableChannels`: channel names this plan sells on. Empty or missing = every channel. */
+  channels?: string[]
   cancellationPolicyConfig: CancellationPolicyConfig
   /** When true (default), the rate plan inherits the account/listing cancellation policy instead of `cancellationPolicyConfig`. */
   inheritCancellationPolicy?: boolean
@@ -601,6 +608,16 @@ export interface Listing {
   coordinates?: { lat: number, lng: number }
   /** Listing Setup > Listing Details answers (booking, arrival, property). Fields come from `LISTING_DETAIL_GROUPS`. */
   details?: ListingDetailsInfo
+  /** What each photo shows and its caption, keyed by photo URL. Read through `listingPhotoDetails` (`listing-content.ts`). */
+  photoDetails?: Record<string, ListingPhotoDetails>
+  /** Property and neighborhood descriptions in other languages, by ISO 639-1 code. English stays in `resources.basics`. */
+  descriptionTranslations?: Record<string, DescriptionTranslation>
+  /** Places near the listing with their distance, sent to channels as nearest places. Read through `listingNearbyPlaces`. */
+  nearbyPlaces?: NearbyPlace[]
+  /** Discounts sent to the channels for this listing (early bird, last minute, basic). Read through `listingChannelPromotions` (`channels/data/channel-pricing.ts`). */
+  channelPromotions?: ChannelPromotion[]
+  /** Percent added to the nightly rate and fees per channel name. Read through `listingChannelAdjustments`. */
+  channelAdjustments?: Record<string, ChannelAdjustment>
   /** Listing Setup > SOPs answers. Fields come from `SOP_GROUPS`; the free-text "General procedures" stays `resources.sops`. */
   sops?: ListingSops
   /** Room amenities of a listing with no room types. With room types they live on `UnitType.amenities`. */
@@ -665,6 +682,11 @@ export const listings = ref<Listing[]>([
     tags: ['Canggu', 'Pool', '4BR'],
     otaConnected: ['Airbnb'],
     amenities: ['Pool', 'Free parking on premises', 'Free parking on street', 'Barbecue', 'Garden', 'Deck/patio', 'Private entrance', 'Bathtub', 'Pack n Play or travel crib', 'Room darkening shades', 'Beach front', 'Water front'],
+    nearbyPlaces: [
+      { id: 'np-lst1-beach', type: 'Beach', name: 'Echo Beach', meters: 650 },
+      { id: 'np-lst1-market', type: 'Supermarket', name: 'Pepito Canggu', meters: 900 },
+      { id: 'np-lst1-airport', type: 'Airport', name: 'Ngurah Rai International', meters: 18000 },
+    ],
     room: 'Master Suite',
     unitTypes: [
       {
@@ -1690,6 +1712,15 @@ export interface BookingStatusMeta {
 }
 
 export const bookingStatusMeta: Record<BookingStatus, BookingStatusMeta> = {
+  request: {
+    status: 'request',
+    label: 'Request to book',
+    variant: 'outline',
+    badgeClass: 'border-dashed bg-sky-500/10 text-sky-700 border-sky-500/50',
+    cardClass: 'border-dashed border-sky-300/70 bg-sky-50 dark:bg-sky-900/20',
+    icon: 'lucide:calendar-plus',
+    isStrikethrough: false,
+  },
   unverified: {
     status: 'unverified',
     label: 'Unverified',

@@ -1,12 +1,16 @@
 <script setup lang="ts">
+import type { ListingPhotoDetails } from '~/components/listings/data/listing-content'
 import { toast } from 'vue-sonner'
+import { PHOTO_CAPTION_MAX, PHOTO_TYPES } from '~/components/listings/data/listing-content'
 
 /**
  * A listing's photos: upload (several at once), replace, delete, view full
  * size, and drag to reorder. The first photo is the thumbnail. Used by the
- * hero's Manage Photos dialog and Listing Setup > Basics.
+ * hero's Manage Photos dialog and Listing Setup > Basics. With `details`
+ * (Listing Setup), each photo also gets a type and a caption for the channels.
  */
 const photos = defineModel<string[]>('photos', { required: true })
+const details = defineModel<Record<string, ListingPhotoDetails> | undefined>('details', { default: undefined })
 
 const MAX_PHOTOS = 20
 const MAX_SIZE = 10 * 1024 * 1024
@@ -77,6 +81,36 @@ function deletePhoto(index: number) {
   photos.value = photos.value.filter((_, i) => i !== index)
 }
 
+const editing = ref<{ photo: string, index: number } | null>(null)
+const draftType = ref('')
+const draftCaption = ref('')
+
+function editDetails(photo: string, index: number) {
+  editing.value = { photo, index }
+  draftType.value = details.value?.[photo]?.type ?? ''
+  draftCaption.value = details.value?.[photo]?.caption ?? ''
+}
+
+function saveDetails() {
+  const target = editing.value
+  editing.value = null
+  if (!target)
+    return
+  const next = { ...details.value }
+  const entry = { type: draftType.value || undefined, caption: draftCaption.value.trim() || undefined }
+  if (entry.type || entry.caption)
+    next[target.photo] = entry
+  else
+    delete next[target.photo]
+  details.value = next
+}
+
+/** "Pool · Infinity pool at sunset" under a tile. */
+function detailLine(photo: string) {
+  const d = details.value?.[photo]
+  return [d?.type, d?.caption].filter(Boolean).join(' · ')
+}
+
 function onDrop(targetIndex: number) {
   const from = dragIndex.value
   dragIndex.value = null
@@ -123,6 +157,15 @@ function onDrop(targetIndex: number) {
           <Icon name="lucide:image-plus" class="size-4" />
         </button>
         <button
+          v-if="details !== undefined"
+          type="button"
+          class="flex size-8 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/40"
+          :aria-label="`Type and caption of photo ${index + 1}`"
+          @click.stop="editDetails(photo, index)"
+        >
+          <Icon name="lucide:pencil" class="size-4" />
+        </button>
+        <button
           type="button"
           class="flex size-8 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-destructive/80"
           :aria-label="`Delete photo ${index + 1}`"
@@ -135,6 +178,13 @@ function onDrop(targetIndex: number) {
       <Badge v-if="index === 0" class="absolute left-1.5 top-1.5 px-1.5 py-0 text-[10px]">
         Thumbnail
       </Badge>
+      <p
+        v-if="details !== undefined && detailLine(photo)"
+        class="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-black/60 px-2 py-1 text-[11px] text-white"
+        data-testid="photo-detail-line"
+      >
+        {{ detailLine(photo) }}
+      </p>
     </div>
 
     <!-- Upload slot -->
@@ -167,6 +217,45 @@ function onDrop(targetIndex: number) {
     class="hidden"
     @change="replacePhoto($event.target as HTMLInputElement)"
   >
+
+  <!-- Type and caption, sent to the channels with the photo. -->
+  <Dialog :open="!!editing" @update:open="(v) => { if (!v) editing = null }">
+    <DialogContent class="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Photo {{ (editing?.index ?? 0) + 1 }}</DialogTitle>
+        <DialogDescription>Channels group photos by what they show and display the caption under them.</DialogDescription>
+      </DialogHeader>
+      <img v-if="editing" :src="editing.photo" alt="" class="aspect-video w-full rounded-md object-cover">
+      <div class="flex flex-col gap-1.5">
+        <Label for="photo-type">Shows</Label>
+        <Select v-model="draftType">
+          <SelectTrigger id="photo-type" class="w-full">
+            <SelectValue placeholder="Choose what the photo shows" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="type in PHOTO_TYPES" :key="type" :value="type">
+              {{ type }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <Label for="photo-caption">Caption</Label>
+        <Input id="photo-caption" v-model="draftCaption" :maxlength="PHOTO_CAPTION_MAX" placeholder="e.g. Infinity pool at sunset" />
+        <p class="text-right text-xs tabular-nums text-muted-foreground">
+          {{ draftCaption.length }}/{{ PHOTO_CAPTION_MAX }}
+        </p>
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" @click="editing = null">
+          Cancel
+        </Button>
+        <Button data-testid="photo-detail-save" @click="saveDetails">
+          Save
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 
   <!-- Full preview -->
   <Dialog :open="!!previewPhoto" @update:open="(v) => { if (!v) previewPhoto = null }">

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { Listing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
-import ListingChannelsCard from '~/components/channels/ListingChannelsCard.vue'
 import { reservations as allReservations } from '~/components/inbox/data/conversations'
 import InvoiceTemplateAssignPopover from '~/components/listings/InvoiceTemplateAssignPopover.vue'
 import ListingWebsitesCard from '~/components/listings/ListingWebsitesCard.vue'
@@ -483,7 +482,6 @@ function handleRevokeCode(codeId: string) {
 
 <template>
   <div class="flex flex-col gap-6">
-    <ListingChannelsCard :listing-id="listing.id" :listing-name="listing.name" />
     <ListingWebsitesCard :listing-id="listing.id" />
 
     <!-- Smart Locks -->

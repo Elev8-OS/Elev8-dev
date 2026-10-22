@@ -154,6 +154,66 @@ describe('useChannels', () => {
     expect(mappings.value.find(m => m.id === broken.id)?.error).toBeUndefined()
   })
 
+  it('seeds one Booking.com listing that needs attention, and a resync clears it', async () => {
+    const { mappings, resync, attentionCount } = useChannels()
+    const warned = mappings.value.find(m => m.status === 'attention')!
+    expect(warned.channel).toBe('Booking.com')
+    expect(warned.error).toBe(warned.warning)
+    expect(attentionCount.value).toBe(1)
+    const pending = resync(warned.id)
+    await vi.advanceTimersByTimeAsync(CHANNEL_SYNC_DELAY_MS)
+    await pending
+    expect(attentionCount.value).toBe(0)
+    expect(mappings.value.find(m => m.id === warned.id)?.warning).toBeUndefined()
+  })
+
+  it('records a connect warning as needs attention', () => {
+    const { mappings, markWarning, getMapping } = useChannels()
+    const live = mappings.value.find(m => m.status === 'active' && m.row)!
+    markWarning(live.listingId, live.channel, 'Dropped by the channel')
+    expect(getMapping(live.listingId, live.channel)).toMatchObject({ status: 'attention', error: 'Dropped by the channel' })
+  })
+
+  it('derives status from the NextPax row for channels with a known code', async () => {
+    const { mappings, resync, connectAccount, connectListings, getMapping } = useChannels()
+
+    const broken = mappings.value.find(m => m.status === 'error')!
+    expect(broken.row?.channelId).toBe('BOO142')
+    expect(broken.row?.buildStatus?.lastJobError).toBe(broken.error)
+
+    const pending = resync(broken.id)
+    expect(mappings.value.find(m => m.id === broken.id)?.row?.buildStatus?.isFinished).toBe(false)
+    await vi.advanceTimersByTimeAsync(CHANNEL_SYNC_DELAY_MS)
+    await pending
+    const fixed = mappings.value.find(m => m.id === broken.id)!
+    expect(fixed.status).toBe('active')
+    expect(fixed.row?.buildStatus).toMatchObject({ isFinished: true, lastJobStatus: 'ok' })
+
+    // Expedia has a code, so a new mapping carries a row that is building, then finished.
+    const connecting = connectAccount('Expedia', { accountName: '', propertyId: '77' })
+    await vi.advanceTimersByTimeAsync(CHANNEL_CONNECT_DELAY_MS)
+    const account = (await connecting)!
+    const id = listings.value[0]!.id
+    const syncing = connectListings(account.id, [{ listingId: id, externalId: '888' }])
+    expect(getMapping(id, 'Expedia')?.row).toMatchObject({ channelId: 'EXP270', channelPropertyId: '888' })
+    await vi.advanceTimersByTimeAsync(CHANNEL_SYNC_DELAY_MS)
+    await syncing
+    expect(getMapping(id, 'Expedia')?.row?.buildStatus?.isFinished).toBe(true)
+  })
+
+  it('keeps a plain status for a channel with no known NextPax code', async () => {
+    const { connectAccount, connectListings, getMapping } = useChannels()
+    const connecting = connectAccount('Agoda', { accountName: '', propertyId: '5' })
+    await vi.advanceTimersByTimeAsync(CHANNEL_CONNECT_DELAY_MS)
+    const account = (await connecting)!
+    const id = listings.value[0]!.id
+    const syncing = connectListings(account.id, [{ listingId: id }])
+    expect(getMapping(id, 'Agoda')?.row).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(CHANNEL_SYNC_DELAY_MS)
+    await syncing
+    expect(getMapping(id, 'Agoda')?.status).toBe('active')
+  })
+
   it('gives every OTA name a logo', () => {
     expect(otaIcon('Airbnb')).toBe('logos:airbnb-icon')
     expect(otaIcon('Booking.com')).toBe('simple-icons:bookingdotcom')
