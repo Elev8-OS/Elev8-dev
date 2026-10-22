@@ -22,7 +22,7 @@ Figma: Elev8 Design System, page "Mobile Apps", section `Mobile Calendar / Creat
 | Area | Change |
 |---|---|
 | Company line | Under the guest name: building icon, company name, "· VAT / Tax ID". Business reservations only. |
-| Guest Paid card | Same card as today (Guest Paid / Payout, Subtotal, Cleaning fee, Tax, Guest paid). Guest paid starts at 0 for an Inquiry. |
+| Price info (new) | The single "Total Amount" line is replaced by a collapsible reservation summary. Collapsed: reservation code on the left, **Guest Paid** with the amount on the right and a chevron (also on the calendar summary sheet). Expanded: a **Guest Paid / Payout** toggle. Guest Paid view: Subtotal (N nights), Cleaning fee, Tax, Guest paid. Payout view: Guest paid, commission and payout, as on the web (not shown in Figma yet). Guest paid starts at 0 for an Inquiry and grows with each payment (USD 0, 100, 750). |
 | Mark as paid... | Yellow outlined button under the card while a balance is due. Opens the Mark as paid sheet. |
 | Mark as paid sheet | Amount (default: balance due), Received on (date), Payment method (**Cash** or **Bank Transfer**), button **Mark as paid**. "Balance due USD 750" under the title. |
 | Part payment | Amount below the balance records a part payment. Guest paid goes up, the reservation stays **Inquiry**, Mark as paid... stays. |
@@ -76,8 +76,15 @@ Reservation Details
 18. Edit Reservation shows the Personal / Business tab with the saved values and keeps them on save.
 19. All amounts use the format `USD 750` (ISO code, no symbol), per currency.
 
+Price info
+20. Collapsed, the summary shows the reservation code and Guest Paid with the current amount, on Reservation Details and on the calendar summary sheet. It replaces the old "Total Amount" line.
+21. Expanding it shows the Guest Paid / Payout toggle. The Guest Paid view lists Subtotal (N nights), Cleaning fee, Tax and Guest paid.
+22. Guest Paid in the header and in the breakdown update after every payment, and part payments add up.
+23. The Payout view shows guest paid, commission and payout as on the web, per currency, with no conversion.
+
 ## Decisions
 - Stage chip: an Inquiry shows the label **Inquiry**. A paid reservation shows Unverified.
 - Toast copy as designed is approved, including the Bank Transfer and payment link messages.
 - The Payment Details tab stays as it is for now. The Guest Paid card is the only place payment shows.
+- Still open: the Payout view of the price info is not designed in Figma. It follows the web (guest paid, commission, payout) until design confirms.
 - The Mark as paid rules (no future date, amount above 0 and not above the balance) apply on mobile too, and the error states are designed in Figma (A3a to A3c).
