@@ -33,7 +33,10 @@ function updateListing(updated: Listing) {
 }
 
 const viewMode = ref<'property' | 'rooms'>('property')
-const section = ref<ListingSetupSection>('basics')
+// `?section=` opens a section, e.g. from a channel's content check on the Channels tab.
+const SECTIONS: ListingSetupSection[] = ['basics', 'listing-details', 'amenities', 'sops', 'topics']
+const requestedSection = SECTIONS.find(s => s === route.query.section)
+const section = ref<ListingSetupSection>(requestedSection ?? 'basics')
 const showResources = ref(false)
 const showSchedule = ref(false)
 const showTestAi = ref(false)

@@ -2,6 +2,7 @@
 import type { ListingCustomTab } from '~/components/listings/data/listing-custom-tabs'
 import type { Listing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
+import ListingChannelsTab from '~/components/channels/ListingChannelsTab.vue'
 import { customTabValue, listingCustomTabs, moveCustomTab, removeCustomTab, saveCustomTab } from '~/components/listings/data/listing-custom-tabs'
 import { getUnitById, listings } from '~/components/listings/data/listings'
 import ListingCalendarTab from '~/components/listings/ListingCalendarTab.vue'
@@ -33,7 +34,7 @@ function updateListing(updated: Listing) {
 const activeUnitId = computed(() => listing.value?.activeUnitId ?? null)
 const activeUnit = computed(() => listing.value ? getUnitById(listing.value, activeUnitId.value ?? '') : null)
 
-const TABS = ['overview', 'pricing', 'revenue', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'settings']
+const TABS = ['overview', 'pricing', 'revenue', 'calendar', 'reviews', 'maintenance', 'guest-guide', 'channels', 'settings']
 const customTabs = computed(() => listingCustomTabs(listing.value))
 const isTab = (tab: string) => TABS.includes(tab) || customTabs.value.some(t => customTabValue(t) === tab)
 // `?tab=maintenance` opens a tab directly, e.g. from the reservation's "Set up checklists" link; `?tab=custom:<id>` opens a custom tab.
@@ -130,6 +131,10 @@ function confirmRemoveTab() {
             <Icon name="lucide:book-open" class="mr-1.5 size-3.5" />
             Guest Guide
           </TabsTrigger>
+          <TabsTrigger value="channels">
+            <Icon name="lucide:share-2" class="mr-1.5 size-3.5" />
+            Channels
+          </TabsTrigger>
           <TabsTrigger value="settings">
             <Icon name="lucide:settings" class="mr-1.5 size-3.5" />
             Settings
@@ -179,6 +184,10 @@ function confirmRemoveTab() {
 
       <TabsContent value="maintenance" class="mt-6">
         <ListingMaintenanceTab :listing="listing" :active-unit="activeUnit" @update="updateListing" />
+      </TabsContent>
+
+      <TabsContent value="channels" class="mt-6">
+        <ListingChannelsTab :listing="listing" />
       </TabsContent>
 
       <TabsContent value="guest-guide" class="mt-6">

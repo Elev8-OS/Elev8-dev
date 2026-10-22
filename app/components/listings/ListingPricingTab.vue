@@ -2,11 +2,14 @@
 import type { Listing, ListingFeeTaxItem, RateMealType, RatePlan, RatePlanOption, RateRateMode, RateSellMode, TaxDateRange, TaxSet, Unit, UnitType, UnitTypePricing } from '~/components/listings/data/listings'
 import { toast } from 'vue-sonner'
 import BaseSearchInput from '~/components/base/SearchInput.vue'
+import { nextRatePlanCode, ratePlanChannelsLabel } from '~/components/channels/data/channel-pricing'
+import ListingChannelPricing from '~/components/channels/ListingChannelPricing.vue'
+import RatePlanChannelsField from '~/components/channels/RatePlanChannelsField.vue'
 import CancellationPolicyEditor from '~/components/listings/CancellationPolicyEditor.vue'
 import RatePlanDerivedOptionsEditor from '~/components/listings/RatePlanDerivedOptionsEditor.vue'
 import RatePlanRateRules from '~/components/listings/RatePlanRateRules.vue'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
-import { buildOccupancyOptions, cancellationPolicySummary, createRatePlan, ratePlanNightlyRate } from '~/components/listings/data/listings'
+import { buildOccupancyOptions, cancellationPolicySummary, createRatePlan, listings, ratePlanNightlyRate } from '~/components/listings/data/listings'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 import { useCancellationPolicies } from '~/composables/useCancellationPolicies'
 
@@ -252,6 +255,7 @@ function saveEditedRatePlan() {
     ...draft,
     name: draft.title.trim(),
     title: draft.title.trim(),
+    code: draft.code ?? nextRatePlanCode(listings.value),
   })
   showEditRatePlanSheet.value = false
   toast.success('Rate plan updated')
@@ -400,6 +404,7 @@ function saveNewRatePlan() {
     id: `rp-${Date.now()}`,
     name: addRatePlanDraft.value.title.trim(),
     title: addRatePlanDraft.value.title.trim(),
+    code: nextRatePlanCode(listings.value),
   }
   patchPricing(ut.id, { ratePlans: [...ut.pricing.ratePlans, newPlan] })
   showAddRatePlanSheet.value = false
@@ -1388,6 +1393,8 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Select>
           </div>
 
+          <RatePlanChannelsField v-model:channels="addRatePlanDraft.channels" :code="addRatePlanDraft.code" />
+
           <!-- Cancellation policy (inherit vs override) -->
           <div class="flex flex-col gap-1.5">
             <Label>Cancellation Policy</Label>
@@ -1758,6 +1765,8 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
             </Select>
           </div>
 
+          <RatePlanChannelsField v-model:channels="editRatePlanDraft.channels" :code="editRatePlanDraft.code" />
+
           <!-- Cancellation policy (inherit vs override) -->
           <div class="flex flex-col gap-1.5">
             <Label>Cancellation Policy</Label>
@@ -1959,6 +1968,10 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
                   <span v-if="rp.stopSell[0]" class="text-destructive">Stop sell</span>
                   <span v-if="rp.mealType !== 'none'" class="capitalize">{{ rp.mealType.replace(/_/g, ' ') }}</span>
                   <span>{{ effectiveCancellationSummary(rp) }}</span>
+                  <span class="inline-flex items-center gap-1">
+                    <Icon name="lucide:share-2" class="size-3" aria-hidden="true" />
+                    {{ ratePlanChannelsLabel(rp) }}<template v-if="rp.code"> · {{ rp.code }}</template>
+                  </span>
                 </div>
               </div>
             </div>
@@ -2198,5 +2211,7 @@ function feeTaxSummary(tax: ListingFeeTaxItem): string {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ListingChannelPricing :listing="listing" @update="emit('update', $event)" />
   </div>
 </template>

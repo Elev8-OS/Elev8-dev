@@ -1,3 +1,5 @@
+import type { NextPaxPropertyChannel } from './nextpax'
+
 /**
  * OTA catalog for the Channels page. Mock only: connecting an account or a
  * listing is a timer, not a real channel manager call.
@@ -89,7 +91,7 @@ const CHANNEL_COLUMN_PREFIX = 'ota_'
 
 /** Listings table column id for one channel, e.g. `ota_booking-com`. Stored in saved views, so keep it stable. */
 export function channelColumnId(name: string): string {
-  return CHANNEL_COLUMN_PREFIX + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return CHANNEL_COLUMN_PREFIX + channelSlug(name)
 }
 
 /** The channel a listings table column belongs to, or undefined for any other column. */
@@ -99,7 +101,20 @@ export function channelForColumnId(columnId: string): ChannelDefinition | undefi
   return CHANNELS.find(c => channelColumnId(c.name) === columnId)
 }
 
-export type ChannelMappingStatus = 'syncing' | 'active' | 'error'
+/** `/channels/<slug>`: the channel name in the URL, never its NextPax code. */
+export function channelSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+export function getChannelBySlug(slug: string): ChannelDefinition | undefined {
+  return CHANNELS.find(c => channelSlug(c.name) === slug)
+}
+
+/**
+ * `attention`: the channel accepted the listing but warned about it (Booking.com
+ * answers 200 and drops the property), so it is not selling. `error`: a sync job failed.
+ */
+export type ChannelMappingStatus = 'syncing' | 'active' | 'attention' | 'error'
 
 /**
  * One login on one OTA. A channel can have several (e.g. one Airbnb host
@@ -126,13 +141,46 @@ export interface ChannelMapping {
   externalId: string
   status: ChannelMappingStatus
   lastSyncAt: string | null
+  /** The text behind `attention` or `error`: NextPax's own words, never a generic message. */
   error?: string
+  /** A warning from the last connect. Kept apart from the row, which does not carry it. */
+  warning?: string
+  /**
+   * The NextPax channel-status row behind `status` and `error`. Only channels
+   * with a known NextPax code carry one; `useChannels` keeps the three in step.
+   */
+  row?: NextPaxPropertyChannel
 }
 
 export const MAPPING_STATUS_LABEL: Record<ChannelMappingStatus, string> = {
   active: 'Live',
   syncing: 'Syncing',
+  attention: 'Needs attention',
   error: 'Error',
+}
+
+/** Status dot colour, shared by the Listings cells, the Cockpit links and the Channels pages. */
+export const MAPPING_STATUS_DOT: Record<ChannelMappingStatus, string> = {
+  active: 'bg-green-500',
+  syncing: 'bg-amber-500 animate-pulse motion-reduce:animate-none',
+  attention: 'bg-amber-500',
+  error: 'bg-destructive',
+}
+
+/** Chip icon per status; `active` shows a green dot instead. */
+export const MAPPING_STATUS_ICON: Record<ChannelMappingStatus, string | null> = {
+  active: null,
+  syncing: 'lucide:loader-circle',
+  attention: 'lucide:triangle-alert',
+  error: 'lucide:circle-alert',
+}
+
+/** Chip border and text per status. */
+export const MAPPING_STATUS_TONE: Record<ChannelMappingStatus, string> = {
+  active: 'border-green-500/40 text-green-700 dark:text-green-400',
+  syncing: '',
+  attention: 'border-amber-500/40 text-amber-700 dark:text-amber-400',
+  error: 'border-destructive/40 text-destructive',
 }
 
 /**

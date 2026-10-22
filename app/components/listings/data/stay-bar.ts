@@ -14,5 +14,6 @@ export const stayBarClasses: Record<ReservationStatus, string> = {
   cancelled: 'bg-muted text-muted-foreground border-border line-through',
   blocked: 'bg-zinc-900 text-white border-zinc-900',
   inquiry: 'bg-amber-500 text-white border-amber-500',
+  request: 'bg-sky-500/70 text-white border-sky-500 border-dashed',
   owner_request: 'bg-violet-500 text-white border-violet-500',
 }

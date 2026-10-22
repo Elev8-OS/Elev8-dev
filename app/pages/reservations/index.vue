@@ -6,10 +6,12 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
+import ChannelRequestsList from '~/components/reservations/ChannelRequestsList.vue'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
 import ReservationTable from '~/components/reservations/ReservationTable.vue'
+import { useChannelRequests } from '~/composables/useChannelRequests'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -31,6 +33,20 @@ const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
 const createOpen = ref(false)
 const detailReservation = ref<ReservationEntry | null>(null)
 const detailOpen = ref(false)
+
+// Pulls what the channels sent while the webhook was quiet. Normally bookings arrive on their own.
+const { syncBookings } = useChannelRequests()
+const syncing = ref(false)
+
+async function runSync() {
+  syncing.value = true
+  const ingested = await syncBookings()
+  syncing.value = false
+  if (ingested)
+    toast.success(`${ingested} new ${ingested === 1 ? 'booking' : 'bookings'} from the channels`)
+  else
+    toast.info('Everything is up to date', { description: 'No booking was missing.' })
+}
 
 function openDetail(r: ReservationEntry) {
   detailReservation.value = r
@@ -288,6 +304,10 @@ function confirmRejectOwnerStay() {
         </p>
       </div>
       <div class="flex items-center gap-2">
+        <Button variant="outline" class="gap-2" data-testid="sync-bookings" :disabled="syncing" @click="runSync">
+          <Icon name="lucide:refresh-cw" class="size-4" :class="syncing && 'animate-spin'" />
+          Sync bookings
+        </Button>
         <Button variant="outline" class="gap-2" data-testid="export-reservations" :disabled="exporting" @click="exportReservations">
           <Icon :name="exporting ? 'lucide:loader-2' : 'lucide:file-spreadsheet'" class="size-4" :class="exporting && 'animate-spin'" />
           Export to Excel
@@ -298,6 +318,8 @@ function confirmRejectOwnerStay() {
         </Button>
       </div>
     </div>
+
+    <ChannelRequestsList @open="openDetail" />
 
     <!-- Stats -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">

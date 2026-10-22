@@ -52,6 +52,8 @@ export type AlertType
     | 'GUEST_CHECKED_IN'
     | 'GUEST_CHECKED_OUT'
     | 'GUEST_ARRIVAL_SOON'
+    | 'BOOKING_REQUEST_RECEIVED'
+    | 'BOOKING_ALTERATION_REQUESTED'
     | 'OWNER_STATEMENT_DRAFT_READY'
     | 'OWNER_STATEMENT_PUBLISHED'
     | 'OWNER_STAY_CONFIRMED'
@@ -156,6 +158,8 @@ export const alertDisplayLabels: Record<AlertType, string> = {
   GUEST_CHECKED_IN: 'Guest Checked In',
   GUEST_CHECKED_OUT: 'Guest Checked Out',
   GUEST_ARRIVAL_SOON: 'Guest Arrival Soon',
+  BOOKING_REQUEST_RECEIVED: 'Request to Book',
+  BOOKING_ALTERATION_REQUESTED: 'Change Requested',
   OWNER_STATEMENT_DRAFT_READY: 'Owner Statement Draft Ready',
   OWNER_STATEMENT_PUBLISHED: 'Owner Statement Published',
   OWNER_STAY_CONFIRMED: 'Owner Stay Confirmed',
@@ -245,6 +249,8 @@ export const alertIcons: Record<AlertType, string> = {
   GUEST_CHECKED_IN: 'i-lucide-log-in',
   GUEST_CHECKED_OUT: 'i-lucide-log-out',
   GUEST_ARRIVAL_SOON: 'i-lucide-clock-3',
+  BOOKING_REQUEST_RECEIVED: 'i-lucide-calendar-plus',
+  BOOKING_ALTERATION_REQUESTED: 'i-lucide-calendar-cog',
   OWNER_STATEMENT_DRAFT_READY: 'i-lucide-file-text',
   OWNER_STATEMENT_PUBLISHED: 'i-lucide-file-check',
   OWNER_STAY_CONFIRMED: 'i-lucide-calendar-check',
@@ -334,6 +340,8 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   GUEST_CHECKED_IN: '/inbox',
   GUEST_CHECKED_OUT: '/inbox',
   GUEST_ARRIVAL_SOON: '/inbox',
+  BOOKING_REQUEST_RECEIVED: '/reservations',
+  BOOKING_ALTERATION_REQUESTED: '/reservations',
   OWNER_STATEMENT_DRAFT_READY: '/owner-statements',
   OWNER_STATEMENT_PUBLISHED: '/owner-portal/statements',
   OWNER_STAY_CONFIRMED: '/owner-portal/stays',
@@ -467,6 +475,10 @@ export function getDescription(type: AlertType, context: Record<string, any>): s
       return `${context.guestName || 'Guest'} left a ${context.rating ? `${context.rating}-star ` : ''}review for ${context.listingName || 'property'}.`
     case 'REVIEW_HOST_DUE':
       return `Host review for ${context.guestName || 'guest'} at ${context.listingName || 'property'} is due in ${context.daysRemaining || '?'} days.`
+    case 'BOOKING_REQUEST_RECEIVED':
+      return `${context.guest_name || 'A guest'} asks to book ${context.listing_name || 'a listing'} on ${context.channel || 'a channel'}. Accept or decline within 24 hours.`
+    case 'BOOKING_ALTERATION_REQUESTED':
+      return `${context.guest_name || 'A guest'} asks to change their ${context.channel || 'channel'} booking at ${context.listing_name || 'a listing'}.`
     case 'GUEST_CHECKED_IN':
       return `${context.guest_name || 'Guest'} checked in at ${context.listing_name || 'property'}.`
     case 'GUEST_CHECKED_OUT':

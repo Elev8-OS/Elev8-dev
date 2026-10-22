@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { ChannelMappingStatus } from '~/components/channels/data/channels'
 import type { CockpitRoomType } from '~/components/cockpit/data/cockpit'
 import type { Listing } from '~/components/listings/data/listings'
-import { channelListingUrl, getChannel, MAPPING_STATUS_LABEL, otaIcon } from '~/components/channels/data/channels'
+import { channelListingUrl, getChannel, MAPPING_STATUS_DOT, MAPPING_STATUS_LABEL, otaIcon } from '~/components/channels/data/channels'
 import { roomTypeExternalId, useChannels } from '~/composables/useChannels'
 
 /**
@@ -16,12 +15,6 @@ const props = defineProps<{ listing: Listing, roomType?: CockpitRoomType }>()
 
 const { getMapping, getAccount } = useChannels()
 
-const DOT: Record<ChannelMappingStatus, string> = {
-  active: 'bg-green-500',
-  syncing: 'bg-amber-500 animate-pulse motion-reduce:animate-none',
-  error: 'bg-destructive',
-}
-
 const links = computed(() => (props.listing.otaConnected ?? []).flatMap((channel) => {
   const mapping = getMapping(props.listing.id, channel)
   if (!mapping)
@@ -33,7 +26,7 @@ const links = computed(() => (props.listing.otaConnected ?? []).flatMap((channel
   return [{
     channel,
     url,
-    dot: DOT[mapping.status],
+    dot: MAPPING_STATUS_DOT[mapping.status],
     label: [
       url ? `Open ${props.roomType?.name ?? 'listing'} on ${channel} (${status})` : `${channel}: ${status}`,
       `${getChannel(channel)?.listingIdLabel ?? 'ID'} ${externalId}`,

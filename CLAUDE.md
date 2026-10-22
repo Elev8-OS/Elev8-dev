@@ -15,9 +15,11 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 
 | Area | Doc | Covers |
 |---|---|---|
-| Listings | `docs/claude/listings.md` | 8-tab detail page, AI schedule, Listing Setup overlay, rooms/unit types/rate plans, status + AI aggregation, listings table |
+| Listings | `docs/claude/listings.md` | 9-tab detail page, AI schedule, Listing Setup overlay, rooms/unit types/rate plans, status + AI aggregation, listings table |
 | Revenue settings | `docs/claude/revenue-settings.md` | Listing Revenue tab (versioned pricing policy, 90-day preview, room cost model), `/revenue/settings` (engine, autonomy, blackouts, events calendar, markups, cost defaults, substitution groups) |
 | Channels | `docs/claude/channels.md` | `/channels`: OTA accounts, map-listings flow, per-listing status on the Listings pages, sole writer of `Listing.otaConnected` |
+| NextPax channels | `docs/claude/nextpax-channels.md` | Spec for wiring `/channels` to the NextPax backend: gate, connect flow per channel, take-over ids, status mapping, open backend questions |
+| Channel requests | `docs/claude/channel-requests.md` | Request to book (`request` status) and Airbnb alterations: Accept / Decline with channel reasons, Needs an answer list, Sync bookings, Inbox banner, webhook health |
 | Inbox | `docs/claude/inbox.md` | Conversations, filters, phone calls, notes, auto-translate, image sending, `ensureConversationForReservation`, inbox settings / AI settings |
 | Internal staff messaging | `docs/claude/internal-inbox.md` | Derived listing+role rooms, forward/create-task context menu, delivery state, image viewer |
 | WhatsApp | `docs/claude/whatsapp.md` | Multi-account settings, test send, 24h window, unmatched queue |
@@ -65,7 +67,7 @@ Specs and plans: `docs/superpowers/{specs,plans,changelogs}/`, PRDs in `docs/prd
 ## ⚠️ Cross-Cutting Rules
 
 - **Currency display**: always `${ISO code} ${amount}` (`USD 150.00`, `IDR 500,000`, `CHF 1,200.00`), never symbols or suffixes. Input prefixes use the code with `pl-14`. CHF uses `de-CH` with 2 decimals. Header amounts in CHF (tenant currency).
-- **No currency conversion, ever** (folio, city tax, damage protection, owner statements). Totals are kept per currency, never blended.
+- **No currency conversion, ever** (folio, city tax, damage protection, owner statements). Totals are kept per currency, never blended. One decided exception: the NextPax "Convert prices to each channel's currency" switch on `/channels` (`useChannelFeatures().currencyFx`) changes only what channels receive; Elev8 never stores or shows a converted amount.
 - **Snapshots, not live joins**: catalog picks, settlements, forwards, claims and published statements freeze what they copied; ids stored alongside are provenance only.
 - **State mutations use spread syntax** (`useState` arrays): `list.value = list.value.map(c => c.id === id ? { ...c, x } : c)`. Never `conv.status = null`.
 - **One writer per field**: e.g. only the folio writes `priceDetails.extras`; city tax and damage protection never touch `priceDetails` or the folio. Check the module doc before writing a shared field.

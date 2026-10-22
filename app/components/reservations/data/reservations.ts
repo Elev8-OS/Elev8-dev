@@ -1,5 +1,6 @@
 import type { ActivityEvent } from '~/components/inbox/data/conversations'
 import type { BookingChannel } from '~/components/listings/data/listings'
+import type { BookingAlteration } from '~/components/reservations/data/channel-requests'
 import type { ReservationCleaningSchedule } from '~/components/reservations/data/cleaning-schedule'
 import type { FolioItem } from '~/components/reservations/data/folio'
 import type { TernTier } from '~/components/reservations/data/tern-products'
@@ -16,7 +17,11 @@ export type {
 
 export type { WebsiteBookingDiscount, WebsiteBookingSource } from '~/components/reservations/data/website-booking'
 
-export type ReservationStatus = 'inquiry' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
+/**
+ * `request`: a channel's request to book (Airbnb, Booking.com) waiting for the
+ * host's Accept or Decline. It holds the dates until answered or expired.
+ */
+export type ReservationStatus = 'inquiry' | 'request' | 'unverified' | 'verified' | 'checked_in' | 'checked_out' | 'cancelled' | 'blocked' | 'owner_request'
 
 export type GuestCategory = 'adult' | 'child' | 'infant'
 
@@ -458,6 +463,10 @@ export interface ReservationEntry {
   checkOutTime?: string
   /** Inquiry-only: hours before the inquiry expires. */
   inquiryExpiryHours?: number
+  /** Request to book only: when the channel withdraws the request if the host has not answered (ISO). */
+  requestExpiresAt?: string
+  /** A change the guest asked for on the channel (Airbnb alteration), waiting for Accept or Decline. */
+  alteration?: BookingAlteration
   /** false = "Do not block availability" (inquiry does not block the calendar). */
   blocksAvailability?: boolean
   guestFirstName?: string
@@ -790,6 +799,7 @@ export function matchDialCode(phone: string | undefined): string | undefined {
 
 export const reservationStatusLabels: Record<ReservationStatus, string> = {
   inquiry: 'Inquiry',
+  request: 'Request to book',
   unverified: 'Unverified',
   verified: 'Verified',
   checked_in: 'Checked in',
@@ -812,6 +822,7 @@ export const reservationStatusClasses: Record<ReservationStatus, string> = {
   cancelled: 'bg-muted text-muted-foreground border-border line-through',
   blocked: 'bg-black/80 text-white border-black/80',
   inquiry: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
+  request: 'border-dashed bg-sky-500/10 text-sky-700 border-sky-500/50',
   owner_request: 'border-dashed bg-violet-500/10 text-violet-700 border-violet-500/40',
 }
 
@@ -823,6 +834,40 @@ function seedDay(offset: number): string {
 }
 
 export const initialReservations: ReservationEntry[] = [
+  // A request to book from Airbnb, answered with Accept or Decline before it expires.
+  {
+    id: 'res-req-1',
+    guestId: 'guest-3',
+    guestName: 'Erik Hoffmann',
+    guestEmail: 'erik.hoffmann@email.com',
+    guestPhone: '+49 151 23456789',
+    guestLanguage: 'German',
+    guestNotes: '',
+    listingId: 'lst-3',
+    listingName: 'The R Pererenan Mezzanine Studio + Plunge Pool',
+    channel: 'Airbnb',
+    checkIn: seedDay(20),
+    checkOut: seedDay(24),
+    nights: 4,
+    guestCount: 2,
+    totalPrice: 980,
+    currency: 'USD',
+    status: 'request',
+    requestExpiresAt: `${seedDay(1)}T09:00:00`,
+    bookingNote: 'Hi! We are coming for our anniversary. Is a late check-out possible?',
+    activity: [
+      {
+        id: 'act-req1-1',
+        type: 'reservation',
+        title: 'Request to book',
+        description: 'Received from Airbnb. Accept or decline within 24 hours.',
+        actor: 'Airbnb',
+        timestamp: `${seedDay(0)}T09:00:00`,
+        channel: 'Airbnb',
+        colorDot: 'blue',
+      },
+    ],
+  },
   // Rich records (from inbox, enriched)
   {
     id: 'res-1',
@@ -855,6 +900,17 @@ export const initialReservations: ReservationEntry[] = [
     },
     status: 'verified',
     conversationId: 'conv-1',
+    // Asked on Airbnb to bring one more guest; waits in Reservations and the Inbox for an answer.
+    alteration: {
+      id: 'alt-res1-1',
+      channelAlterationId: 'HMAX8241',
+      requestedAt: `${seedDay(0)}T08:15:00`,
+      checkIn: seedDay(7),
+      checkOut: seedDay(12),
+      guestCount: 3,
+      totalPrice: 810,
+      note: 'My sister is joining us, hope that is fine!',
+    },
     guests: [
       {
         id: 'occ-4',

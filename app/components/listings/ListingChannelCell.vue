@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import type { ChannelMappingStatus } from '~/components/channels/data/channels'
-import { channelListingUrl, MAPPING_STATUS_LABEL } from '~/components/channels/data/channels'
+import { channelListingUrl, channelSlug, MAPPING_STATUS_DOT, MAPPING_STATUS_LABEL } from '~/components/channels/data/channels'
 import { getUnits, listings } from '~/components/listings/data/listings'
 import { useChannels } from '~/composables/useChannels'
 
 /**
  * One channel's column in the Listings table. On the channel: a button with the
  * sync status that opens the listing on the OTA (or the mapping dialog when the
- * OTA has no public page). Not on it: Connect, which opens the mapping dialog,
- * or goes to /channels when the channel has no account yet.
+ * OTA has no public page). Not on it: Connect, which opens the connect wizard,
+ * scoped to this listing when the channel is already connected.
  */
 const props = defineProps<{ listingId: string, channel: string }>()
 const emit = defineEmits<{ openMapping: [] }>()
 
 const { getMapping, getAccount, isConnected } = useChannels()
+
+const connectLink = computed(() => isConnected(props.channel)
+  ? `/channels/${channelSlug(props.channel)}/connect?step=listings&listing=${props.listingId}`
+  : `/channels/${channelSlug(props.channel)}/connect`)
 
 const live = computed(() => listings.value.find(l => l.id === props.listingId))
 const inactive = computed(() => {
@@ -23,12 +26,6 @@ const inactive = computed(() => {
     return getUnits(live.value).every(u => u.status === 'inactive')
   return live.value.status === 'inactive'
 })
-
-const DOT: Record<ChannelMappingStatus, string> = {
-  active: 'bg-green-500',
-  syncing: 'bg-amber-500 animate-pulse motion-reduce:animate-none',
-  error: 'bg-destructive',
-}
 
 const state = computed(() => {
   if (!live.value?.otaConnected?.includes(props.channel))
@@ -40,8 +37,8 @@ const state = computed(() => {
   return {
     url,
     status,
-    dot: mapping ? DOT[mapping.status] : 'bg-green-500',
-    error: mapping?.status === 'error',
+    dot: mapping ? MAPPING_STATUS_DOT[mapping.status] : 'bg-green-500',
+    tone: mapping?.status === 'error' ? 'text-destructive' : mapping?.status === 'attention' ? 'text-amber-700 dark:text-amber-400' : '',
     label: [
       url ? `Open on ${props.channel} (${status})` : `${props.channel}: ${status}`,
       account?.accountName,
@@ -60,7 +57,7 @@ const state = computed(() => {
           variant="outline"
           size="sm"
           class="h-7 w-full justify-start gap-1.5 px-2 text-xs"
-          :class="state.error ? 'text-destructive' : ''"
+          :class="state.tone"
           as-child
         >
           <a :href="state.url" target="_blank" rel="noopener noreferrer" :aria-label="state.label">
@@ -74,7 +71,7 @@ const state = computed(() => {
           variant="outline"
           size="sm"
           class="h-7 w-full justify-start gap-1.5 px-2 text-xs"
-          :class="state.error ? 'text-destructive' : ''"
+          :class="state.tone"
           :aria-label="state.label"
           @click="emit('openMapping')"
         >
@@ -88,25 +85,14 @@ const state = computed(() => {
       </TooltipContent>
     </Tooltip>
     <Button
-      v-else-if="isConnected(channel)"
-      variant="ghost"
-      size="sm"
-      class="h-7 w-full justify-start gap-1.5 px-2 text-xs text-muted-foreground"
-      :aria-label="`Connect to ${channel}`"
-      @click="emit('openMapping')"
-    >
-      <Icon name="lucide:plus" class="size-3.5" />
-      Connect
-    </Button>
-    <Button
       v-else
       variant="ghost"
       size="sm"
       class="h-7 w-full justify-start gap-1.5 px-2 text-xs text-muted-foreground"
-      :aria-label="`Connect a ${channel} account`"
+      :aria-label="isConnected(channel) ? `Add to ${channel}` : `Connect ${channel}`"
       as-child
     >
-      <NuxtLink to="/channels">
+      <NuxtLink :to="connectLink">
         <Icon name="lucide:plus" class="size-3.5" />
         Connect
       </NuxtLink>

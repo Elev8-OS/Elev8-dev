@@ -1,16 +1,13 @@
 import type { ChannelAccount, ChannelMapping } from '~/components/channels/data/channels'
-import type { RemoteListing } from '~/components/channels/data/remote-listings'
-import type { Listing } from '~/components/listings/data/listings'
+import type { NextPaxPropertyChannel } from '~/components/channels/data/nextpax'
 import { CHANNELS, getChannel } from '~/components/channels/data/channels'
+import { deriveMappingStatus, nextPaxCode } from '~/components/channels/data/nextpax'
+import { BOOKING_RATE_PLAN_WARNING } from '~/components/channels/data/nextpax-mock'
 import { listings } from '~/components/listings/data/listings'
 
 /** Mocked round trip to the channel manager. */
 export const CHANNEL_CONNECT_DELAY_MS = 1200
 export const CHANNEL_SYNC_DELAY_MS = 1500
-export const CHANNEL_FETCH_DELAY_MS = 1000
-
-/** How many not-yet-linked listings a mocked OTA account returns. */
-const UNLINKED_REMOTE_COUNT = 4
 
 /** Seeded listings of this property sit on their own Airbnb / Booking.com accounts. */
 const SECOND_ACCOUNT_PROPERTY = 'Elev8 Suite DACH'
@@ -36,6 +33,44 @@ export function roomTypeExternalId(listingId: string, typeId: string, channel: s
   return mockExternalId(`${listingId}:${typeId}`, channel)
 }
 
+/** The NextPax channel-status row a mapping would have, or undefined for a channel with no known code. */
+function channelRow(channel: string, externalId: string, build: { finished: boolean, error?: string }): NextPaxPropertyChannel | undefined {
+  const channelId = nextPaxCode(channel)
+  if (!channelId)
+    return undefined
+  return {
+    channelId,
+    channelStatus: 'enabled',
+    channelPropertyId: externalId,
+    buildStatus: {
+      isFinished: build.finished,
+      lastJobStatus: build.error ? 'failed' : build.finished ? 'ok' : 'running',
+      lastJobError: build.error,
+    },
+  }
+}
+
+/** `status` and `error` follow the NextPax row and the connect warning when the mapping has a row. */
+function withDerivedStatus(mapping: ChannelMapping): ChannelMapping {
+  if (!mapping.row)
+    return mapping
+  const { state, error } = deriveMappingStatus(mapping.row, mapping.warning ? [mapping.warning] : [])
+  return state === 'off' ? mapping : { ...mapping, status: state, error }
+}
+
+/** The mapping with its build running again. A new push drops the old warning. */
+function startSync(mapping: ChannelMapping): ChannelMapping {
+  const row = mapping.row && channelRow(mapping.channel, mapping.externalId, { finished: false })
+  return { ...mapping, status: 'syncing', row, warning: undefined }
+}
+
+/** The mapping with its build finished clean. */
+function finishedSync(mapping: ChannelMapping, at: string): ChannelMapping {
+  const row = mapping.row && channelRow(mapping.channel, mapping.externalId, { finished: true })
+  const next: ChannelMapping = { ...mapping, row, lastSyncAt: at }
+  return row ? withDerivedStatus(next) : { ...next, status: 'active', error: undefined }
+}
+
 function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
@@ -56,16 +91,6 @@ function seedAccountName(listingProperty: string, channel: string) {
   return split && listingProperty === SECOND_ACCOUNT_PROPERTY ? SECOND_ACCOUNT_PROPERTY : 'Elev8 Bali Villas'
 }
 
-/** OTA titles never match ours exactly; vary them so the matching has work to do. */
-function remoteTitle(listing: Listing, variant: number) {
-  const city = listing.location.split(',')[0]
-  switch (variant % 3) {
-    case 1: return `${listing.name} with private pool`
-    case 2: return `${listing.name}, ${city}`
-    default: return listing.name
-  }
-}
-
 function seedAccounts(): ChannelAccount[] {
   const seen = new Map<string, ChannelAccount>()
   for (const l of listings.value) {
@@ -80,21 +105,29 @@ function seedAccounts(): ChannelAccount[] {
 }
 
 function seedMappings(): ChannelMapping[] {
-  const mappings: ChannelMapping[] = listings.value.flatMap(l => l.otaConnected.map(channel => ({
-    id: `map-${l.id}-${channel}`,
-    listingId: l.id,
-    channel,
-    accountId: seedAccount(channel, seedAccountName(l.property, channel)).id,
-    externalId: mockExternalId(l.id, channel),
-    status: 'active' as const,
-    lastSyncAt: '2026-09-30T23:40:00',
-  })))
-  // One broken mapping so the error state is visible in the demo.
-  const broken = mappings.find(m => m.channel === 'Booking.com')
-  if (broken) {
-    broken.status = 'error'
-    broken.error = 'Rate plan not mapped on Booking.com. Prices are not being pushed.'
+  const mappings: ChannelMapping[] = listings.value.flatMap(l => l.otaConnected.map((channel) => {
+    const externalId = mockExternalId(l.id, channel)
+    return withDerivedStatus({
+      id: `map-${l.id}-${channel}`,
+      listingId: l.id,
+      channel,
+      accountId: seedAccount(channel, seedAccountName(l.property, channel)).id,
+      externalId,
+      status: 'active' as const,
+      lastSyncAt: '2026-09-30T23:40:00',
+      row: channelRow(channel, externalId, { finished: true }),
+    })
+  }))
+  // One broken mapping and one accepted with a warning, so both states are visible in the demo.
+  const booking = mappings.flatMap((m, i) => m.channel === 'Booking.com' ? [i] : [])
+  const [brokenIndex, warnedIndex] = booking
+  if (brokenIndex !== undefined) {
+    const broken = mappings[brokenIndex]!
+    const error = 'Rate plan not mapped on Booking.com. Prices are not being pushed.'
+    mappings[brokenIndex] = withDerivedStatus({ ...broken, row: channelRow(broken.channel, broken.externalId, { finished: true, error }) })
   }
+  if (warnedIndex !== undefined)
+    mappings[warnedIndex] = withDerivedStatus({ ...mappings[warnedIndex]!, warning: BOOKING_RATE_PLAN_WARNING })
   return mappings
 }
 
@@ -158,6 +191,7 @@ export function useChannels() {
   const mappedListingCount = computed(() => new Set(mappings.value.map(m => m.listingId)).size)
   const unmappedListingCount = computed(() => listings.value.length - mappedListingCount.value)
   const errorCount = computed(() => mappings.value.filter(m => m.status === 'error').length)
+  const attentionCount = computed(() => mappings.value.filter(m => m.status === 'attention').length)
 
   /** Adds an account to a channel. Returns null when the property id is already linked. */
   async function connectAccount(channel: string, details: { accountName: string, propertyId: string }) {
@@ -189,9 +223,7 @@ export function useChannels() {
   function finishSync(ids: string[]) {
     const set = new Set(ids)
     const now = new Date().toISOString()
-    mappings.value = mappings.value.map(m => set.has(m.id) && m.status === 'syncing'
-      ? { ...m, status: 'active', lastSyncAt: now, error: undefined }
-      : m)
+    mappings.value = mappings.value.map(m => set.has(m.id) && m.status === 'syncing' ? finishedSync(m, now) : m)
   }
 
   /**
@@ -207,15 +239,19 @@ export function useChannels() {
     const fresh = items.filter(i => !getMapping(i.listingId, channel))
     if (fresh.length === 0)
       return 0
-    const created: ChannelMapping[] = fresh.map(i => ({
-      id: `map-${i.listingId}-${channel}`,
-      listingId: i.listingId,
-      channel,
-      accountId,
-      externalId: i.externalId?.trim() || mockExternalId(i.listingId, channel),
-      status: 'syncing',
-      lastSyncAt: null,
-    }))
+    const created: ChannelMapping[] = fresh.map((i) => {
+      const externalId = i.externalId?.trim() || mockExternalId(i.listingId, channel)
+      return {
+        id: `map-${i.listingId}-${channel}`,
+        listingId: i.listingId,
+        channel,
+        accountId,
+        externalId,
+        status: 'syncing',
+        lastSyncAt: null,
+        row: channelRow(channel, externalId, { finished: false }),
+      }
+    })
     mappings.value = [...mappings.value, ...created]
     syncListingOtas(fresh.map(i => i.listingId))
     await wait(CHANNEL_SYNC_DELAY_MS)
@@ -229,7 +265,7 @@ export function useChannels() {
     const account = getAccount(accountId)
     if (!mapping || !account || account.channel !== mapping.channel || mapping.accountId === accountId)
       return false
-    mappings.value = mappings.value.map(m => m.id === mappingId ? { ...m, accountId, status: 'syncing' } : m)
+    mappings.value = mappings.value.map(m => m.id === mappingId ? { ...startSync(m), accountId } : m)
     await wait(CHANNEL_SYNC_DELAY_MS)
     finishSync([mappingId])
     return true
@@ -241,39 +277,19 @@ export function useChannels() {
   }
 
   function updateExternalId(mappingId: string, externalId: string) {
-    mappings.value = mappings.value.map(m => m.id === mappingId ? { ...m, externalId: externalId.trim() } : m)
+    mappings.value = mappings.value.map(m => m.id === mappingId ? { ...m, externalId: externalId.trim(), row: m.row && { ...m.row, channelPropertyId: externalId.trim() } } : m)
   }
 
-  /**
-   * Listings that exist on an OTA account: the ones already linked, some not
-   * linked yet, and one with no Elev8 counterpart.
-   */
-  async function fetchRemoteListings(accountId: string): Promise<RemoteListing[]> {
-    await wait(CHANNEL_FETCH_DELAY_MS)
-    const account = getAccount(accountId)
-    if (!account)
-      return []
-    const byId = new Map(listings.value.map(l => [l.id, l]))
-    const linked = mappingsForAccount(accountId).flatMap((m, i) => {
-      const l = byId.get(m.listingId)
-      return l ? [{ externalId: m.externalId, title: remoteTitle(l, i), location: l.location }] : []
-    })
-    // The seeded second accounts only hold their own property's listings.
-    const ownsListing = (l: Listing) => account.accountName === SECOND_ACCOUNT_PROPERTY
-      ? l.property === SECOND_ACCOUNT_PROPERTY
-      : account.accountName !== 'Elev8 Bali Villas' || l.property !== SECOND_ACCOUNT_PROPERTY
-    const unlinked = listings.value
-      .filter(l => ownsListing(l) && !getMapping(l.id, account.channel))
-      .sort((a, b) => mockExternalId(a.id, accountId).localeCompare(mockExternalId(b.id, accountId)))
-      .slice(0, UNLINKED_REMOTE_COUNT)
-      .map((l, i) => ({ externalId: mockExternalId(l.id, account.channel), title: remoteTitle(l, i + 1), location: l.location }))
-    const orphan = { externalId: mockExternalId('orphan', accountId), title: 'Kuta Beach Studio', location: 'Kuta, Bali' }
-    return [...unlinked, orphan, ...linked]
+  /** Records a connect warning: the channel took the listing but is not selling it. */
+  function markWarning(listingId: string, channel: string, warning: string) {
+    mappings.value = mappings.value.map(m => m.listingId === listingId && m.channel === channel && m.row
+      ? withDerivedStatus({ ...m, warning, row: channelRow(channel, m.externalId, { finished: true }) })
+      : m)
   }
 
-  /** Re-pushes a mapping. A resync clears an error. */
+  /** Re-pushes a mapping. A resync clears an error and a warning. */
   async function resync(mappingId: string) {
-    mappings.value = mappings.value.map(m => m.id === mappingId ? { ...m, status: 'syncing' } : m)
+    mappings.value = mappings.value.map(m => m.id === mappingId ? startSync(m) : m)
     await wait(CHANNEL_SYNC_DELAY_MS)
     finishSync([mappingId])
   }
@@ -285,6 +301,7 @@ export function useChannels() {
     mappedListingCount,
     unmappedListingCount,
     errorCount,
+    attentionCount,
     isConnected,
     getAccount,
     accountsForChannel,
@@ -295,10 +312,10 @@ export function useChannels() {
     connectAccount,
     disconnectAccount,
     connectListings,
-    fetchRemoteListings,
     moveToAccount,
     disconnectListing,
     updateExternalId,
+    markWarning,
     resync,
   }
 }
