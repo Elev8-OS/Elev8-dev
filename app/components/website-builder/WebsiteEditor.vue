@@ -152,7 +152,7 @@ function unpublish() {
             {{ listingCount }} {{ listingCount === 1 ? 'Listing' : 'Listings' }}
           </button>
           <span aria-hidden="true">·</span>
-          <Icon :name="isPublished ? 'lucide:rocket' : 'lucide:file-text'" class="size-4" :class="isPublished && 'text-success'" aria-hidden="true" />
+          <Icon :name="isPublished ? 'lucide:rocket' : 'lucide:file-text'" class="size-4" :class="isPublished && 'text-green-600 dark:text-green-400'" aria-hidden="true" />
           <a :href="siteUrl" target="_blank" rel="noopener" class="inline-flex items-center gap-1 hover:text-foreground">
             {{ settings.domain }}
             <Icon name="lucide:external-link" class="size-3.5" aria-hidden="true" />

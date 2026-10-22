@@ -14,7 +14,7 @@ defineProps<{
       <div class="flex gap-1.5" aria-hidden="true">
         <span class="size-2.5 rounded-full bg-destructive" />
         <span class="size-2.5 rounded-full bg-warning" />
-        <span class="size-2.5 rounded-full bg-success" />
+        <span class="size-2.5 rounded-full bg-green-500" />
       </div>
       <div class="min-w-0 flex-1 truncate rounded-md border bg-background px-3 py-1 text-xs text-muted-foreground">
         {{ url }}

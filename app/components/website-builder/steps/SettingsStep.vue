@@ -331,7 +331,7 @@ function handleBack() {
           Booking rules
         </h3>
         <p class="text-sm text-muted-foreground">
-          Length of stay discounts, stay rules and prepayment for direct bookings on this website only.
+          Length of stay discounts and stay rules for direct bookings on this website only.
         </p>
       </div>
       <WebsiteRuleSetForm :rule-set="form.rules" :issues="rulesIssues" site-only @update:rule-set="updateRules" />

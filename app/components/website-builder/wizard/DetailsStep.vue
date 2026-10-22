@@ -293,7 +293,7 @@ defineExpose({ hasValidData })
       </CollapsibleTrigger>
       <CollapsibleContent class="space-y-4 border-t p-5">
         <p class="text-sm text-muted-foreground">
-          Length of stay discounts, stay rules and prepayment for direct bookings on this website only.
+          Length of stay discounts and stay rules for direct bookings on this website only.
         </p>
         <WebsiteRuleSetForm :rule-set="settings.rules" :issues="rulesIssues" site-only @update:rule-set="(rules: WebsiteRuleSet) => patchSettings({ rules })" />
       </CollapsibleContent>

@@ -26,7 +26,7 @@ function updateRules(rules: WebsiteRuleSet) {
       Booking rules
     </h3>
     <p class="mb-6 mt-1 text-sm text-muted-foreground">
-      Length of stay discounts, stay rules and prepayment for direct bookings on this website only.
+      Length of stay discounts and stay rules for direct bookings on this website only.
     </p>
 
     <section v-if="settings.rules" class="mb-4 rounded-xl border bg-card p-5" data-testid="ws-booking-rules">

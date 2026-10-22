@@ -503,6 +503,9 @@ function fmtPaidDate(iso: string): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+const websiteDiscounts = computed(() => reservation.value?.channel === 'Direct' ? (reservation.value.websiteBooking?.discounts ?? []) : [])
+const websiteDiscountTotal = computed(() => Math.round(websiteDiscounts.value.reduce((sum, d) => sum + d.amount, 0) * 100) / 100)
+
 function fmtCurrency(amount: number | undefined, currency: string): string {
   return `${currency} ${(amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
 }
@@ -778,9 +781,6 @@ function roomGuideRoute(unitId: string): string {
                             Booked on <span class="font-medium text-foreground">{{ reservation.websiteBooking.websiteName }}</span> · {{ reservation.websiteBooking.websiteUrl }}
                           </p>
                           <p>{{ reservation.websiteBooking.ruleSetName ? `Rule set: ${reservation.websiteBooking.ruleSetName}` : 'No rule set' }}</p>
-                          <p v-for="(d, i) in reservation.websiteBooking.discounts" :key="i">
-                            {{ d.label }} · {{ fmtCurrency(d.amount, reservation.currency) }} off
-                          </p>
                         </div>
                       </div>
                     </div>
@@ -888,7 +888,18 @@ function roomGuideRoute(unitId: string): string {
                         <!-- Price breakdown -->
                         <template v-if="reservation.priceDetails">
                           <div class="space-y-1.5 text-sm">
-                            <div class="flex items-center justify-between">
+                            <!-- Frozen at booking on the website: the rate before the discounts, then each discount. Subtotal below is what was charged. Reference only, never written to the price. -->
+                            <template v-if="websiteDiscounts.length">
+                              <div class="flex items-center justify-between" data-testid="reservation-original-price">
+                                <span class="text-muted-foreground">Original price ({{ reservation.nights }} nights)</span>
+                                <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.subtotal + websiteDiscountTotal, reservation.currency) }}</span>
+                              </div>
+                              <div v-for="(d, i) in websiteDiscounts" :key="i" class="flex items-center justify-between" data-testid="reservation-website-discount">
+                                <span class="text-muted-foreground">{{ d.label }}</span>
+                                <span class="font-medium text-green-700 dark:text-green-400">− {{ fmtCurrency(d.amount, reservation.currency) }}</span>
+                              </div>
+                            </template>
+                            <div class="flex items-center justify-between" :class="websiteDiscounts.length && 'border-t pt-1.5'">
                               <span class="text-muted-foreground">Subtotal ({{ reservation.nights }} nights)</span>
                               <span class="font-medium">{{ fmtCurrency(reservation.priceDetails.subtotal, reservation.currency) }}</span>
                             </div>

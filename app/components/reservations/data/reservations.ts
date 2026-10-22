@@ -1906,7 +1906,7 @@ const SEEDED_WEBSITE_BOOKINGS: Record<string, WebsiteBookingSource> = {
     websiteUrl: 'villa-sunset-bali.com',
     ruleSetId: 'wrs-seed-villas',
     ruleSetName: 'Bali villas direct',
-    discounts: [{ label: 'Early bird 5%', amount: 50 }],
+    discounts: [{ label: 'Length of stay, 4+ nights, 8%', amount: 100 }, { label: 'Early bird 4%', amount: 50 }],
   },
   'res-dp-awaiting': {
     websiteId: '1',
