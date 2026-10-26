@@ -1,5 +1,6 @@
 import type { ReviewSource } from '~/components/review-hub/data/types'
 import type { BlogPost } from '~/components/website-builder/data/blog'
+import type { WebsiteLegal } from '~/components/website-builder/data/legal'
 import type { WebsiteReviewConfig } from '~/components/website-builder/data/review-config'
 
 // Shared website-builder data. Originally lived inline in
@@ -45,6 +46,8 @@ export interface Website {
   defaultLanguage?: string
   autoDetectLanguage?: boolean
   blogPosts?: BlogPost[]
+  /** Legal details and per-language Terms & Conditions. Older sites have none. */
+  legal?: WebsiteLegal
 }
 
 export const websites = ref<Website[]>([

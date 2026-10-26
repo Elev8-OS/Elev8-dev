@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { WebsiteRuleSet } from '~/components/channels/data/website-channel'
 import type { BlogPost } from '~/components/website-builder/data/blog'
+import type { WebsiteLegal } from '~/components/website-builder/data/legal'
 import { ruleSetIssues } from '~/components/channels/data/website-channel'
 import WebsiteRuleSetForm from '~/components/channels/WebsiteRuleSetForm.vue'
 
@@ -32,6 +33,8 @@ export interface WebsiteSettings {
   autoDetectLanguage?: boolean
   /** The Blog menu's posts, saved on the Website. */
   blogPosts?: BlogPost[]
+  /** Legal details and per-language Terms & Conditions, saved on the Website. */
+  legal?: WebsiteLegal
   /**
    * This website's own booking rules (length of stay, stay rules, prepayment).
    * Not saved on the Website: on publish the wizard hands them to
