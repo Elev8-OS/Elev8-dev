@@ -81,10 +81,30 @@ function tierAmount(tier: ListingStayTier, subtotal: number): number {
   return tier.discountType === 'percent' ? subtotal * tier.value / 100 : tier.value
 }
 
+/** Sells each night off the listing's base rate under the rule set's rate logic. */
+function derivedNightly(nightly: number[], derived: WebsiteRuleSet['derivedRates'], currency: string): number[] {
+  if (derived.logic === 'same_as_base')
+    return nightly
+  return nightly.map((p) => {
+    let price = p
+    if (derived.logic === 'increase_by_amount')
+      price += derived.value
+    else if (derived.logic === 'decrease_by_amount')
+      price -= derived.value
+    else if (derived.logic === 'increase_by_percent')
+      price += price * derived.value / 100
+    else
+      price -= price * derived.value / 100
+    return roundQuoteMoney(Math.max(0, price), currency)
+  })
+}
+
 export function websiteQuote(input: WebsiteQuoteInput): WebsiteQuote {
   const { currency, ruleSet } = input
   const nights = daysBetween(input.checkIn, input.checkOut)
-  const subtotal = roundQuoteMoney(input.nightly.slice(0, Math.max(nights, 0)).reduce((s, p) => s + p, 0), currency)
+  const base = input.nightly.slice(0, Math.max(nights, 0))
+  const nightly = ruleSet ? derivedNightly(base, ruleSet.derivedRates, currency) : base
+  const subtotal = roundQuoteMoney(nightly.reduce((s, p) => s + p, 0), currency)
   const leadDays = daysBetween(input.bookedOn, input.checkIn)
   const discounts: QuoteDiscount[] = []
   const blockers: string[] = []

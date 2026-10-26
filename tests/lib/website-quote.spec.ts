@@ -12,6 +12,11 @@ const base = {
   policyLength: { weeklyPct: 8, monthlyPct: 15 },
 }
 
+/** A rule set that sells at the listing's base rate, so the rule-specific maths stays the same. */
+function plain(name: string) {
+  return { ...newRuleSet(name), derivedRates: { logic: 'same_as_base' as const, value: 0 } }
+}
+
 describe('websiteQuote', () => {
   it('without a rule set takes the single biggest listing or policy discount', () => {
     const q = websiteQuote({ ...base, ruleSet: null })
@@ -22,7 +27,7 @@ describe('websiteQuote', () => {
   })
 
   it('a rule set tier replaces the listing and policy discounts, and early bird stacks off the subtotal', () => {
-    const ruleSet = { ...newRuleSet('A'), earlyBird: { enabled: true, days: 14, pct: 5 } }
+    const ruleSet = { ...plain('A'), earlyBird: { enabled: true, days: 14, pct: 5 } }
     const q = websiteQuote({ ...base, ruleSet })
     expect(q.discounts.map(d => [d.label, d.source, d.amount])).toEqual([
       ['7+ nights 10%', 'website', 70],
@@ -34,12 +39,12 @@ describe('websiteQuote', () => {
   })
 
   it('a rule set with no tier the stay reaches gives no stay discount, even if the listing has one', () => {
-    const ruleSet = { ...newRuleSet('A'), lengthOfStayDiscounts: [{ id: 't', minNights: 14, pct: 20 }] }
+    const ruleSet = { ...plain('A'), lengthOfStayDiscounts: [{ id: 't', minNights: 14, pct: 20 }] }
     expect(websiteQuote({ ...base, ruleSet }).discounts).toEqual([])
   })
 
   it('lists the stay rules a stay breaks', () => {
-    const ruleSet = { ...newRuleSet('A'), minNights: 10, minDaysBeforeArrival: 30, arrivalDays: [6], departureDays: [6] }
+    const ruleSet = { ...plain('A'), minNights: 10, minDaysBeforeArrival: 30, arrivalDays: [6], departureDays: [6] }
     expect(websiteQuote({ ...base, ruleSet }).blockers).toEqual([
       'Minimum stay is 10 nights.',
       'Book at least 30 days before arrival.',
@@ -53,5 +58,24 @@ describe('websiteQuote', () => {
     expect(q.subtotal).toBe(9_333_331)
     expect(q.discounts).toEqual([{ label: '7+ nights IDR 1,000,000', source: 'listing', amount: 1_000_000 }])
     expect(q.total).toBe(8_333_331)
+  })
+
+  it('derived rate logic sells every night above the listing base rate, before the discounts apply', () => {
+    const ruleSet = plain('A')
+    ruleSet.derivedRates = { logic: 'increase_by_percent', value: 75 }
+    const q = websiteQuote({ ...base, ruleSet })
+    expect(q.subtotal).toBe(1225)
+    expect(q.discounts).toEqual([{ label: '7+ nights 10%', source: 'website', amount: 122.5 }])
+    expect(q.total).toBe(1102.5)
+    expect(q.prepayment).toBe(330.75)
+  })
+
+  it('decrease by amount logic drops the per-night price and never sells below zero', () => {
+    const ruleSet = { ...plain('A'), lengthOfStayDiscounts: [] }
+    ruleSet.derivedRates = { logic: 'decrease_by_amount', value: 40 }
+    const q = websiteQuote({ ...base, nightly: Array.from({ length: 30 }, (_, i) => (i === 6 ? 20 : 100)), ruleSet })
+    expect(q.nights).toBe(7)
+    expect(q.discounts).toEqual([])
+    expect(q.total).toBe(360)
   })
 })

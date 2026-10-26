@@ -42,6 +42,14 @@ watch(listingOptions, (options) => {
 
 const checkOut = computed(() => checkIn.value && nights.value > 0 ? isoDate(addDays(new Date(`${checkIn.value}T00:00:00`), nights.value)) : null)
 
+const derivedNote = computed(() => {
+  const { logic, value } = props.ruleSet.derivedRates
+  if (logic === 'same_as_base')
+    return ''
+  const sign = logic.startsWith('increase') ? '+' : '-'
+  return `${sign}${value}${logic.endsWith('percent') ? '%' : ' per night'}`
+})
+
 const quotes = computed(() => {
   if (!listingId.value || !checkIn.value || !checkOut.value)
     return null
@@ -111,6 +119,9 @@ function money(currency: string, value: number) {
       </div>
 
       <div v-if="quotes" class="flex flex-col gap-1.5 rounded-md bg-muted/60 p-3 text-sm">
+        <div v-if="derivedNote" class="text-xs text-muted-foreground" data-testid="wpc-derived">
+          Derived from listing base rates: {{ derivedNote }}
+        </div>
         <div class="flex justify-between gap-2">
           <span class="text-muted-foreground">{{ quotes.withSet.nights }} nights</span>
           <span class="tabular-nums">{{ money(quotes.withSet.currency, quotes.withSet.subtotal) }}</span>

@@ -32,10 +32,33 @@ export interface WebsiteWindowDiscount {
   pct: number
 }
 
+/** How a website's sell prices derive from the listing's base nightly rates. */
+export type DerivedRateLogic
+  = | 'same_as_base'
+    | 'increase_by_amount'
+    | 'increase_by_percent'
+    | 'decrease_by_amount'
+    | 'decrease_by_percent'
+
+export const DERIVED_RATE_LOGIC_LABELS: Record<DerivedRateLogic, string> = {
+  same_as_base: 'Same as base rate',
+  increase_by_amount: 'Increase by Amount',
+  increase_by_percent: 'Increase by Percent (%)',
+  decrease_by_amount: 'Decrease by Amount',
+  decrease_by_percent: 'Decrease by Percent (%)',
+}
+
+export interface DerivedRatesSettings {
+  logic: DerivedRateLogic
+  /** Percent points for the percent logics, listing currency per night for the amount logics. Ignored by `same_as_base`. */
+  value: number
+}
+
 export interface WebsiteRuleSet {
   id: string
   name: string
   websiteIds: string[]
+  derivedRates: DerivedRatesSettings
   lengthOfStayDiscounts: WebsiteStayDiscount[]
   earlyBird: WebsiteWindowDiscount
   lastMinute: WebsiteWindowDiscount
@@ -66,6 +89,8 @@ export function newRuleSet(name = ''): WebsiteRuleSet {
     id: `wrs-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     name,
     websiteIds: [],
+    // Sell prices on the site sit above the listing's base rates.
+    derivedRates: { logic: 'increase_by_percent', value: 75 },
     // A starting point most hosts keep; editable before the first save.
     lengthOfStayDiscounts: [
       { id: 'wlos-1', minNights: 7, pct: 10 },
@@ -86,6 +111,7 @@ export function cloneRuleSet(s: WebsiteRuleSet): WebsiteRuleSet {
   return {
     ...s,
     websiteIds: [...s.websiteIds],
+    derivedRates: { ...s.derivedRates },
     lengthOfStayDiscounts: s.lengthOfStayDiscounts.map(t => ({ ...t })),
     earlyBird: { ...s.earlyBird },
     lastMinute: { ...s.lastMinute },
@@ -175,6 +201,10 @@ export function ruleSetIssues(s: WebsiteRuleSet, ruleSets: WebsiteRuleSet[]): We
     if (!(tier.pct > 0 && tier.pct < 100))
       issues.push({ field: `los-${tier.id}`, message: 'A discount must be between 0 and 100%.' })
   }
+  if (s.derivedRates.logic !== 'same_as_base' && s.derivedRates.logic.endsWith('percent') && !(s.derivedRates.value > 0 && s.derivedRates.value <= 100))
+    issues.push({ field: 'derivedRates', message: 'The percent must be between 0 and 100%.' })
+  if (s.derivedRates.logic !== 'same_as_base' && s.derivedRates.logic.endsWith('amount') && s.derivedRates.value < 0)
+    issues.push({ field: 'derivedRates', message: 'The amount cannot be negative.' })
   for (const [key, rule, label] of [['earlyBird', s.earlyBird, 'Early bird'], ['lastMinute', s.lastMinute, 'Last minute']] as const) {
     if (!rule.enabled)
       continue
