@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AcceptableValue } from 'reka-ui'
 import type { WebsiteRuleSet, WebsiteSettingsIssue } from './data/website-channel'
 import { computed } from 'vue'
 import { formatPromoDiscount, getPromoCodeStatus, isPromoCodeValidOnWebsite } from '~/components/promo-code/data/promo-codes'
@@ -6,6 +7,7 @@ import { getListingIdsForWebsite } from '~/components/website-builder/data/prope
 import { websites } from '~/components/website-builder/data/websites'
 import { usePromoCodes } from '~/composables/usePromoCodes'
 import { useWebsiteChannel } from '~/composables/useWebsiteChannel'
+import { DERIVED_RATE_LOGIC_LABELS } from './data/website-channel'
 import WebsitePriceCheck from './WebsitePriceCheck.vue'
 
 /** `siteOnly`: rules of one website (Website Builder), so no name, website picker, promo list or price check. */
@@ -67,6 +69,15 @@ function toggleDay(field: 'arrivalDays' | 'departureDays', day: number) {
 
 function setWindow(key: 'earlyBird' | 'lastMinute', enabled: boolean) {
   draft.value = { ...draft.value, [key]: { ...draft.value[key], enabled } }
+}
+
+const DERIVED_LOGIC_OPTIONS = Object.entries(DERIVED_RATE_LOGIC_LABELS).map(([value, label]) => ({ value, label }))
+
+const derivedIsPercent = computed(() => draft.value.derivedRates.logic.endsWith('percent'))
+
+function setDerivedLogic(logic: AcceptableValue) {
+  const next = String(logic) as WebsiteRuleSet['derivedRates']['logic']
+  draft.value = { ...draft.value, derivedRates: { ...draft.value.derivedRates, logic: next } }
 }
 
 const maxNightsInput = computed({
@@ -155,6 +166,45 @@ const validCodes = computed(() => codes.value
     </section>
 
     <Separator v-if="!siteOnly" />
+
+    <!-- Derived rates -->
+    <section class="flex flex-col gap-3">
+      <div>
+        <h3 class="text-sm font-semibold">
+          Derived rates settings
+        </h3>
+        <p class="text-xs text-muted-foreground">
+          Prices on these websites derive from the listing's base nightly rates. Discounts apply on top of the derived price.
+        </p>
+      </div>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div class="flex flex-col gap-1.5">
+          <Label for="wrs-derived-logic">Rate logic</Label>
+          <Select :model-value="draft.derivedRates.logic" @update:model-value="setDerivedLogic">
+            <SelectTrigger id="wrs-derived-logic" class="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="opt in DERIVED_LOGIC_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div v-if="draft.derivedRates.logic !== 'same_as_base'" class="flex flex-col gap-1.5">
+          <Label for="wrs-derived-value">{{ derivedIsPercent ? 'Percent' : 'Amount per night' }}</Label>
+          <div class="flex items-center gap-2">
+            <Input id="wrs-derived-value" v-model.number="draft.derivedRates.value" type="number" min="0" step="0.01" class="w-28" :class="issueFor('derivedRates') && 'border-destructive'" />
+            <span class="text-sm text-muted-foreground">{{ derivedIsPercent ? '% vs the base rate' : 'listing currency' }}</span>
+          </div>
+        </div>
+      </div>
+      <p v-if="issueFor('derivedRates')" class="text-xs text-destructive">
+        {{ issueFor('derivedRates') }}
+      </p>
+    </section>
+
+    <Separator />
 
     <!-- Length of stay -->
     <section class="flex flex-col gap-3">
