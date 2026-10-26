@@ -47,8 +47,8 @@ const checks = computed<Check[]>(() => {
     },
     {
       label: 'Legal information',
-      detail: props.answers.legalCompany ? 'Company and privacy contact filled' : 'Legal details not filled',
-      ok: !!(props.answers.legalCompany && props.answers.legalPrivacyEmail),
+      detail: props.answers.legalCompany ? 'Company details filled' : 'Legal details not filled',
+      ok: !!props.answers.legalCompany,
       optional: true,
       step: 'details',
     },

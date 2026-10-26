@@ -4,6 +4,7 @@ import type { ReviewSelection } from '~/components/website-builder/steps/ReviewS
 import type { WebsiteSettings } from '~/components/website-builder/steps/SettingsStep.vue'
 import type { Template } from '~/components/website-builder/steps/TemplateStep.vue'
 import { cloneRuleSet, newRuleSet, ruleSetForWebsite, websiteChannel } from '~/components/channels/data/website-channel'
+import { legalFromWizard } from '~/components/website-builder/data/legal'
 import { getListingsForProperties, selectionForListings } from '~/components/website-builder/data/property-listings'
 import { createDefaultReviewConfig } from '~/components/website-builder/data/review-config'
 import { websites } from '~/components/website-builder/data/websites'
@@ -87,6 +88,7 @@ if (import.meta.client && editingWebsite.value) {
     defaultLanguage: site.defaultLanguage ?? site.languages?.[0] ?? 'en',
     autoDetectLanguage: site.autoDetectLanguage ?? false,
     blogPosts: site.blogPosts ?? [],
+    legal: site.legal,
   }
   propertySelection.value = selectionForListings(getListingsForProperties(site.propertyIds ?? []))
   reviewSelection.value = {
@@ -106,6 +108,7 @@ onMounted(() => {
   if (editingWebsite.value) {
     websiteSettings.value = {
       ...websiteSettings.value,
+      legal: websiteSettings.value.legal ?? editingWebsite.value.legal,
       rules: cloneRuleSet(ruleSetForWebsite(websiteChannel.value, editingWebsite.value.id) ?? newRuleSet()),
     }
   }
@@ -123,6 +126,8 @@ const finalSettings = computed<WebsiteSettings>(() => ({
   defaultLanguage: answers.value.defaultLanguage,
   autoDetectLanguage: answers.value.autoDetectLanguage,
   blogPosts: [],
+  // The wizard's legal answers used to be dropped here; the editor now starts from them.
+  legal: legalFromWizard(answers.value),
 }))
 
 const canNext = computed(() => {

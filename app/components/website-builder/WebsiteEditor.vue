@@ -40,6 +40,10 @@ const section = ref<SectionKey>('ai')
 const wide = useMediaQuery('(min-width: 1024px)')
 const current = computed(() => SECTIONS.find(s => s.key === section.value)!)
 
+// Icon-only rail on desktop. On mobile the nav is a horizontal strip, so the
+// collapse toggle is hidden and the labels stay.
+const collapsed = ref(false)
+
 const { saveWebsite } = useWebsiteSave()
 const live = computed(() => websites.value.find(w => w.id === props.website.id) ?? props.website)
 const isPublished = computed(() => live.value.status === 'published')
@@ -180,19 +184,39 @@ function unpublish() {
 
     <div class="flex min-h-0 flex-1 flex-col md:flex-row">
       <!-- Sections -->
-      <nav class="shrink-0 overflow-y-auto border-b p-3 md:w-60 md:border-b-0 md:border-r" aria-label="Website sections">
+      <nav
+        class="group relative shrink-0 border-b p-3 transition-[width] duration-200 md:overflow-visible md:border-b-0 md:border-r"
+        :class="collapsed ? 'md:w-14' : 'md:w-60'"
+        aria-label="Website sections"
+      >
+        <!-- Floating handle on the divider, so it costs the list no row. Shows on sidebar hover only. -->
+        <button
+          type="button"
+          class="pointer-events-none absolute -right-3.5 top-1.5 z-10 hidden size-7 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity duration-150 hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 md:flex"
+          :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+          :aria-expanded="!collapsed"
+          data-testid="we-nav-toggle"
+          @click="collapsed = !collapsed"
+        >
+          <Icon :name="collapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'" class="size-3.5" aria-hidden="true" />
+        </button>
         <ul class="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
           <li v-for="s in SECTIONS" :key="s.key" class="shrink-0">
             <button
               type="button"
               class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors"
-              :class="section === s.key ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+              :class="[
+                section === s.key ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                collapsed && 'md:justify-center md:gap-0 md:px-0',
+              ]"
               :aria-current="section === s.key ? 'page' : undefined"
+              :aria-label="collapsed ? s.label : undefined"
+              :title="collapsed ? s.label : undefined"
               :data-testid="`we-nav-${s.key}`"
               @click="section = s.key"
             >
               <Icon :name="s.icon" class="size-4 shrink-0" aria-hidden="true" />
-              {{ s.label }}
+              <span :class="collapsed && 'md:hidden'">{{ s.label }}</span>
             </button>
           </li>
         </ul>
@@ -237,6 +261,9 @@ function unpublish() {
             v-model:settings="settings"
             @save="save(isPublished ? 'published' : 'draft', 'Booking rules saved')"
           />
+        </div>
+        <div v-else-if="section === 'legal'" class="p-5">
+          <WebsiteBuilderWebsiteLegal v-model:settings="settings" @save="saveSection" />
         </div>
         <div v-else-if="section === 'listings'" class="mx-auto w-full max-w-3xl p-5">
           <WebsiteBuilderStepsListingsStep v-model="property" />

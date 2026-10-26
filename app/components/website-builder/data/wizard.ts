@@ -23,7 +23,11 @@ export interface WizardAnswers {
   seoTitle: string
   metaDescription: string
   legalCompany: string
-  legalPrivacyEmail: string
+  legalVatNumber: string
+  legalStreet: string
+  legalPostalCode: string
+  legalCity: string
+  legalCountry: string
 }
 
 export type StylePresetId = 'minimal' | 'warm' | 'bold' | 'airy'
@@ -51,7 +55,11 @@ export function newWizardAnswers(): WizardAnswers {
     seoTitle: '',
     metaDescription: '',
     legalCompany: '',
-    legalPrivacyEmail: '',
+    legalVatNumber: '',
+    legalStreet: '',
+    legalPostalCode: '',
+    legalCity: '',
+    legalCountry: '',
   }
 }
 

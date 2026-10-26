@@ -30,6 +30,7 @@ const global = {
     AlertDialogAction: passthrough,
     WebsiteBuilderWebsiteSiteSettings: SettingsStub,
     WebsiteBuilderWebsiteBookingRules: { template: '<div data-testid="rules-section" />' },
+    WebsiteBuilderWebsiteLegal: { template: '<div data-testid="legal-section" />' },
     WebsiteBuilderStepsListingsStep: { template: '<div data-testid="property-step" />' },
     WebsiteBuilderStepsReviewStep: { template: '<div data-testid="review-step" />' },
   },
@@ -79,13 +80,27 @@ describe('websiteEditor', () => {
     const wrapper = mountEditor()
     expect(wrapper.get('[data-testid="we-title"]').text()).toBe('Villa Sunset Bali')
     expect(wrapper.text()).toContain('Listings')
-    const labels = wrapper.findAll('nav button').map(b => b.text())
+    const labels = wrapper.findAll('nav button span').map(b => b.text())
     expect(labels).toEqual(['AI Generate', 'Site Settings', 'Booking Rules', 'Manage Listings', 'Blog', 'Surroundings', 'Reviews', 'SEO', 'Cookie & Legal', 'Analytics'])
     expect(wrapper.find('[data-testid="we-ai"]').exists()).toBe(true)
     // The empty state is for sections with nothing to set up, never under AI Generate.
     expect(wrapper.find('[data-testid="we-empty"]').exists()).toBe(false)
     // Chat and preview are split by a draggable handle.
     expect(wrapper.find('[data-testid="we-ai-handle"]').exists()).toBe(true)
+  })
+
+  it('collapses the nav to icons only, still navigates, and expands again', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-testid="we-nav-toggle"]').trigger('click')
+    const spans = wrapper.findAll('nav button span')
+    expect(spans.length).toBe(10)
+    expect(spans.every(s => s.classes().includes('md:hidden'))).toBe(true)
+    expect(wrapper.get('[data-testid="we-nav-legal"]').attributes('aria-label')).toBe('Cookie & Legal')
+    await wrapper.get('[data-testid="we-nav-legal"]').trigger('click')
+    expect(wrapper.find('[data-testid="legal-section"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="we-nav-toggle"]').trigger('click')
+    expect(wrapper.findAll('nav button span').every(s => !s.classes().includes('md:hidden'))).toBe(true)
+    expect(wrapper.findAll('nav button span')[0]!.text()).toBe('AI Generate')
   })
 
   it('opens the builder steps embedded, without their own Back / Next', async () => {
@@ -98,6 +113,13 @@ describe('websiteEditor', () => {
     expect(wrapper.find('[data-testid="property-step"]').exists()).toBe(true)
     await wrapper.get('[data-testid="we-nav-reviews"]').trigger('click')
     expect(wrapper.find('[data-testid="review-step"]').exists()).toBe(true)
+  })
+
+  it('opens the legal section instead of the empty state', async () => {
+    const wrapper = mountEditor()
+    await wrapper.get('[data-testid="we-nav-legal"]').trigger('click')
+    expect(wrapper.find('[data-testid="legal-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="we-empty"]').exists()).toBe(false)
   })
 
   it('saves the changes and the site rules, keeping the site published', async () => {

@@ -24,6 +24,10 @@ export function useWebsiteSave() {
   /** Updates the site `editId`, or adds a new one. Returns its id. */
   function saveWebsite(draft: WebsiteDraft, status: Website['status'], editId?: string) {
     const { template, settings, property, reviews } = draft
+    // Stamped here, not while typing: the saved document is the dated one.
+    const legal = settings.legal
+      ? { ...settings.legal, updatedAt: new Date().toISOString() }
+      : undefined
     const fields = {
       name: settings.name,
       url: settings.domain,
@@ -39,6 +43,8 @@ export function useWebsiteSave() {
       defaultLanguage: settings.defaultLanguage,
       autoDetectLanguage: settings.autoDetectLanguage,
       blogPosts: settings.blogPosts,
+      // Omitted when absent, so a site that already has legal copy keeps it.
+      ...(legal ? { legal } : {}),
     }
     const index = editId ? websites.value.findIndex(w => w.id === editId) : -1
     const existing = websites.value[index]

@@ -269,14 +269,33 @@ defineExpose({ hasValidData })
         <Icon name="lucide:chevron-down" class="size-4 text-muted-foreground transition-transform" :class="open.legal && 'rotate-180'" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent class="border-t p-5">
+        <p class="mb-4 text-xs text-muted-foreground">
+          Used to build your Impressum / legal notice. Leave a field empty to omit it.
+        </p>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div class="space-y-2">
             <Label for="wz-company">Operator / company name</Label>
             <Input id="wz-company" :model-value="answers.legalCompany" placeholder="Your Company LLC" @update:model-value="patchAnswers({ legalCompany: String($event) })" />
           </div>
           <div class="space-y-2">
-            <Label for="wz-privacy">Privacy contact email</Label>
-            <Input id="wz-privacy" type="email" :model-value="answers.legalPrivacyEmail" placeholder="privacy@yourcompany.com" @update:model-value="patchAnswers({ legalPrivacyEmail: String($event) })" />
+            <Label for="wz-vat">VAT / registration number</Label>
+            <Input id="wz-vat" :model-value="answers.legalVatNumber" placeholder="CHE-123.456.789" @update:model-value="patchAnswers({ legalVatNumber: String($event) })" />
+          </div>
+          <div class="space-y-2">
+            <Label for="wz-street">Street &amp; number</Label>
+            <Input id="wz-street" :model-value="answers.legalStreet" placeholder="Musterstrasse 12" @update:model-value="patchAnswers({ legalStreet: String($event) })" />
+          </div>
+          <div class="space-y-2">
+            <Label for="wz-postal">Postal code</Label>
+            <Input id="wz-postal" :model-value="answers.legalPostalCode" placeholder="8000" @update:model-value="patchAnswers({ legalPostalCode: String($event) })" />
+          </div>
+          <div class="space-y-2">
+            <Label for="wz-city">City</Label>
+            <Input id="wz-city" :model-value="answers.legalCity" placeholder="Zürich" @update:model-value="patchAnswers({ legalCity: String($event) })" />
+          </div>
+          <div class="space-y-2">
+            <Label for="wz-country">Country</Label>
+            <Input id="wz-country" :model-value="answers.legalCountry" placeholder="Switzerland" @update:model-value="patchAnswers({ legalCountry: String($event) })" />
           </div>
         </div>
       </CollapsibleContent>
