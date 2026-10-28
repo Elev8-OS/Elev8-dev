@@ -6,6 +6,7 @@ import type { Task } from '~/components/tasks/data/schema'
 import { useEventListener } from '@vueuse/core'
 import CockpitBoardTools from '~/components/cockpit/CockpitBoardTools.vue'
 import CockpitChannelLinks from '~/components/cockpit/CockpitChannelLinks.vue'
+import CockpitLegend from '~/components/cockpit/CockpitLegend.vue'
 import CockpitListingScore from '~/components/cockpit/CockpitListingScore.vue'
 import CockpitRoomTasks from '~/components/cockpit/CockpitRoomTasks.vue'
 import CockpitStayBar from '~/components/cockpit/CockpitStayBar.vue'
@@ -634,12 +635,28 @@ function onKeydown(event: KeyboardEvent) {
                 v-model:search="search"
                 v-model:tags="tags"
                 v-model:filters="filters"
+                :legend="false"
+                :fold="false"
                 :can-fold="groups.length > 0"
                 :all-collapsed="allCollapsed"
                 @toggle-all="toggleAll"
               />
             </div>
-            <span class="px-1 text-sm font-semibold">All listings</span>
+            <div class="flex items-center gap-1 px-1">
+              <span class="text-sm font-semibold">All listings</span>
+              <span class="hidden md:inline-flex"><CockpitLegend compact /></span>
+              <Button
+                v-if="groups.length > 0"
+                variant="ghost"
+                size="icon"
+                class="ml-auto hidden size-6 md:inline-flex"
+                :aria-label="allCollapsed ? 'Expand all rooms' : 'Collapse all rooms'"
+                :title="allCollapsed ? 'Expand all rooms' : 'Collapse all rooms'"
+                @click="toggleAll"
+              >
+                <Icon :name="allCollapsed ? 'lucide:chevrons-up-down' : 'lucide:chevrons-down-up'" class="size-4 text-muted-foreground" />
+              </Button>
+            </div>
           </div>
 
           <div

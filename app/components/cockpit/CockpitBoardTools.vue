@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CockpitStayFilters } from '~/components/cockpit/data/cockpit'
 import type { ReservationStatus } from '~/components/reservations/data/reservations'
+import CockpitLegend from '~/components/cockpit/CockpitLegend.vue'
 import { activeFilterCount, DEFAULT_STAY_FILTERS } from '~/components/cockpit/data/cockpit'
 import { allTags, BOOKING_CHANNELS } from '~/components/listings/data/listings'
 import { stayBarClasses } from '~/components/listings/data/stay-bar'
@@ -18,11 +19,15 @@ import { Switch } from '~/components/ui/switch'
  * all rooms. In the board's corner from `md` up; above the board on a phone,
  * where the listing column is too narrow for them.
  */
-defineProps<{
+withDefaults(defineProps<{
+  /** The colour legend button; the board's corner shows it on its own row instead. */
+  legend?: boolean
+  /** The fold all button; the board's corner shows its own small one beside "All listings". */
+  fold?: boolean
   /** Fold all is offered only when a listing has rooms to fold. */
   canFold: boolean
   allCollapsed: boolean
-}>()
+}>(), { legend: true, fold: true })
 const emit = defineEmits<{ toggleAll: [] }>()
 
 const search = defineModel<string>('search', { required: true })
@@ -56,64 +61,15 @@ const tagOptions = computed(() => {
   const q = tagQuery.value.trim().toLowerCase()
   return q ? allTags.value.filter(t => t.toLowerCase().includes(q)) : allTags.value
 })
-
-/** What the board's colours and marks mean. */
-const LEGEND_STATUSES: ReservationStatus[] = ['verified', 'unverified', 'checked_in', 'checked_out', 'inquiry', 'owner_request', 'blocked']
-const HATCH = {
-  backgroundImage: 'repeating-linear-gradient(135deg, color-mix(in oklab, var(--background) 22%, transparent) 0 1.5px, transparent 1.5px 6px)',
-}
 </script>
 
 <template>
   <div class="flex flex-col gap-2">
-    <!-- Icon tools: legend, fold. Filters sit beside the search below. -->
-    <div class="flex items-center gap-1.5">
-      <Popover>
-        <PopoverTrigger as-child>
-          <Button variant="ghost" size="icon" class="size-9 shrink-0 border bg-card" aria-label="What the colours mean" title="What the colours mean" data-testid="cockpit-legend">
-            <Icon name="lucide:info" class="size-4 text-muted-foreground" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent class="w-64 p-3" align="start">
-          <ul class="flex flex-col gap-1.5 text-sm">
-            <li v-for="s in LEGEND_STATUSES" :key="s" class="flex items-center gap-2">
-              <span class="h-3 w-6 shrink-0 rounded-sm border" :class="stayBarClasses[s]" aria-hidden="true" />
-              {{ reservationStatusLabels[s] }}
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="h-3 w-6 shrink-0 rounded-sm bg-muted-foreground/85" :style="HATCH" aria-hidden="true" />
-              Cancelled
-            </li>
-          </ul>
-          <Separator class="my-3" />
-          <ul class="flex flex-col gap-1.5 text-sm">
-            <li class="flex items-center gap-2">
-              <span class="flex w-6 justify-center" aria-hidden="true"><span class="h-4 w-0.5 bg-primary" /></span>
-              Now
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="flex w-6 justify-center" aria-hidden="true"><span class="size-2.5 rounded-full bg-primary ring-2 ring-card" /></span>
-              Arrives or leaves today
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="flex w-6 justify-center" aria-hidden="true">
-                <span class="flex size-4 items-center justify-center rounded-full bg-destructive text-white"><Icon name="lucide:alert-circle" class="size-3" /></span>
-              </span>
-              Action needed in the Inbox
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="h-3 w-6 shrink-0 rounded-sm ring-2 ring-destructive" aria-hidden="true" />
-              Double booked
-            </li>
-            <li class="flex items-center gap-2">
-              <span class="flex h-3 w-6 shrink-0 items-center justify-center rounded-sm bg-foreground/15 text-[8px] tabular-nums" aria-hidden="true">3/4</span>
-              Rooms free that night
-            </li>
-          </ul>
-        </PopoverContent>
-      </Popover>
+    <!-- Legend and fold on top; search with Filters beside it below. -->
+    <div v-if="legend || (fold && canFold)" class="flex items-center gap-1.5">
+      <CockpitLegend v-if="legend" />
       <Button
-        v-if="canFold"
+        v-if="fold && canFold"
         variant="ghost"
         size="icon"
         class="size-9 shrink-0 border bg-card"
@@ -124,14 +80,8 @@ const HATCH = {
         <Icon :name="allCollapsed ? 'lucide:chevrons-up-down' : 'lucide:chevrons-down-up'" class="size-4" />
       </Button>
     </div>
-    <div class="flex items-center gap-1">
-      <Icon name="lucide:search" class="ml-1 size-4 shrink-0 text-muted-foreground" />
-      <Input
-        v-model="search"
-        placeholder="Search listing"
-        aria-label="Search listing"
-        class="h-8 border-0 px-1 shadow-none focus-visible:ring-0"
-      />
+    <div class="flex items-center gap-1.5">
+      <BaseSearchInput v-model="search" placeholder="Search listing" class="min-w-0 flex-1 sm:max-w-none" />
       <Popover>
         <PopoverTrigger as-child>
           <Button variant="ghost" size="icon" class="relative size-9 shrink-0 border bg-card" aria-label="Filters" data-testid="cockpit-filters">
@@ -151,11 +101,11 @@ const HATCH = {
                 />
               </div>
               <div class="flex items-center justify-between gap-3">
-                <span class="text-sm">Show cancelled</span>
+                <span class="text-sm">Hide cancelled</span>
                 <Switch
-                  :model-value="filters.showCancelled"
-                  aria-label="Show cancelled stays"
-                  @update:model-value="filters = { ...filters, showCancelled: $event }"
+                  :model-value="!filters.showCancelled"
+                  aria-label="Hide cancelled stays"
+                  @update:model-value="filters = { ...filters, showCancelled: !$event }"
                 />
               </div>
 
