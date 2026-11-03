@@ -60,7 +60,6 @@ export const navMenu: NavMenu[] = [
         children: [
           { title: 'Overview', link: '/finance' },
           { title: 'Payment Requests', link: '/payment-requests' },
-          { title: 'City Tax', link: '/city-tax' },
         ],
       },
       { title: 'Owner Portal (Demo)', icon: 'i-lucide-external-link', link: '/owner-portal/login' },

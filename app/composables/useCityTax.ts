@@ -30,6 +30,28 @@ export interface CityTaxWorklistRow {
   stage: CityTaxAlertStage | null
 }
 
+/** The City tax filter on the Reservations list. `all` means no city tax filtering. */
+export type CityTaxFilter = 'all' | 'overdue' | 'due_today' | 'upcoming' | 'settled'
+
+export const CITY_TAX_FILTER_LABELS: Record<CityTaxFilter, string> = {
+  all: 'All',
+  overdue: 'Overdue',
+  due_today: 'Due today',
+  upcoming: 'Upcoming',
+  settled: 'Settled',
+}
+
+/** Filters whose stays still owe a collection, so they can be bulk collected. */
+export function isCollectableFilter(filter: CityTaxFilter): boolean {
+  return filter === 'overdue' || filter === 'due_today' || filter === 'upcoming'
+}
+
+/** Parses `?cityTax=` from a link (the bell alerts use it); anything unknown is `all`. */
+export function parseCityTaxFilter(value: unknown): CityTaxFilter {
+  const raw = Array.isArray(value) ? value[0] : value
+  return typeof raw === 'string' && Object.hasOwn(CITY_TAX_FILTER_LABELS, raw) ? raw as CityTaxFilter : 'all'
+}
+
 const CITY_TAX_ALERT_TYPE: Record<CityTaxAlertStage, AlertType> = {
   upcoming: 'CITY_TAX_COLLECTION_UPCOMING',
   due_today: 'CITY_TAX_COLLECTION_DUE',
@@ -89,6 +111,17 @@ export function useCityTax() {
   const upcoming = computed(() => rows.value.filter(row => row.stage === 'upcoming'))
   const settled = computed(() => rows.value.filter(row => row.assessment.settlement !== null))
 
+  /** The stays behind one City tax filter value; `all` is every stay. */
+  function rowsFor(filter: CityTaxFilter): CityTaxWorklistRow[] {
+    switch (filter) {
+      case 'overdue': return overdue.value
+      case 'due_today': return dueToday.value
+      case 'upcoming': return upcoming.value
+      case 'settled': return settled.value
+      default: return rows.value
+    }
+  }
+
   /** Per currency, never blended: this app invents no exchange rates. */
   function sumRows(source: CityTaxWorklistRow[]): CityTaxTotal[] {
     return cityTaxTotals(source.flatMap(row => row.assessment.lines))
@@ -112,8 +145,8 @@ export function useCityTax() {
 
   /**
    * Raises what is missing and nothing else. There is no scheduler in this app,
-   * so the worklist page calls this on mount and from its "Check for alerts"
-   * button, the same way Smart Lock and Minut surface their mock events.
+   * so the Reservations page calls this on mount, the same way Smart Lock and
+   * Minut surface their mock events.
    */
   function emitCityTaxAlerts() {
     for (const row of rows.value) {
@@ -193,8 +226,9 @@ export function useCityTax() {
     return settlement
   }
 
-  function markCollected(reservationId: string, options: { method: CityTaxPaymentMethod, note?: string }) {
-    const settlement = settle(reservationId, assessment => ({
+  /** Writes the settlement without a toast, so a bulk collect can speak once. */
+  function collect(reservationId: string, options: { method: CityTaxPaymentMethod, note?: string }) {
+    return settle(reservationId, assessment => ({
       state: 'collected',
       totals: assessment.totals.map(total => ({ ...total })),
       settledAt: new Date().toISOString(),
@@ -202,9 +236,24 @@ export function useCityTax() {
       method: options.method,
       note: options.note?.trim() || undefined,
     }))
+  }
 
+  function markCollected(reservationId: string, options: { method: CityTaxPaymentMethod, note?: string }) {
+    const settlement = collect(reservationId, options)
     if (settlement)
       toast.success(`City tax collected: ${formatCityTaxTotals(settlement.totals)}`)
+  }
+
+  /**
+   * Collects every given stay with one method and note, and returns how many
+   * were actually settled (a stay that stopped being `due` is skipped). One
+   * toast for the lot instead of one per stay.
+   */
+  function markCollectedMany(reservationIds: string[], options: { method: CityTaxPaymentMethod, note?: string }): number {
+    const count = reservationIds.filter(id => collect(id, options) !== null).length
+    if (count > 0)
+      toast.success(`Marked ${count} ${count === 1 ? 'stay' : 'stays'} collected`)
+    return count
   }
 
   function waive(reservationId: string, reason: string) {
@@ -236,9 +285,11 @@ export function useCityTax() {
     assess,
     assessmentFor,
     markCollected,
+    markCollectedMany,
     waive,
     undoSettlement,
     rows,
+    rowsFor,
     overdue,
     dueToday,
     upcoming,

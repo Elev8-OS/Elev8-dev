@@ -86,12 +86,41 @@ alert directly rather than through `dismiss()`, because whether the current user
 an alert must not decide whether a settled obligation keeps nagging everybody else.
 
 **Surfaces:** the collection block in `FeesTaxesSettingsPanel.vue` (city tax type only),
-`ReservationCityTaxSection.vue` in the detail sheet right after the folio,
-`CityTaxStatusChip.vue` in `ReservationTable.vue`, and the `/city-tax` worklist
-(Overdue / Due today / Upcoming / Settled, per-currency KPIs, bulk collect).
+`ReservationCityTaxSection.vue` in the detail sheet right after the folio, and the **Reservations
+list** (`app/pages/reservations/index.vue`). There is **no separate city tax page**: the old
+`/city-tax` worklist was folded into Reservations, because the table already carried the stay,
+the channel and the City tax chip.
+- A **City tax** filter (Any, Overdue, Due today, Upcoming, Settled, each with its count) sits in
+  the filter bar. ⚠️ It lives in the **URL** (`?cityTax=overdue`), not in `useReservationsModule`
+  `filters`: the three `CITY_TAX_COLLECTION_*` alerts link to it through `alertRouteMap`, and
+  `useCityTax` already imports the reservations module, so the other way round would be an import
+  cycle. `parseCityTaxFilter` reads it and uses `Object.hasOwn`, because a bare `in` accepted
+  `?cityTax=toString`. The filter narrows what the other filters (search, listing, dates) already
+  returned, and Export to Excel follows the narrowed rows.
+- While the filter is on, a **summary strip** shows Outstanding (overdue + due today) and Collected,
+  one line per currency, never blended. It is global, not narrowed by the other filters, the same
+  figures the old KPI cards showed.
+- On Overdue, Due today and Upcoming (`isCollectableFilter`) each stay that is still `due` gets a
+  checkbox **inside the City tax cell** (`ReservationTable` `selectable` + `v-model:selected`), so
+  the table gains no column. A settled or channel-collected stay never has one. **Select all (n)**
+  picks the listed stays that are still due; the bulk bar collects them with one method and note
+  through `markCollectedMany`, which toasts **once** for the lot (a per-stay toast stacked up
+  before).
+- ⚠️ The checkboxes are re-keyed when the selection empties (`checkboxKey`), the same reka-ui
+  `Checkbox` workaround as the finance tables, or a finished collect leaves the boxes ticked.
+- `emitCityTaxAlerts()` now runs when the Reservations page mounts. The "Check for alerts" button
+  went with the old page.
+- **Not built yet:** a read-only City tax tab in Finance (collected and outstanding per currency,
+  property and month). Finance is gated per role and the Guest Experience Manager has none, so the
+  collecting stays on Reservations.
 
-**Tests:** `tests/lib/city-tax.spec.ts` (91), `tests/composables/useCityTax.spec.ts` (28),
-`tests/components/reservations/ReservationCityTax.spec.ts` (14).
+**Tests:** `tests/lib/city-tax.spec.ts` (91), `tests/composables/useCityTax.spec.ts` (34),
+`tests/components/reservations/ReservationCityTax.spec.ts` (14),
+`tests/components/reservations/ReservationTableCityTaxSelect.spec.ts` (4),
+`tests/composables/useCityTaxAlerts.spec.ts` (10).
+⚠️ `app/pages/reservations/index.vue` has **no spec**, so the URL-driven filter, the summary strip
+and the bulk bar are covered only through `rowsFor`, `parseCityTaxFilter`, `markCollectedMany` and
+the table's checkbox spec.
 ⚠️ `FeesTaxesSettingsPanel.vue` has **no spec at all**, so the age-band inputs and the save gate
 are covered only through `ageBandsError` in the pure module.
 ⚠️ `useFeesTaxes` uses **module-level refs**, which the `useState` shim does not reset, so

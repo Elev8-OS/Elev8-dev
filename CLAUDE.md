@@ -27,7 +27,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Mobile payment + business contact | `docs/claude/mobile-reservation-payment-business.md` | Figma spec for the mobile app (not in this repo): payment method, Personal/Business tab, Mark as paid sheet, toasts, flows, acceptance criteria |
 | Reservation folio | `docs/claude/reservation-folio.md` | Staff-posted charges, tax/service rounding, voids/refunds, `priceDetails.extras` ownership |
 | Stay extension | `docs/claude/stay-extension.md` | Extend wizard (dates, payment, review), OTA linked direct booking, cleaning/lock/city tax follow-up, inbox entry point |
-| City tax | `docs/claude/city-tax.md` | Collector policy, guest-category rates, age bands, alerts, `/city-tax` worklist |
+| City tax | `docs/claude/city-tax.md` | Collector policy, guest-category rates, age bands, alerts, City tax filter + bulk collect on Reservations |
 | Damage protection | `docs/claude/damage-protection.md` | Waiver vs saved-card deposit, Tern tiers + activation, host-paid cover, claims from cleaning reports, insurance partner claims, evidence PDF |
 | Owner statements | `docs/claude/owner-statements.md` | Corrections/adjustments, disputes, owner-portal PDF export |
 | Owner payout details | `docs/claude/owner-payout-details.md` | Owner bank/address store, IBAN mod-97 |

@@ -1,7 +1,7 @@
 import type { ListingFeeTaxItem } from '~/components/listings/data/listings'
 import type { ReservationEntry } from '~/components/reservations/data/reservations'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useCityTax } from '~/composables/useCityTax'
+import { isCollectableFilter, parseCityTaxFilter, useCityTax } from '~/composables/useCityTax'
 import { useFeesTaxes } from '~/composables/useFeesTaxes'
 import { useNotifications } from '~/composables/useNotifications'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -358,5 +358,75 @@ describe('emitCityTaxAlerts', () => {
     const stillActive = useNotifications().alerts.value.some(a =>
       a.type === 'CITY_TAX_COLLECTION_DUE' && a.context.reservation_id === 'res-now' && a.status === 'ACTIVE')
     expect(stillActive).toBe(false)
+  })
+})
+
+describe('city tax filter on the Reservations list', () => {
+  it('puts each stay in the bucket its collection stage says', () => {
+    seedReservation({ id: 'res-over', checkIn: isoDaysFromNow(-10), checkOut: isoDaysFromNow(-6) })
+    seedReservation({ id: 'res-today', checkIn: isoDaysFromNow(-1), checkOut: isoDaysFromNow(3) })
+    seedReservation({ id: 'res-soon', checkIn: isoDaysFromNow(5), checkOut: isoDaysFromNow(9) })
+    const ids = (filter: Parameters<ReturnType<typeof useCityTax>['rowsFor']>[0]) =>
+      useCityTax().rowsFor(filter).map(row => row.reservation.id)
+
+    // The seeded stays share the store, so check these three by membership.
+    const mine = ['res-over', 'res-today', 'res-soon']
+    const where = (filter: Parameters<typeof ids>[0]) => ids(filter).filter(id => mine.includes(id))
+    expect(where('overdue')).toEqual(['res-over'])
+    expect(where('due_today')).toEqual(['res-today'])
+    expect(where('upcoming')).toEqual(['res-soon'])
+    expect(where('settled')).toEqual([])
+    expect(where('all').sort()).toEqual([...mine].sort())
+  })
+
+  it('moves a collected stay from its bucket to Settled', () => {
+    seedReservation({ id: 'res-over', checkIn: isoDaysFromNow(-10), checkOut: isoDaysFromNow(-6) })
+    const cityTax = useCityTax()
+    cityTax.markCollected('res-over', { method: 'cash' })
+
+    expect(cityTax.rowsFor('overdue').map(row => row.reservation.id)).not.toContain('res-over')
+    expect(cityTax.rowsFor('settled').map(row => row.reservation.id)).toContain('res-over')
+  })
+
+  it('only offers a collection for the filters that still owe one', () => {
+    expect(isCollectableFilter('overdue')).toBe(true)
+    expect(isCollectableFilter('due_today')).toBe(true)
+    expect(isCollectableFilter('upcoming')).toBe(true)
+    expect(isCollectableFilter('settled')).toBe(false)
+    expect(isCollectableFilter('all')).toBe(false)
+  })
+
+  it('reads the filter from a link and falls back to all for anything else', () => {
+    expect(parseCityTaxFilter('overdue')).toBe('overdue')
+    expect(parseCityTaxFilter(['due_today', 'overdue'])).toBe('due_today')
+    expect(parseCityTaxFilter('nonsense')).toBe('all')
+    expect(parseCityTaxFilter(undefined)).toBe('all')
+    // A key that exists on every object must not pass for a filter.
+    expect(parseCityTaxFilter('toString')).toBe('all')
+  })
+})
+
+describe('markCollectedMany', () => {
+  it('collects every due stay with one toast and reports how many it settled', () => {
+    seedReservation({ id: 'res-a', checkIn: isoDaysFromNow(-10), checkOut: isoDaysFromNow(-6) })
+    seedReservation({ id: 'res-b', checkIn: isoDaysFromNow(-9), checkOut: isoDaysFromNow(-5) })
+    const cityTax = useCityTax()
+    cityTax.markCollected('res-b', { method: 'cash' })
+    vi.clearAllMocks()
+
+    // res-b is already settled, so it is skipped rather than counted.
+    const count = cityTax.markCollectedMany(['res-a', 'res-b', 'res-missing'], { method: 'card', note: 'Desk terminal' })
+
+    expect(count).toBe(1)
+    expect(toastMock.success).toHaveBeenCalledTimes(1)
+    expect(toastMock.success).toHaveBeenCalledWith('Marked 1 stay collected')
+    const settlement = useReservationsModule().reservations.value.find(r => r.id === 'res-a')!.cityTaxSettlement!
+    expect(settlement.method).toBe('card')
+    expect(settlement.note).toBe('Desk terminal')
+  })
+
+  it('stays silent when nothing was settled', () => {
+    expect(useCityTax().markCollectedMany(['res-missing'], { method: 'cash' })).toBe(0)
+    expect(toastMock.success).not.toHaveBeenCalled()
   })
 })
