@@ -10,15 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { useCityTax } from '~/composables/useCityTax'
 import { useReservationsModule } from '~/composables/useReservationsModule'
 
-const props = defineProps<{ reservations: ReservationEntry[] }>()
+const props = defineProps<{
+  reservations: ReservationEntry[]
+  /** Shows a checkbox beside the City tax chip of every stay that still owes one (bulk collect). */
+  selectable?: boolean
+  selected?: string[]
+}>()
 
 const emit = defineEmits<{
-  openGuest: [id: string]
-  openDetail: [reservation: ReservationEntry]
-  copyId: [id: string]
+  'openGuest': [id: string]
+  'openDetail': [reservation: ReservationEntry]
+  'copyId': [id: string]
   /** Owner stay requests are actioned straight from the row (R47 mirror). */
-  approveOwnerStay: [reservation: ReservationEntry]
-  rejectOwnerStay: [reservation: ReservationEntry]
+  'approveOwnerStay': [reservation: ReservationEntry]
+  'rejectOwnerStay': [reservation: ReservationEntry]
+  'update:selected': [ids: string[]]
 }>()
 
 const df = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -37,6 +43,29 @@ const damageProtection = useDamageProtection()
 function cityTaxRow(reservationId: string) {
   return cityTax.rows.value.find(row => row.reservation.id === reservationId) ?? null
 }
+
+// Bulk collect: the checkbox lives in the City tax cell, so the table keeps its columns.
+const selectedIds = computed(() => props.selected ?? [])
+
+/** Only a stay whose levy is still due can be picked: a settled or channel-collected one has nothing to collect. */
+function canSelect(reservationId: string): boolean {
+  return Boolean(props.selectable) && cityTaxRow(reservationId)?.assessment.status === 'due'
+}
+
+function toggleSelected(reservationId: string) {
+  emit('update:selected', selectedIds.value.includes(reservationId)
+    ? selectedIds.value.filter(id => id !== reservationId)
+    : [...selectedIds.value, reservationId])
+}
+
+// reka-ui CheckboxRoot ignores external :model-value changes after the first render, so a
+// cleared selection (a new filter, a finished collect) would leave the boxes ticked.
+// Re-mounting them with a new key is the same fix the finance tables use.
+const checkboxKey = ref(0)
+watch(() => selectedIds.value.length, (length) => {
+  if (length === 0)
+    checkboxKey.value++
+})
 
 // Extensions: a stay that was extended, and the direct booking that carries
 // an OTA stay's added nights (looked up in the full store, not the filtered page).
@@ -111,7 +140,7 @@ const sortableColumns: Array<{ key: SortKey, label: string, align?: 'right', wid
   { key: 'channel', label: 'Channel', width: 'w-28' },
   { key: 'total', label: 'Total', align: 'right', width: 'w-32' },
   { key: 'status', label: 'Status', width: 'w-36' },
-  { key: 'cityTax', label: 'City tax', width: 'w-32' },
+  { key: 'cityTax', label: 'City tax', width: 'w-44' },
   { key: 'protection', label: 'Protection', width: 'w-36' },
 ]
 
@@ -495,12 +524,23 @@ const pageNumbers = computed(() => {
               <!-- City tax and damage protection each get their own column, so the
                  Status column only ever says where the booking stands. -->
               <td class="px-4 py-3" data-testid="cell-city-tax">
-                <CityTaxStatusChip
-                  v-if="cityTaxRow(r.id)"
-                  class="whitespace-nowrap"
-                  :status="cityTaxRow(r.id)!.assessment.status"
-                  :stage="cityTaxRow(r.id)!.stage"
-                />
+                <div class="flex items-center gap-2">
+                  <span v-if="canSelect(r.id)" class="inline-flex" @click.stop>
+                    <Checkbox
+                      :key="`${r.id}-${checkboxKey}`"
+                      :model-value="selectedIds.includes(r.id)"
+                      :aria-label="`Select ${r.guestName} for city tax collection`"
+                      data-testid="city-tax-select"
+                      @update:model-value="toggleSelected(r.id)"
+                    />
+                  </span>
+                  <CityTaxStatusChip
+                    v-if="cityTaxRow(r.id)"
+                    class="whitespace-nowrap"
+                    :status="cityTaxRow(r.id)!.assessment.status"
+                    :stage="cityTaxRow(r.id)!.stage"
+                  />
+                </div>
               </td>
               <td class="px-4 py-3" data-testid="cell-protection">
                 <DamageProtectionStatusChip

@@ -1,17 +1,21 @@
 <script setup lang="ts">
 import type { DateRange } from 'reka-ui'
-import type { ReservationEntry } from '~/components/reservations/data/reservations'
+import type { CityTaxPaymentMethod, ReservationEntry } from '~/components/reservations/data/reservations'
+import type { CityTaxFilter } from '~/composables/useCityTax'
 import { CalendarDate, DateFormatter, getLocalTimeZone } from '@internationalized/date'
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import BaseSearchInput from '~/components/base/SearchInput.vue'
 import { listings } from '~/components/listings/data/listings'
 import ChannelRequestsList from '~/components/reservations/ChannelRequestsList.vue'
+import CityTaxCollectDialog from '~/components/reservations/CityTaxCollectDialog.vue'
+import { formatCityTaxTotals } from '~/components/reservations/data/city-tax'
 import { reservationStatusLabels } from '~/components/reservations/data/reservations'
 import NewReservationDialog from '~/components/reservations/NewReservationDialog.vue'
 import ReservationDetailSheet from '~/components/reservations/ReservationDetailSheet.vue'
 import ReservationTable from '~/components/reservations/ReservationTable.vue'
 import { useChannelRequests } from '~/composables/useChannelRequests'
+import { CITY_TAX_FILTER_LABELS, isCollectableFilter, parseCityTaxFilter, useCityTax } from '~/composables/useCityTax'
 import { useOwnerStayApprovals } from '~/composables/useOwnerStayApprovals'
 import { useOwnerStays } from '~/composables/useOwnerStays'
 import { useReservationsModule } from '~/composables/useReservationsModule'
@@ -29,6 +33,62 @@ const {
 } = useReservationsModule()
 
 const df = new DateFormatter('en-GB', { dateStyle: 'medium' })
+
+// --- City tax -----------------------------------------------------------------
+// The levy is worked from this list: filter to what is owed, pick stays, collect.
+// The filter lives in the URL (`?cityTax=overdue`), which is where the bell alerts land.
+const cityTax = useCityTax()
+
+const cityTaxFilter = computed<CityTaxFilter>({
+  get: () => parseCityTaxFilter(route.query.cityTax),
+  set: (value) => {
+    router.replace({ query: { ...route.query, cityTax: value === 'all' ? undefined : value } })
+  },
+})
+
+// There is no scheduler in this app, so catch up on open, as the other alert sources do.
+onMounted(() => cityTax.emitCityTaxAlerts())
+
+const cityTaxOptions = computed(() => (Object.keys(CITY_TAX_FILTER_LABELS) as CityTaxFilter[]).map(value => ({
+  value,
+  label: value === 'all' ? 'Any city tax' : `${CITY_TAX_FILTER_LABELS[value]} (${cityTax.rowsFor(value).length})`,
+})))
+
+/** The rows the table shows: the other filters first, then the City tax one on top. */
+const tableReservations = computed(() => {
+  if (cityTaxFilter.value === 'all')
+    return filteredReservations.value
+  const ids = new Set(cityTax.rowsFor(cityTaxFilter.value).map(row => row.reservation.id))
+  return filteredReservations.value.filter(r => ids.has(r.id))
+})
+
+const selectedStays = ref<string[]>([])
+const bulkOpen = ref(false)
+watch(cityTaxFilter, () => {
+  selectedStays.value = []
+})
+
+/** The listed stays that still owe a collection: what the checkboxes and Select all cover. */
+const collectableIds = computed(() => {
+  if (!isCollectableFilter(cityTaxFilter.value))
+    return []
+  const listed = new Set(tableReservations.value.map(r => r.id))
+  return cityTax.rowsFor(cityTaxFilter.value)
+    .filter(row => row.assessment.status === 'due' && listed.has(row.reservation.id))
+    .map(row => row.reservation.id)
+})
+
+// Per currency, never blended: formatCityTaxTotals prints one entry per currency.
+const bulkAmountLabel = computed(() => formatCityTaxTotals(
+  cityTax.rowsFor(cityTaxFilter.value)
+    .filter(row => selectedStays.value.includes(row.reservation.id))
+    .flatMap(row => row.assessment.totals),
+))
+
+function bulkCollect(payload: { method: CityTaxPaymentMethod, note?: string }) {
+  cityTax.markCollectedMany(selectedStays.value, payload)
+  selectedStays.value = []
+}
 
 const createOpen = ref(false)
 const detailReservation = ref<ReservationEntry | null>(null)
@@ -68,7 +128,7 @@ function openGuest(id: string) {
 const exporting = ref(false)
 
 async function exportReservations() {
-  const rows = filteredReservations.value
+  const rows = tableReservations.value
   if (!rows.length) {
     toast.info('No reservations to export with the current filters.')
     return
@@ -194,6 +254,7 @@ function clearAllFilters() {
   filters.value.dateTo = ''
   filters.value.dateBasis = 'stay'
   filters.value.extension = 'all'
+  cityTaxFilter.value = 'all'
   selectedListingTags.value = []
   listingSearch.value = ''
 }
@@ -204,7 +265,8 @@ const hasActiveFilters = computed(() =>
   || filters.value.listings.length > 0
   || filters.value.dateFrom
   || filters.value.dateTo
-  || filters.value.extension !== 'all',
+  || filters.value.extension !== 'all'
+  || cityTaxFilter.value !== 'all',
 )
 
 const dateFilterLabel = computed(() => {
@@ -300,7 +362,7 @@ function confirmRejectOwnerStay() {
           Reservations
         </h1>
         <p class="text-sm text-muted-foreground">
-          {{ filteredReservations.length }} reservations
+          {{ tableReservations.length }} reservations
         </p>
       </div>
       <div class="flex items-center gap-2">
@@ -384,6 +446,18 @@ function confirmRejectOwnerStay() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem v-for="opt in extensionOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select v-model="cityTaxFilter">
+        <SelectTrigger class="w-[190px]" data-testid="filter-city-tax">
+          <Icon name="lucide:landmark" class="size-4 text-muted-foreground" />
+          <SelectValue placeholder="City tax" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="opt in cityTaxOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </SelectItem>
         </SelectContent>
@@ -566,8 +640,54 @@ function confirmRejectOwnerStay() {
       </Button>
     </div>
 
+    <!-- City tax summary: only while the City tax filter is on, so the list stays plain otherwise. -->
+    <div
+      v-if="cityTaxFilter !== 'all'"
+      class="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-muted/30 px-4 py-3"
+      data-testid="city-tax-summary"
+    >
+      <div>
+        <p class="text-xs text-muted-foreground">
+          Outstanding
+        </p>
+        <p class="text-sm font-semibold tabular-nums" data-testid="city-tax-outstanding">
+          {{ formatCityTaxTotals(cityTax.outstandingTotal.value) }}
+        </p>
+      </div>
+      <div>
+        <p class="text-xs text-muted-foreground">
+          Collected
+        </p>
+        <p class="text-sm font-semibold tabular-nums" data-testid="city-tax-collected">
+          {{ formatCityTaxTotals(cityTax.collectedTotal.value) }}
+        </p>
+      </div>
+      <Button
+        v-if="collectableIds.length > 0 && selectedStays.length < collectableIds.length"
+        variant="outline"
+        size="sm"
+        class="ml-auto"
+        data-testid="city-tax-select-all"
+        @click="selectedStays = [...collectableIds]"
+      >
+        Select all ({{ collectableIds.length }})
+      </Button>
+    </div>
+
+    <div v-if="selectedStays.length > 0" class="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2" data-testid="city-tax-bulk-bar">
+      <span class="text-sm">{{ selectedStays.length }} selected · {{ bulkAmountLabel }}</span>
+      <Button size="sm" variant="ghost" @click="selectedStays = []">
+        Clear
+      </Button>
+      <Button size="sm" data-testid="city-tax-bulk-collect" @click="bulkOpen = true">
+        Mark collected
+      </Button>
+    </div>
+
     <ReservationTable
-      :reservations="filteredReservations"
+      v-model:selected="selectedStays"
+      :reservations="tableReservations"
+      :selectable="isCollectableFilter(cityTaxFilter)"
       @open-guest="openGuest"
       @open-detail="openDetail"
       @copy-id="copyId"
@@ -590,6 +710,8 @@ function confirmRejectOwnerStay() {
     <NewReservationDialog
       v-model:open="createOpen"
     />
+
+    <CityTaxCollectDialog v-model:open="bulkOpen" :amount-label="bulkAmountLabel" @confirm="bulkCollect" />
 
     <!-- Reject an owner stay request straight from the reservations row. -->
     <Dialog :open="!!rejectTarget" @update:open="(v: boolean) => { if (!v) rejectTarget = null }">

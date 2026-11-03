@@ -372,9 +372,10 @@ export const alertRouteMap: Partial<Record<AlertType, string>> = {
   GUEST_REGISTRATION_OVERDUE: '/guest-registration',
   GUEST_REGISTRATION_SUBMITTED: '/guest-registration',
   GUEST_REGISTRATION_FAILED: '/guest-registration',
-  CITY_TAX_COLLECTION_UPCOMING: '/city-tax',
-  CITY_TAX_COLLECTION_DUE: '/city-tax',
-  CITY_TAX_COLLECTION_MISSED: '/city-tax',
+  // The City tax filter on the Reservations list (see `parseCityTaxFilter`).
+  CITY_TAX_COLLECTION_UPCOMING: '/reservations?cityTax=upcoming',
+  CITY_TAX_COLLECTION_DUE: '/reservations?cityTax=due_today',
+  CITY_TAX_COLLECTION_MISSED: '/reservations?cityTax=overdue',
 }
 
 function registrationProviderName(provider?: string): string {
