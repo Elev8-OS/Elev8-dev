@@ -128,10 +128,18 @@ every spec resets `feeTaxItems` / `taxSets` / `assignments` by hand. Composable 
 use dates **relative to today**, because the alert stages read the current day.
 
 **NOT implemented (intentionally out of scope):** remittance reporting to the municipality;
-guest-facing payment (no payment request link, no guide line, no invoice line); any
+guest-facing payment (the guide is not in this repo, so there is no Pay now and no guide line; no invoice line); any
 accounting push (`useIntegrationAccounts.cityTax` keeps its separate meaning); a FOURTH age band
 (a "12 to 17" tier would need its own guest counts on `ReservationEntry`, which no channel
 supplies here — the three bands' boundaries are configurable, their number is not); classifying
 a real guest by age (no age reaches a reservation, see the ⚠️ above); per-guest exemptions beyond
 those three categories plus a manual waive; reading
 from a real channel API; and any background job (alerts come from `emitCityTaxAlerts()`).
+
+**Booking confirmation carries no city tax.** `useBookingConfirmationFlow` neither names the levy
+in the message nor creates a City tax payment request, because the amount is only an estimate until
+verification completes. The PRD (Claude Docs, "City Tax Collection") puts the request at the guest's
+tap on Pay now in the guide, with a 0% fee and no email, and cancels it on Mark collected, Waive or a
+cancelled stay. None of that exists here: this repo has no guide and no producer of a `city_tax`
+request, so `markCollected` / `waive` do not touch payment requests. `InboxPaymentCard` still
+recognises a request titled "City tax" for any that is created later.

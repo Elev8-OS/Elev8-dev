@@ -120,7 +120,7 @@ paid).
 **Payment method** (`ReservationPaymentMethod`: `payment_link`, `bank_transfer`, `cash`; stored on `ReservationEntry.paymentMethod`):
 - `NewReservationDialog` Status and Source: an **inquiry** picks link (default), bank or cash. A **Confirmed** booking (stored `unverified`, paid in full at creation, `paidAt` set) records bank or cash only. The select follows the status (`paymentMethodOptions`), and switching status resets the default.
 - Only a payment link sends a link. Bank/cash send nothing. A Confirmed booking sends a **booking confirmation** (WhatsApp/Email, no Guest Inbox box) with `confirmationOnly`: no payment request, no card, text "fully confirmed and paid". Labels follow (`sendActionLabel`).
-- ⚠️ The dialog always passes `purpose: 'booking'` (Edit does for an inquiry). Left unset, `useBookingConfirmationFlow` guesses city tax from the assessment and sends a city tax link (10% of the total) with a "Booking Confirmed!" text.
+- `useBookingConfirmationFlow` bills the booking only. City tax is never named or billed in the confirmation (no `purpose` option, no assessment): its payment request belongs to the guide's Pay now tap (`docs/claude/city-tax.md`).
 - Expiry (hours) shows only for inquiry + link and must be at least 1 hour. A link inquiry also needs a price above 0 (`price` error, opens Rooms & Price).
 - Validation and the focus order live in `data/new-reservation-validation.ts` (`validateNewReservation`, `NEW_RESERVATION_FIELD_ORDER`, spec `tests/lib/new-reservation-validation.spec.ts`). `focusFirstError` opens the section and focuses the `data-field` wrapper.
 - Closing the dialog (Cancel, X, after a save) calls `reset()`; the prefill from the Cockpit is applied on the next open.

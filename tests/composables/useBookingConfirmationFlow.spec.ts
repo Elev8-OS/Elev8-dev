@@ -59,32 +59,6 @@ describe('useBookingConfirmationFlow', () => {
       expect(text).toContain('Total: IDR 2,500,000')
       expect(text).toContain('https://pay.elev8.co/r/pr-idr-1')
     })
-
-    it('formats city tax collection text with confirmed accommodation and local tax link', () => {
-      const text = generateBookingConfirmationText({
-        guestName: 'Elena Rostova',
-        listingName: 'Villa Seminyak Paradise',
-        reservationId: 'res-ct-99',
-        checkIn: '2026-10-10',
-        checkOut: '2026-10-15',
-        nights: 5,
-        guestCount: 2,
-        totalPrice: 2310,
-        currency: 'EUR',
-        paymentLink: 'https://pay.elev8.co/r/pr-ct-99',
-        purpose: 'city_tax',
-        cityTaxAmount: 231,
-        cityTaxCurrency: 'EUR',
-        cityTaxAuthority: 'Badung Regency',
-      })
-
-      expect(text).toContain('🎉 Booking Confirmed!')
-      expect(text).toContain('Accommodation: Confirmed')
-      expect(text).toContain('Mandatory Local City Tax (Badung Regency)')
-      expect(text).toContain('EUR 231.00')
-      expect(text).toContain('Secure Payment Link (City Tax)')
-      expect(text).toContain('https://pay.elev8.co/r/pr-ct-99')
-    })
   })
 
   describe('sendBookingConfirmationWithPaymentLink', () => {
@@ -176,72 +150,11 @@ describe('useBookingConfirmationFlow', () => {
       )
     })
 
-    it('sends Booking Confirmed with dedicated City Tax payment link when purpose is city_tax', () => {
+    it('never mentions or bills city tax, even for a stay whose levy is due and host-collected (lst-3)', () => {
       const { createReservation } = useReservationsModule()
       const { messages } = useInbox()
       const { requests } = usePaymentRequests()
-
-      const resResult = createReservation({
-        guestName: 'Sophia Loren',
-        guestEmail: 'sophia@example.com',
-        listingId: 'lst-1',
-        listingName: 'Villa Sunset Bali',
-        channel: 'Booking.com',
-        checkIn: '2026-12-10',
-        checkOut: '2026-12-15',
-        nights: 5,
-        guestCount: 2,
-        totalPrice: 2000,
-        currency: 'EUR',
-        status: 'verified',
-      })
-      const resId = resResult.id!
-
-      const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
-
-      const result = sendBookingConfirmationWithPaymentLink({
-        reservationId: resId,
-        guestName: 'Sophia Loren',
-        guestEmail: 'sophia@example.com',
-        listingId: 'lst-1',
-        listingName: 'Villa Sunset Bali',
-        checkIn: '2026-12-10',
-        checkOut: '2026-12-15',
-        nights: 5,
-        guestCount: 2,
-        totalPrice: 2000,
-        currency: 'EUR',
-        channel: 'Booking.com',
-        purpose: 'city_tax',
-        cityTaxAmount: 200,
-        cityTaxCurrency: 'EUR',
-        cityTaxAuthority: 'Badung Regency',
-      })
-
-      expect(result.success).toBe(true)
-      expect(result.isCityTax).toBe(true)
-
-      // Payment request created for city tax amount, not room total
-      const pr = requests.value.find(r => r.id === result.paymentRequestId)
-      expect(pr).toBeDefined()
-      expect(pr?.amount).toBe(200)
-      expect(pr?.currency).toBe('EUR')
-      expect(pr?.title).toContain('City Tax')
-
-      // Message confirms accommodation is confirmed and requests local tax
-      const convMsgs = messages.value[result.conversationId]
-      const lastMsg = convMsgs[convMsgs.length - 1]
-      expect(lastMsg.content).toContain('🎉 Booking Confirmed!')
-      expect(lastMsg.content).toContain('Accommodation: Confirmed')
-      expect(lastMsg.content).toContain('Mandatory Local City Tax (Badung Regency)')
-      expect(lastMsg.content).toContain('EUR 200.00')
-      expect(lastMsg.paymentRequest?.title).toContain('City Tax')
-      expect(lastMsg.paymentRequest?.amount).toBe(200)
-    })
-
-    it('automatically assesses and requests City Tax on new reservation for lst-3 without explicit purpose', () => {
-      const { createReservation } = useReservationsModule()
-      const { messages } = useInbox()
+      const cityTaxRequestsBefore = requests.value.filter(r => r.category === 'city_tax').length
       const { sendBookingConfirmationWithPaymentLink } = useBookingConfirmationFlow()
 
       const resResult = createReservation({
@@ -282,18 +195,14 @@ describe('useBookingConfirmationFlow', () => {
       })
 
       expect(result.success).toBe(true)
-      expect(result.isCityTax).toBe(true)
 
       const convMsgs = messages.value[result.conversationId]
       const lastMsg = convMsgs[convMsgs.length - 1]
       expect(lastMsg.content).toContain('🎉 Booking Confirmed!')
-      expect(lastMsg.content).toContain('Accommodation: Confirmed')
-      expect(lastMsg.content).toContain('Mandatory Local City Tax (Kurverwaltung)')
-      expect(lastMsg.content).toContain('EUR 12.00')
-      expect(lastMsg.content).toContain('Secure Payment Link (City Tax)')
-      expect(lastMsg.paymentRequest?.title).toContain('City Tax')
-      expect(lastMsg.paymentRequest?.amount).toBe(12)
-      expect(lastMsg.paymentRequest?.currency).toBe('EUR')
+      expect(lastMsg.content).not.toMatch(/city tax/i)
+      expect(lastMsg.content).not.toContain('Mandatory Local')
+      // The levy is billed when the guest taps Pay now in the guide, never here
+      expect(requests.value.filter(r => r.category === 'city_tax')).toHaveLength(cityTaxRequestsBefore)
     })
 
     it('sends Reservation Reserved text when reservation status is inquiry', () => {
@@ -334,7 +243,6 @@ describe('useBookingConfirmationFlow', () => {
       })
 
       expect(result.success).toBe(true)
-      expect(result.isCityTax).toBe(false)
 
       const convMsgs = messages.value[result.conversationId]
       const lastMsg = convMsgs[convMsgs.length - 1]

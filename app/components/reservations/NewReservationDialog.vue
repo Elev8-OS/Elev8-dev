@@ -586,9 +586,6 @@ function handleSubmit(force = false) {
       channel: 'Direct',
       status: status.value,
       confirmationOnly: isConfirmed.value,
-      // This dialog always bills the booking. Left unset, the flow guesses city tax from the assessment
-      // and would send a city tax link (10% of the total) instead of the booking amount.
-      purpose: 'booking',
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
       expiresInHours: status.value === 'inquiry' ? inquiryExpiryHours.value : 24,

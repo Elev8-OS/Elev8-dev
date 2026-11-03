@@ -27,8 +27,9 @@ describe('new reservation dialog', () => {
     expect(close.slice(0, 300)).toContain('reset()')
   })
 
-  it('always bills the booking, never a guessed city tax link', () => {
-    expect(dialog).toContain('purpose: \'booking\'')
+  it('bills only the booking, city tax is never part of the confirmation', () => {
+    expect(dialog).not.toContain('purpose:')
+    expect(dialog).not.toContain('cityTax')
   })
 
   it('a confirmed booking records bank or cash, an inquiry may also pick a link', () => {
@@ -51,7 +52,7 @@ describe('new reservation dialog', () => {
 
 describe('edit reservation dialog', () => {
   it('an inquiry link bills the booking and needs an expiry of an hour', () => {
-    expect(edit).toContain('purpose: status.value === \'inquiry\' ? \'booking\' : undefined')
+    expect(edit).not.toContain('purpose:')
     expect(edit).toContain('inquiryExpiryHours.value) >= 1')
   })
 })

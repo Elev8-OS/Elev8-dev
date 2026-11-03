@@ -350,8 +350,6 @@ function save() {
       currency: currency.value === 'IDR' ? 'IDR' : 'USD',
       channel: props.reservation.channel || 'Direct',
       status: status.value,
-      // An inquiry's link bills the booking; left unset the flow may guess a city tax link instead.
-      purpose: status.value === 'inquiry' ? 'booking' : undefined,
       paymentRequestId: props.reservation.paymentRequestId,
       feeMode: paymentFeeMode.value,
       customFeePercentage: paymentFeeMode.value === 'manual' ? paymentCustomFeePct.value : undefined,
