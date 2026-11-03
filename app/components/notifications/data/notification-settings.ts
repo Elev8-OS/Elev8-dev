@@ -53,6 +53,14 @@ const TASK_TYPES: AlertType[] = [
   'TASK_OVERDUE',
 ]
 
+// Staff who work the Reservations list collect the levy, so these also reach the
+// Guest Experience Manager without opening the rest of FINANCE_TYPES to them.
+const CITY_TAX_TYPES: AlertType[] = [
+  'CITY_TAX_COLLECTION_UPCOMING',
+  'CITY_TAX_COLLECTION_DUE',
+  'CITY_TAX_COLLECTION_MISSED',
+]
+
 const FINANCE_TYPES: AlertType[] = [
   'STRIPE_DISCONNECTED',
   'DEPOSIT_FAILED_AT_CHECKIN',
@@ -66,9 +74,7 @@ const FINANCE_TYPES: AlertType[] = [
   'LEXWARE_TAX_MAPPING_HOLD',
   'LEXWARE_CREDIT_NOTE_CREATED',
   'LEXWARE_NON_EUR_EXCLUDED',
-  'CITY_TAX_COLLECTION_UPCOMING',
-  'CITY_TAX_COLLECTION_DUE',
-  'CITY_TAX_COLLECTION_MISSED',
+  ...CITY_TAX_TYPES,
   'PROTECTION_CHOICE_MISSING',
   'DEPOSIT_DECISION_DUE',
   'DEPOSIT_DECISION_OVERDUE',
@@ -225,7 +231,7 @@ function buildFullPolicy(): RoleNotifications {
 // - Housekeeping + Housekeeping Manager cover guest activity, cleaning,
 //   tasks, and smart locks with in-app + mobile
 // - Guest Experience Manager covers guest activity, calls, reviews,
-//   upsells, and guest-guide (all part of "system") with in-app + email
+//   upsells, guest-guide (all part of "system") and city tax with in-app + email
 // - Finance/HR covers finance and operational task alerts with in-app + email
 // - Other operational staff receive only their operational alert with in-app
 // - Owner defaults never include OWNER_* types
@@ -237,7 +243,7 @@ const ROLE_DEFAULTS: Record<RoleId, RoleNotifications> = {
     ['in_app', 'email'],
   ),
   'role-guest-experience-manager': buildPolicy(
-    [...GUEST_ACTIVITY_TYPES, ...CALL_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...GUEST_GUIDE_TYPES, ...EMAIL_TYPES],
+    [...GUEST_ACTIVITY_TYPES, ...CALL_TYPES, ...REVIEW_TYPES, ...UPSELL_TYPES, ...GUEST_GUIDE_TYPES, ...EMAIL_TYPES, ...CITY_TAX_TYPES],
     ['in_app', 'email'],
   ),
   'role-quality-manager': buildPolicy(

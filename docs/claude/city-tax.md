@@ -79,6 +79,9 @@ missed. The rate already lived on `ListingFeeTaxItem`; what was missing was the 
 **Alerts:** `CITY_TAX_COLLECTION_UPCOMING` (INFO, **off by default** behind the
 `notifyOnBooking` switch on `/settings/fees-taxes`), `CITY_TAX_COLLECTION_DUE` (WARNING,
 arrival day through the stay) and `CITY_TAX_COLLECTION_MISSED` (CRITICAL, after check-out).
+They live in `CITY_TAX_TYPES`, spread into `FINANCE_TYPES` and also given to the Guest Experience
+Manager (who works the Reservations list) without opening the other finance alerts to that role
+(`tests/components/notifications/city-tax-role-defaults.spec.ts`).
 ⚠️ All three must stay listed in `FINANCE_TYPES` in `notification-settings.ts`: roles build
 `enabledAlertTypes` from those categories, and `isAlertVisibleToUser` drops anything
 missing, so an uncategorised type is invisible in the bell. Settling resolves any live
