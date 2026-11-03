@@ -62,7 +62,7 @@ function reachPlanSelected(model: 'PMS_CM' | 'PMS_ONLY' | 'MIGRATION' = 'PMS_CM'
   })
   ob.skipBranding()
   ob.selectModel(model)
-  ob.selectPlan({ pricingModel: 'per_unit', planCode: 'PER_UNIT_GROWTH', billingCycle: 'monthly', unitCount: 8 })
+  ob.selectPlan({ pricingModel: 'per_unit', planCode: null, billingCycle: 'monthly' })
   return ob
 }
 
@@ -138,7 +138,8 @@ describe('useOnboarding — account and wizard', () => {
 
   it('drops a stranded plan when the tenant changes model', () => {
     const ob = reachPlanSelected('PMS_CM')
-    expect(ob.subscription.value.planCode).toBe('PER_UNIT_GROWTH')
+    ob.selectPlan({ pricingModel: 'per_booking', planCode: 'PER_BOOKING_STARTER', billingCycle: 'monthly' })
+    expect(ob.subscription.value.planCode).toBe('PER_BOOKING_STARTER')
     ob.selectModel('PMS_ONLY')
     expect(ob.subscription.value.planCode).toBeNull()
     expect(ob.subscription.value.pricingModel).toBeNull()
@@ -155,10 +156,11 @@ describe('useOnboarding — promo', () => {
   it('applies a valid code and updates the total', async () => {
     stubFetch()
     const ob = reachPlanSelected()
+    ob.selectPlan({ pricingModel: 'per_booking', planCode: 'PER_BOOKING_STARTER', billingCycle: 'monthly' })
     const result = await ob.applyPromo('LAUNCH50')
     expect(result.valid).toBe(true)
-    expect(ob.orderSummary.value!.subtotal).toBe(8 * 59)
-    expect(ob.orderSummary.value!.total).toBe((8 * 59) / 2)
+    expect(ob.orderSummary.value!.subtotal).toBe(695)
+    expect(ob.orderSummary.value!.total).toBe(695 / 2)
     expect(ob.subscription.value.promoCode).toBe('LAUNCH50')
   })
 
@@ -175,9 +177,10 @@ describe('useOnboarding — promo', () => {
   it('removes an applied code and restores the total', async () => {
     stubFetch()
     const ob = reachPlanSelected()
+    ob.selectPlan({ pricingModel: 'per_booking', planCode: 'PER_BOOKING_STARTER', billingCycle: 'monthly' })
     await ob.applyPromo('LAUNCH50')
     ob.removePromo()
-    expect(ob.orderSummary.value!.total).toBe(8 * 59)
+    expect(ob.orderSummary.value!.total).toBe(695)
     expect(ob.subscription.value.promoCode).toBeNull()
   })
 
@@ -188,7 +191,7 @@ describe('useOnboarding — promo', () => {
     expect(ob.appliedPromo.value?.code).toBe('UNITS20')
 
     // UNITS20 is per unit only.
-    ob.selectPlan({ pricingModel: 'per_booking', planCode: 'PER_BOOKING_STARTER', billingCycle: 'monthly', unitCount: 8 })
+    ob.selectPlan({ pricingModel: 'per_booking', planCode: 'PER_BOOKING_STARTER', billingCycle: 'monthly' })
     const result = await ob.revalidatePromo()
     expect(result!.valid).toBe(false)
     expect(result!.reason).toBe('wrong_pricing_model')
@@ -199,7 +202,7 @@ describe('useOnboarding — promo', () => {
     stubFetch()
     const ob = reachPlanSelected()
     await ob.applyPromo('LAUNCH50')
-    ob.selectPlan({ pricingModel: 'per_unit', planCode: 'PER_UNIT_PRO', billingCycle: 'yearly', unitCount: 25 })
+    ob.selectPlan({ pricingModel: 'per_unit', planCode: null, billingCycle: 'yearly' })
     const result = await ob.revalidatePromo()
     expect(result!.valid).toBe(true)
     expect(ob.appliedPromo.value?.code).toBe('LAUNCH50')
@@ -223,6 +226,16 @@ describe('useOnboarding — payment', () => {
     expect(ob.subscription.value.stripePaymentMethodId).toBeTruthy()
     expect(ob.subscription.value.activationSource).toBe('stripe_payment')
     expect(ob.status.value).toBe('integration_pending')
+  })
+
+  it('only saves the card on per unit and says nothing was charged', async () => {
+    stubFetch()
+    const ob = reachPlanSelected()
+    expect(ob.orderSummary.value!.chargedAfterActivation).toBe(true)
+    const result = await settle(() => ob.submitPayment())
+    expect(result.message).toBe('Your card is saved. Nothing was charged today.')
+    expect(ob.subscription.value.amountDue).toBe(0)
+    expect(ob.subscription.value.stripePaymentMethodId).toBeTruthy()
   })
 
   it('activates a fully discounted order as promo_full_discount, still with a card', async () => {

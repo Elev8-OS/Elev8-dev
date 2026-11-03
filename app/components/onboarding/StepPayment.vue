@@ -2,7 +2,7 @@
 import type { ComponentPublicInstance, Ref } from 'vue'
 import { nextTick } from 'vue'
 import { toast } from 'vue-sonner'
-import { formatUsd, PER_UNIT_CONTRACT_MONTHS, pmsModelOption } from '~/components/onboarding/data/onboarding'
+import { formatUsd, PER_UNIT_CHARGE_DELAY_HOURS, PER_UNIT_CONTRACT_MONTHS, pmsModelOption } from '~/components/onboarding/data/onboarding'
 
 const emit = defineEmits<{ (e: 'next'): void, (e: 'back'): void, (e: 'skipCard'): void }>()
 
@@ -79,6 +79,27 @@ const summary = computed(() => orderSummary.value)
 const model = computed(() => state.value.pmsModel)
 const hasFailed = computed(() => status.value === 'payment_failed')
 
+/** Per unit only saves the card. The first invoice is charged after units are activated. */
+const savesCardOnly = computed(() => Boolean(summary.value?.chargedAfterActivation))
+
+/**
+ * Monthly per unit is a 12 month commitment, so both statements need a tick before the
+ * card is saved. Yearly and per booking show neither.
+ */
+const needsCommitment = computed(() => savesCardOnly.value && state.value.subscription.billingCycle === 'monthly')
+const promoEffect = computed(() => {
+  const promo = appliedPromo.value
+  if (!promo)
+    return ''
+  const amount = promo.discountType === 'percent' ? `${promo.discountValue}%` : formatUsd(promo.discountValue)
+  return promo.duration === 'first_invoice'
+    ? `Your code takes ${amount} off your first invoice.`
+    : `Your code takes ${amount} off every invoice.`
+})
+const commitMonthly = ref(false)
+const commitEarlyCancel = ref(false)
+const commitmentAccepted = computed(() => !needsCommitment.value || (commitMonthly.value && commitEarlyCancel.value))
+
 async function onApply(): Promise<void> {
   if (!codeInput.value.trim())
     return
@@ -102,6 +123,8 @@ function onRemove(): void {
 }
 
 async function onPay(): Promise<void> {
+  if (!commitmentAccepted.value)
+    return
   paymentError.value = ''
   const result = await submitPayment({ declineCard: simulateDecline.value })
   if (!result.ok) {
@@ -237,6 +260,15 @@ async function onPay(): Promise<void> {
           </div>
         </div>
 
+        <!-- Per unit: nothing is charged at signup -->
+        <div v-if="savesCardOnly" class="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-foreground">
+          <Icon name="lucide:info" class="mt-0.5 size-4 shrink-0 text-primary" />
+          <p>
+            You won't be charged today. Once you activate your units, we'll wait
+            {{ PER_UNIT_CHARGE_DELAY_HOURS }} hours, then charge your card automatically.
+          </p>
+        </div>
+
         <!-- Promo field -->
         <div class="grid gap-2 border-t border-border/60 pt-4">
           <Label for="ob-promo" class="text-xs font-medium">Promo code</Label>
@@ -274,59 +306,81 @@ async function onPay(): Promise<void> {
 
         <!-- Price breakdown -->
         <dl class="flex flex-col gap-2 border-t border-border/60 pt-4 text-xs">
-          <template v-if="summary.addOns.length">
+          <template v-if="!savesCardOnly">
             <div class="flex justify-between gap-2">
               <dt class="text-muted-foreground">
-                Plan
+                Subtotal
               </dt>
               <dd class="tabular-nums font-medium">
-                {{ formatUsd(summary.planAmount) }}
+                {{ formatUsd(summary.subtotal) }}
               </dd>
             </div>
-            <div v-for="addOn in summary.addOns" :key="addOn.name" class="flex justify-between gap-2">
-              <dt class="text-muted-foreground">
-                {{ addOn.name }}
-              </dt>
+            <div v-if="summary.discount > 0" class="flex justify-between gap-2 text-green-700">
+              <dt>Discount, {{ summary.promoCode }}</dt>
               <dd class="tabular-nums font-medium">
-                {{ formatUsd(addOn.amount) }}
+                -{{ formatUsd(summary.discount) }}
               </dd>
             </div>
           </template>
-          <div class="flex justify-between gap-2">
-            <dt class="text-muted-foreground">
-              Subtotal
-            </dt>
-            <dd class="tabular-nums font-medium">
-              {{ formatUsd(summary.subtotal) }}
-            </dd>
-          </div>
-          <div v-if="summary.discount > 0" class="flex justify-between gap-2 text-green-700">
-            <dt>Discount, {{ summary.promoCode }}</dt>
-            <dd class="tabular-nums font-medium">
-              -{{ formatUsd(summary.discount) }}
-            </dd>
-          </div>
           <div class="flex justify-between gap-2 border-t border-border/60 pt-2 text-sm font-semibold text-foreground">
-            <dt>Total due today</dt>
+            <dt>{{ savesCardOnly ? 'Due today' : 'Total due today' }}</dt>
             <dd class="tabular-nums">
-              {{ formatUsd(summary.total) }}
+              {{ formatUsd(summary.dueToday) }}
             </dd>
           </div>
+          <!-- Per unit has no first invoice to quote yet, so say what the code will do. -->
+          <p v-if="savesCardOnly && appliedPromo" class="text-[11px] text-muted-foreground">
+            {{ promoEffect }} Nothing is taken off today because nothing is charged today.
+          </p>
         </dl>
+
+        <!-- Monthly per unit: 12 month commitment -->
+        <div v-if="needsCommitment" class="flex flex-col gap-2">
+          <div class="flex cursor-pointer items-start gap-2" @click="commitMonthly = !commitMonthly">
+            <div
+              class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+              :class="commitMonthly ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+              role="checkbox"
+              tabindex="0"
+              :aria-checked="commitMonthly"
+              aria-label="I understand this is a 12 month commitment billed monthly"
+              @keydown.space.prevent="commitMonthly = !commitMonthly"
+              @click.stop="commitMonthly = !commitMonthly"
+            >
+              <Icon v-if="commitMonthly" name="lucide:check" class="size-3" />
+            </div>
+            <span class="text-xs text-foreground">I understand this is a {{ PER_UNIT_CONTRACT_MONTHS }} month commitment billed monthly.</span>
+          </div>
+          <div class="flex cursor-pointer items-start gap-2" @click="commitEarlyCancel = !commitEarlyCancel">
+            <div
+              class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border"
+              :class="commitEarlyCancel ? 'border-primary bg-primary text-primary-foreground' : 'border-input'"
+              role="checkbox"
+              tabindex="0"
+              :aria-checked="commitEarlyCancel"
+              aria-label="I understand that cancelling early will result in a charge for the remaining contract period"
+              @keydown.space.prevent="commitEarlyCancel = !commitEarlyCancel"
+              @click.stop="commitEarlyCancel = !commitEarlyCancel"
+            >
+              <Icon v-if="commitEarlyCancel" name="lucide:check" class="size-3" />
+            </div>
+            <span class="text-xs text-foreground">I understand that cancelling early will result in a charge for the remaining contract period.</span>
+          </div>
+        </div>
 
         <div class="flex flex-col gap-1">
           <Button
             type="submit"
             size="lg"
-            :disabled="isSavingPayment"
+            :disabled="isSavingPayment || !commitmentAccepted"
             class="w-full h-11 text-sm font-medium"
           >
             <Icon v-if="isSavingPayment" name="lucide:loader-2" class="mr-2 size-4 animate-spin" />
             <Icon v-else name="lucide:lock" class="mr-2 size-4" />
-            {{ isSavingPayment ? 'Processing payment' : summary.total > 0 ? `Pay ${formatUsd(summary.total)}` : 'Activate plan' }}
+            {{ isSavingPayment ? (savesCardOnly ? 'Saving card' : 'Processing payment') : savesCardOnly ? 'Save card and continue setup' : summary.total > 0 ? `Pay ${formatUsd(summary.total)}` : 'Activate plan' }}
           </Button>
           <Button
-            v-if="summary.total === 0"
+            v-if="summary.total === 0 && !savesCardOnly"
             type="button"
             variant="ghost"
             size="sm"
@@ -337,11 +391,6 @@ async function onPay(): Promise<void> {
             Continue without saving a card
           </Button>
         </div>
-
-        <p v-if="summary.discountIsFirstInvoiceOnly && summary.nextPeriodAmount !== null" class="text-[11px] text-muted-foreground">
-          This discount covers your first invoice only. From {{ summary.nextPeriodLabel }} you pay
-          {{ formatUsd(summary.nextPeriodAmount) }}.
-        </p>
 
         <p v-if="summary.contractMonths" class="text-[11px] text-muted-foreground">
           Per unit plans run on a {{ PER_UNIT_CONTRACT_MONTHS }} month contract.

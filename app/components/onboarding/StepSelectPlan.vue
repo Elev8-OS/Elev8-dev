@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import type {
   BillingCycle,
-  PerUnitPlan,
   PricingModel,
 } from '~/components/onboarding/data/onboarding'
 import {
-  billableUnits,
   hasChannelManager,
   PER_BOOKING_PLANS,
   PER_BOOKING_REFILL_THRESHOLD,
@@ -14,11 +12,8 @@ import {
   PER_UNIT_PLANS,
   perBookingAmount,
   perBookingRate,
-  perUnitAmount,
-  perUnitPlanForUnits,
   perUnitRate,
   REVENUE_MANAGEMENT_ADDON,
-  revenueManagementAmount,
 } from '~/components/onboarding/data/onboarding'
 
 const emit = defineEmits<{ (e: 'next'): void, (e: 'back'): void }>()
@@ -28,22 +23,15 @@ const { state, selectPlan } = useOnboarding()
 const model = computed(() => state.value.pmsModel!)
 const pricingModel = ref<PricingModel>(state.value.subscription.pricingModel ?? 'per_unit')
 const billingCycle = ref<BillingCycle>(state.value.subscription.billingCycle ?? 'monthly')
-const unitCount = ref(state.value.subscription.unitCount || 1)
 const perBookingCode = ref(
   state.value.subscription.pricingModel === 'per_booking' && state.value.subscription.planCode
     ? state.value.subscription.planCode
     : PER_BOOKING_PLANS[0]?.code ?? null,
 )
 
-/** The tier follows the unit count, so a tenant cannot pick a plan they do not fit. */
-const perUnitPlan = computed(() => perUnitPlanForUnits(Math.max(1, unitCount.value)))
-const perUnitBillable = computed(() => billableUnits(Math.max(1, unitCount.value), perUnitPlan.value))
-const perUnitTotal = computed(() => perUnitAmount(Math.max(1, unitCount.value), perUnitPlan.value, billingCycle.value))
-
 const revenueManagement = ref(state.value.subscription.revenueManagement ?? false)
 /** Per booking has no billing cycle, so the add-on bills monthly there. */
 const addOnCycle = computed<BillingCycle>(() => pricingModel.value === 'per_unit' ? billingCycle.value : 'monthly')
-const addOnAmount = computed(() => revenueManagementAmount(unitCount.value, addOnCycle.value))
 
 function toggleRevenueManagement(): void {
   revenueManagement.value = !revenueManagement.value
@@ -52,18 +40,17 @@ function toggleRevenueManagement(): void {
 const selectedPerBooking = computed(() =>
   PER_BOOKING_PLANS.find(p => p.code === perBookingCode.value) ?? null)
 
-const planLabel = computed(() => pricingModel.value === 'per_unit'
-  ? `${perUnitPlan.value.name}, ${perUnitBillable.value} ${perUnitBillable.value === 1 ? 'unit' : 'units'} billed ${billingCycle.value}`
-  : selectedPerBooking.value
-    ? `${selectedPerBooking.value.name}, ${selectedPerBooking.value.quota.toLocaleString('en-US')} bookings`
-    : '')
-const planTotal = computed(() => pricingModel.value === 'per_unit'
-  ? perUnitTotal.value
-  : selectedPerBooking.value ? perBookingAmount(selectedPerBooking.value, model.value) : 0)
-const grandTotal = computed(() => planTotal.value + (revenueManagement.value ? addOnAmount.value : 0))
+/**
+ * Only a per booking package has a price at signup. Per unit is billed for the units the
+ * tenant activates later, and nobody knows that number yet, so it is never asked for.
+ */
+const packageTotal = computed(() =>
+  pricingModel.value === 'per_booking' && selectedPerBooking.value
+    ? perBookingAmount(selectedPerBooking.value, model.value)
+    : 0)
 
 const canContinue = computed(() =>
-  pricingModel.value === 'per_unit' ? unitCount.value >= 1 : Boolean(perBookingCode.value))
+  pricingModel.value === 'per_unit' ? true : Boolean(perBookingCode.value))
 
 const percent = (n: number) => `${Math.round(n * 100)}%`
 
@@ -81,23 +68,13 @@ function toggleBillingCycle(): void {
   billingCycle.value = billingCycle.value === 'yearly' ? 'monthly' : 'yearly'
 }
 
-function choosePerUnit(plan: PerUnitPlan): void {
-  if (unitCount.value < plan.minUnits) {
-    unitCount.value = plan.minUnits
-  }
-  else if (plan.maxUnits !== null && unitCount.value > plan.maxUnits) {
-    unitCount.value = plan.minUnits
-  }
-}
-
 function submit(): void {
   if (!canContinue.value)
     return
   selectPlan({
     pricingModel: pricingModel.value,
-    planCode: pricingModel.value === 'per_unit' ? perUnitPlan.value.code : perBookingCode.value!,
+    planCode: pricingModel.value === 'per_unit' ? null : perBookingCode.value!,
     billingCycle: billingCycle.value,
-    unitCount: Math.max(1, unitCount.value),
     revenueManagement: revenueManagement.value,
   })
   emit('next')
@@ -127,24 +104,11 @@ function submit(): void {
 
       <!-- ── Per unit ─────────────────────────────────────────────────── -->
       <TabsContent value="per_unit" class="mt-4 flex flex-col gap-5">
-        <!-- Top bar: Unit count input + Centered billing cycle switch -->
+        <!-- Top bar: billing cycle switch. No unit count: the tier follows the units activated later. -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
-          <div class="flex items-center gap-3">
-            <Label for="ob-units" class="text-xs font-semibold text-foreground whitespace-nowrap">
-              How many units do you run?
-            </Label>
-            <Input
-              id="ob-units"
-              v-model.number="unitCount"
-              type="number"
-              min="1"
-              class="w-24 h-9 text-sm"
-              inputmode="numeric"
-            />
-            <span class="text-xs text-muted-foreground">
-              {{ unitCount === 1 ? 'unit' : 'units' }}
-            </span>
-          </div>
+          <p class="text-xs text-muted-foreground">
+            You pay for the units you activate. The tier follows that number, so there is nothing to count today.
+          </p>
 
           <!-- Centered Monthly / Yearly Switch with reliable native button -->
           <div class="flex items-center gap-3 self-center sm:self-auto">
@@ -195,11 +159,7 @@ function submit(): void {
           <div
             v-for="plan in PER_UNIT_PLANS"
             :key="plan.code"
-            class="flex flex-col justify-between rounded-xl border p-4 shadow-xs transition-all cursor-pointer select-none"
-            :class="plan.code === perUnitPlan.code
-              ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
-              : 'border-border/80 bg-card hover:border-primary/50'"
-            @click="choosePerUnit(plan)"
+            class="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 shadow-xs"
           >
             <div>
               <!-- Plan Name & Tier Badge -->
@@ -207,16 +167,9 @@ function submit(): void {
                 <p class="text-sm font-semibold text-foreground">
                   {{ plan.name }}
                 </p>
-                <Badge
-                  v-if="plan.code === perUnitPlan.code"
-                  variant="default"
-                  class="text-[10px] font-medium px-1.5 py-0"
-                >
-                  Your tier
-                </Badge>
               </div>
               <p class="mt-0.5 text-xs text-muted-foreground">
-                {{ plan.minUnits }}{{ plan.maxUnits ? ` to ${plan.maxUnits}` : ' or more' }} units
+                Best for {{ plan.minUnits }}{{ plan.maxUnits ? ` to ${plan.maxUnits}` : ' or more' }} units
               </p>
 
               <!-- Price Block (Compact 2xl font, no split/wrapping) -->
@@ -249,7 +202,7 @@ function submit(): void {
                   </dd>
                 </div>
                 <div class="flex justify-between gap-2">
-                  <dt>Package floor</dt>
+                  <dt>Minimum billed</dt>
                   <dd class="tabular-nums font-medium text-foreground">
                     {{ plan.floor }} {{ plan.floor === 1 ? 'unit' : 'units' }}
                   </dd>
@@ -373,29 +326,8 @@ function submit(): void {
           </div>
         </div>
 
-        <!-- Per booking has no unit count above, so ask here. -->
-        <div
-          v-if="revenueManagement && pricingModel === 'per_booking'"
-          class="flex items-center gap-3 border-t border-border/60 pt-3 pl-7"
-          @click.stop
-        >
-          <Label for="ob-rm-units" class="text-xs font-semibold text-foreground whitespace-nowrap">
-            Units to manage
-          </Label>
-          <Input
-            id="ob-rm-units"
-            v-model.number="unitCount"
-            type="number"
-            min="1"
-            class="w-24 h-9 text-sm"
-            inputmode="numeric"
-          />
-        </div>
-
         <p v-if="revenueManagement" class="border-t border-border/60 pt-3 pl-7 text-xs text-muted-foreground">
-          {{ Math.max(1, unitCount) }} {{ Math.max(1, unitCount) === 1 ? 'unit' : 'units' }} ·
-          <span class="font-semibold tabular-nums text-foreground">{{ formatPrice(addOnAmount) }}</span>
-          billed {{ addOnCycle }}, on top of your plan.
+          Billed {{ addOnCycle }} for the units you activate, on top of your plan. Nothing is charged for it today.
         </p>
       </div>
     </section>
@@ -424,48 +356,70 @@ function submit(): void {
 
     <!-- ── Total ──────────────────────────────────────────────────────── -->
     <div class="rounded-xl border border-border/80 bg-muted/30 p-4">
-      <dl class="space-y-1.5 text-sm">
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <dt class="font-semibold text-foreground">
-            {{ planLabel }}
-          </dt>
-          <dd class="tabular-nums font-medium text-foreground">
-            {{ formatPrice(planTotal) }}
-          </dd>
-        </div>
-        <div v-if="revenueManagement" class="flex flex-wrap items-baseline justify-between gap-2">
-          <dt class="text-muted-foreground">
-            {{ REVENUE_MANAGEMENT_ADDON.name }}, billed {{ addOnCycle }}
-          </dt>
-          <dd class="tabular-nums font-medium text-foreground">
-            {{ formatPrice(addOnAmount) }}
-          </dd>
-        </div>
-        <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-border/60 pt-2">
-          <dt class="font-semibold text-foreground">
-            Total
-          </dt>
-          <dd class="text-xl font-bold tabular-nums text-foreground">
-            {{ formatPrice(grandTotal) }}
-          </dd>
-        </div>
-      </dl>
-      <p v-if="pricingModel === 'per_unit' && perUnitBillable > unitCount" class="mt-2 text-xs text-muted-foreground">
-        {{ perUnitPlan.name }} bills a minimum of {{ perUnitPlan.floor }} units, so you are charged for
-        {{ perUnitBillable }} even though you run {{ unitCount }}.
-      </p>
-      <p class="mt-2 text-xs text-muted-foreground">
-        <template v-if="pricingModel === 'per_unit'">
-          Charged every {{ billingCycle === 'yearly' ? 'year' : 'month' }} until you cancel.
-        </template>
-        <template v-else-if="selectedPerBooking">
+      <template v-if="pricingModel === 'per_unit'">
+        <dl class="space-y-1.5 text-sm">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <dt class="font-semibold text-foreground">
+              Per unit, billed {{ billingCycle }}
+            </dt>
+            <dd class="text-xs text-muted-foreground">
+              By the units you activate
+            </dd>
+          </div>
+          <div v-if="revenueManagement" class="flex flex-wrap items-baseline justify-between gap-2">
+            <dt class="text-muted-foreground">
+              {{ REVENUE_MANAGEMENT_ADDON.name }}, billed {{ addOnCycle }}
+            </dt>
+            <dd class="text-xs text-muted-foreground">
+              {{ formatPrice(REVENUE_MANAGEMENT_ADDON.monthlyPerUnit) }} per unit
+            </dd>
+          </div>
+          <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-border/60 pt-2">
+            <dt class="font-semibold text-foreground">
+              Due today
+            </dt>
+            <dd class="text-xl font-bold tabular-nums text-foreground">
+              {{ formatPrice(0) }}
+            </dd>
+          </div>
+        </dl>
+        <p class="mt-2 text-xs text-muted-foreground">
+          You save a card now. Once you activate your units we wait 24 hours, then charge it every
+          {{ billingCycle === 'yearly' ? 'year' : 'month' }} until you cancel.
+        </p>
+      </template>
+      <template v-else>
+        <dl class="space-y-1.5 text-sm">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <dt class="font-semibold text-foreground">
+              {{ selectedPerBooking ? `${selectedPerBooking.name}, ${selectedPerBooking.quota.toLocaleString('en-US')} bookings` : '' }}
+            </dt>
+            <dd class="tabular-nums font-medium text-foreground">
+              {{ formatPrice(packageTotal) }}
+            </dd>
+          </div>
+          <div v-if="revenueManagement" class="flex flex-wrap items-baseline justify-between gap-2">
+            <dt class="text-muted-foreground">
+              {{ REVENUE_MANAGEMENT_ADDON.name }}, billed monthly
+            </dt>
+            <dd class="text-xs text-muted-foreground">
+              {{ formatPrice(REVENUE_MANAGEMENT_ADDON.monthlyPerUnit) }} per unit
+            </dd>
+          </div>
+          <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-border/60 pt-2">
+            <dt class="font-semibold text-foreground">
+              Total today
+            </dt>
+            <dd class="text-xl font-bold tabular-nums text-foreground">
+              {{ formatPrice(packageTotal) }}
+            </dd>
+          </div>
+        </dl>
+        <p v-if="selectedPerBooking" class="mt-2 text-xs text-muted-foreground">
           Package paid once. Your quota never expires and there is no contract.
           {{ hasChannelManager(model) ? 'This rate includes channel connections from ELEV8.' : 'This rate is for running ELEV8 alongside your current system.' }}
-          <template v-if="revenueManagement">
-            Revenue Management is billed monthly.
-          </template>
-        </template>
-      </p>
+        </p>
+      </template>
     </div>
   </form>
 </template>

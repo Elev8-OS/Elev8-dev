@@ -207,20 +207,23 @@ export function useOnboarding() {
 
   function selectPlan(input: {
     pricingModel: PricingModel
-    planCode: string
+    /** Per booking only. Per unit has no tier yet: it follows the units activated later. */
+    planCode: string | null
     billingCycle: BillingCycleInput
-    unitCount: number
     revenueManagement?: boolean
   }): void {
-    const perBooking = perBookingPlanByCode(input.planCode)
+    const perBooking = input.pricingModel === 'per_booking' && input.planCode
+      ? perBookingPlanByCode(input.planCode)
+      : undefined
     patch({
       subscription: {
         ...state.value.subscription,
         pmsModel: state.value.pmsModel,
         pricingModel: input.pricingModel,
-        planCode: input.planCode,
+        planCode: input.pricingModel === 'per_booking' ? input.planCode : null,
         billingCycle: input.pricingModel === 'per_unit' ? input.billingCycle : null,
-        unitCount: input.unitCount,
+        // Nothing is activated at signup, whatever the plan.
+        unitCount: 0,
         revenueManagement: input.revenueManagement ?? false,
         quotaTotal: perBooking?.quota ?? null,
         quotaRemaining: perBooking?.quota ?? null,
@@ -235,14 +238,16 @@ export function useOnboarding() {
   /** The order the payment screen prices, or null before a plan is chosen. */
   const orderSelection = computed<OrderSelection | null>(() => {
     const sub = state.value.subscription
-    if (!state.value.pmsModel || !sub.pricingModel || !sub.planCode)
+    if (!state.value.pmsModel || !sub.pricingModel)
+      return null
+    // Per booking prices a package, so it needs one. Per unit is chosen without a tier.
+    if (sub.pricingModel === 'per_booking' && !sub.planCode)
       return null
     return {
       pmsModel: state.value.pmsModel,
       pricingModel: sub.pricingModel,
       planCode: sub.planCode,
       billingCycle: sub.billingCycle,
-      unitCount: sub.unitCount,
       // Absent on a subscription saved before the add-on existed.
       revenueManagement: sub.revenueManagement ?? false,
     }
@@ -350,7 +355,12 @@ export function useOnboarding() {
     }
 
     const now = new Date().toISOString()
-    const zeroTotal = summary.total === 0
+    // Per unit has no total to compare, so a code counts as a full discount when it takes
+    // everything off the first invoice (100 percent).
+    const promo = appliedPromo.value
+    const zeroTotal = summary.chargedAfterActivation
+      ? Boolean(promo && promo.discountType === 'percent' && promo.discountValue >= 100)
+      : summary.total === 0
 
     patch({
       subscription: {
@@ -362,7 +372,7 @@ export function useOnboarding() {
           : null,
         stripePaymentMethodId: `pm_mock_${Math.random().toString(36).slice(2, 10)}`,
         paymentMethodSavedAt: now,
-        amountDue: summary.total,
+        amountDue: summary.dueToday,
         activationSource: zeroTotal ? 'promo_full_discount' : 'stripe_payment',
       },
     })
@@ -383,9 +393,11 @@ export function useOnboarding() {
 
     return {
       ok: true,
-      message: zeroTotal
-        ? 'Your plan is active. Nothing was charged today.'
-        : 'Payment received. Your plan is active.',
+      message: summary.chargedAfterActivation
+        ? 'Your card is saved. Nothing was charged today.'
+        : zeroTotal
+          ? 'Your plan is active. Nothing was charged today.'
+          : 'Payment received. Your plan is active.',
     }
   }
 

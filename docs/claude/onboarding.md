@@ -25,17 +25,19 @@ endpoint imports the same catalog, so the price shown and the price validated ca
 - **Plan catalog**: `PER_UNIT_PLANS` (Starter/Growth/Pro/Enterprise, USD per unit per month,
   yearly is `monthly * 11 / 12`) and `PER_BOOKING_PLANS` (Starter 50 / Growth 250 /
   Enterprise 1000, two price columns). `perUnitPlanForUnits` picks the tier from the unit
-  count, `billableUnits` applies the **package floor** (2 units on Growth still bills 5),
+  count and `billableUnits` applies the **package floor** (2 units on Growth still bills 5).
+  ⚠️ Both are for **billing after activation** (Settings > Billing), not for onboarding: the
+  wizard never asks for a unit count, see "Per unit has no unit count" below.
   `perBookingRate(plan, model)` picks the column
 - **Revenue Management add-on**: `REVENUE_MANAGEMENT_ADDON` (USD per unit per month,
   ⚠️ placeholder price) is opt-in on both plan types and stored as
-  `subscription.revenueManagement`. It bills the units the tenant runs (no package floor, no
-  yearly discount), follows the per unit cycle, and bills monthly on per booking.
-  `addOnsFor` feeds `OrderSummary.addOns`; `subtotalFor` = `planAmount` + add-ons, and on per
-  booking the add-on is the only `nextPeriodAmount`
-- **`buildOrderSummary`** produces subtotal, discount and total as three separate numbers,
-  plus `nextPeriodAmount`. A `first_invoice` promo (the default) leaves that at the **normal**
-  price, which is what the summary must state
+  `subscription.revenueManagement`. It bills the units the tenant activates, follows the per
+  unit cycle, and bills monthly on per booking. At signup it has **no amount**: `addOnsFor`
+  feeds `OrderSummary.addOns` as a name and a rate sentence, and `subtotalFor` is the plan alone
+- **`buildOrderSummary`** produces subtotal, discount and total as separate numbers, plus
+  `dueToday`. Only a per booking package has a price at signup (`total` = `dueToday`). Per unit
+  is all zeros with `chargedAfterActivation`; a held `first_invoice` code sets
+  `discountIsFirstInvoiceOnly` so the payment step can say what it will do
 - **`validatePromoCode`** returns a typed `PromoRejectionReason` and a message that **names the
   reason**. Never collapse these into "invalid code": the PRD calls out expired, exhausted,
   wrong model and wrong pricing model as distinct, actionable failures
@@ -82,9 +84,22 @@ the saved status.
 - `StepBranding` writes through `useTenantBranding`, so the logo it uploads is the same asset
   Settings shows. Skipping records `brandingSkipped`, it does not silently pass
   The **Button color** field is separate from the Guest Guide primary: it is stored as `state.actionColor` (default `DEFAULT_ACTION_COLOR`), shows a live preview button with an auto black or white label, and an invalid hex falls back to the default on Continue
-- `StepSelectPlan` states the package floor, both rates, and the **one year contract** on the
-  step itself. `StepPayment` states the next period amount whenever the discount is first
-  invoice only
+- **Per unit has no unit count, and saves the card without charging**, as in the real dashboard.
+  Nobody knows at signup how many units they will activate, so `StepSelectPlan` has no unit
+  field (also none for the Revenue Management add-on) and the four tiers are information only
+  ("Best for 5 to 19 units"). `selectPlan` stores per unit with `planCode: null` and
+  `unitCount: 0`: the tier and count appear once units are activated, which is what Settings >
+  Billing reads (a per unit tenant with no `planCode` has no package view yet).
+  `StepPayment` shows "You won't be charged today. Once you activate your units, we'll wait 24
+  hours (`PER_UNIT_CHARGE_DELAY_HOURS`), then charge your card", "Due today USD 0.00", and the
+  button reads "Save card and continue setup". Monthly per unit also needs two ticked commitment
+  checkboxes (12 month commitment, early cancellation charge). A code on per unit is held and
+  explained ("takes 50% off your first invoice"). Per booking is unchanged and charges the
+  package. "Continue without saving a card" is hidden on per unit, since the later charge needs
+  the card. `activationSource` is `promo_full_discount` on per unit only for a 100 percent code.
+  The 24 hour charge itself is not simulated
+- `StepSelectPlan` states each tier's minimum billed units, both rates, and the **one year
+  contract** on the step itself
 - `ConnectPms` and `StepPayment` each carry a visible "simulate a failure" switch, because the
   declined card and failed Calry auth paths are specified and otherwise unreachable in a mock
 

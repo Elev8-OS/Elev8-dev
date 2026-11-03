@@ -15,7 +15,6 @@ import {
   perUnitAmount,
   perUnitPlanForUnits,
   REVENUE_MANAGEMENT_ADDON,
-  revenueManagementAmount,
   searchProviders,
   stepForStatus,
   subtotalFor,
@@ -119,65 +118,74 @@ describe('per booking pricing', () => {
 })
 
 describe('order summary', () => {
+  // Per unit has no tier and no unit count at signup: the tenant is billed for the units
+  // they activate later, and nobody knows that number yet.
   const perUnitSelection = {
     pmsModel: 'PMS_CM' as const,
     pricingModel: 'per_unit' as const,
-    planCode: 'PER_UNIT_GROWTH',
+    planCode: null,
     billingCycle: 'monthly' as const,
-    unitCount: 8,
+  }
+  const perBookingSelection = {
+    pmsModel: 'PMS_CM' as const,
+    pricingModel: 'per_booking' as const,
+    planCode: 'PER_BOOKING_STARTER',
+    billingCycle: null,
   }
 
-  it('separates subtotal, discount and total', () => {
-    const promo = ONBOARDING_PROMO_CODES.find(p => p.code === 'LAUNCH50')!
-    const summary = buildOrderSummary(perUnitSelection, promo)
-    expect(summary.subtotal).toBe(8 * 59)
-    expect(summary.discount).toBe((8 * 59) / 2)
-    expect(summary.total).toBe((8 * 59) / 2)
+  it('prices nothing on per unit and says it bills the units activated', () => {
+    const summary = buildOrderSummary(perUnitSelection, null)
+    expect(summary.planName).toBe('Per unit')
+    expect(summary.planDetail).toBe('Billed monthly, by the units you activate')
+    expect(summary.planAmount).toBe(0)
+    expect(summary.subtotal).toBe(0)
+    expect(summary.total).toBe(0)
   })
 
-  it('quotes the next period at the normal price for a first invoice discount', () => {
+  it('charges nothing at signup on per unit and the whole total on per booking', () => {
+    const perUnit = buildOrderSummary(perUnitSelection, null)
+    expect(perUnit.dueToday).toBe(0)
+    expect(perUnit.chargedAfterActivation).toBe(true)
+
+    const perBooking = buildOrderSummary(perBookingSelection, null)
+    expect(perBooking.chargedAfterActivation).toBe(false)
+    expect(perBooking.total).toBe(695)
+    expect(perBooking.dueToday).toBe(695)
+  })
+
+  it('separates subtotal, discount and total on per booking', () => {
+    const promo = ONBOARDING_PROMO_CODES.find(p => p.code === 'LAUNCH50')!
+    const summary = buildOrderSummary(perBookingSelection, promo)
+    expect(summary.subtotal).toBe(695)
+    expect(summary.discount).toBe(347.5)
+    expect(summary.total).toBe(347.5)
+    expect(summary.dueToday).toBe(347.5)
+  })
+
+  it('holds a first invoice code for the invoice that does not exist yet on per unit', () => {
     const promo = ONBOARDING_PROMO_CODES.find(p => p.code === 'LAUNCH50')!
     const summary = buildOrderSummary(perUnitSelection, promo)
+    expect(summary.promoCode).toBe('LAUNCH50')
     expect(summary.discountIsFirstInvoiceOnly).toBe(true)
-    expect(summary.nextPeriodAmount).toBe(8 * 59)
-  })
+    expect(summary.discount).toBe(0)
 
-  it('keeps the discount on the next period when the promo runs forever', () => {
-    const forever = { ...ONBOARDING_PROMO_CODES.find(p => p.code === 'LAUNCH50')!, duration: 'forever' as const }
-    const summary = buildOrderSummary(perUnitSelection, forever)
-    expect(summary.discountIsFirstInvoiceOnly).toBe(false)
-    expect(summary.nextPeriodAmount).toBe((8 * 59) / 2)
+    const forever = { ...promo, duration: 'forever' as const }
+    expect(buildOrderSummary(perUnitSelection, forever).discountIsFirstInvoiceOnly).toBe(false)
   })
 
   it('states the one year contract on per unit and never on per booking', () => {
     expect(buildOrderSummary(perUnitSelection, null).contractMonths).toBe(12)
-    const perBooking = buildOrderSummary({
-      pmsModel: 'PMS_CM',
-      pricingModel: 'per_booking',
-      planCode: 'PER_BOOKING_STARTER',
-      billingCycle: null,
-      unitCount: 1,
-    }, null)
-    expect(perBooking.contractMonths).toBeNull()
-    // Prepaid quota, so there is no recurring figure to quote.
-    expect(perBooking.nextPeriodAmount).toBeNull()
-  })
-
-  it('names the package floor in the plan detail', () => {
-    const summary = buildOrderSummary({ ...perUnitSelection, unitCount: 2 }, null)
-    expect(summary.planDetail).toContain('5 units')
-    expect(summary.planDetail).toContain('minimum of 5')
+    expect(buildOrderSummary(perBookingSelection, null).contractMonths).toBeNull()
   })
 
   it('a hundred percent discount lands on exactly zero, never below', () => {
     const promo = ONBOARDING_PROMO_CODES.find(p => p.code === 'PARTNER100')!
-    const summary = buildOrderSummary(perUnitSelection, promo)
-    expect(summary.total).toBe(0)
+    expect(buildOrderSummary(perBookingSelection, promo).total).toBe(0)
   })
 
   it('caps a fixed discount at the subtotal', () => {
     const huge = { ...ONBOARDING_PROMO_CODES[0]!, discountType: 'fixed' as const, discountValue: 99999 }
-    expect(discountFor(subtotalFor(perUnitSelection), huge)).toBe(subtotalFor(perUnitSelection))
+    expect(discountFor(subtotalFor(perBookingSelection), huge)).toBe(subtotalFor(perBookingSelection))
   })
 
   describe('revenue management add-on', () => {
@@ -186,33 +194,25 @@ describe('order summary', () => {
     it('adds nothing when the tenant opts out', () => {
       const summary = buildOrderSummary({ ...perUnitSelection, revenueManagement: false }, null)
       expect(summary.addOns).toEqual([])
-      expect(summary.subtotal).toBe(summary.planAmount)
     })
 
-    it('bills the units run, not the package floor, on top of a per unit plan', () => {
-      const summary = buildOrderSummary({ ...perUnitSelection, unitCount: 2, revenueManagement: true }, null)
-      expect(summary.planAmount).toBe(5 * 59)
-      expect(summary.addOns[0]!.amount).toBe(2 * rate)
-      expect(summary.subtotal).toBe(5 * 59 + 2 * rate)
-      expect(summary.nextPeriodAmount).toBe(5 * 59 + 2 * rate)
+    it('is billed per activated unit on per unit, so it has no amount at signup', () => {
+      const summary = buildOrderSummary({ ...perUnitSelection, revenueManagement: true }, null)
+      expect(summary.addOns).toHaveLength(1)
+      expect(summary.addOns[0]!.detail).toBe(`USD ${rate.toFixed(2)} per unit per month, billed monthly for the units you activate`)
+      expect(summary.subtotal).toBe(0)
     })
 
-    it('follows a yearly cycle with twelve months up front', () => {
-      expect(revenueManagementAmount(8, 'yearly')).toBe(8 * rate * 12)
+    it('follows a yearly cycle on per unit', () => {
+      const summary = buildOrderSummary({ ...perUnitSelection, billingCycle: 'yearly', revenueManagement: true }, null)
+      expect(summary.addOns[0]!.detail).toContain('billed yearly')
     })
 
-    it('bills monthly on per booking and quotes that as the only recurring charge', () => {
-      const summary = buildOrderSummary({
-        pmsModel: 'PMS_CM',
-        pricingModel: 'per_booking',
-        planCode: 'PER_BOOKING_STARTER',
-        billingCycle: null,
-        unitCount: 4,
-        revenueManagement: true,
-      }, null)
-      expect(summary.subtotal).toBe(695 + 4 * rate)
-      expect(summary.nextPeriodAmount).toBe(4 * rate)
-      expect(summary.nextPeriodLabel).toBe('next month')
+    it('bills monthly on per booking and leaves the package price alone', () => {
+      const summary = buildOrderSummary({ ...perBookingSelection, revenueManagement: true }, null)
+      expect(summary.addOns[0]!.detail).toContain('billed monthly')
+      expect(summary.subtotal).toBe(695)
+      expect(summary.total).toBe(695)
     })
   })
 })

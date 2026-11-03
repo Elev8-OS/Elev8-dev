@@ -122,36 +122,42 @@ describe('stepSelectPlan component', () => {
     // Check rates breakdown dt exist
     expect(wrapper.text()).toContain('Monthly rate')
     expect(wrapper.text()).toContain('Yearly rate')
-    expect(wrapper.text()).toContain('Package floor')
+    expect(wrapper.text()).toContain('Minimum billed')
   })
 
-  it('highlights the user\'s current tier with a Your tier badge based on unit count', async () => {
+  it('never asks how many units to run, since the tenant cannot know yet', () => {
     const wrapper = mount(StepSelectPlan, { global: globalOptions })
 
-    // Unit count 1 -> Starter has "Your tier" badge
-    expect(wrapper.text()).toContain('Your tier')
-
-    // Change unit count to 10 (falls into Growth tier)
-    const input = wrapper.find('input#ob-units')
-    await input.setValue(10)
-
-    const cards = wrapper.findAll('.rounded-xl')
-    const growthCard = cards.find(c => c.text().includes('Growth'))
-    expect(growthCard?.text()).toContain('Your tier')
+    expect(wrapper.find('input#ob-units').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('How many units')
+    expect(wrapper.text()).not.toContain('Your tier')
   })
 
-  it('clicking a plan card updates unit count to match that plan floor', async () => {
+  it('shows the tiers as information and charges nothing today on per unit', () => {
     const wrapper = mount(StepSelectPlan, { global: globalOptions })
 
-    const cards = wrapper.findAll('.rounded-xl')
-    const proCard = cards.find(c => c.text().includes('Pro'))
-    expect(proCard).toBeDefined()
+    expect(wrapper.text()).toContain('Best for 1 to 4 units')
+    expect(wrapper.text()).toContain('Best for 50 or more units')
+    expect(wrapper.text()).toContain('Due today')
+    expect(wrapper.text()).toContain('USD 0')
+  })
 
-    await proCard!.trigger('click')
+  it('saves a per unit plan without a tier or a unit count', async () => {
+    const wrapper = mount(StepSelectPlan, { global: globalOptions })
+    const ob = useOnboarding()
 
-    // Pro has floor 20, so clicking Pro sets unitCount to 20
-    const input = wrapper.find('input#ob-units')
-    expect((input.element as HTMLInputElement).value).toBe('20')
-    expect(proCard?.text()).toContain('Your tier')
+    await wrapper.find('form').trigger('submit')
+
+    expect(ob.subscription.value.pricingModel).toBe('per_unit')
+    expect(ob.subscription.value.planCode).toBeNull()
+    expect(ob.subscription.value.unitCount).toBe(0)
+  })
+
+  it('asks for no unit count when the Revenue Management add-on is on', async () => {
+    const wrapper = mount(StepSelectPlan, { global: globalOptions })
+
+    await wrapper.find('[role="checkbox"]').trigger('click')
+    expect(wrapper.find('input#ob-rm-units').exists()).toBe(false)
+    expect(wrapper.text()).toContain('for the units you activate')
   })
 })

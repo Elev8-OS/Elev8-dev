@@ -61,6 +61,7 @@ export interface TenantSubscription {
   /** Always USD. Never chosen by the tenant, never derived from their country. */
   billingCurrency: 'USD'
   billingCycle: BillingCycle | null
+  /** Units the tenant has activated, which is what per unit bills. 0 until the first activation. */
   unitCount: number
   /** Revenue Management add-on, billed per unit per month on top of either plan type. */
   revenueManagement: boolean
@@ -1182,17 +1183,11 @@ export const REVENUE_MANAGEMENT_ADDON = {
   monthlyPerUnit: 15,
 } as const
 
-/**
- * What the add-on charges now. Per unit follows the plan cycle (twelve months up front
- * on yearly). Per booking has no cycle, so the add-on bills monthly on its own.
- */
-export function revenueManagementAmount(units: number, cycle: BillingCycle | null): number {
-  const months = cycle === 'yearly' ? 12 : 1
-  return round2(Math.max(1, units) * REVENUE_MANAGEMENT_ADDON.monthlyPerUnit * months)
-}
-
 /** Per unit is a one year contract. Stated at select plan, not at confirmation. */
 export const PER_UNIT_CONTRACT_MONTHS = 12
+
+/** Per unit is charged this long after the tenant activates units, not at signup. */
+export const PER_UNIT_CHARGE_DELAY_HOURS = 24
 
 export function perUnitPlanForUnits(units: number): PerUnitPlan {
   const found = PER_UNIT_PLANS.find(p => units >= p.minUnits && (p.maxUnits === null || units <= p.maxUnits))
@@ -1248,48 +1243,51 @@ export function formatUsd(value: number): string {
 export interface OrderSelection {
   pmsModel: PmsModel
   pricingModel: PricingModel
-  planCode: string
+  /**
+   * Per booking: the prepaid package. Per unit: null, because the tier follows the units
+   * the tenant activates later and nobody knows that number at signup.
+   */
+  planCode: string | null
   billingCycle: BillingCycle | null
-  unitCount: number
   revenueManagement?: boolean
 }
 
 export interface OrderAddOn {
   name: string
-  /** e.g. "5 units at USD 15.00 per month". */
+  /** e.g. "USD 15.00 per unit per month, billed monthly for the units you activate". */
   detail: string
-  amount: number
 }
 
 export interface OrderSummary {
   planName: string
-  /** Line under the plan name, e.g. "5 units billed monthly". */
+  /** Line under the plan name, e.g. "Billed monthly, by the units you activate". */
   planDetail: string
-  /** The plan alone, before add-ons. */
+  /** The plan alone, before add-ons. 0 on per unit: it is priced by activated units later. */
   planAmount: number
+  /** Billed per unit once units are activated, so they carry no amount at signup. */
   addOns: OrderAddOn[]
   subtotal: number
   discount: number
+  /** What the first invoice is, after the discount. Per unit has none to quote yet. */
   total: number
-  promoCode: string | null
   /**
-   * What the next period costs at the normal price. Null for per booking,
-   * which is a prepaid quota with no recurring charge.
+   * What the card is charged on the payment step. Per booking prepays the quota, so it
+   * equals `total`. Per unit only saves the card: the first invoice is charged 24 hours
+   * after the tenant activates units, so this is 0.
    */
-  nextPeriodAmount: number | null
-  nextPeriodLabel: string | null
-  /** True when the discount only covers the first invoice (PRD 7.6). */
+  dueToday: number
+  /** True on per unit: the card is saved now and charged later. */
+  chargedAfterActivation: boolean
+  promoCode: string | null
+  /** True when the code only takes money off the first invoice (PRD 7.6). */
   discountIsFirstInvoiceOnly: boolean
   contractMonths: number | null
 }
 
 function planAmountFor(selection: OrderSelection): number {
-  if (selection.pricingModel === 'per_unit') {
-    const plan = perUnitPlanByCode(selection.planCode)
-    if (!plan || !selection.billingCycle)
-      return 0
-    return perUnitAmount(selection.unitCount, plan, selection.billingCycle)
-  }
+  // Per unit has no amount at signup: the tenant is billed for the units they activate.
+  if (selection.pricingModel === 'per_unit' || !selection.planCode)
+    return 0
   const plan = perBookingPlanByCode(selection.planCode)
   return plan ? perBookingAmount(plan, selection.pmsModel) : 0
 }
@@ -1301,17 +1299,16 @@ function addOnCycle(selection: OrderSelection): BillingCycle {
 export function addOnsFor(selection: OrderSelection): OrderAddOn[] {
   if (!selection.revenueManagement)
     return []
-  const units = Math.max(1, selection.unitCount)
   const cycle = addOnCycle(selection)
   return [{
     name: REVENUE_MANAGEMENT_ADDON.name,
-    detail: `${units} ${units === 1 ? 'unit' : 'units'} at ${formatUsd(REVENUE_MANAGEMENT_ADDON.monthlyPerUnit)} per month, billed ${cycle}`,
-    amount: revenueManagementAmount(units, cycle),
+    detail: `${formatUsd(REVENUE_MANAGEMENT_ADDON.monthlyPerUnit)} per unit per month, billed ${cycle} for the units you activate`,
   }]
 }
 
+/** What the order is worth today. Only a per booking package has a price at signup. */
 export function subtotalFor(selection: OrderSelection): number {
-  return round2(planAmountFor(selection) + addOnsFor(selection).reduce((sum, a) => sum + a.amount, 0))
+  return round2(planAmountFor(selection))
 }
 
 export function discountFor(subtotal: number, promo: OnboardingPromoCode | null): number {
@@ -1330,37 +1327,31 @@ export function buildOrderSummary(
 ): OrderSummary {
   const planAmount = round2(planAmountFor(selection))
   const addOns = addOnsFor(selection)
-  const addOnTotal = round2(addOns.reduce((sum, a) => sum + a.amount, 0))
-  const subtotal = round2(planAmount + addOnTotal)
+  const subtotal = planAmount
   const discount = discountFor(subtotal, promo)
   const total = round2(subtotal - discount)
   const firstInvoiceOnly = promo?.duration === 'first_invoice'
-  const nextPeriod = (recurring: number) =>
-    firstInvoiceOnly || !promo ? recurring : round2(recurring - discountFor(recurring, promo))
 
   if (selection.pricingModel === 'per_unit') {
-    const plan = perUnitPlanByCode(selection.planCode)!
     const cycle = selection.billingCycle ?? 'monthly'
-    const billable = billableUnits(selection.unitCount, plan)
-    const floorNote = billable > selection.unitCount ? ` (${plan.name} bills a minimum of ${plan.floor})` : ''
-    // Recurring charge at normal price. A first invoice discount does not touch it.
     return {
-      planName: `${plan.name}, per unit`,
-      planDetail: `${billable} ${billable === 1 ? 'unit' : 'units'} billed ${cycle}${floorNote}`,
+      planName: 'Per unit',
+      planDetail: `Billed ${cycle}, by the units you activate`,
       planAmount,
       addOns,
       subtotal,
       discount,
       total,
+      dueToday: 0,
+      chargedAfterActivation: true,
       promoCode: promo?.code ?? null,
-      nextPeriodAmount: nextPeriod(subtotal),
-      nextPeriodLabel: cycle === 'yearly' ? 'next year' : 'next month',
-      discountIsFirstInvoiceOnly: Boolean(firstInvoiceOnly && discount > 0),
+      // The code is held for the first invoice, which does not exist yet.
+      discountIsFirstInvoiceOnly: Boolean(promo && firstInvoiceOnly),
       contractMonths: PER_UNIT_CONTRACT_MONTHS,
     }
   }
 
-  const plan = perBookingPlanByCode(selection.planCode)!
+  const plan = perBookingPlanByCode(selection.planCode ?? '')!
   const rate = perBookingRate(plan, selection.pmsModel)
   return {
     planName: `${plan.name}, per booking`,
@@ -1370,11 +1361,11 @@ export function buildOrderSummary(
     subtotal,
     discount,
     total,
+    dueToday: total,
+    chargedAfterActivation: false,
     promoCode: promo?.code ?? null,
-    // The quota is prepaid and never recurs. Only a monthly add-on does.
-    nextPeriodAmount: addOnTotal > 0 ? nextPeriod(addOnTotal) : null,
-    nextPeriodLabel: addOnTotal > 0 ? 'next month' : null,
-    discountIsFirstInvoiceOnly: Boolean(addOnTotal > 0 && firstInvoiceOnly && discount > 0),
+    // The quota is prepaid and never recurs, so the code only ever meets one charge.
+    discountIsFirstInvoiceOnly: false,
     contractMonths: null,
   }
 }
@@ -1970,7 +1961,7 @@ export function createDefaultSubscription(): TenantSubscription {
     planCode: null,
     billingCurrency: 'USD',
     billingCycle: null,
-    unitCount: 1,
+    unitCount: 0,
     revenueManagement: false,
     status: 'pending',
     stripeCustomerId: null,
