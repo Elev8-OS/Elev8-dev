@@ -23,7 +23,7 @@ watch(() => props.open, (o) => {
 })
 
 const isResolve = computed(() => props.mode === 'resolve')
-// An update needs words; the all clear has a default sentence.
+// An update needs words; resolving has a default note.
 const valid = computed(() => message.value.length <= MAX && (isResolve.value || message.value.trim().length > 0))
 </script>
 
@@ -34,13 +34,13 @@ const valid = computed(() => message.value.length <= MAX && (isResolve.value || 
         <DialogTitle>{{ isResolve ? 'Mark as resolved' : 'Post an update' }}</DialogTitle>
         <DialogDescription>
           {{ isResolve
-            ? `Tenants see "${bannerTitle}" flip to Resolved, then it clears an hour later.`
+            ? `Ends "${bannerTitle}" right away. Tenants stop seeing it and its slot is free. The note is kept for staff.`
             : `Adds a note under "${bannerTitle}". Tenants who dismissed it see it again.` }}
         </DialogDescription>
       </DialogHeader>
       <div class="space-y-2">
         <div class="flex items-center justify-between">
-          <Label for="banner-update-message">{{ isResolve ? 'Message (optional)' : 'Message' }}</Label>
+          <Label for="banner-update-message">{{ isResolve ? 'Note (optional)' : 'Message' }}</Label>
           <span class="text-xs" :class="message.length > MAX ? 'text-destructive' : 'text-muted-foreground'">{{ message.length }} / {{ MAX }}</span>
         </div>
         <Textarea

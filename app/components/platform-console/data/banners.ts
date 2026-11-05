@@ -15,8 +15,6 @@ export const MAX_ACTIVE_BROADCASTS = 2
 
 /** The banner stays up this long after a maintenance window closes, unless staff resolve it first. */
 export const MAINTENANCE_WRAP_UP_MS = 60 * 60_000
-/** A resolved broadcast keeps showing for this long so tenants see the all clear. */
-export const RESOLVED_GRACE_MS = 60 * 60_000
 
 export const MAINTENANCE_MODULES = [
   'Inbox', 'Reviews', 'Channels', 'Reservations', 'Payments', 'Smart locks',

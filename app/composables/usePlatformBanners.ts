@@ -4,7 +4,7 @@ import type {
   BannerKind, MaintenanceWindow, BannerUpdate,
 } from '~/components/platform-console/data/banners'
 import {
-  mockBanners, canResolve, lastActivityAt, RESOLVED_GRACE_MS, MAINTENANCE_WRAP_UP_MS, MAX_ACTIVE_BROADCASTS,
+  mockBanners, canResolve, lastActivityAt, MAINTENANCE_WRAP_UP_MS, MAX_ACTIVE_BROADCASTS,
 } from '~/components/platform-console/data/banners'
 import type { StaffRoleName } from '~/components/platform-console/data/staff'
 import { useTenants } from '~/composables/useTenants'
@@ -63,7 +63,7 @@ export function usePlatformBanners() {
 
   /**
    * A dismissal hides the banner until staff post something new on it: an update
-   * or the all clear is newer than the dismissal, so it comes back once.
+   * is newer than the dismissal, so it comes back once.
    */
   function isDismissed(bannerId: string, tenantId: string): boolean {
     const banner = banners.value.find(b => b.id === bannerId)
@@ -177,8 +177,9 @@ export function usePlatformBanners() {
   }
 
   /**
-   * The all clear. The banner flips to "Resolved" for everyone and stays up for
-   * RESOLVED_GRACE_MS, then the sweep expires it.
+   * The issue is over. Like a retract, the banner leaves tenants at once and frees its
+   * active slot, but it ends as expired with `resolvedAt` set so staff keep it as Resolved,
+   * with the closing note.
    */
   function resolveBanner(id: string, staffId: string, note: string): PlatformBanner {
     const existing = banners.value.find(b => b.id === id)
@@ -192,8 +193,9 @@ export function usePlatformBanners() {
     }
     const updated: PlatformBanner = {
       ...existing,
+      status: 'expired',
       resolvedAt: now.toISOString(),
-      endAt: new Date(now.getTime() + RESOLVED_GRACE_MS).toISOString(),
+      endAt: now.toISOString(),
       updates: [...(existing.updates ?? []), update],
     }
     banners.value = banners.value.map(b => b.id === id ? updated : b)

@@ -173,15 +173,18 @@ describe('usePlatformBanners', () => {
       expect(() => postUpdate(later.id, 'staff-1', 'hi')).toThrow(/live/)
     })
 
-    it('resolveBanner flips to resolved and shortens the run', () => {
-      const { createBanner, resolveBanner } = usePlatformBanners()
+    it('resolveBanner ends it at once like a retract: tenants stop seeing it, its slot is free, staff keep it as resolved', () => {
+      const { createBanner, resolveBanner, liveBannersForTenant } = usePlatformBanners()
       const { auditLog } = usePlatformAudit()
       const b = createBanner({ ...base, title: 'Outage', severity: 'critical', startAt: new Date().toISOString() })
       const before = auditLog.value.length
       const r = resolveBanner(b.id, 'staff-1', '')
       expect(r.resolvedAt).toBeTruthy()
       expect(r.updates?.at(-1)).toMatchObject({ kind: 'resolved', message: 'This is resolved. No action needed.' })
-      expect(new Date(r.endAt!).getTime() - Date.now()).toBeLessThanOrEqual(hour)
+      expect(r.status).toBe('expired')
+      expect(new Date(r.endAt!).getTime()).toBeLessThanOrEqual(Date.now())
+      expect(liveBannersForTenant('t-1', 'Admin', Infinity).some(x => x.id === b.id)).toBe(false)
+      expect(maintenancePhase({ ...r, kind: 'maintenance', maintenance: window(-hour, hour) })).toBe('resolved')
       const entries = auditLog.value.slice(before)
       expect(entries.some(e => e.action === 'banner_resolved')).toBe(true)
     })
@@ -256,6 +259,15 @@ describe('usePlatformBanners', () => {
         createBanner({ ...base, title: 'C', startAt: new Date(Date.now() + 12 * hour).toISOString(), endAt: new Date(Date.now() + 20 * hour).toISOString() })
         expect(() => createBanner({ ...base, title: 'Long', startAt: new Date().toISOString() })).toThrow(/Only 2/)
         expect(() => createBanner({ ...base, title: 'Ends first', startAt: new Date().toISOString(), endAt: new Date(Date.now() + 5 * hour).toISOString() })).not.toThrow()
+      })
+
+      it('frees a slot when one is resolved', () => {
+        const { createBanner, resolveBanner } = usePlatformBanners()
+        const a = createBanner({ ...base, title: 'A', startAt: new Date().toISOString() })
+        createBanner({ ...base, title: 'B', startAt: new Date().toISOString() })
+        expect(() => createBanner({ ...base, title: 'C', startAt: new Date().toISOString() })).toThrow()
+        resolveBanner(a.id, 'staff-1', 'done')
+        expect(() => createBanner({ ...base, title: 'C', startAt: new Date().toISOString() })).not.toThrow()
       })
 
       it('frees a slot when one is retracted', () => {
