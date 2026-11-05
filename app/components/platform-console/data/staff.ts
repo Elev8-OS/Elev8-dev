@@ -7,6 +7,7 @@ export type PermissionAction =
   | 'view_users'
   | 'view_activity'
   | 'view_audit'
+  | 'adjust_next_charge'
   | 'propose_override'
   | 'approve_override'
   | 'revoke_override'
@@ -47,6 +48,7 @@ export const PERMISSIONS: Record<PermissionAction, StaffRole[]> = {
   view_billing: ['finance', 'approver', 'admin'],
   view_pricing: ['finance', 'approver', 'admin'],
   view_audit: ['finance', 'approver', 'admin'],
+  adjust_next_charge: ['approver', 'admin'],
   propose_override: ['finance', 'approver', 'admin'],
   approve_override: ['approver', 'admin'],
   revoke_override: ['admin'],

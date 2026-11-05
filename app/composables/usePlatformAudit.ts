@@ -3,6 +3,7 @@ import { useStaffAuth } from '~/composables/useStaffAuth'
 
 export type AuditAction =
   | 'view_billing' | 'view_pricing' | 'view_users' | 'view_activity'
+  | 'next_charge_adjusted' | 'next_charge_reverted'
   | 'override_proposed' | 'override_approved' | 'override_rejected' | 'override_revoked' | 'override_expired'
   | 'banner_created' | 'banner_scheduled' | 'banner_live' | 'banner_retracted' | 'banner_retracted_before_live' | 'banner_expired'
   | 'banner_updated' | 'banner_resolved'

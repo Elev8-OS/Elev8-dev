@@ -2,21 +2,14 @@
 definePageMeta({ layout: 'platform-console' })
 
 const { tenants } = useTenants()
-const router = useRouter()
-
-function openTenant(id: string) {
-  router.push(`/platform-console/tenants/${id}`)
-}
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between px-6 pt-6">
-      <div>
-        <h2 class="text-2xl font-semibold tracking-tight">Tenants</h2>
-        <p class="text-sm text-muted-foreground">All property managers using Elev8</p>
-      </div>
+  <div class="space-y-4 p-6">
+    <div>
+      <h2 class="text-2xl font-semibold tracking-tight">Tenants</h2>
+      <p class="text-sm text-muted-foreground">All property managers using Elev8: plan, health and billing at a glance. Pick one for the detail.</p>
     </div>
-    <PlatformConsoleTenantDirectoryTable :tenants="tenants" @row-click="openTenant" />
+    <PlatformConsoleTenantDirectory :tenants="tenants" />
   </div>
 </template>

@@ -2,7 +2,40 @@
 
 # Platform Console
 
-Internal Elev8 staff surface at `/platform-console` (tenant directory, custom pricing overrides, approvals, audit log, broadcasts). Fully mocked: nothing calls a real API, email or Stripe. This doc covers **Broadcasts**, the way staff tell tenants about maintenance or news. Tenants and staff roles are in `components/platform-console/data/{tenants,staff}.ts`.
+Internal Elev8 staff surface at `/platform-console` (tenant directory, custom pricing overrides, approvals, audit log, broadcasts). Fully mocked: nothing calls a real API, email or Stripe. This doc covers the **Tenants page**, the tenant detail **Billing tab** and **Broadcasts**, the way staff tell tenants about maintenance or news. Tenants and staff roles are in `components/platform-console/data/{tenants,staff}.ts`.
+
+## Tenants page (`/platform-console/tenants`)
+
+The same master-detail layout as the *By tenant* view of Billing & Subscriptions in the real dashboard. `pages/platform-console/tenants/index.vue` is a thin shell around `TenantDirectory.vue` (it replaced `TenantDirectoryTable.vue`).
+
+- **One 6-column grid** (`xl`): six stat cards (Active tenants, MRR, In dunning, Suspended, No payment method, Active units), then the body, where the tenant list takes 2 columns and the detail takes 4.
+- **Controls:** `base/SearchInput` (name, contact, email), selects for plan, status and sort, Tier and Region popovers (AND logic), Clear, and a Hide internal switch. The status select also has *In dunning* and *No payment method*, which read billing health, not tenant status.
+- **List row:** logo tile, name, Internal and No card badges, region and units, status badge (only when not active), billing health badge, and MRR (or quota left for per-booking).
+- **Detail:** header (logo, name, status, contact, last login, plan badge, override and banner counts, **Open tenant** link to `/platform-console/tenants/[id]`), then the full `TenantBillingTab`, keyed by tenant id so it remounts and logs `view_billing` on each pick. Roles without `view_billing` get a one-line note instead.
+- ⚠️ **Stats follow Hide internal, not the other filters.** Internal tenants are left out of every rollup while the switch is on. Search and the dropdowns only narrow the list.
+- ⚠️ **Selection is kept valid by a watcher on the filtered list:** a filtered-out selection moves to the first match, and an empty list clears it.
+- The billing health and card flag come from `useTenantBilling().byTenant()`, so the list and the Billing tab never disagree. `HEALTH_BADGE_CLASS` in `data/tenant-billing.ts` is the shared badge colour map.
+
+Tests: `tests/components/platform-console/TenantDirectory.spec.ts`.
+
+## Tenant detail: Billing tab
+
+Mirrors the tenant detail panel of *Billing & Subscriptions* in the real dashboard (`pages/admin/billing.vue` in `~/Desktop/dashboard-v2-development-merged`). Files: `TenantBillingTab.vue`, `data/tenant-billing.ts` (types, pure helpers, seed), `composables/useTenantBilling.ts` (state + actions). Everything is mock; nothing calls Stripe.
+
+Top to bottom: a hero card (billing email, type / health / "No payment method" badges, **Next charge** with the Adjust button, then a 4-cell stats strip Plan / Recurring or Billing model / Units / Invoices, plus the booking quota bar for per-booking tenants), the **Next charge adjusted** banner when an override exists (Edit, Revert to default), the **dunning** panel, the **Invoice history** table, and the **Adjust next charge** dialog. The name and plan already sit in `TenantDetailHeader`, so the hero does not repeat them.
+
+- **Health** is `paid | dunning | pending | suspended`. Dunning has two shapes: a property tenant gets a retry ladder (`PROPERTY_RETRY_LIMIT` = 3 attempts, 3 days apart, then a Suspend step); a per-booking tenant gets strikes (`BOOKING_STRIKE_LIMIT` = 7 failed auto top-ups). The ladder turns destructive once one failure is left (`isCriticalDunning`).
+- **Default next charge** is `mrrUsd`, or `mrrUsd * 12` for a yearly cycle (`defaultChargeAmount`). Per-booking tenants have no next charge and no Adjust button.
+- **Adjust dialog.** Date (`base/DatePicker`) with Keep / +7 / +14 / +1 month chips, then Use plan default or Custom amount (with a discount / surcharge delta and a "keep for future charges" switch), then a required Reason. The footer previews the resulting charge. Save writes `nextChargeAt` and `override` through `adjustNextCharge`, which also throws on a blank reason or date.
+- **Revert** drops the override and keeps the date.
+- Needs the `adjust_next_charge` permission (approver, admin). Finance can read the tab but not change it. Both actions write `next_charge_adjusted` / `next_charge_reverted` audit rows (with from/to date, amount and note).
+- Money is `USD 1,299.00` (`formatMoney`), never converted. The mock tenant data is USD only, so the reference page's per-tenant currency and currency symbol are not carried over.
+- Seeds are hand picked per tenant id in `SEEDS` so the demo shows each state: `t-2` yearly, `t-3` booking strikes, `t-4` no card + pending, `t-5` suspended, `t-6` property ladder, `t-8` no invoices, `t-10` an override.
+- "View in Stripe" only toasts that Stripe is not connected.
+- ⚠️ **Not carried over** from the reference: the cross-tenant list, the All transactions ledger, the KPI row, search and Excel export. They live on a page of their own there, this repo only has the per-tenant view.
+- ⚠️ Dates are local `YYYY-MM-DD` strings (`ymd`), never `toISOString()`.
+
+Tests: `tests/composables/useTenantBilling.spec.ts`, `tests/components/platform-console/TenantBillingTab.spec.ts` (the dialog portals to `document.body`, query it there).
 
 ## Broadcasts
 
