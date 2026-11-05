@@ -26,8 +26,6 @@ const unassignedTagPopoverOpen = ref(false)
 const formState = ref<PayoutAccountDraft>(createEmptyPayoutDraft())
 
 const providerConfig = computed(() => selectedProvider.value ? getPayoutProvider(selectedProvider.value) : null)
-const providerAccounts = computed(() => selectedProvider.value ? payoutAccounts.value.filter(account => account.provider === selectedProvider.value) : [])
-const selectedAccount = computed(() => providerAccounts.value.find(account => account.id === selectedAccountId.value) ?? providerAccounts.value[0] ?? null)
 const listingOptions = computed(() => listings.value.map(listing => ({ id: listing.id, name: listing.name, location: listing.location })))
 const unassignedListings = computed(() => {
   const query = unassignedSearch.value.trim().toLowerCase()
@@ -144,7 +142,7 @@ function toggleSelectAllVisible() {
   }
 }
 
-function buildAccountPayload(id: string): PayoutAccount {
+function buildAccountPayload(id: string, existing: PayoutAccount | null): PayoutAccount {
   const provider = selectedProvider.value as PayoutProvider
   return {
     id,
@@ -152,7 +150,7 @@ function buildAccountPayload(id: string): PayoutAccount {
     accountName: formState.value.accountName || `${payoutProviderLabels[provider]} account`,
     status: provider === 'xendit' && !formState.value.webhookSecret ? 'needs_webhook' : 'connected',
     liveMode: true,
-    connectedAt: selectedAccount.value?.connectedAt ?? new Date().toISOString().slice(0, 10),
+    connectedAt: existing?.connectedAt ?? new Date().toISOString().slice(0, 10),
     currency: provider === 'stripe' ? 'USD' : 'IDR',
     listingIds: [...selectedListings.value],
     publicKey: provider === 'stripe'
@@ -174,13 +172,15 @@ function saveAccount() {
   if (!selectedProvider.value)
     return
 
-  const currentId = selectedAccount.value?.id ?? `pay-${Date.now()}`
-  const nextAccount = buildAccountPayload(currentId)
-  const existingIndex = payoutAccounts.value.findIndex(account => account.id === currentId)
-  if (existingIndex >= 0)
-    payoutAccounts.value[existingIndex] = nextAccount
-  else
-    payoutAccounts.value = [nextAccount, ...payoutAccounts.value]
+  // Only Edit may touch an existing account. Add account always gets a new id,
+  // otherwise the first account of the same provider would be overwritten.
+  const existing = mode.value === 'edit'
+    ? payoutAccounts.value.find(account => account.id === selectedAccountId.value) ?? null
+    : null
+  const nextAccount = buildAccountPayload(existing?.id ?? `pay-${Date.now()}`, existing)
+  payoutAccounts.value = existing
+    ? payoutAccounts.value.map(account => account.id === existing.id ? nextAccount : account)
+    : [nextAccount, ...payoutAccounts.value]
 
   selectedAccountId.value = nextAccount.id
   providerDialogOpen.value = false
@@ -512,9 +512,10 @@ function bulkAssignSelected() {
 
           <div v-else-if="step === 2 && providerConfig" class="space-y-5">
             <div class="space-y-5">
-              <div v-if="mode === 'create'">
+              <div class="space-y-2.5">
                 <Label for="account-name">Account Label</Label>
-                <Input id="account-name" v-model="formState.accountName" class="mt-2 h-11" placeholder="Main payout account" />
+                <Input id="account-name" v-model="formState.accountName" class="h-11" :placeholder="`${providerConfig.name} main account`" />
+                <p class="text-xs text-muted-foreground">Shown in the account list and the bulk assign picker. Left empty, it falls back to "{{ providerConfig.name }} account".</p>
               </div>
 
               <div v-for="field in providerFields" :key="field.key" class="space-y-2.5">
