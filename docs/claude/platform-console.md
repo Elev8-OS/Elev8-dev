@@ -39,13 +39,13 @@ Tests: `tests/composables/useTenantBilling.spec.ts`, `tests/components/platform-
 
 ## Broadcasts
 
-Files: `data/banners.ts` (model, labels, pure helpers), `composables/usePlatformBanners.ts` (state + actions), `lib/platform-banner-time.ts` (timezones), `BannerComposer.vue`, `BannerCard.vue`, `BannerSlot.vue`, `BannerUpdateDialog.vue`, pages `platform-console/broadcasts/{index,new}.vue` (staff) and `announcements.vue` (tenant), plus a link in the header bell (`NotificationCenter.vue`).
+Files: `data/banners.ts` (model, labels, pure helpers), `composables/usePlatformBanners.ts` (state + actions), `lib/platform-banner-time.ts` (timezones), `BannerComposer.vue`, `BannerCard.vue`, `BannerSlot.vue`, `BannerUpdateDialog.vue`, pages `platform-console/broadcasts/{index,new}.vue` (staff) (staff). Tenants only see the banner strip on the dashboard (`BannerSlot.vue`).
 
 ### Broadcasts page (`/platform-console/broadcasts`)
 
 One 4-column grid with one gap: a stats row of four cards (Live now, Scheduled, Maintenance planned, Tenants reached), then the body, where the list takes 3 columns and a side column takes the fourth.
 
-- **List.** Tabs All / Live / Scheduled / Ended (Ended = expired + retracted) with counts, a title search (`base/SearchInput`) and a severity select. Rows sort live, then scheduled (soonest first), then ended (newest first). A row shows the severity tile, title, phase or resolved badge, the body, then audience, schedule, "Emailed" and update count. The whole row opens the detail sheet. Clicks on the actions area do not bubble to the row.
+- **List.** Tabs All / Live / Scheduled / Ended (Ended = expired + retracted) with counts, a title search (`base/SearchInput`) and a severity select. Rows sort live, then scheduled (soonest first), then ended (newest first). A row shows the severity tile, title, phase or resolved badge, the body, then audience, schedule and update count. The whole row opens the detail sheet. Clicks on the actions area do not bubble to the row.
 - **Row actions.** Live maintenance that has started (`canResolve`) gets an inline **Resolve** button. The menu has View, Duplicate, Post update, Mark resolved, Retract, each behind its permission. The detail sheet repeats Post update, Mark resolved, Duplicate and Retract at the bottom.
 - **Side column.** *Maintenance schedule* lists live or scheduled maintenance that is not resolved, soonest window first, with a countdown ("Starts in 2d 4h", "Ends in 20m"). *Recent activity* shows the last six `banner_*` audit entries.
 - ⚠️ **Countdowns start empty.** `now` is `0` until mounted, then ticks every 30 s, so server and client render the same first paint. Do not read `Date.now()` in the template.
@@ -54,15 +54,15 @@ One 4-column grid with one gap: a stats row of four cards (Live now, Scheduled, 
 
 ### Composer (`/platform-console/broadcasts/new`)
 
-A stepper (Message, Audience, Schedule, Review) above a 3-column grid: the step card takes 2 columns, a sticky **live preview** takes the third and updates as staff type, from step 1 (it shows placeholder text until then). Finished steps are clickable to go back; later steps are not. The Review step is a summary list plus the email warning; the preview is the same card tenants get.
+A stepper (Message, Audience, Schedule, Review) above a 3-column grid: the step card takes 2 columns, a sticky **live preview** takes the third and updates as staff type, from step 1 (it shows placeholder text until then). Finished steps are clickable to go back; later steps are not. The Review step is a summary list; the preview is the same card tenants get.
 
 - Validation is unchanged: step 1 needs title and body, step 2 needs at least one matching tenant, step 3 needs a valid schedule. `publish()` re-checks the schedule against a fresh clock and returns to step 3 if a chosen time has passed.
 - There is no "preview as tenant" picker any more. The card only differs per reader by timezone, and the preview uses the staff member's own.
 
-### Tenant card and announcements
+### Tenant card
 
 - **`BannerCard`** is one card for everything: a severity-coloured left edge and icon, text in the normal foreground, a maintenance panel (window in the reader's timezone, UTC beside it, affected areas, impact), the newest updates, and an outline CTA button. It uses theme tokens only (`warning`, `destructive`, `primary`), no fixed colours. The timezone comes from `useViewerTimezone()`.
-- **`/announcements`** is the same grid: Active / Earlier tabs with counts and a *Planned maintenance* side panel (window in the reader's timezone, countdown, affected areas). Active cards can be hidden from the dashboard; a hidden one is flagged "Dismissed from your dashboard".
+- ⚠️ **There is no tenant announcements page and no bell link.** The `/announcements` page was removed on purpose until the real dashboard decides where tenants open past broadcasts. A dismissed broadcast is simply gone for that tenant (until an update brings it back), and a tenant has no history view.
 
 ### Two kinds
 
@@ -82,22 +82,22 @@ A `PlatformBanner` is an **announcement** (news, incidents) or a **maintenance**
 
 - ⚠️ **Times are instants.** The composer takes wall-clock date + time in one chosen timezone (`BANNER_TIMEZONES`, default UTC) and stores UTC ISO strings through `zonedToInstant()`. It handles DST with two passes. Never store the picker values.
 - ⚠️ **Tenants read the window in their own timezone**, with the UTC reading beside it. `BannerCard` starts on UTC and switches to the browser zone in `onMounted`, so server and client render the same first paint. Staff screens use `formatUtc()` and stay deterministic.
-- ⚠️ **A dismissal is not forever.** `isDismissed()` only counts a dismissal made at or after `lastActivityAt(banner)` (go-live, or the newest update). Posting an update or resolving brings the banner back once. The announcements page lists dismissed banners too, flagged "Dismissed".
-- ⚠️ **Email is opt-in per banner.** `shouldEmail()` is `sendEmail ?? severity === 'critical'`, so old critical banners still email. The composer's switch follows severity until staff change it. Email is **mock**: it writes `banner_email_sent` audit rows (with `reason: 'live' | 'update' | 'resolved'`) and nothing else. It fires when a banner goes live, and on every update and resolve.
-- The tenant strip shows at most 2 banners (`liveBannersForTenant(tenantId, role, limit = 2)`). The rest are a "N more announcements" link to `/announcements`. Pass `Infinity` for the full count.
-- `announcementsForTenant()` is the tenant history: live, resolved and ended banners that already started and reach this tenant and role. Scheduled (not shown yet) and retracted (withdrawn) never appear.
+- ⚠️ **A dismissal is not forever.** `isDismissed()` only counts a dismissal made at or after `lastActivityAt(banner)` (go-live, or the newest update). Posting an update or resolving brings the banner back once.
+- **No email.** Broadcasts are in-app only (the dashboard banner only). Email was removed on purpose: it is a non-goal for the real dashboard for now, so do not add a `sendEmail` field or audit rows back without a decision.
+- ⚠️ **At most 2 broadcasts are active on the whole platform** (`MAX_ACTIVE_BROADCASTS`, any audience). Live and scheduled ones both count, over the time they would run: `activeLimitError(startAt, endAt)` checks the new run at its start and at the start of every other broadcast inside it, so a long run cannot overlap two later ones. `createBanner` throws with it, the composer shows it as the Schedule step error, and Duplicate toasts it. Retract or resolve one to free a slot. A resolved broadcast still counts until its all-clear hour is over. The seed already has two live, so the demo has to retract one first.
+- The tenant strip still caps at 2 (`liveBannersForTenant(tenantId, role, limit = 2)`); with the platform limit it never hides anything. Pass `Infinity` for the full count.
 - **Time pickers** are `base/DatePicker.vue` + `base/TimePicker.vue` (`:end-hour="24"` means through 23:45), never `<input type="datetime-local">`.
 - Composing, posting updates and resolving need the `compose_banner` permission (Platform Admin); retracting needs `retract_banner`.
 - Duplicating a maintenance banner moves a past window forward by whole days so the copy does not open as "wrapping up".
 
 ### Viewer
 
-`useBannerViewer()` returns the tenant and role that read broadcasts in the dashboard. The prototype has no tenant session, so it is fixed to `t-1` and `Admin`. The strip, the announcements page and the bell link all read it, so a real session only needs to change that one file.
+`useBannerViewer()` returns the tenant and role that read broadcasts in the dashboard. The prototype has no tenant session, so it is fixed to `t-1` and `Admin`. The banner strip reads it, so a real session only needs to change that one file.
 
 ### Not covered here
 
-The mobile app and the guest guide do not show broadcasts. The mobile app is not in this repo, and the guest guide is for guests, not tenant staff. If a mobile surface is wanted, it needs the same three reads: live banners for the viewer, dismissal, and the announcements list.
+The mobile app and the guest guide do not show broadcasts. The mobile app is not in this repo, and the guest guide is for guests, not tenant staff. If a mobile surface is wanted, it needs the same two reads: live banners for the viewer, and dismissal.
 
 ### Tests
 
-`tests/composables/usePlatformBanners.spec.ts`, `tests/lib/platform-banner-time.spec.ts`, `tests/components/platform-console/{AnnouncementsPage,BannerCard,BannerComposer,BroadcastsPage,BroadcastsRetract,TenantPricingRevoke}.spec.ts`. The composer spec stubs the date and time pickers and the radio group, and exposes `useStaffAuth` and `createError` as globals, as Nuxt would.
+`tests/composables/usePlatformBanners.spec.ts`, `tests/lib/platform-banner-time.spec.ts`, `tests/components/platform-console/{BannerCard,BannerComposer,BroadcastsPage,BroadcastsRetract,TenantPricingRevoke}.spec.ts`. The composer spec stubs the date and time pickers and the radio group, and exposes `useStaffAuth` and `createError` as globals, as Nuxt would.

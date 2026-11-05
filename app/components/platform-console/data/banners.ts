@@ -9,7 +9,9 @@ export type BannerKind = 'announcement' | 'maintenance'
 export type MaintenanceImpact = 'offline' | 'degraded'
 export type BannerUpdateKind = 'update' | 'resolved'
 export type MaintenancePhase = 'upcoming' | 'in_progress' | 'wrapping_up' | 'resolved'
-export type AnnouncementState = 'live' | 'resolved' | 'ended'
+
+/** Most broadcasts that may be active (live or scheduled to be) at the same moment, across the whole platform. */
+export const MAX_ACTIVE_BROADCASTS = 2
 
 /** The banner stays up this long after a maintenance window closes, unless staff resolve it first. */
 export const MAINTENANCE_WRAP_UP_MS = 60 * 60_000
@@ -69,8 +71,6 @@ export interface PlatformBanner {
   /** Absent on banners made before maintenance existed: those are announcements. */
   kind?: BannerKind
   maintenance?: MaintenanceWindow
-  /** Absent means "email only when severity is critical". */
-  sendEmail?: boolean
   updates?: BannerUpdate[]
   resolvedAt?: string
   retractedAt?: string
@@ -158,11 +158,6 @@ export const MAINTENANCE_IMPACT_LABEL: Record<MaintenanceImpact, string> = {
 
 export function bannerKind(b: Pick<PlatformBanner, 'kind'>): BannerKind {
   return b.kind ?? 'announcement'
-}
-
-/** Email goes out when the banner asks for it, or by default for critical ones. */
-export function shouldEmail(b: Pick<PlatformBanner, 'sendEmail' | 'severity'>): boolean {
-  return b.sendEmail ?? b.severity === 'critical'
 }
 
 export function maintenancePhase(b: PlatformBanner, now = Date.now()): MaintenancePhase | null {

@@ -3,7 +3,6 @@ definePageMeta({ layout: 'platform-console' })
 const { can } = useStaffAuth()
 const { auditLog } = usePlatformAudit()
 
-const emailQueue = computed(() => auditLog.value.filter(e => e.action === 'banner_email_sent'))
 const reversed = computed(() => auditLog.value.slice().reverse())
 </script>
 
@@ -21,18 +20,6 @@ const reversed = computed(() => auditLog.value.slice().reverse())
     </div>
 
     <template v-else>
-      <div v-if="emailQueue.length" class="mx-6 rounded-md border bg-card p-4">
-        <h3 class="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-          <Icon name="lucide:mail" class="size-4" />
-          Outbound email queue ({{ emailQueue.length }})
-        </h3>
-        <div class="space-y-1.5 text-xs">
-          <div v-for="e in emailQueue" :key="e.id" class="flex items-center justify-between text-muted-foreground">
-            <code>banner_email_sent → tenant {{ e.metadata?.tenantId ?? '—' }}</code>
-            <span>{{ e.createdAt.slice(0, 19).replace('T', ' ') }}</span>
-          </div>
-        </div>
-      </div>
       <PlatformConsoleAuditLogTable :entries="reversed" />
     </template>
   </div>

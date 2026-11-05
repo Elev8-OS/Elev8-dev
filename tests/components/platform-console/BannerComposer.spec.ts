@@ -202,19 +202,6 @@ describe('bannerComposer', () => {
     expect(b.maintenance).toBeUndefined()
   })
 
-  it('follows severity for the email switch and warns on the preview', async () => {
-    const w = mountComposer()
-    await fillStep1(w, 'announcement')
-    await clickButton(w, 'critical')
-    expect(w.findAllComponents(Switch).at(-1)!.props('modelValue')).toBe(true)
-    await clickButton(w, 'Next')
-    await clickButton(w, 'Next')
-    await w.findAllComponents(Switch).at(-1)!.vm.$emit('update:modelValue', false)
-    await flushPromises()
-    await clickButton(w, 'Next')
-    expect(w.find('[data-testid="email-warning"]').exists()).toBe(true)
-  })
-
   it('shows a live preview from the first step, with placeholders until staff type', async () => {
     const w = mountComposer()
     expect(w.get('[data-testid="preview-card"]').text()).toContain('Your title appears here')

@@ -136,7 +136,8 @@ describe('broadcasts page', () => {
 
   it('lists recent broadcast activity from the audit log', () => {
     wrapper = mountPage()
-    const { createBanner } = usePlatformBanners()
+    const { createBanner, retractBanner } = usePlatformBanners()
+    retractBanner('banner-2', 'staff-1', 'make room')
     createBanner({
       title: 'Fresh notice', body: 'Body', severity: 'info', targetScope: 'all', targetFilter: { scope: 'all' },
       visibleRoles: ['Admin'], dismissible: true, dismissalScope: 'account',
@@ -154,7 +155,8 @@ describe('broadcasts page', () => {
     const queued = rows().find(r => r.text().includes('Planned maintenance'))!
     expect(queued.findAll('button').some(b => b.text() === 'Resolve')).toBe(false)
 
-    const { createBanner } = usePlatformBanners()
+    const { createBanner, retractBanner } = usePlatformBanners()
+    retractBanner('banner-2', 'staff-1', 'make room')
     createBanner({
       title: 'Underway now', body: 'Body', severity: 'warning', targetScope: 'all', targetFilter: { scope: 'all' },
       visibleRoles: ['Admin'], dismissible: true, dismissalScope: 'account',

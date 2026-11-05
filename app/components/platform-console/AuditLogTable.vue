@@ -20,7 +20,7 @@ const actionOptions: AuditAction[] = [
   'view_billing', 'view_pricing', 'view_users', 'view_activity',
   'next_charge_adjusted', 'next_charge_reverted',
   'override_proposed', 'override_approved', 'override_rejected', 'override_revoked', 'override_expired',
-  'banner_scheduled', 'banner_live', 'banner_updated', 'banner_resolved', 'banner_retracted', 'banner_email_sent',
+  'banner_scheduled', 'banner_live', 'banner_updated', 'banner_resolved', 'banner_retracted',
 ]
 
 function formatTime(iso: string) {

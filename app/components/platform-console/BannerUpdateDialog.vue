@@ -8,8 +8,6 @@ const props = defineProps<{
   open: boolean
   mode: 'update' | 'resolve'
   bannerTitle: string
-  /** Whether tenants will also get an email about this. */
-  emails: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +36,6 @@ const valid = computed(() => message.value.length <= MAX && (isResolve.value || 
           {{ isResolve
             ? `Tenants see "${bannerTitle}" flip to Resolved, then it clears an hour later.`
             : `Adds a note under "${bannerTitle}". Tenants who dismissed it see it again.` }}
-          <template v-if="emails"> The same users also get an email.</template>
         </DialogDescription>
       </DialogHeader>
       <div class="space-y-2">

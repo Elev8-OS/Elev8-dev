@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import type { BannerSeverity, BannerStatus } from '~/components/platform-console/data/banners'
 import {
   SEVERITY_LABEL, BANNER_STATUS_LABEL, MAINTENANCE_PHASE_LABEL, MAINTENANCE_IMPACT_LABEL,
-  bannerKind, canResolve, maintenancePhase, shouldEmail,
+  bannerKind, canResolve, maintenancePhase,
 } from '~/components/platform-console/data/banners'
 import { formatCountdown, formatUtc } from '~/lib/platform-banner-time'
 import { usePlatformBanners } from '~/composables/usePlatformBanners'
@@ -203,17 +203,23 @@ function doRetract() {
 }
 
 function dup(b: Row) {
-  duplicateBanner(b.id)
+  try {
+    duplicateBanner(b.id)
+  }
+  catch (e: any) {
+    toast.error(e.message ?? 'Could not duplicate')
+    return
+  }
   toast.success('Banner duplicated.')
 }
 
-const updateDialog = ref<{ id: string, title: string, mode: 'update' | 'resolve', emails: boolean } | null>(null)
+const updateDialog = ref<{ id: string, title: string, mode: 'update' | 'resolve' } | null>(null)
 const updateOpen = computed({
   get: () => !!updateDialog.value,
   set: (v: boolean) => { if (!v) updateDialog.value = null },
 })
 function openUpdate(b: Row, mode: 'update' | 'resolve') {
-  updateDialog.value = { id: b.id, title: b.title, mode, emails: shouldEmail(b) }
+  updateDialog.value = { id: b.id, title: b.title, mode }
 }
 function submitUpdate(message: string) {
   const d = updateDialog.value
@@ -335,7 +341,6 @@ function goNew() {
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span class="inline-flex items-center gap-1"><Icon name="lucide:users" class="size-3.5" />{{ audience(b) }}</span>
                 <span class="inline-flex items-center gap-1"><Icon name="lucide:clock" class="size-3.5" />{{ rowSchedule(b) }}</span>
-                <span v-if="shouldEmail(b)" class="inline-flex items-center gap-1"><Icon name="lucide:mail" class="size-3.5" />Emailed</span>
                 <span v-if="b.updates?.length" class="inline-flex items-center gap-1"><Icon name="lucide:message-square-text" class="size-3.5" />{{ b.updates.length }} {{ b.updates.length === 1 ? 'update' : 'updates' }}</span>
               </div>
             </div>
@@ -450,8 +455,6 @@ function goNew() {
             <dd>{{ selected.visibleRoles.join(', ') }}</dd>
             <dt class="text-muted-foreground">Shows</dt>
             <dd>{{ formatUtc(selected.startAt) }}<template v-if="selected.endAt"><br>until {{ formatUtc(selected.endAt) }}</template></dd>
-            <dt class="text-muted-foreground">Email</dt>
-            <dd>{{ shouldEmail(selected) ? 'Sent to matching users' : 'In-app only' }}</dd>
             <template v-if="selected.maintenance">
               <dt class="text-muted-foreground">Window</dt>
               <dd>{{ formatUtc(selected.maintenance.startAt) }}<br>to {{ formatUtc(selected.maintenance.endAt) }}</dd>
@@ -510,7 +513,6 @@ function goNew() {
       v-model:open="updateOpen"
       :mode="updateDialog.mode"
       :banner-title="updateDialog.title"
-      :emails="updateDialog.emails"
       @submit="submitUpdate"
     />
 

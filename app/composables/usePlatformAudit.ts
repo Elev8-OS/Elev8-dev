@@ -7,7 +7,7 @@ export type AuditAction =
   | 'override_proposed' | 'override_approved' | 'override_rejected' | 'override_revoked' | 'override_expired'
   | 'banner_created' | 'banner_scheduled' | 'banner_live' | 'banner_retracted' | 'banner_retracted_before_live' | 'banner_expired'
   | 'banner_updated' | 'banner_resolved'
-  | 'banner_target_excluded' | 'banner_email_sent'
+  | 'banner_target_excluded'
   | 'role_changed' | 'login' | 'logout'
 
 export interface PlatformAuditEntry {
@@ -28,7 +28,6 @@ function seedAuditLog(): PlatformAuditEntry[] {
     { id: 'audit-seed-2', actorStaffId: 'staff-2', actorRole: 'approver', action: 'override_approved', targetType: 'override', targetId: 'ovr-seed-1', metadata: { tenantId: 't-1' }, createdAt: new Date(now - 7200_000).toISOString() },
     { id: 'audit-seed-3', actorStaffId: 'staff-3', actorRole: 'finance', action: 'view_billing', targetType: 'tenant', targetId: 't-2', createdAt: new Date(now - 10_800_000).toISOString() },
     { id: 'audit-seed-4', actorStaffId: 'staff-1', actorRole: 'admin', action: 'banner_live', targetType: 'banner', targetId: 'banner-1', metadata: { severity: 'critical', recipientCount: 9 }, createdAt: new Date(now - 14_400_000).toISOString() },
-    { id: 'audit-seed-5', actorStaffId: 'staff-1', actorRole: 'admin', action: 'banner_email_sent', targetType: 'banner', targetId: 'banner-1', metadata: { tenantId: 't-1', recipientCount: 5 }, createdAt: new Date(now - 14_400_000).toISOString() },
   ]
 }
 

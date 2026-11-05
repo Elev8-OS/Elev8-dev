@@ -1,10 +1,10 @@
 import { computed } from 'vue'
 import type {
   PlatformBanner, BannerSeverity, BannerStatus, BannerTargetFilter, BannerDismissal, DismissalScope,
-  BannerKind, MaintenanceWindow, BannerUpdate, AnnouncementState,
+  BannerKind, MaintenanceWindow, BannerUpdate,
 } from '~/components/platform-console/data/banners'
 import {
-  mockBanners, shouldEmail, canResolve, lastActivityAt, RESOLVED_GRACE_MS, MAINTENANCE_WRAP_UP_MS,
+  mockBanners, canResolve, lastActivityAt, RESOLVED_GRACE_MS, MAINTENANCE_WRAP_UP_MS, MAX_ACTIVE_BROADCASTS,
 } from '~/components/platform-console/data/banners'
 import type { StaffRoleName } from '~/components/platform-console/data/staff'
 import { useTenants } from '~/composables/useTenants'
@@ -26,13 +26,6 @@ export interface CreateBannerInput {
   createdByStaffId: string
   kind?: BannerKind
   maintenance?: MaintenanceWindow
-  sendEmail?: boolean
-}
-
-export interface TenantAnnouncement {
-  banner: PlatformBanner
-  state: AnnouncementState
-  dismissed: boolean
 }
 
 const SEVERITY_RANK: Record<BannerSeverity, number> = { critical: 1, warning: 2, info: 3 }
@@ -99,36 +92,27 @@ export function usePlatformBanners() {
   }
 
   /**
-   * Everything a tenant user has been shown, newest activity first, dismissed or not.
-   * Scheduled banners (not shown yet) and retracted ones (withdrawn) never appear.
+   * At most MAX_ACTIVE_BROADCASTS broadcasts may overlap in time, whatever their audience.
+   * Returns a message when a broadcast running from `startAt` to `endAt` (open-ended when
+   * absent) would push the count over that limit at any moment, else null.
    */
-  function announcementsForTenant(tenantId: string, userRole: StaffRoleName): TenantAnnouncement[] {
-    const now = Date.now()
-    return banners.value
-      .filter(b => (b.status === 'live' || b.status === 'expired')
-        && new Date(b.startAt).getTime() <= now
-        && reachesViewer(b, tenantId, userRole))
-      .map((banner): TenantAnnouncement => {
-        const live = isLiveAt(banner, now)
-        const state: AnnouncementState = live ? (banner.resolvedAt ? 'resolved' : 'live') : 'ended'
-        return { banner, state, dismissed: live && isDismissed(banner.id, tenantId) }
-      })
-      .sort((a, b) => lastActivityAt(b.banner).localeCompare(lastActivityAt(a.banner)))
-  }
-
-  function fireEmailTrigger(banner: PlatformBanner, reason: 'live' | 'update' | 'resolved' = 'live'): void {
-    const recipients = resolveRecipients(banner)
-    for (const tenantId of recipients) {
-      log('banner_email_sent', 'banner', banner.id, {
-        tenantId,
-        title: banner.title,
-        recipientCount: banner.visibleRoles.length,
-        reason,
-      })
-    }
+  function activeLimitError(startAt: string, endAt?: string): string | null {
+    const s = new Date(startAt).getTime()
+    const e = endAt ? new Date(endAt).getTime() : Infinity
+    const others = banners.value
+      .filter(b => b.status === 'live' || b.status === 'scheduled')
+      .map(b => ({ from: new Date(b.startAt).getTime(), to: b.endAt ? new Date(b.endAt).getTime() : Infinity }))
+      .filter(r => r.from < e && r.to > s)
+    const probes = [s, ...others.map(r => r.from).filter(t => t > s && t < e)]
+    const crowded = probes.some(p => others.filter(r => r.from <= p && r.to > p).length >= MAX_ACTIVE_BROADCASTS)
+    return crowded
+      ? `Only ${MAX_ACTIVE_BROADCASTS} broadcasts can be active at the same time. Retract or resolve one first, or pick a time when fewer are active.`
+      : null
   }
 
   function createBanner(input: CreateBannerInput): PlatformBanner {
+    const limit = activeLimitError(input.startAt, input.endAt)
+    if (limit) throw new Error(limit)
     if (input.kind === 'maintenance') {
       const w = input.maintenance
       if (!w) throw new Error('Maintenance needs a window')
@@ -146,9 +130,6 @@ export function usePlatformBanners() {
       severity: banner.severity,
       recipientCount: resolveRecipients(banner).length,
     })
-    if (shouldEmail(banner) && isLive) {
-      fireEmailTrigger(banner)
-    }
     return banner
   }
 
@@ -192,7 +173,6 @@ export function usePlatformBanners() {
     const updated: PlatformBanner = { ...existing, updates: [...(existing.updates ?? []), update] }
     banners.value = banners.value.map(b => b.id === id ? updated : b)
     log('banner_updated', 'banner', id, { message: text })
-    if (shouldEmail(updated)) fireEmailTrigger(updated, 'update')
     return updated
   }
 
@@ -218,7 +198,6 @@ export function usePlatformBanners() {
     }
     banners.value = banners.value.map(b => b.id === id ? updated : b)
     log('banner_resolved', 'banner', id, { note: text })
-    if (shouldEmail(updated)) fireEmailTrigger(updated, 'resolved')
     return updated
   }
 
@@ -251,7 +230,6 @@ export function usePlatformBanners() {
       dismissalScope: existing.dismissalScope,
       kind: existing.kind,
       maintenance,
-      sendEmail: existing.sendEmail,
       startAt: new Date().toISOString(),
       endAt,
       createdByStaffId: 'staff-1',
@@ -273,7 +251,6 @@ export function usePlatformBanners() {
       if (b.status === 'scheduled' && new Date(b.startAt).getTime() <= now) {
         wentLive++
         log('banner_live', 'banner', b.id, { severity: b.severity, recipientCount: resolveRecipients(b).length })
-        if (shouldEmail(b)) fireEmailTrigger(b)
         return { ...b, status: 'live' as BannerStatus }
       }
       if (b.status === 'live' && b.endAt && new Date(b.endAt).getTime() < now) {
@@ -288,7 +265,7 @@ export function usePlatformBanners() {
 
   return {
     banners, dismissals,
-    resolveRecipients, liveBannersForTenant, announcementsForTenant, isDismissed,
+    resolveRecipients, liveBannersForTenant, activeLimitError, isDismissed,
     createBanner, updateBanner, retractBanner, duplicateBanner, postUpdate, resolveBanner,
     dismiss, runSchedulingSweep,
   }

@@ -1,7 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { usePlatformBanners } from '~/composables/usePlatformBanners'
 import { maintenancePhase } from '~/components/platform-console/data/banners'
 import { usePlatformAudit } from '~/composables/usePlatformAudit'
+
+/** The seed already has two live broadcasts, the platform maximum: clear the way for tests that create their own. */
+function clearActive() {
+  const { banners } = usePlatformBanners()
+  banners.value = banners.value.map(b => b.status === 'live' || b.status === 'scheduled' ? { ...b, status: 'expired' as const } : b)
+}
 
 describe('usePlatformBanners', () => {
   it('seeds with mock banners', () => {
@@ -46,6 +52,7 @@ describe('usePlatformBanners', () => {
   })
 
   it('createBanner sets status to live when startAt is now', () => {
+    clearActive()
     const { createBanner, banners } = usePlatformBanners()
     const b = createBanner({
       title: 'Test', body: 'Hello world', severity: 'info',
@@ -58,6 +65,7 @@ describe('usePlatformBanners', () => {
   })
 
   it('createBanner sets status to scheduled when startAt is future', () => {
+    clearActive()
     const { createBanner } = usePlatformBanners()
     const future = new Date(Date.now() + 7 * 86_400_000).toISOString()
     const b = createBanner({
@@ -67,20 +75,6 @@ describe('usePlatformBanners', () => {
       startAt: future, createdByStaffId: 'staff-1',
     })
     expect(b.status).toBe('scheduled')
-  })
-
-  it('critical banner creation triggers banner_email_sent audit', () => {
-    const { createBanner } = usePlatformBanners()
-    const { auditLog } = usePlatformAudit()
-    const before = auditLog.value.length
-    createBanner({
-      title: 'Critical test', body: 'Triggers email', severity: 'critical',
-      targetScope: 'individual', targetFilter: { scope: 'individual', tenantIds: ['t-1'] },
-      visibleRoles: ['Admin'], dismissible: true, dismissalScope: 'account',
-      startAt: new Date().toISOString(), createdByStaffId: 'staff-1',
-    })
-    const sent = auditLog.value.slice(before).find(e => e.action === 'banner_email_sent')
-    expect(sent).toBeTruthy()
   })
 
   it('retractBanner flips scheduled to retracted', () => {
@@ -119,6 +113,7 @@ describe('usePlatformBanners', () => {
       createdByStaffId: 'staff-1',
     }
     const hour = 3_600_000
+    beforeEach(clearActive)
     function window(startInMs: number, lengthMs = 30 * 60_000) {
       return {
         startAt: new Date(Date.now() + startInMs).toISOString(),
@@ -148,35 +143,13 @@ describe('usePlatformBanners', () => {
       expect(() => createBanner({ ...base, title: 'No window', kind: 'maintenance', startAt: new Date().toISOString() })).toThrow()
     })
 
-    it('emails on an opt-in non-critical banner, not on a plain one', () => {
-      const { createBanner } = usePlatformBanners()
-      const { auditLog } = usePlatformAudit()
-      const before = auditLog.value.length
-      createBanner({ ...base, title: 'Quiet', startAt: new Date().toISOString() })
-      expect(auditLog.value.slice(before).some(e => e.action === 'banner_email_sent')).toBe(false)
-      createBanner({ ...base, title: 'Loud', sendEmail: true, startAt: new Date().toISOString() })
-      expect(auditLog.value.slice(before).some(e => e.action === 'banner_email_sent')).toBe(true)
-    })
-
-    it('does not email a critical banner that opted out', () => {
-      const { createBanner } = usePlatformBanners()
-      const { auditLog } = usePlatformAudit()
-      const before = auditLog.value.length
-      createBanner({ ...base, title: 'Critical, quiet', severity: 'critical', sendEmail: false, startAt: new Date().toISOString() })
-      expect(auditLog.value.slice(before).some(e => e.action === 'banner_email_sent')).toBe(false)
-    })
-
-    it('schedules a banner for later and emails only once it goes live', () => {
+    it('schedules a banner for later and goes live once its time comes', () => {
       const { createBanner, banners, runSchedulingSweep } = usePlatformBanners()
-      const { auditLog } = usePlatformAudit()
-      const before = auditLog.value.length
-      const b = createBanner({ ...base, title: 'Later', sendEmail: true, startAt: new Date(Date.now() + hour).toISOString() })
+      const b = createBanner({ ...base, title: 'Later', startAt: new Date(Date.now() + hour).toISOString() })
       expect(b.status).toBe('scheduled')
-      expect(auditLog.value.slice(before).some(e => e.action === 'banner_email_sent')).toBe(false)
       banners.value = banners.value.map(x => x.id === b.id ? { ...x, startAt: new Date(Date.now() - 1000).toISOString() } : x)
       runSchedulingSweep()
       expect(banners.value.find(x => x.id === b.id)!.status).toBe('live')
-      expect(auditLog.value.slice(before).some(e => e.action === 'banner_email_sent')).toBe(true)
     })
 
     it('postUpdate appends a note, audits it and re-surfaces a dismissed banner', async () => {
@@ -200,7 +173,7 @@ describe('usePlatformBanners', () => {
       expect(() => postUpdate(later.id, 'staff-1', 'hi')).toThrow(/live/)
     })
 
-    it('resolveBanner flips to resolved, shortens the run and emails when asked', () => {
+    it('resolveBanner flips to resolved and shortens the run', () => {
       const { createBanner, resolveBanner } = usePlatformBanners()
       const { auditLog } = usePlatformAudit()
       const b = createBanner({ ...base, title: 'Outage', severity: 'critical', startAt: new Date().toISOString() })
@@ -211,7 +184,6 @@ describe('usePlatformBanners', () => {
       expect(new Date(r.endAt!).getTime() - Date.now()).toBeLessThanOrEqual(hour)
       const entries = auditLog.value.slice(before)
       expect(entries.some(e => e.action === 'banner_resolved')).toBe(true)
-      expect(entries.some(e => e.action === 'banner_email_sent' && e.metadata?.reason === 'resolved')).toBe(true)
     })
 
     it('cannot resolve a maintenance whose window has not started, or resolve twice', () => {
@@ -248,26 +220,52 @@ describe('usePlatformBanners', () => {
     })
 
     it('liveBannersForTenant caps by limit and Infinity lifts it', () => {
-      const { createBanner, liveBannersForTenant } = usePlatformBanners()
-      for (let i = 0; i < 3; i++) createBanner({ ...base, title: `Many ${i}`, startAt: new Date().toISOString() })
+      const { banners, liveBannersForTenant } = usePlatformBanners()
+      const template = banners.value.find(b => b.id === 'banner-1')!
+      // Bypass createBanner: it refuses a third active broadcast.
+      banners.value = [...banners.value, ...[1, 2, 3].map(i => ({
+        ...template, id: `many-${i}`, title: `Many ${i}`, status: 'live' as const,
+        startAt: new Date().toISOString(), endAt: undefined,
+      }))]
       expect(liveBannersForTenant('t-1', 'Admin').length).toBe(2)
       expect(liveBannersForTenant('t-1', 'Admin', Infinity).length).toBeGreaterThan(2)
     })
 
-    it('announcementsForTenant lists dismissed and ended ones, hides scheduled and retracted', () => {
-      const { createBanner, retractBanner, dismiss, announcementsForTenant, banners } = usePlatformBanners()
-      const shown = createBanner({ ...base, title: 'Shown', startAt: new Date().toISOString() })
-      const hidden = createBanner({ ...base, title: 'Hidden', startAt: new Date().toISOString() })
-      const future = createBanner({ ...base, title: 'Future', startAt: new Date(Date.now() + hour).toISOString() })
-      retractBanner(hidden.id, 'staff-1', 'oops')
-      dismiss(shown.id, 't-1')
-      const list = announcementsForTenant('t-1', 'Admin')
-      const byId = (id: string) => list.find(a => a.banner.id === id)
-      expect(byId(shown.id)).toMatchObject({ state: 'live', dismissed: true })
-      expect(byId(hidden.id)).toBeUndefined()
-      expect(byId(future.id)).toBeUndefined()
-      expect(list.some(a => a.state === 'ended')).toBe(true)
-      expect(banners.value.find(b => b.id === 'banner-4')!.status).toBe('expired')
+    describe('active limit', () => {
+      it('refuses a third active broadcast, whatever the audience', () => {
+        const { createBanner } = usePlatformBanners()
+        createBanner({ ...base, title: 'One', startAt: new Date().toISOString() })
+        createBanner({ ...base, title: 'Two', targetFilter: { scope: 'all' }, targetScope: 'all', startAt: new Date().toISOString() })
+        expect(() => createBanner({ ...base, title: 'Three', startAt: new Date().toISOString() })).toThrow(/Only 2 broadcasts/)
+      })
+
+      it('counts scheduled broadcasts at the moment the new one would run', () => {
+        const { createBanner } = usePlatformBanners()
+        createBanner({ ...base, title: 'Live', startAt: new Date().toISOString() })
+        createBanner({ ...base, title: 'Soon', startAt: new Date(Date.now() + 24 * hour).toISOString() })
+        // Fine while only one is up, refused once the scheduled one has started.
+        expect(() => createBanner({ ...base, title: 'Overlap', startAt: new Date(Date.now() + 48 * hour).toISOString() })).toThrow(/Only 2/)
+        expect(() => createBanner({
+          ...base, title: 'Short', startAt: new Date(Date.now() + hour).toISOString(), endAt: new Date(Date.now() + 2 * hour).toISOString(),
+        })).not.toThrow()
+      })
+
+      it('catches a broadcast whose run spans the start of two later ones', () => {
+        const { createBanner } = usePlatformBanners()
+        createBanner({ ...base, title: 'B', startAt: new Date(Date.now() + 10 * hour).toISOString(), endAt: new Date(Date.now() + 20 * hour).toISOString() })
+        createBanner({ ...base, title: 'C', startAt: new Date(Date.now() + 12 * hour).toISOString(), endAt: new Date(Date.now() + 20 * hour).toISOString() })
+        expect(() => createBanner({ ...base, title: 'Long', startAt: new Date().toISOString() })).toThrow(/Only 2/)
+        expect(() => createBanner({ ...base, title: 'Ends first', startAt: new Date().toISOString(), endAt: new Date(Date.now() + 5 * hour).toISOString() })).not.toThrow()
+      })
+
+      it('frees a slot when one is retracted', () => {
+        const { createBanner, retractBanner } = usePlatformBanners()
+        const a = createBanner({ ...base, title: 'A', startAt: new Date().toISOString() })
+        createBanner({ ...base, title: 'B', startAt: new Date().toISOString() })
+        expect(() => createBanner({ ...base, title: 'C', startAt: new Date().toISOString() })).toThrow()
+        retractBanner(a.id, 'staff-1', 'making room')
+        expect(() => createBanner({ ...base, title: 'C', startAt: new Date().toISOString() })).not.toThrow()
+      })
     })
 
     it('duplicating a maintenance banner moves a past window to a future day', () => {

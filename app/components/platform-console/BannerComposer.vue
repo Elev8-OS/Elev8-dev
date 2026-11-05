@@ -26,7 +26,6 @@ const kind = ref<BannerKind>('announcement')
 const title = ref('')
 const body = ref('')
 const severity = ref<BannerSeverity>('info')
-const sendEmail = ref(false)
 const ctaLabel = ref('')
 const ctaUrl = ref('')
 const dismissible = ref(true)
@@ -58,7 +57,7 @@ onMounted(() => {
 })
 
 const { can } = useStaffAuth()
-const { createBanner, resolveRecipients } = usePlatformBanners()
+const { createBanner, resolveRecipients, activeLimitError } = usePlatformBanners()
 const { byId: tenantById } = useTenants()
 
 if (!can('compose_banner')) {
@@ -69,10 +68,6 @@ const isMaintenance = computed(() => kind.value === 'maintenance')
 
 watch(kind, (k) => {
   if (k === 'maintenance' && severity.value === 'info') severity.value = 'warning'
-})
-// Changing severity resets the email switch to that severity's default.
-watch(severity, (s) => {
-  sendEmail.value = s === 'critical'
 })
 watch(winStartDate, (d) => {
   if (d && (!winEndDate.value || winEndDate.value < d)) winEndDate.value = d
@@ -111,7 +106,7 @@ const maintenanceWindow = computed<MaintenanceWindow | undefined>(() => {
 // "Now" is a ref so validation can be refreshed: a bare `Date.now()` never triggers a recompute,
 // and staff can leave the preview open until a chosen time has passed.
 const clock = ref(Date.now())
-const scheduleError = computed<string | null>(() => {
+const baseScheduleError = computed<string | null>(() => {
   const now = clock.value
   let appearsAt = now
   if (showMode.value === 'later') {
@@ -134,6 +129,17 @@ const scheduleError = computed<string | null>(() => {
     if (new Date(expireIso.value).getTime() <= appearsAt) return 'The banner must expire after it appears.'
   }
   return null
+})
+// The same start and end that publish() will send, so the limit is checked before the click.
+const candidateEndAt = computed<string | undefined>(() => {
+  if (isMaintenance.value) {
+    return windowEndIso.value ? new Date(new Date(windowEndIso.value).getTime() + MAINTENANCE_WRAP_UP_MS).toISOString() : undefined
+  }
+  return autoExpire.value && expireIso.value ? expireIso.value : undefined
+})
+const scheduleError = computed<string | null>(() => {
+  if (baseScheduleError.value) return baseScheduleError.value
+  return activeLimitError(showAtIso.value ?? new Date(clock.value).toISOString(), candidateEndAt.value)
 })
 const step3Valid = computed(() => scheduleError.value === null)
 
@@ -193,8 +199,6 @@ function goToStep(n: number) {
   if (n < step.value) step.value = n
 }
 
-const emailRecipientCount = computed(() => matchedTenants.value.length * visibleRoles.value.length)
-
 function toggleArea(area: string) {
   affected.value = affected.value.includes(area)
     ? affected.value.filter(a => a !== area)
@@ -230,7 +234,6 @@ function publish() {
       dismissalScope: 'account',
       kind: kind.value,
       maintenance: maintenanceWindow.value,
-      sendEmail: sendEmail.value,
       startAt,
       endAt,
       createdByStaffId: 'staff-1',
@@ -363,7 +366,7 @@ function back() {
                       <span class="text-sm font-medium capitalize">{{ s }}</span>
                     </div>
                     <p class="mt-1 text-xs text-muted-foreground">
-                      {{ s === 'critical' ? 'Emails matching users by default' : 'In-app only by default' }}
+                      {{ s === 'critical' ? 'Urgent or affects service' : s === 'warning' ? 'Needs attention soon' : 'News and tips' }}
                     </p>
                   </button>
                 </div>
@@ -387,13 +390,6 @@ function back() {
                     <p class="text-xs text-muted-foreground">Tenants can hide it. Posting an update brings it back once.</p>
                   </div>
                   <Switch :model-value="dismissible" @update:model-value="(v) => dismissible = v" />
-                </div>
-                <div class="flex items-start justify-between gap-4 p-3">
-                  <div>
-                    <Label>Also send by email</Label>
-                    <p class="text-xs text-muted-foreground">Goes to the users who can see the banner, when it appears and with each update.</p>
-                  </div>
-                  <Switch :model-value="sendEmail" data-testid="send-email-switch" @update:model-value="(v) => sendEmail = v" />
                 </div>
               </div>
             </template>
@@ -510,10 +506,6 @@ function back() {
                   <dd>{{ r.value }}</dd>
                 </template>
               </dl>
-              <div v-if="sendEmail" class="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm" data-testid="email-warning">
-                <Icon name="lucide:mail" class="mt-0.5 size-4 shrink-0 text-destructive" />
-                <span>An email will be sent to {{ emailRecipientCount }} matching {{ emailRecipientCount === 1 ? 'user' : 'users' }} when the banner appears.</span>
-              </div>
             </template>
           </CardContent>
         </Card>
