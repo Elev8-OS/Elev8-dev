@@ -22,6 +22,8 @@ onMounted(() => log('view_pricing', 'tenant', props.tenant.id))
 const applyOpen = ref(false)
 const selected = ref<ReturnType<typeof byTenant>[number] | null>(null)
 const revokeConfirmId = ref<string | null>(null)
+// Kept apart from the id: the dialog's action closes it before doRevoke runs, so clearing the id on close revoked nothing.
+const revokeOpen = ref(false)
 const history = computed(() => byTenant(props.tenant.id).sort((a, b) => b.proposedAt.localeCompare(a.proposedAt)))
 const active = computed(() => activeFor(props.tenant.id))
 
@@ -43,6 +45,7 @@ function doRevoke() {
     toast.error(e.message ?? 'Failed')
   } finally {
     revokeConfirmId.value = null
+    revokeOpen.value = false
   }
 }
 
@@ -77,7 +80,7 @@ const sheetOpen = computed({
             <template v-if="active.approvedByStaffId"> · Approved by {{ active.approvedByStaffId }}</template>
           </div>
           <PlatformConsoleRoleGate action="revoke_override">
-            <Button variant="destructive" size="sm" @click="revokeConfirmId = active!.id">
+            <Button variant="destructive" size="sm" @click="revokeConfirmId = active!.id; revokeOpen = true">
               <Icon name="lucide:ban" class="mr-1.5 size-3.5" />
               Revoke
             </Button>
@@ -160,7 +163,7 @@ const sheetOpen = computed({
       </SheetContent>
     </Sheet>
 
-    <AlertDialog :open="!!revokeConfirmId" @update:open="(v: boolean) => v ? null : revokeConfirmId = null">
+    <AlertDialog v-model:open="revokeOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Revoke this override?</AlertDialogTitle>
