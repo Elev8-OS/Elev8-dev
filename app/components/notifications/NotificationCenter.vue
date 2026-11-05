@@ -22,6 +22,10 @@ const {
   navigateToAlert,
 } = useNotifications()
 
+const { tenantId: bannerTenantId, role: bannerRole } = useBannerViewer()
+const { liveBannersForTenant } = usePlatformBanners()
+const liveAnnouncementCount = computed(() => liveBannersForTenant(bannerTenantId, bannerRole, Infinity).length)
+
 const hasCritical = computed(() => activeAlerts.value.some(a => a.severity === 'CRITICAL'))
 
 const tabs: { label: string, value: SeverityFilter }[] = [
@@ -137,6 +141,22 @@ function handleMarkAllRead() {
           @click="handleNavigate(alert)"
         />
       </ScrollArea>
+
+      <Separator />
+      <NuxtLink
+        to="/announcements"
+        class="flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+        data-testid="bell-announcements-link"
+        @click="popoverOpen = false"
+      >
+        <span class="flex items-center gap-2">
+          <Icon name="i-lucide-megaphone" class="size-3.5" />
+          Platform announcements
+        </span>
+        <Badge v-if="liveAnnouncementCount > 0" variant="secondary" class="h-4 min-w-4 rounded-full px-1 text-[10px] leading-none">
+          {{ liveAnnouncementCount }}
+        </Badge>
+      </NuxtLink>
     </PopoverContent>
   </Popover>
 </template>

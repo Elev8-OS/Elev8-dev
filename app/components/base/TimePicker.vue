@@ -33,7 +33,8 @@ const timeSlots = computed(() => {
   const start = Math.max(0, props.startHour ?? 6) * 60
   const end = Math.min(24, props.endHour ?? 22) * 60
 
-  for (let m = start; m <= end; m += step) {
+  // `endHour: 24` means "through 23:45", never the invalid "24:00".
+  for (let m = start; m <= end && m < 24 * 60; m += step) {
     const hh = String(Math.floor(m / 60)).padStart(2, '0')
     const mm = String(m % 60).padStart(2, '0')
     slots.push(`${hh}:${mm}`)

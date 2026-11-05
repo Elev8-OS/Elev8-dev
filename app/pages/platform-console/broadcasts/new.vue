@@ -7,11 +7,15 @@ const router = useRouter()
 </script>
 
 <template>
-  <div>
-    <div class="flex items-center justify-between border-b bg-card px-6 py-4">
-      <h2 class="text-2xl font-semibold">New banner</h2>
+  <div class="space-y-4 p-6">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight">New broadcast</h2>
+        <p class="text-sm text-muted-foreground">Write it, pick the tenants, set the timing, and check the preview.</p>
+      </div>
       <Button variant="ghost" size="sm" @click="router.push('/platform-console/broadcasts')">
-        ← Back to list
+        <Icon name="lucide:arrow-left" class="mr-1.5 size-4" />
+        Back to broadcasts
       </Button>
     </div>
     <PlatformConsoleBannerComposer @published="router.push('/platform-console/broadcasts')" />

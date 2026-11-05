@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { useTenants } from '~/composables/useTenants'
 import { usePlatformBanners } from '~/composables/usePlatformBanners'
+import { useBannerViewer } from '~/composables/useBannerViewer'
 
-// Demo: wire to t-1 + Admin role so banners render in the tenant dashboard for the demo.
-const { byId } = useTenants()
+const { tenantId, role } = useBannerViewer()
 const { liveBannersForTenant, dismiss } = usePlatformBanners()
 
-const tenant = byId('t-1')
-const userRole = 'Admin' as any
-const banners = computed(() => tenant ? liveBannersForTenant(tenant.id, userRole) : [])
+const banners = computed(() => liveBannersForTenant(tenantId, role))
+const hiddenCount = computed(() => liveBannersForTenant(tenantId, role, Infinity).length - banners.value.length)
 
 function dismissBanner(id: string) {
-  if (tenant) dismiss(id, tenant.id)
+  dismiss(id, tenantId)
 }
 </script>
 
@@ -23,5 +21,14 @@ function dismissBanner(id: string) {
       :banner="b"
       :on-dismiss="() => dismissBanner(b.id)"
     />
+    <NuxtLink
+      v-if="hiddenCount > 0"
+      to="/announcements"
+      class="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+      data-testid="banner-more-link"
+    >
+      {{ hiddenCount }} more {{ hiddenCount === 1 ? 'announcement' : 'announcements' }}
+      <Icon name="lucide:arrow-right" class="size-3" />
+    </NuxtLink>
   </div>
 </template>

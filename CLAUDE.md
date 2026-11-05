@@ -49,6 +49,7 @@ Detailed architecture, rules and the ⚠️ gotchas for each module live in `doc
 | Cockpit | `docs/claude/cockpit.md` | `/cockpit` tape chart: Reservations-only stays, slanted bars, today strip, filters, click/drag to book or block, drag to room, find availability, remembered settings |
 | Promo codes | `docs/claude/promo-codes.md` | Code library, create wizard, scope chain, booking widget links |
 | Branding | `docs/claude/branding.md` | Tenant logo/favicon/Guest Guide colors, server + guide-app wiring |
+| Platform console | `docs/claude/platform-console.md` | Broadcasts: announcements and maintenance notices, scheduling, maintenance window and timezones, updates and resolve, dismissal rules, tenant `/announcements` page, mock email |
 | Tenant billing | `docs/claude/tenant-billing.md` | `/settings/billing`: package and active units, next invoices, payment method, history, invoice PDF kit |
 | Tenant onboarding | `docs/claude/onboarding.md` | PMS models, pricing, server-validated promos, import, banners |
 | Analytics | `docs/claude/analytics.md` | `/analytics` portfolio KPIs, trend vs comparison, pace, channel mix, booking window, length of stay, origins, listing table; generated bookings, per-currency money |

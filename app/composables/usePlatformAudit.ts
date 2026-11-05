@@ -5,6 +5,7 @@ export type AuditAction =
   | 'view_billing' | 'view_pricing' | 'view_users' | 'view_activity'
   | 'override_proposed' | 'override_approved' | 'override_rejected' | 'override_revoked' | 'override_expired'
   | 'banner_created' | 'banner_scheduled' | 'banner_live' | 'banner_retracted' | 'banner_retracted_before_live' | 'banner_expired'
+  | 'banner_updated' | 'banner_resolved'
   | 'banner_target_excluded' | 'banner_email_sent'
   | 'role_changed' | 'login' | 'logout'
 

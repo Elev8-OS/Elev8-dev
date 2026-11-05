@@ -22,7 +22,10 @@ const reversed = computed(() => auditLog.value.slice().reverse())
 
     <template v-else>
       <div v-if="emailQueue.length" class="mx-6 rounded-md border bg-card p-4">
-        <h3 class="text-sm font-semibold mb-2">📧 Outbound email queue ({{ emailQueue.length }})</h3>
+        <h3 class="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+          <Icon name="lucide:mail" class="size-4" />
+          Outbound email queue ({{ emailQueue.length }})
+        </h3>
         <div class="space-y-1.5 text-xs">
           <div v-for="e in emailQueue" :key="e.id" class="flex items-center justify-between text-muted-foreground">
             <code>banner_email_sent → tenant {{ e.metadata?.tenantId ?? '—' }}</code>
