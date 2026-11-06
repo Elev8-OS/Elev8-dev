@@ -19,6 +19,7 @@ import { listings } from '~/components/listings/data/listings'
 import StatementPublishDialog from '~/components/owner-statements/StatementPublishDialog.vue'
 import { formatOwnerMoney } from '~/components/owners/data/owner-money'
 import { OWNER_BOOKING_MODE_LABELS } from '~/components/owners/data/owner-quotas'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
@@ -78,6 +79,7 @@ const {
   findPermissions,
   updateMapping,
   addMapping,
+  removeMapping,
   addRule,
   updateRule,
 } = useOwners()
@@ -261,6 +263,28 @@ function saveMappingEdit() {
 
   toast.success(edit.mappingId ? 'Property updated.' : 'Property added.')
   mappingEdit.value = null
+}
+
+// The confirm button closes the dialog before its own click handler runs, so
+// the target lives apart from the open flag instead of being cleared on close.
+const mappingToRemove = ref<OwnerPropertyMapping | null>(null)
+const removeDialogOpen = ref(false)
+
+function askRemoveMapping(mapping: OwnerPropertyMapping) {
+  mappingToRemove.value = mapping
+  removeDialogOpen.value = true
+}
+
+function confirmRemoveMapping() {
+  const mapping = mappingToRemove.value
+  if (!mapping)
+    return
+  const result = removeMapping(mapping.id)
+  if (!result.success) {
+    toast.error(result.error ?? 'Failed to remove property.')
+    return
+  }
+  toast.success('Property removed.')
 }
 
 const statusBadgeClass: Record<OwnerStatus, string> = {
@@ -819,14 +843,28 @@ function saveAnnualCap() {
                       {{ m.ownershipPercentage }}%{{ m.unitId ? ` · unit ${m.unitId}` : '' }} · from {{ new Date(`${m.effectiveFrom}T00:00:00`).toLocaleDateString('en-GB') }}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    @click="startEditMapping(m)"
-                  >
-                    <Icon name="lucide:pencil" class="mr-1.5 size-3.5" />
-                    Edit
-                  </Button>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      @click="startEditMapping(m)"
+                    >
+                      <Icon name="lucide:pencil" class="mr-1.5 size-3.5" />
+                      Edit
+                    </Button>
+                    <span :title="ownerMappings.length <= 1 ? 'An owner must keep at least one property.' : undefined">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        class="size-8 text-destructive hover:text-destructive"
+                        :disabled="ownerMappings.length <= 1"
+                        :aria-label="`Remove ${listingById.get(m.listingId)?.name ?? m.listingId}`"
+                        @click="askRemoveMapping(m)"
+                      >
+                        <Icon name="lucide:trash-2" class="size-3.5" />
+                      </Button>
+                    </span>
+                  </div>
                 </div>
                 <Separator class="my-3" />
                 <div v-if="ownerRules.find(r => r.listingId === m.listingId)" class="space-y-1">
@@ -905,6 +943,23 @@ function saveAnnualCap() {
                 </Button>
               </div>
             </div>
+
+            <AlertDialog v-model:open="removeDialogOpen">
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove {{ mappingToRemove ? (listingById.get(mappingToRemove.listingId)?.name ?? mappingToRemove.listingId) : 'property' }}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {{ owner?.name }} will no longer own this property, and its commission rule is deleted. Statements already generated stay as they are, but no new ones are created for this property.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction class="bg-destructive text-white hover:bg-destructive/90" @click="confirmRemoveMapping">
+                    Remove property
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <Dialog :open="!!mappingEdit" @update:open="(v: boolean) => { if (!v) mappingEdit = null }">
               <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">

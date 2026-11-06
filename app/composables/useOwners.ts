@@ -387,7 +387,17 @@ export function useOwners() {
     if (!mapping) {
       return { success: false, error: 'Mapping not found.' }
     }
+    // An owner always keeps at least one property.
+    if (mappings.value.filter(m => m.ownerId === mapping.ownerId).length <= 1) {
+      return { success: false, error: 'An owner must keep at least one property.' }
+    }
     mappings.value = mappings.value.filter(m => m.id !== mappingId)
+    // The rule belongs to this (owner, listing) pair. Dropping it with the
+    // mapping stops it resurfacing when the same property is added again.
+    // Published statements keep their own snapshot of the terms.
+    const ruleId = mapping.commissionRuleId
+    if (ruleId && !mappings.value.some(m => m.commissionRuleId === ruleId))
+      commissionRules.value = commissionRules.value.filter(r => r.id !== ruleId)
     return { success: true }
   }
 

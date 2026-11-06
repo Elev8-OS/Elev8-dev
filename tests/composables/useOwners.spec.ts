@@ -422,13 +422,32 @@ describe('useOwners', () => {
       expect(m.ownershipPercentage).toBe(70)
     })
 
+    // own-2 owns opm-2 and opm-3; own-1 owns only opm-1.
     it('removeMapping deletes the mapping', () => {
       const { removeMapping, mappings } = useOwners()
       const before = mappings.value.length
-      const result = removeMapping('opm-1')
+      const result = removeMapping('opm-2')
       expect(result.success).toBe(true)
       expect(mappings.value.length).toBe(before - 1)
-      expect(mappings.value.some(m => m.id === 'opm-1')).toBe(false)
+      expect(mappings.value.some(m => m.id === 'opm-2')).toBe(false)
+    })
+
+    it('removeMapping also deletes the commission rule the mapping owned', () => {
+      const { removeMapping, mappings, commissionRules } = useOwners()
+      const ruleId = mappings.value.find(m => m.id === 'opm-2')!.commissionRuleId!
+      expect(commissionRules.value.some(r => r.id === ruleId)).toBe(true)
+      removeMapping('opm-2')
+      expect(commissionRules.value.some(r => r.id === ruleId)).toBe(false)
+    })
+
+    it('removeMapping refuses to remove the last property of an owner', () => {
+      const { removeMapping, mappings, commissionRules } = useOwners()
+      const rules = commissionRules.value.length
+      const result = removeMapping('opm-1')
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/at least one property/i)
+      expect(mappings.value.some(m => m.id === 'opm-1')).toBe(true)
+      expect(commissionRules.value.length).toBe(rules)
     })
 
     it('removeMapping refuses a missing mapping id', () => {
